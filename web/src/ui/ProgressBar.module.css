@@ -1,0 +1,30 @@
+.track {
+  height: 4px;
+  border-radius: var(--r-xs);
+  background: var(--fill-2);
+  overflow: hidden;
+}
+/* The fill spans the track and slides in from the left (translateX in the
+   component): the track's clip rounds its left end, the fill's own radius
+   its right end, as a fill of that width would look. */
+.fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: transform var(--d-slow) var(--ease-out);
+}
+[data-tone='paused'] > .fill {
+  background: var(--label-3);
+}
+[data-tone='warning'] > .fill {
+  background: var(--warning);
+}
+[data-tone='label'] > .fill {
+  background: var(--label);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

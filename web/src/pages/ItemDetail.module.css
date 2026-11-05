@@ -1,0 +1,497 @@
+.page {
+  position: relative;
+  padding-bottom: var(--page-end);
+}
+.blank {
+  min-height: 100dvh;
+  background: var(--black);
+}
+
+/* ---------- Hero: backdrop fills the first screen ---------- */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-end;
+  isolation: isolate;
+}
+/* The «Семья» list hangs below the hero: lift the hero over the sections that follow it. */
+@media (min-width: 700px) {
+  .hero:has([data-family-panel]) {
+    z-index: 1;
+  }
+}
+.heroShow {
+  /* Let the episode row peek above the fold, so it is obvious there is more. */
+  min-height: 84vh;
+  min-height: 84svh;
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background: var(--bg-raised);
+}
+.backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  user-select: none;
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 18%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.6) 72%, var(--bg) 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.4) 34%, rgba(0, 0, 0, 0) 64%);
+}
+.copy {
+  width: 100%;
+  max-width: calc(880px + 2 * var(--gutter));
+  padding: calc(var(--nav-height) + var(--s-8)) var(--gutter) clamp(36px, 7vh, 80px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.eyebrow,
+.eyebrowLink {
+  margin-bottom: var(--s-3h);
+  font: 600 13px / 1.2 var(--font-text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(235, 235, 245, 0.72);
+}
+.eyebrowLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  border-radius: var(--r-sm);
+}
+.eyebrowLink:hover {
+  color: var(--label);
+}
+.title {
+  font: var(--t-hero);
+  letter-spacing: var(--track-tight);
+  text-wrap: balance;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+.logoTitle {
+  margin: 0;
+  line-height: 0;
+}
+.logo {
+  width: auto;
+  max-width: min(480px, 76vw);
+  max-height: clamp(90px, 16vh, 170px);
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 2px 18px rgba(0, 0, 0, 0.35));
+  transition: opacity var(--d-base) var(--ease-out);
+}
+/* black type made for light posters: white on the dark artwork */
+.logo[data-dark] {
+  filter: brightness(0) invert(1) drop-shadow(0 2px 18px rgba(0, 0, 0, 0.35));
+}
+.logo:not([data-ready]) {
+  opacity: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1h) 0;
+  margin-top: var(--s-4);
+  font: 500 15px / 1.3 var(--font-text);
+  color: rgba(235, 235, 245, 0.82);
+}
+.sep {
+  margin: 0 var(--s-2);
+  color: var(--label-3);
+}
+.badge {
+  composes: badge outline from '../ui/Badge.module.css';
+  margin-left: var(--s-2h);
+}
+.meta > .badge:first-child {
+  margin-left: 0;
+}
+
+.overviewWrap {
+  margin: var(--s-4) 0 26px;
+}
+.overview {
+  position: relative;
+  margin: 0;
+  max-width: 60ch;
+  font: var(--t-callout);
+  color: rgba(235, 235, 245, 0.86);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.expanded {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+.more {
+  margin-top: var(--s-1);
+  padding: var(--s-0) 0;
+  border: 0;
+  background: none;
+  color: var(--label);
+  font: var(--t-group);
+  border-radius: var(--r-xs);
+}
+.more:hover {
+  text-decoration: underline;
+}
+.meta + :global(div) {
+  margin-top: 26px;
+}
+
+/* ---------- Below the fold ---------- */
+.sections {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  margin-top: var(--s-2);
+}
+.sectionTitle {
+  padding: 0 var(--gutter);
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+
+.cast {
+  display: flex;
+  flex-direction: column;
+}
+/* a Rail of faces: flex, not the rail's card grid; the chevrons on the photos */
+.cast {
+  --rail-pager-top: calc(16px + 48px);
+}
+.castRow {
+  display: flex;
+  gap: clamp(16px, 2vw, 28px);
+  padding: var(--s-4) var(--gutter) var(--s-1h);
+  scroll-snap-type: x proximity;
+}
+.person {
+  flex: none;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  scroll-snap-align: start;
+}
+.photo,
+.initials {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.initials {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #3a3a40, #1f1f24);
+  font: 600 30px / 1 var(--font-rounded);
+  color: rgba(235, 235, 245, 0.75);
+}
+.personName {
+  margin-top: var(--s-2h);
+  font: 500 14px / 1.25 var(--font-text);
+}
+.character {
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+}
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px var(--s-8);
+  margin: var(--s-4) 0 0;
+  padding: var(--s-5) var(--gutter) 0;
+  border-top: 1px solid var(--separator);
+  margin-left: var(--gutter);
+  margin-right: var(--gutter);
+  padding-left: 0;
+  padding-right: 0;
+}
+.infoGrid dt {
+  font: 600 13px / 1.3 var(--font-text);
+  color: var(--label-2);
+}
+.infoGrid dd {
+  margin: 3px 0 0;
+  font: var(--t-subhead);
+  color: var(--label);
+}
+
+/* ---------- Error & skeleton ---------- */
+.error {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: var(--nav-height) var(--gutter);
+  text-align: center;
+  color: var(--label-2);
+}
+.error svg {
+  color: var(--label-3);
+  margin-bottom: var(--s-1h);
+}
+.error h1 {
+  font: var(--t-title-1);
+  color: var(--label);
+}
+.error p {
+  max-width: 42ch;
+  margin-bottom: var(--s-2);
+}
+.skeletonBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, var(--bg-raised) 50%, var(--bg));
+}
+.skeletonTitle {
+  width: 320px;
+  max-width: 80%;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--fill-3);
+  margin-bottom: 18px;
+}
+.skeletonLine {
+  width: 100%;
+  height: 14px;
+  border-radius: var(--r-xs);
+  background: var(--fill-4);
+  margin-bottom: var(--s-2h);
+}
+
+/* ---------- A short window (a phone on its side) ----------
+   The first screen must still hold the title and «Смотреть»: a smaller
+   title and logo, two lines of overview, tighter margins. */
+@media (max-height: 520px) and (min-width: 700px) {
+  .hero,
+  .heroShow {
+    min-height: 100svh;
+  }
+  .copy {
+    max-width: calc(720px + 2 * var(--gutter));
+    padding: calc(var(--nav-height) + var(--s-2)) var(--gutter) var(--s-5);
+  }
+  .eyebrow,
+  .eyebrowLink {
+    margin-bottom: var(--s-1h);
+  }
+  .title {
+    font: var(--t-large-title);
+  }
+  .logo {
+    max-height: 72px;
+  }
+  .meta {
+    margin-top: var(--s-2);
+  }
+  .overviewWrap {
+    margin-bottom: var(--s-3);
+  }
+  .overview {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 699px) {
+  /* the artwork's height: short enough that the title, its facts and
+     «Смотреть / Продолжить» are whole on the first screen, above the tab bar */
+  .page {
+    --hero-phone-h: 52svh;
+    --hero-phone-min: 320px;
+  }
+  .hero {
+    min-height: 0;
+    flex-direction: column;
+    align-items: stretch;
+    /* no negative z-index inside on phones: the copy joins the page's layers,
+       so an open menu can rise above the tab bar (below) */
+    isolation: auto;
+  }
+  .backdrop {
+    position: relative;
+    inset: auto;
+    z-index: 0;
+    height: var(--hero-phone-h);
+    min-height: var(--hero-phone-min);
+  }
+  .backdrop img {
+    object-position: center 30%;
+  }
+  /* like .backdrop: the hero is not isolated here, so -1 would sink it under
+     the body's background, and the copy's negative margin needs it in flow */
+  .skeletonBackdrop {
+    position: relative;
+    inset: auto;
+    z-index: 0;
+    height: var(--hero-phone-h);
+    min-height: var(--hero-phone-min);
+  }
+  .scrim {
+    inset: 0 0 auto 0;
+    height: var(--hero-phone-h);
+    min-height: var(--hero-phone-min);
+    z-index: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.75) 82%, var(--bg) 100%);
+  }
+  .copy {
+    position: relative;
+    z-index: 1;
+    margin-top: -120px;
+    padding: 0 var(--gutter) var(--s-6);
+    align-items: center;
+    text-align: center;
+  }
+  .logo {
+    object-position: center bottom;
+    max-height: 96px;
+  }
+  .meta {
+    justify-content: center;
+  }
+  .overviewWrap {
+    margin-bottom: 22px;
+    text-align: center;
+    align-self: stretch;
+  }
+  .overview {
+    margin: 0 auto;
+    text-wrap: pretty;
+  }
+  .meta {
+    font-size: 13px;
+  }
+  .badge {
+    margin-left: var(--s-2);
+  }
+  .copy > :last-child {
+    width: 100%;
+  }
+}
+
+/* ---------- A title that is not on the server («Найти и добавить») ---------- */
+.acquire {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+/* «Добавить сезон…» opens under the page's own action row: keep it apart */
+.addSeason {
+  margin-top: var(--s-4);
+}
+.episodePick {
+  display: flex;
+  gap: var(--s-2h);
+}
+.acquireNote {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.acquireDone {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 60ch;
+  font: var(--t-subhead);
+  color: var(--success);
+}
+.acquireDone svg {
+  flex: none;
+  margin-top: 1px;
+}
+.acquireError {
+  max-width: 60ch;
+  font: var(--t-subhead);
+  color: var(--warning);
+}
+@media (max-width: 699px) {
+  .episodePick {
+    justify-content: center;
+  }
+}
+
+/* «Следить» with its hint under the button */
+.follow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1h);
+  max-width: 260px;
+}
+@media (max-width: 699px) {
+  .follow {
+    max-width: none;
+  }
+}
+
+/* «Следит: Мама» — another profile's follow (not a control) */
+.followedBy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 52px;
+  padding: 0 var(--s-6);
+  border-radius: var(--r-pill);
+  font: var(--t-control);
+  color: var(--label-2);
+  white-space: nowrap;
+}
+.followedOff {
+  font: 500 13px / 1 var(--font-text);
+  color: var(--label-3);
+}
+@media (max-width: 699px) {
+  .followedBy {
+    justify-content: center;
+  }
+}
+
+.badges {
+  margin-top: var(--s-2h);
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .more {
+    position: relative;
+  }
+  .more::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--s-2h)) calc(-1 * var(--s-1));
+  }
+}

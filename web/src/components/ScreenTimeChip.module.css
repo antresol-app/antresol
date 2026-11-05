@@ -1,0 +1,19 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--s-2);
+  margin: 0 var(--gutter);
+  padding: var(--s-1h) var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--fill-3);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.chip > svg {
+  flex: none;
+  color: var(--accent);
+}
+.over > svg {
+  color: var(--warning);
+}

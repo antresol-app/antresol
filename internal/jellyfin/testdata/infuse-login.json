@@ -1,0 +1,12 @@
+{
+  "client": "Infuse-Direct 8.5.6 on Apple TV",
+  "note": "Emby-style: quoted X-Emby-Authorization, PascalCase query keys, legacy /Users/{id}/... routes, X-Emby-Token after login. {{app}}, {{token}}, {{userId}} as in swiftfin-login.json.",
+  "steps": [
+    {"method": "GET", "path": "/System/Info/Public", "header": "X-Emby-Authorization", "auth": "MediaBrowser Client=\"Infuse-Direct\", Device=\"Apple TV\", DeviceId=\"ab\", Version=\"8.5.6\"", "status": 200},
+    {"method": "POST", "path": "/Users/AuthenticateByName", "header": "X-Emby-Authorization", "auth": "MediaBrowser Client=\"Infuse-Direct\", Device=\"Apple TV\", DeviceId=\"ab\", Version=\"8.5.6\"", "body": {"Username": "Аня", "Pw": "{{app}}"}, "status": 200, "save": "login"},
+    {"method": "GET", "path": "/Users/{{userId}}", "header": "X-Emby-Token", "auth": "{{token}}", "status": 200, "save": "me"},
+    {"method": "GET", "path": "/System/Info", "header": "X-Emby-Token", "auth": "{{token}}", "status": 200},
+    {"method": "GET", "path": "/Users/{{userId}}/Views?IncludeExternalContent=false&UserId={{userId}}", "header": "X-Emby-Token", "auth": "{{token}}", "status": 200, "save": "views"},
+    {"method": "GET", "path": "/Sessions?DeviceId=ab", "header": "X-Emby-Token", "auth": "{{token}}", "status": 200}
+  ]
+}

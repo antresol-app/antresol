@@ -1,0 +1,40 @@
+/* Pill-shaped choices («Языки субтитров», the online picker's «Сезон» and «Качество»). */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  height: 32px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  background: var(--fill-3);
+  color: var(--label-2);
+  font: var(--t-subhead);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out);
+}
+.chip:hover {
+  background: var(--fill-2);
+}
+.on,
+.on:hover {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--label);
+}
+.chip:disabled {
+  cursor: default;
+}
+.chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

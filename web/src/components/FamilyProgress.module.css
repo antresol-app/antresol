@@ -1,0 +1,232 @@
+/* «Семья»: one quiet line under the action bar; unfolds into a glass list. */
+.family {
+  position: relative;
+  margin-top: var(--s-4);
+  max-width: 520px;
+}
+
+.fold {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: 100%;
+  padding: var(--s-1) var(--s-3) var(--s-1) var(--s-1);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.fold:hover,
+.fold[aria-expanded='true'] {
+  background: var(--fill-3);
+}
+.fold:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.faces {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+/* the rings overlap a little, like a stack of profiles */
+.faces > * + * {
+  margin-left: -6px;
+}
+.extra {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 var(--s-1h);
+  border-radius: var(--r-pill);
+  background: var(--fill-2);
+  color: var(--label-2);
+  font: var(--t-caption);
+}
+
+.foldText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.label {
+  color: var(--label-3);
+  font: var(--t-caption);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.summary {
+  overflow: hidden;
+  color: var(--label-2);
+  font: var(--t-footnote);
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.more {
+  color: var(--label-3);
+}
+.more::before {
+  content: ' · ';
+}
+.chevron {
+  flex: none;
+  color: var(--label-3);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.up {
+  transform: rotate(180deg);
+}
+
+/* the ring: a track and the arc (white like the cards' progress); green when done */
+.ring {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+}
+.ring > svg {
+  position: absolute;
+  inset: 0;
+}
+.track {
+  fill: none;
+  stroke: var(--fill-2);
+}
+.arc {
+  fill: none;
+  stroke: var(--label);
+  stroke-linecap: round;
+}
+.full {
+  fill: none;
+  stroke: var(--success);
+}
+.face {
+  position: relative;
+}
+.check {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  display: grid;
+  place-items: center;
+  width: 40%;
+  height: 40%;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--success);
+  color: var(--label-inverse);
+}
+
+.panel {
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-2) var(--s-3);
+  border-radius: var(--r-card);
+  text-align: left;
+  animation: unfold var(--d-base) var(--ease-out);
+}
+/* wide screens: over the page like a menu, so the hero does not move */
+@media (min-width: 700px) {
+  .panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 20;
+    width: min(460px, calc(100vw - 2 * var(--gutter)));
+    box-shadow: var(--shadow-pop);
+  }
+  .upward {
+    top: auto;
+    bottom: 100%;
+    margin: 0 0 var(--s-2);
+  }
+}
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2);
+  border-radius: var(--r-card-sm);
+}
+.row + .row {
+  border-top: 1px solid var(--separator);
+}
+.who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.name {
+  color: var(--label);
+  font: var(--t-subhead);
+  font-weight: 600;
+}
+.place {
+  color: var(--label-2);
+  font: var(--t-footnote);
+}
+.when {
+  color: var(--label-3);
+  white-space: nowrap;
+}
+.note {
+  margin: var(--s-2) var(--s-2) 0;
+  color: var(--label-3);
+  font: var(--t-caption);
+}
+.note [role='alert'] {
+  color: var(--destructive);
+}
+
+/* phones: the button goes under the text */
+@media (max-width: 520px) {
+  .row {
+    flex-wrap: wrap;
+    row-gap: var(--s-2);
+  }
+  .who {
+    flex-basis: calc(100% - 64px);
+  }
+  .row > :last-child:not(.who) {
+    margin-left: 57px;
+  }
+}
+
+/* EpisodeList: who is on an episode, a small stack in the tile's corner */
+.tileFaces {
+  display: inline-flex;
+}
+.tileFaces > * + * {
+  margin-left: -5px;
+}
+.tileFaces .face {
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+}

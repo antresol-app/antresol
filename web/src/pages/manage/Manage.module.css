@@ -1,0 +1,278 @@
+/* Layout of «Управление» and the shared building blocks of its sections:
+   a large title, inset grouped lists (rounded glass with hairline rows) and
+   empty states. */
+.page {
+  min-height: 100dvh;
+  padding: calc(var(--nav-height) + var(--s-4)) var(--gutter) var(--page-end);
+}
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 44px);
+  max-width: 1320px;
+  margin: 0 auto;
+  align-items: start;
+}
+.sidebar {
+  position: sticky;
+  top: calc(var(--nav-height) + var(--s-4));
+  /* a short window (a phone on its side): the list scrolls inside, or its
+     last sections were out of reach until the page's very end */
+  max-height: calc(100dvh - var(--nav-height) - var(--s-4) - max(var(--s-4), env(safe-area-inset-bottom)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-3h) var(--s-2h) var(--s-2h);
+  border-radius: 18px;
+}
+.sidebarTitle {
+  padding: 0 var(--s-2h) var(--s-2h);
+  font: 700 15px / 1.2 var(--font-text);
+  color: var(--label-2);
+}
+.nav {
+  min-width: 0;
+}
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  min-height: 40px;
+  padding: var(--s-1h) var(--s-2h);
+  border-radius: var(--r-field);
+  font: 500 15px / 1.2 var(--font-text);
+  color: var(--label);
+  transition: background var(--d-fast) var(--ease-out);
+}
+.navItem:hover {
+  background: var(--fill-4);
+}
+.navActive,
+.navActive:hover {
+  background: var(--fill-2);
+}
+/* keyboard focus inside the sidebar: a ring inside the item, on its own
+   rounded shape — not the page's heavy outline around it */
+.navItem:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.navIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--white);
+}
+.navLabel {
+  flex: 1;
+}
+/* «Просьбы»: how many wait for an answer */
+.navBadge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--s-1h);
+  border-radius: var(--r-pill);
+  background: var(--red);
+  color: var(--white);
+  font: 600 12px / 20px var(--font-text);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.navChevron {
+  display: none;
+  color: var(--label-3);
+}
+.content {
+  min-width: 0;
+}
+.largeTitle {
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
+  margin-bottom: var(--s-5);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-0);
+  min-height: var(--control-h-md);
+  margin: -6px 0 var(--s-1) -6px;
+  font: 400 17px / 1 var(--font-text);
+  color: var(--accent);
+}
+
+/* ---------- Section building blocks ---------- */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.title {
+  font: var(--t-title-1);
+  letter-spacing: var(--track-display);
+}
+.subtitle {
+  margin-top: var(--s-1);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+/* The System Settings list built by hand (rows with their own markup): the
+   classes of ui/List.module.css, the one implementation of its look. New
+   code renders GroupedSection / ListRow instead. */
+.groupTitle {
+  composes: title from '../../ui/List.module.css';
+  margin-top: var(--s-8);
+}
+.groupTitle:first-child {
+  margin-top: 0;
+}
+.group {
+  composes: group from '../../ui/List.module.css';
+}
+.row {
+  composes: row from '../../ui/List.module.css';
+}
+.rowText {
+  composes: text from '../../ui/List.module.css';
+}
+.rowLabel {
+  composes: label from '../../ui/List.module.css';
+}
+.rowHint {
+  composes: hint from '../../ui/List.module.css';
+}
+.rowControl {
+  composes: control from '../../ui/List.module.css';
+}
+.rowWide {
+  composes: wide from '../../ui/List.module.css';
+}
+.rowStack {
+  composes: stack from '../../ui/List.module.css';
+}
+.groupFoot {
+  composes: foot from '../../ui/List.module.css';
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2h);
+  padding: 56px var(--s-4);
+  text-align: center;
+  color: var(--label-2);
+  border-radius: 18px;
+  background: var(--fill-4);
+  border: 1px solid var(--glass-border);
+}
+.empty svg {
+  color: var(--label-3);
+}
+.empty h3 {
+  font: var(--t-title-3);
+  color: var(--label);
+}
+.empty p {
+  max-width: 46ch;
+  text-wrap: balance;
+}
+.problem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  padding: var(--s-3) var(--s-3h);
+  margin-bottom: var(--s-4);
+  border-radius: var(--r-control);
+  background: var(--warning-fill);
+  color: var(--warning);
+  font: var(--t-subhead);
+}
+.ok {
+  color: var(--success);
+}
+.spinnerRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2h);
+  padding: var(--s-12) 0;
+  color: var(--label-2);
+  font: var(--t-subhead);
+}
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--fill-1);
+  border-top-color: var(--label);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+@media (max-width: 699px) {
+  .page {
+    padding-top: var(--page-top);
+  }
+  .nav .navList {
+    border-radius: var(--r-group);
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+    gap: 0;
+  }
+  .navItem {
+    min-height: var(--control-h-lg);
+    padding: var(--s-2) var(--s-3h);
+    border-radius: 0;
+    font-size: 17px;
+  }
+  .navList li + li .navItem {
+    border-top: 1px solid var(--separator);
+  }
+  .navActive {
+    background: transparent;
+  }
+  .navChevron {
+    display: block;
+  }
+  .navIcon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-md);
+  }
+  .title {
+    font: var(--t-large-title);
+  }
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .navItem {
+    min-height: var(--control-h-md);
+  }
+}

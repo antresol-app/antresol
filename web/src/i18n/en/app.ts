@@ -1,0 +1,48 @@
+import type { EnOf } from '../types'
+import type ru from '../ru/app'
+
+export default {
+  'app.api.bookFileMissing': 'The book file isn’t on the server.',
+  'app.skipToContent': 'Skip to content',
+  'app.failedTryAgain': 'Something went wrong. Try again.',
+  'app.offline.hint': 'Make sure the Antresol server is on and you’re on the same network.',
+  'app.notFound.title': 'Page Not Found',
+  'app.notFound.text': 'This page doesn’t exist. Go back to Home.',
+  'app.chunk.failed': 'Couldn’t open this section',
+  'app.chunk.failedHint': 'Check your connection to the server and try again.',
+  'app.session.remotePasswordless':
+    'To sign in away from home, the profile needs a password. Ask the administrator to set one in Manage → Profiles.',
+  'app.setup.welcome': 'Welcome to Antresol',
+  'app.setup.lead': 'Movies, TV shows, music and books for the whole family — on your own server.',
+  'app.setup.remote':
+    'The first setup can only be done from your home network. Open Antresol on a computer or phone connected to your home Wi‑Fi.',
+  'app.setup.name': 'Your name',
+  'app.setup.namePlaceholder': 'For example, Alex',
+  'app.setup.nameRequired': 'What’s your name?',
+  'app.setup.passwordPlaceholder': 'Administrator password',
+  'app.setup.passwordRequired': 'Choose a password',
+  'app.setup.passwordShort': 'At least 6 characters',
+  'app.setup.passwordHint': 'At least 6 characters. With this profile you’ll add movies and manage the family.',
+  'app.setup.continue': 'Continue',
+  'app.setup.footnote': 'You can add profiles for your family later in Manage.',
+  'app.profiles.whoIsWatching': 'Who’s Watching?',
+  'app.profiles.loading': 'Loading profiles',
+  'app.profiles.loadFailed': 'Couldn’t load profiles',
+  'app.profiles.withPassword': ', password protected',
+  'app.profiles.enterPasswordToContinue': 'Enter the password to continue',
+  'app.profiles.enterPassword': 'Enter the password',
+  'app.profiles.signIn': 'Sign In',
+  'app.profiles.signInFailed': 'Couldn’t sign in',
+  'app.offlineHome.title': 'On This Device',
+  'app.offlineHome.docTitle': 'On This Device — {app}',
+  'app.offlineHome.docTitleOffline': 'Offline — {app}',
+  'app.offlineHome.openFailed':
+    'Couldn’t open the download. Remove it from this device and download it again when the server is available.',
+  'app.offlineHome.saved': 'Downloaded: {size}',
+  'app.offlineHome.appOnDevice': '{app} on this device: {size}',
+  'app.offlineHome.hint': 'Download albums, books and audiobooks to listen and read without the server.',
+  'app.offlineHome.nothingSaved': 'Nothing Downloaded Yet',
+  'app.offlineHome.nothingSavedHint': 'On an album, book or manga page, choose Download.',
+  'app.offlineHome.banner': 'Can’t reach the server — downloads on this device are available',
+  'app.offlineHome.nothingOnDevice': 'Nothing Downloaded on This Device',
+} satisfies EnOf<typeof ru>

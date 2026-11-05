@@ -1,0 +1,92 @@
+.offline {
+  min-height: 100dvh;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--nav-height);
+  padding: 0 var(--gutter);
+  font: var(--t-headline);
+  letter-spacing: var(--track-text);
+}
+.page {
+  max-width: calc(1180px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: var(--s-4) var(--gutter) calc(var(--playerbar-h) + var(--page-end));
+}
+/* In the Shell (the downloads list): below the floating navigation. */
+:global(#main) .page {
+  padding-top: calc(var(--nav-height) + var(--s-6));
+}
+.heading {
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
+}
+.used {
+  margin: var(--s-1) 0 var(--s-8);
+  color: var(--label-2);
+  font: var(--t-callout);
+}
+.offline .used {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--label-3);
+}
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  margin-bottom: var(--s-8);
+  border-radius: var(--r-sheet);
+}
+.banner svg {
+  flex: none;
+  color: var(--orange);
+}
+.banner p {
+  flex: 1;
+  min-width: 0;
+  font: var(--t-callout);
+  font-weight: 500;
+}
+.banner button {
+  flex: none;
+}
+@media (max-width: 699px) {
+  .banner {
+    flex-wrap: wrap;
+  }
+  .banner p {
+    flex-basis: calc(100% - 22px - var(--s-3));
+  }
+  .banner button {
+    margin-left: calc(22px + var(--s-3));
+  }
+}
+.error {
+  margin: calc(-1 * var(--s-4)) 0 var(--s-6);
+  color: var(--orange);
+  font: var(--t-footnote);
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-16) 0;
+  text-align: center;
+  color: var(--label-2);
+}
+.empty svg {
+  color: var(--label-3);
+  margin-bottom: var(--s-2);
+}
+.empty h2 {
+  font: var(--t-title-3);
+  color: var(--label);
+}
+.empty p {
+  max-width: 42ch;
+}

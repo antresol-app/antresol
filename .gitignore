@@ -1,0 +1,12 @@
+.superpowers/
+node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/bin/
+*.db
+*.db-*
+/tmp/
+/web/test-results/
+/web/playwright-report/
+.DS_Store
+/web/*.tsbuildinfo

@@ -1,0 +1,140 @@
+.button {
+  --h: var(--control-h-md);
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--h);
+  height: var(--h);
+  padding: 0;
+  border-radius: 50%;
+  color: var(--label);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--d-fast) var(--ease-out),
+    background-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out),
+    opacity var(--d-fast) var(--ease-out);
+}
+/* the reset of a <button>: glass draws its own hairline */
+.button:not(:global(.glass)) {
+  border: 0;
+}
+.button:hover:not(:disabled) {
+  background: var(--glass-fill-hover);
+}
+.button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.button > svg {
+  flex: none;
+}
+
+.xs {
+  --h: var(--control-h-xs);
+}
+.sm {
+  --h: var(--control-h-sm);
+}
+.md {
+  --h: var(--control-h-md);
+}
+.lg {
+  --h: var(--control-h-lg);
+}
+
+/* no fill at rest: a row's own buttons (remove, reorder, the row's menu) */
+.plain {
+  background: transparent;
+  color: var(--label-2);
+}
+.plain:hover:not(:disabled) {
+  background: var(--fill-3);
+  color: var(--label);
+}
+
+.destructive,
+.destructive:hover:not(:disabled) {
+  color: var(--destructive);
+}
+
+/* a toggle that is on («Следить», «Хочу посмотреть»): white like «Смотреть».
+   .button.on outranks the global .glass, which a production build loads
+   after this chunk (same specificity, the later rule would win). */
+.button.on,
+.button.on:hover:not(:disabled) {
+  background: var(--label);
+  border-color: transparent;
+  color: var(--label-inverse);
+}
+
+/* shown only by a row of tiles (ActionTiles on phones) */
+.tileLabel {
+  display: none;
+}
+/* In ActionTiles on a phone the circle becomes a rounded tile across its
+   column: the glyph over the label, the same glass, toggle and red. */
+@media (max-width: 699px) {
+  :global([data-action-tiles]) .button {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--s-1h);
+    width: 100%;
+    /* a label of two lines makes every tile of the row taller (the grid
+       stretches them), never spills out of its tile */
+    height: auto;
+    min-height: var(--tile-h);
+    padding: var(--s-3h) var(--s-1) var(--s-2h);
+    border-radius: var(--r-group);
+  }
+  :global([data-action-tiles]) .button > svg {
+    width: var(--icon-tile);
+    height: var(--icon-tile);
+  }
+  :global([data-action-tiles]) .tileLabel {
+    display: block;
+    max-width: 100%;
+    font: var(--t-tile);
+    text-align: center;
+    /* a word never breaks inside: a longer label takes a second line */
+    overflow-wrap: normal;
+    hyphens: manual;
+  }
+}
+
+/* A finger's 44 pt target around a smaller circle: the hit area grows, the
+   circle does not (HIG). Neighbours 8 pt apart still do not overlap. */
+@media (pointer: coarse) {
+  .xs::after,
+  .sm::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--h) - var(--touch-target)) / 2 - var(--hairline-w));
+    border-radius: 50%;
+  }
+}
+
+.spinner {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}

@@ -1,0 +1,31 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.title {
+  padding: 0 var(--gutter);
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.row {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0;
+  /* Vertical padding leaves room for the focus ring. */
+  padding: 12px var(--gutter) 6px;
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+}
+.row::-webkit-scrollbar {
+  display: none;
+}
+.cell {
+  flex: none;
+  scroll-snap-align: start;
+}

@@ -1,0 +1,99 @@
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-4);
+}
+.title {
+  font: var(--t-headline);
+}
+.summary {
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.warn {
+  color: var(--warning);
+}
+.bar {
+  display: flex;
+  gap: var(--s-0);
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--fill-3);
+}
+.seg {
+  display: block;
+  min-width: 3px;
+  height: 100%;
+  transition: filter var(--d-fast) var(--ease-out);
+}
+.pickable {
+  cursor: pointer;
+}
+.pickable:hover {
+  filter: brightness(1.18);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-1h);
+  margin: 0 0 0 calc(-1 * var(--s-2));
+  padding: 0;
+  list-style: none;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+/* a legend item; a button when its category opens (the pill shows on hover) */
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+button.item {
+  cursor: pointer;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+button.item:hover {
+  background: var(--fill-3);
+}
+button.item:hover .name {
+  color: var(--label);
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.free {
+  background: var(--fill-1);
+}
+.size {
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  button.item {
+    position: relative;
+  }
+  button.item::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--s-2)) 0;
+  }
+}

@@ -1,0 +1,245 @@
+# A release from a tag v*: archives for 4 platforms and a multi-arch image, both
+# built from the tag. On a tag, not on `release`: a release made with
+# GITHUB_TOKEN triggers no workflow. The same file lives in repositories of
+# other owners, where it must not run: every job carries the owner check.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# One release at a time, so the last to finish cannot win by timing. No
+# cancel-in-progress: a tag's run is never thrown away for a newer tag's.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # A GHCR package belongs to the first repository that pushes it, so only the
+  # real repository may use the real name.
+  IMAGE: ${{ github.repository == 'antresol-app/antresol' && 'ghcr.io/antresol-app/antresol-server' || 'ghcr.io/antresol-app/antresol-ci-test-server' }}
+  GO_VERSION: '1.27.1'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Decides whether `latest` moves: the App Store app already out decodes these
+  # answers. A renamed test must not pass by matching nothing, hence the grep.
+  contract:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - name: App contract test
+        run: |
+          go test -count=1 -v -run '^TestApp10Contract$' ./internal/api | tee "$RUNNER_TEMP/contract.txt"
+          grep -q '^--- PASS: TestApp10Contract ' "$RUNNER_TEMP/contract.txt"
+
+  # Decides whether this tag becomes `latest`, for the image and the GitHub
+  # release alike: the contract test passed, and it is the highest tag that is
+  # not a pre-release (a tag with "-"), so an older tag pushed or re-run later
+  # cannot move `latest` back. Anything else, or this job failing, holds it.
+  gate:
+    if: always() && github.repository_owner == 'antresol-app'
+    needs: [contract]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      latest: ${{ steps.decide.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          CONTRACT: ${{ needs.contract.result }}
+        run: |
+          latest=false
+          case "$GITHUB_REF_NAME" in
+          *-*) echo "pre-release: latest stays" ;;
+          *)
+            highest=$(git tag -l 'v*' | grep -v -e - | sort -V | tail -1)
+            if [ "$CONTRACT" != success ]; then
+              echo "contract test: $CONTRACT: latest stays"
+            elif [ "$highest" != "$GITHUB_REF_NAME" ]; then
+              echo "$GITHUB_REF_NAME is not the highest release ($highest): latest stays"
+            else
+              echo "$GITHUB_REF_NAME is the highest release: latest moves"
+              latest=true
+            fi
+            ;;
+          esac
+          echo "latest=$latest" >>"$GITHUB_OUTPUT"
+
+  binaries:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - run: npm ci
+        working-directory: web
+      - name: Build the archives
+        env:
+          COMMIT: ${{ github.sha }}
+          SOURCE_URL: https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}
+        run: scripts/release-server.sh "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/dist" "$GITHUB_WORKSPACE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: archives
+          path: |
+            ${{ runner.temp }}/dist/*.tar.gz
+            ${{ runner.temp }}/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 5
+
+  image:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { platform: linux/amd64, arch: amd64, runner: ubuntu-24.04 }
+          - { platform: linux/arm64, arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >>"$GITHUB_ENV"
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ github.sha }}
+            SOURCE_URL=https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: The image starts and says what it is
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          WANT: https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}
+        run: |
+          docker run -d --name smoke -p 8420:8420 "$IMAGE@$DIGEST"
+          for _ in $(seq 30); do
+            curl -fsS http://127.0.0.1:8420/api/health >/dev/null 2>&1 && break
+            sleep 2
+          done
+          about=$(curl -fsS http://127.0.0.1:8420/api/about) || { docker logs smoke; exit 1; }
+          echo "$about"
+          [ "$(jq -r .version <<<"$about")" = "$VERSION" ]
+          [ "$(jq -r .commit <<<"$about")" = "$GITHUB_SHA" ]
+          [ "$(jq -r .sourceUrl <<<"$about")" = "$WANT" ]
+          [ "$(jq -r .license <<<"$about")" = AGPL-3.0-or-later ]
+          docker exec smoke ffmpeg -version | head -1
+          docker rm -f smoke
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # The version's tag is always published; `latest` follows the gate.
+  manifest:
+    if: >-
+      always() && github.repository_owner == 'antresol-app'
+      && needs.image.result == 'success'
+    needs: [gate, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the multi-arch image
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          LATEST: ${{ needs.gate.outputs.latest }}
+        run: |
+          [ "$(ls | wc -l)" = 2 ] || { echo "want 2 digests, have: $(ls)"; exit 1; }
+          V=${GITHUB_REF_NAME#v}
+          tags=(-t "$IMAGE:$V")
+          if [ "$LATEST" = true ]; then tags+=(-t "$IMAGE:latest"); fi
+          sources=()
+          for d in *; do sources+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:$V"
+
+  release:
+    if: >-
+      always() && github.repository_owner == 'antresol-app'
+      && needs.binaries.result == 'success' && needs.manifest.result == 'success'
+    needs: [gate, binaries, manifest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: archives
+          path: ${{ runner.temp }}/dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ needs.gate.outputs.latest }}
+        run: |
+          [ "$(ls "$RUNNER_TEMP"/dist/*.tar.gz | wc -l)" = 4 ] || { ls "$RUNNER_TEMP/dist"; exit 1; }
+          flags=(--latest=false)
+          if [ "$LATEST" = true ]; then flags=(--latest=true); fi
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/dist/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "${flags[@]}"

@@ -1,0 +1,78 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3h);
+}
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  /* every action is 52px tall; a hint under one («Следить») hangs below the row */
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+/* «Смотреть» with the watch progress under it: the row spans the button and
+   is centred on it (the capsule's round ends stay clear) */
+.play {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2h);
+}
+.progressRow {
+  /* exactly the button's width (the column's), the bar and the time centred
+     in it as one group */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2h);
+  width: 100%;
+  font: var(--t-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+  white-space: nowrap;
+}
+.progress {
+  /* a fixed length: a bar that stretched made the group start at the
+     button's edge and read as left-aligned */
+  flex: 0 1 112px;
+  min-width: 48px;
+  /* over the backdrop: a lighter track than on a surface */
+  background: var(--label-4);
+}
+
+.lead {
+  display: contents;
+}
+.problem {
+  font: var(--t-footnote);
+  color: var(--warning);
+}
+
+/* Phones: the main actions span the width; the others are ActionTiles. */
+@media (max-width: 699px) {
+  .bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-2h);
+  }
+  .bar > :global(button) {
+    width: 100%;
+  }
+  .lead {
+    display: flex;
+    gap: var(--s-2h);
+  }
+  /* «Смотреть» (a plain button or the split capsule's main part) grows; the
+     round download button (a span, or the version menu's div around it)
+     keeps its size */
+  .lead > :first-child,
+  .play > div:first-child > :global(button):first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .progressRow,
+  .problem {
+    justify-content: center;
+    text-align: center;
+  }
+}

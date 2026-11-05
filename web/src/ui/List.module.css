@@ -1,0 +1,108 @@
+/* The System Settings list: a section's name, a rounded glass group of rows
+   with hairlines between them, a footnote under it. The one implementation:
+   GroupedSection / ListRow render it, and pages that build rows by hand
+   (Manage.module.css) compose these classes. */
+.section {
+  margin-top: var(--s-8);
+}
+.section:first-child {
+  margin-top: 0;
+}
+/* sentence case, the label colour, close to its group and well apart from
+   the one above */
+.title {
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  font: var(--t-group);
+  letter-spacing: var(--track-text);
+  color: var(--label);
+}
+.group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--r-group);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  /* menus open in a portal, so nothing needs to hang out of a group */
+  overflow: hidden;
+}
+.foot {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+
+/* A row: optional leading media, the label and its hint, the control on
+   the trailing edge — one minimum height and one padding for every row. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+  padding: var(--s-2h) var(--s-4);
+}
+/* the text keeps a wider berth from the control than media from the text */
+.text + .control {
+  margin-left: var(--s-3);
+}
+.row + .row {
+  border-top: 1px solid var(--separator);
+}
+.leading {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.label {
+  font: var(--t-callout);
+  color: var(--label);
+}
+.hint {
+  max-width: 62ch;
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+}
+/* an ordered list or a form: always under the text, over the row's width */
+.wide {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4) var(--s-3h);
+}
+.wide .control {
+  margin-left: 0;
+  flex: auto;
+  min-width: 0;
+}
+
+@media (max-width: 699px) {
+  .row {
+    gap: var(--s-3);
+    padding: var(--s-2h) var(--s-3h);
+  }
+  /* a control that needs the width (a segmented control) goes under the text on phones */
+  .stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-2h);
+    padding: var(--s-3) var(--s-4) var(--s-3h);
+  }
+  .stack .control {
+    margin-left: 0;
+    flex: auto;
+  }
+}

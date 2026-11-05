@@ -1,0 +1,241 @@
+.section {
+  --cols: 4;
+  /* the rail's chevrons: centred on the 16:9 still */
+  --rail-pager-top: calc(14px + var(--card-w) * 9 / 16 / 2);
+  --card-w: calc((100vw - 2 * var(--gutter) - (var(--cols) - 1) * var(--shelf-gap)) / var(--cols));
+}
+@media (max-width: 1279px) {
+  .section {
+    --cols: 3;
+  }
+}
+@media (max-width: 899px) {
+  .section {
+    --cols: 2;
+  }
+}
+@media (max-width: 699px) {
+  .section {
+    --cols: 1.25;
+  }
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  padding: 0 var(--gutter);
+  margin-bottom: var(--s-1);
+}
+.heading {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.count {
+  /* «16 серий» never breaks: it moves under the seasons when there is no room */
+  white-space: nowrap;
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+
+.cell {
+  position: relative;
+  scroll-snap-align: start;
+  min-width: 0;
+}
+.download {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--label);
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.download::before {
+  content: '';
+  position: absolute;
+  /* 44 pt to a finger, the glass hairline included */
+  inset: calc((32px - var(--touch-target)) / 2 - var(--hairline-w));
+}
+.cell:hover .download,
+.download:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .download {
+    opacity: 1;
+  }
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.tile:focus-visible {
+  outline: none;
+}
+.media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: var(--fill-3);
+  box-shadow: var(--shadow-card);
+  transform: translateZ(0);
+  transition: transform var(--d-base) var(--ease-out), box-shadow var(--d-base) var(--ease-out);
+}
+.media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+.media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (hover: hover) {
+  .tile:hover .media {
+    transform: scale(var(--lift-scale));
+    box-shadow: var(--shadow-lift);
+  }
+  .tile:hover .playGlyph {
+    opacity: 1;
+  }
+}
+.tile:focus-visible .media {
+  transform: scale(var(--lift-scale));
+  box-shadow: var(--shadow-lift);
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+.tile:focus-visible .playGlyph {
+  opacity: 1;
+}
+.tile:active .media {
+  transform: scale(0.98);
+}
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #2a2a30 0%, #18181c 100%);
+}
+.fallbackNo {
+  font: 700 clamp(40px, 4vw, 64px) / 1 var(--font-rounded);
+  color: rgba(235, 235, 245, 0.22);
+}
+.playGlyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  padding-left: 3px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--white);
+  opacity: 0;
+  transition: opacity var(--d-base) var(--ease-out);
+}
+.watched {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--label);
+}
+/* «Семья»: who is on this episode */
+.faces {
+  position: absolute;
+  right: 8px;
+  bottom: 18px;
+}
+.progress {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+.progress > div {
+  height: 100%;
+  background: var(--white);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-3) var(--s-0) 0;
+  min-width: 0;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 20px;
+  font: 600 12px / 1.3 var(--font-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--label-2);
+}
+.runtime {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.next {
+  margin-left: var(--s-1h);
+  padding: 0 7px;
+  line-height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--label);
+  color: var(--label-inverse);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.title {
+  font: 600 16px / 1.3 var(--font-text);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.overview {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

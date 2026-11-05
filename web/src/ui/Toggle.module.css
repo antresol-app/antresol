@@ -1,0 +1,58 @@
+/* The iOS switch: a 51 × 31 track, a white knob, green when on */
+.toggle {
+  --track-w: 51px;
+  --track-h: 31px;
+  --knob: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2h);
+  min-height: var(--control-h-sm);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font: var(--t-callout);
+}
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.track {
+  position: relative;
+  flex: none;
+  width: var(--track-w);
+  height: var(--track-h);
+  border-radius: var(--r-pill);
+  background: var(--fill-1);
+  transition: background var(--d-fast) var(--ease-out);
+}
+.knob {
+  position: absolute;
+  top: calc((var(--track-h) - var(--knob)) / 2);
+  left: calc((var(--track-h) - var(--knob)) / 2);
+  width: var(--knob);
+  height: var(--knob);
+  border-radius: 50%;
+  background: var(--white);
+  box-shadow: var(--shadow-knob);
+  transition: transform var(--d-base) var(--spring);
+}
+.toggle[aria-checked='true'] .track {
+  background: var(--success);
+}
+.toggle[aria-checked='true'] .knob {
+  transform: translateX(calc(var(--track-w) - var(--track-h)));
+}
+.toggle:focus-visible {
+  outline: none;
+}
+.toggle:focus-visible .track {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 2px;
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .toggle {
+    min-height: var(--control-h-md);
+  }
+}

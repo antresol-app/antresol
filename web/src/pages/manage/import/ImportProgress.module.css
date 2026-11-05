@@ -1,0 +1,120 @@
+/* A running or finished import. Building blocks from Manage.module.css. */
+.progress {
+  display: flex;
+  flex-direction: column;
+}
+.card {
+  padding: var(--s-4);
+  border-radius: 16px;
+}
+.phase {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.phase > span {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+.okIcon {
+  color: var(--success);
+}
+.ready {
+  margin-top: var(--s-2);
+  font: var(--t-title-3);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+.bar,
+.groupBar {
+  height: 6px;
+  margin-top: var(--s-2h);
+  border-radius: 3px;
+  background: var(--fill-2);
+  overflow: hidden;
+}
+.bar span,
+.groupBar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width var(--d-slow) var(--ease-out);
+}
+.groupBar {
+  height: 4px;
+  margin-top: var(--s-1h);
+  max-width: 320px;
+}
+.extra {
+  margin-top: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.paused {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2h);
+  padding: var(--s-2h) var(--s-3);
+  border-radius: var(--r-control);
+  background: var(--warning-fill);
+  color: var(--warning);
+  font: var(--t-footnote);
+}
+.failed {
+  margin-top: var(--s-2h);
+  font: var(--t-subhead);
+  color: var(--destructive);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3h);
+}
+.album {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.groupError {
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--destructive);
+}
+.state {
+  font: 600 13px / 1.3 var(--font-text);
+  color: var(--label-2);
+  white-space: nowrap;
+}
+.ok {
+  color: var(--success);
+}
+.busy {
+  color: var(--accent);
+}
+.warn {
+  color: var(--warning);
+}
+.bad {
+  color: var(--destructive);
+}
+@media (max-width: 699px) {
+  .group {
+    flex-wrap: wrap;
+    gap: var(--s-1h) var(--s-3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar span,
+  .groupBar span {
+    transition: none;
+  }
+}
+.ready:focus:not(:focus-visible) {
+  outline: none;
+}

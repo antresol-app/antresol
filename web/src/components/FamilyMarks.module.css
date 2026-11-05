@@ -1,0 +1,141 @@
+/* The faces sit in a lane the host places just above its track. */
+.lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--size, 20px);
+  pointer-events: none;
+}
+.mark {
+  position: absolute;
+  bottom: 0;
+  left: clamp(calc(var(--size) / 2), calc(var(--pct) + var(--off)), calc(100% - var(--size) / 2));
+  display: grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* a bigger touch target than the face */
+.mark::before {
+  content: '';
+  position: absolute;
+  inset: -8px -4px -6px;
+}
+.mark:hover,
+.mark:focus-visible {
+  z-index: 2;
+}
+.face {
+  position: relative;
+  box-shadow:
+    0 0 0 1.5px var(--label),
+    0 1px 5px rgba(0, 0, 0, 0.5);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.mark:hover .face,
+.mark:focus-visible .face {
+  transform: scale(1.18);
+}
+.mark:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+/* a short tick from the face down to the track */
+.stem {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 1px);
+  width: 2px;
+  height: var(--stem, 4px);
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--label);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+}
+.tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 5px 9px;
+  border-radius: var(--r-md);
+  font: 600 13px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 3px);
+  transition:
+    opacity var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.mark:hover .tip,
+.mark:focus-visible .tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* «↩ Вернуться к 12:40» */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-0);
+  height: 34px;
+  padding: 0 var(--s-1) 0 0;
+  border-radius: 17px;
+  color: var(--label);
+  animation: pill-in var(--d-base, 240ms) var(--ease-out);
+}
+.pillMain,
+.pillClose {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pillMain {
+  gap: 7px;
+  height: 100%;
+  padding: 0 var(--s-2) 0 13px;
+  border-radius: 17px;
+  font: 600 14px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pillClose {
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+.pillMain:hover {
+  background: var(--fill-3);
+}
+.pillClose:hover {
+  background: var(--fill-1);
+}
+.pillMain:focus-visible,
+.pillClose:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}

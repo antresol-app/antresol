@@ -1,0 +1,2 @@
+# group "genres": Russian kept on purpose
+internal/i18n/genres.go  # TMDB genre names in both languages (data; Genre picks the viewer's)

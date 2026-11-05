@@ -1,0 +1,149 @@
+/* Bottom right, above the scrubber; stays when the controls hide. */
+.box {
+  position: absolute;
+  z-index: 4;
+  right: var(--gutter);
+  bottom: calc(env(safe-area-inset-bottom) + 124px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  animation: rise 300ms var(--ease-out);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  color: var(--label);
+  font: 600 15px / 1 var(--font-text);
+  white-space: nowrap;
+  box-shadow: var(--shadow-pop);
+  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+.pill:hover {
+  background: var(--glass-fill-strong);
+}
+.pill:active {
+  transform: scale(0.97);
+}
+/* «Следующая серия»: glass that fills with white as the countdown runs */
+.primary {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-fill-strong);
+  -webkit-backdrop-filter: blur(30px);
+  backdrop-filter: blur(30px);
+}
+.fill {
+  position: absolute;
+  inset: 0;
+  width: var(--fill, 0%);
+  background: rgba(255, 255, 255, 0.36);
+  transition: width 260ms linear;
+}
+.primary:not([data-countdown]) .fill {
+  display: none;
+}
+.label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 6px 0 18px;
+  border-radius: var(--r-pill);
+  color: var(--label);
+  font: 500 15px / 1 var(--font-text);
+  white-space: nowrap;
+  box-shadow: var(--shadow-pop);
+}
+.noteUndo {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--accent);
+  font: 600 15px / 1 var(--font-text);
+}
+.noteUndo:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* the «Пропускать сам» menu button, like the other tools */
+.trigger {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--label);
+  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.14);
+}
+.trigger:active {
+  transform: scale(0.94);
+}
+.menu {
+  min-width: 240px;
+}
+
+@media (max-width: 699px) {
+  .box {
+    right: 16px;
+    bottom: calc(env(safe-area-inset-bottom) + 116px);
+  }
+  .pill,
+  .note {
+    font-size: 14px;
+  }
+  .pill {
+    padding: 0 16px;
+  }
+}
+/* A short window (a phone on its side): above the scrubber it would cover
+   the ±10 s buttons in the middle; it moves to the top bar's free end */
+@media (max-height: 500px) {
+  .box {
+    top: calc(env(safe-area-inset-top) + var(--s-6));
+    bottom: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .box {
+    animation: none;
+  }
+  .pill,
+  .fill {
+    transition: none;
+  }
+}

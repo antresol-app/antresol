@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/antresol-app/antresol/security/advisories/new
+    about: Report a vulnerability privately, never in a public issue (see SECURITY.md).
+  - name: Question or idea
+    url: https://github.com/antresol-app/antresol/discussions
+    about: Ask a question or discuss a feature before opening an issue.

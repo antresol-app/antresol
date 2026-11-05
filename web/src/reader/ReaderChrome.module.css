@@ -1,0 +1,412 @@
+/* Buttons here draw their own shape. */
+.back,
+.tool,
+.sizeButton,
+.swatch,
+.segment,
+.tocItem,
+.hit {
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Panel colours follow the page: light frosted glass on «Оригинал» and
+   «Бумага», dark glass on «Ночь». */
+.chrome {
+  --rc-fill: rgba(255, 255, 255, 0.72);
+  --rc-border: rgba(0, 0, 0, 0.08);
+  --rc-label: #1c1c1e;
+  --rc-label-2: rgba(60, 60, 67, 0.72);
+  --rc-hover: rgba(0, 0, 0, 0.06);
+  --rc-accent: #007aff;
+  --rc-top: calc(52px + env(safe-area-inset-top));
+  --rc-bottom: calc(40px + env(safe-area-inset-bottom));
+  color-scheme: light;
+}
+.chrome[data-theme='paper'] {
+  --rc-fill: rgba(248, 241, 227, 0.78);
+  --rc-border: rgba(59, 47, 34, 0.12);
+  --rc-label: #3b2f22;
+  --rc-label-2: rgba(59, 47, 34, 0.68);
+  --rc-hover: rgba(59, 47, 34, 0.08);
+  --rc-accent: #9a5b13;
+}
+.chrome[data-theme='night'] {
+  --rc-fill: rgba(28, 28, 30, 0.72);
+  --rc-border: rgba(255, 255, 255, 0.1);
+  --rc-label: #f2f2f7;
+  --rc-label-2: rgba(235, 235, 245, 0.6);
+  --rc-hover: rgba(255, 255, 255, 0.1);
+  --rc-accent: #0a84ff;
+  color-scheme: dark;
+}
+
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 max(12px, env(safe-area-inset-left)) 0 max(12px, env(safe-area-inset-right));
+  color: var(--rc-label);
+  background: var(--rc-fill);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  transition:
+    opacity var(--d-base) var(--ease-out),
+    transform var(--d-base) var(--ease-out);
+}
+.top {
+  top: 0;
+  height: var(--rc-top);
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 0.5px solid var(--rc-border);
+}
+.bottom {
+  bottom: 0;
+  height: var(--rc-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 0.5px solid var(--rc-border);
+  padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right));
+  font: 500 13px / 1.2 var(--font-text);
+  color: var(--rc-label-2);
+  pointer-events: none;
+}
+.chrome[data-hidden] .bar {
+  opacity: 0;
+  pointer-events: none;
+}
+.chrome[data-hidden] .top {
+  transform: translateY(-8px);
+}
+.chrome[data-hidden] .bottom {
+  transform: translateY(8px);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .chrome {
+    --rc-fill: #f2f2f7;
+  }
+  .chrome[data-theme='paper'] {
+    --rc-fill: #efe6d3;
+  }
+  .chrome[data-theme='night'] {
+    --rc-fill: #1c1c1e;
+  }
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  height: 40px;
+  padding: 0 10px 0 4px;
+  border-radius: 10px;
+  font: 500 17px / 1 var(--font-text);
+  color: var(--rc-accent);
+}
+.back:hover,
+.tool:hover {
+  background: var(--rc-hover);
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font: 600 15px / 1.2 var(--font-text);
+  color: var(--rc-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.tool {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: var(--rc-label);
+  font: 600 15px / 1 var(--font-text);
+}
+.tool:disabled {
+  opacity: 0.35;
+}
+.tool:focus-visible,
+.back:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.aa {
+  font: 600 17px / 1 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.chapter {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note {
+  color: #d70015;
+}
+.chrome[data-theme='night'] .note {
+  color: #ff6961;
+}
+.percent {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+/* «Семья»: the faces on a thin line of the book (only when someone else reads it) */
+.line {
+  position: relative;
+  flex: 1 1 0;
+  max-width: 560px;
+  min-width: 80px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  --stem: 0px;
+}
+.lineTrack {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--rc-label) 16%, transparent);
+}
+.lineFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--rc-label-2);
+}
+.line > [data-family-marks] {
+  top: calc(50% - 10px);
+}
+
+/* «Аа» menu: nearly opaque, the page behind is bright text */
+.settings {
+  width: 300px;
+  max-height: min(80vh, 640px);
+}
+.settings.settings {
+  /* opaque: a backdrop filter over the book's iframe lets the text through in Chromium */
+  background: #2c2c2e;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+.sizeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 6px;
+}
+.sizeButton {
+  flex: 1;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--label);
+  font-family: var(--font-display);
+}
+.sizeButton:hover,
+.sizeButton:focus-visible,
+.swatch:hover,
+.swatch:focus-visible,
+.segment:hover,
+.segment:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+.sizeButton:focus-visible,
+.swatch:focus-visible,
+.segment:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.sizeButton[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+.smallA {
+  font-size: 15px;
+  font-weight: 600;
+}
+.bigA {
+  font-size: 22px;
+  font-weight: 600;
+}
+.sizeValue {
+  flex: none;
+  min-width: 56px;
+  text-align: center;
+  font: 500 15px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 0 2px 6px;
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  color: var(--label-2);
+  font: 500 13px / 1.2 var(--font-text);
+}
+.swatch[aria-checked='true'] {
+  color: var(--label);
+}
+.swatchDot {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  font: 600 17px / 1 var(--font-display);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.swatch[aria-checked='true'] .swatchDot {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 4px var(--accent);
+}
+.segments {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  margin: 0 2px 8px;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.segment {
+  height: 34px;
+  border-radius: 8px;
+  color: var(--label-2);
+  font: 500 14px / 1 var(--font-text);
+}
+.segment[aria-checked='true'] {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--label);
+}
+
+/* Оглавление */
+.toc {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tocItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+  font: var(--t-body);
+  color: var(--label);
+}
+.tocItem:hover,
+.tocItem:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+.tocItem:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.tocItem[aria-current='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tocLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Поиск */
+.searchForm {
+  margin-bottom: 12px;
+}
+.searchNote {
+  margin: 4px 4px 10px;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.hits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+.hit:hover,
+.hit:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+.hitChapter {
+  font: 600 12px / 1.3 var(--font-text);
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+}
+.hitText {
+  font: var(--t-subhead);
+  color: var(--label);
+}
+.hitText mark {
+  background: rgba(255, 214, 10, 0.35);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+@media (max-width: 699px) {
+  .back {
+    padding: 0 6px 0 0;
+  }
+  .title {
+    text-align: left;
+  }
+}
+/* the filled ribbon of a bookmarked page */
+.marked {
+  color: var(--red);
+}

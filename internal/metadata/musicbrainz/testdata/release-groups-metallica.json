@@ -1,0 +1,205 @@
+{
+ "count": 1230,
+ "offset": 0,
+ "release-groups": [
+  {
+   "id": "d3f62b3e-a719-4a6e-bd32-5b72f14f29fc",
+   "title": "Metallica",
+   "score": 100,
+   "first-release-date": "2023-06-02",
+   "primary-type": "Album",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Cloutchaser",
+     "joinphrase": "",
+     "artist": {
+      "id": "f8d113df-3760-49d2-860d-cc4697b454a9",
+      "name": "Cloutchaser"
+     }
+    }
+   ]
+  },
+  {
+   "id": "997ffa2b-9f07-4995-8095-928ff669eab7",
+   "title": "Metallica",
+   "score": 100,
+   "first-release-date": "1996",
+   "primary-type": "Album",
+   "secondary-types": [
+    "Live"
+   ],
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "dd4b2235-a53c-4da5-b2f9-6d438b3a6229",
+   "title": "Metallica",
+   "score": 100,
+   "first-release-date": "1996",
+   "primary-type": "Album",
+   "secondary-types": [
+    "Live"
+   ],
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "26619eae-743f-4738-9131-052d54e6e1e4",
+   "title": "Metallica",
+   "score": 100,
+   "first-release-date": "2001-11-06",
+   "primary-type": "Other",
+   "secondary-types": [
+    "Interview"
+   ],
+   "count": 1,
+   "disambiguation": "Classic Albums series documentary",
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "e12cf798-8d8e-4a94-be6f-4f483ed3fcb8",
+   "title": "Metallica",
+   "score": 100,
+   "primary-type": "Album",
+   "secondary-types": [
+    "Compilation"
+   ],
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "e8f70201-8899-3f0c-9e07-5d6495bc8046",
+   "title": "Metallica",
+   "score": 100,
+   "first-release-date": "1991-08-12",
+   "primary-type": "Album",
+   "count": 59,
+   "disambiguation": "“The Black Album”",
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "1e99470b-dce4-472a-986d-94f281711ece",
+   "title": "String Metallica",
+   "score": 86,
+   "primary-type": "Single",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Musical Artizan",
+     "joinphrase": "",
+     "artist": {
+      "id": "3bb16225-b56f-4df8-bf12-893080501a59",
+      "name": "Musical Artizan"
+     }
+    }
+   ]
+  },
+  {
+   "id": "3c297f44-7163-4c89-b94a-e68da7f4ff09",
+   "title": "Mandatory Metallica",
+   "score": 86,
+   "first-release-date": "1997",
+   "primary-type": "Album",
+   "secondary-types": [
+    "Compilation"
+   ],
+   "count": 2,
+   "disambiguation": "2",
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "02546843-b2b1-4c7f-a31a-23c31e8133bc",
+   "title": "Mandatory Metallica",
+   "score": 86,
+   "first-release-date": "1988",
+   "primary-type": "Album",
+   "secondary-types": [
+    "Compilation"
+   ],
+   "count": 2,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "333362a1-4188-4756-bbcb-6947342aec96",
+   "title": "Metallica 2",
+   "score": 86,
+   "first-release-date": "2021-06-12",
+   "primary-type": "Album",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica 2",
+     "joinphrase": "",
+     "artist": {
+      "id": "3cc58f89-767e-4926-9ac4-160b8e280cd4",
+      "name": "Metallica 2"
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+/* one readable column, like System Settings' pane */
+.page {
+  max-width: 760px;
+}
+/* «Входящие подключения»: a problem the admin should fix */
+.incomingIcon {
+  color: var(--warning);
+  vertical-align: -2px;
+}
+
+/* «Отправка на Kindle» */
+.mailFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 8rem);
+  gap: var(--s-3);
+  width: 100%;
+}
+.mailFields > :nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+.mailGuide {
+  margin: 0 0 var(--s-4);
+  padding-left: 1.4em;
+  width: 100%;
+  font: var(--t-footnote);
+  line-height: 1.45;
+}
+.mailGuide li {
+  margin-bottom: var(--s-2);
+}
+.mailGuide a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+/* the sheet of «Настроить…»: steps and fields read left to right, not
+   centred like an alert's message */
+.mailBlock {
+  width: 100%;
+  margin-top: var(--s-3);
+  text-align: left;
+}
+.mailError {
+  color: var(--destructive-text);
+  font: var(--t-footnote);
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  /* taller to the finger, the line keeps its place */
+  .mailGuide a {
+    padding-block: var(--s-3);
+    margin-block: calc(-1 * var(--s-3));
+  }
+}

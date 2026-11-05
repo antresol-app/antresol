@@ -1,0 +1,75 @@
+.grid {
+  --cols: 8;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: clamp(20px, 2vw, 32px) var(--shelf-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (max-width: 1799px) {
+  .grid {
+    --cols: 7;
+  }
+}
+@media (max-width: 1279px) {
+  .grid {
+    --cols: 6;
+  }
+}
+@media (max-width: 1099px) {
+  .grid {
+    --cols: 5;
+  }
+}
+@media (max-width: 899px) {
+  .grid {
+    --cols: 4;
+  }
+}
+@media (max-width: 699px) {
+  .grid {
+    --cols: 3;
+    column-gap: var(--s-3);
+  }
+}
+@media (max-width: 359px) {
+  .grid {
+    --cols: 2;
+  }
+}
+.cell {
+  min-width: 0;
+}
+.skeleton {
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+  background: var(--fill-4);
+}
+.squareGrid {
+  --cols: 6;
+}
+@media (max-width: 1279px) {
+  .squareGrid {
+    --cols: 5;
+  }
+}
+@media (max-width: 1099px) {
+  .squareGrid {
+    --cols: 4;
+  }
+}
+@media (max-width: 899px) {
+  .squareGrid {
+    --cols: 3;
+  }
+}
+@media (max-width: 699px) {
+  .squareGrid {
+    --cols: 2;
+    column-gap: var(--s-4);
+  }
+}
+.squareGrid .skeleton {
+  aspect-ratio: 1;
+}

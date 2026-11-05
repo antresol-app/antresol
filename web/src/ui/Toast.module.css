@@ -1,0 +1,61 @@
+/* The region is where the capsule sits: centred, --toast-bottom above the
+   window's bottom edge (above the tab bar and the player bar when they
+   are there). Clicks pass through it except on the capsule itself. */
+.region {
+  position: fixed;
+  left: 50%;
+  bottom: var(--toast-bottom);
+  z-index: var(--z-toast);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--gutter));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: var(--toast-max-w);
+  min-height: var(--control-h-md);
+  padding: var(--s-2h) var(--s-4);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-pop);
+  font: var(--t-toast);
+  color: var(--label);
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  animation: rise var(--d-base) var(--ease-out);
+}
+.toast[data-tone='error'] {
+  color: var(--warning);
+}
+.withAction {
+  padding: var(--s-1h) var(--s-1h) var(--s-1h) var(--s-4);
+  text-align: left;
+}
+.text {
+  flex: 1;
+  min-width: 0;
+}
+.action {
+  flex: none;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3h);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-2);
+  color: var(--accent);
+  font: var(--t-control-sm);
+  cursor: pointer;
+}
+.action:focus-visible {
+  box-shadow: var(--focus-ring-inset);
+  outline: none;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--s-2));
+  }
+}

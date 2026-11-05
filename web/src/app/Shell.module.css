@@ -1,0 +1,8 @@
+/*
+ * Room for the player bar under the page while music plays: its height and
+ * some air on top of the page's own end (--page-end already keeps clear of
+ * the tab bar and the home indicator).
+ */
+.main[data-mini='on'] {
+  padding-bottom: calc(var(--playerbar-h) + var(--s-6));
+}

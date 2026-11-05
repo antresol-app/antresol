@@ -1,0 +1,93 @@
+.badge {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-group);
+  background: linear-gradient(160deg, var(--indigo), var(--blue));
+  color: var(--white);
+}
+.body:focus {
+  outline: none;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-4);
+  text-align: left;
+}
+.note {
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.error {
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--destructive);
+}
+.button {
+  flex: none;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 9px;
+  background: var(--fill-1);
+  color: var(--label);
+  font: 500 14px / 1 var(--font-text);
+}
+.button:disabled {
+  opacity: 0.5;
+}
+.button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.retry {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+}
+.retry .error {
+  flex: 1;
+}
+@media (max-width: 699px) {
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .button {
+    height: var(--control-h-md);
+    font-size: 16px;
+    border-radius: var(--r-control);
+  }
+  /* «Выйти на устройстве» under each device: a red text button, not a row
+     of full-width red capsules */
+  .danger {
+    align-self: flex-start;
+    height: var(--touch-target);
+    padding: 0;
+    background: transparent;
+    font: var(--t-callout);
+  }
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .danger {
+    min-height: var(--touch-target);
+  }
+}
+/* a group's title: the profile signed in on its devices */
+.profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1h);
+}

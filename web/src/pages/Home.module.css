@@ -1,0 +1,86 @@
+.home {
+  padding-bottom: var(--page-end);
+}
+
+.shelves {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+/* The first shelf starts in the hero's fade, with at least 40px of air
+   below the hero buttons (the hero reserves it as bottom padding). */
+.overlap {
+  margin-top: -8px;
+}
+.navSpacer {
+  height: calc(var(--nav-height) + var(--s-6));
+}
+
+/* ---- Empty & error ---- */
+.empty {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3h);
+  padding: var(--nav-height) var(--gutter);
+  text-align: center;
+  color: var(--label-2);
+}
+.empty > svg {
+  color: var(--label-3);
+  margin-bottom: var(--s-1h);
+}
+.empty h1 {
+  font: var(--t-title-1);
+  letter-spacing: var(--track-display);
+  color: var(--label);
+}
+.empty p {
+  max-width: 44ch;
+  font: var(--t-body);
+  text-wrap: balance;
+  margin-bottom: var(--s-2h);
+}
+
+/* ---- Skeleton (static: no shimmer) ---- */
+.heroSkeleton {
+  height: 70svh;
+  min-height: 520px;
+  max-height: 920px;
+  background: linear-gradient(180deg, var(--bg-raised) 60%, var(--bg));
+}
+.skeletonShelf {
+  padding: 0 var(--gutter);
+}
+.skeletonTitle {
+  width: 220px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  background: var(--fill-3);
+  margin-bottom: var(--s-4);
+}
+.skeletonRow {
+  display: flex;
+  gap: var(--shelf-gap);
+  overflow: hidden;
+}
+.skeletonCard {
+  flex: none;
+  width: calc((100vw - 2 * var(--gutter) - 6 * var(--shelf-gap)) / 7);
+  min-width: 130px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+  background: var(--fill-4);
+}
+
+@media (max-width: 699px) {
+  .navSpacer {
+    height: calc(var(--nav-height-compact) + var(--s-4));
+  }
+  .overlap {
+    margin-top: 0;
+  }
+}

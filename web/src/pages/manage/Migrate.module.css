@@ -1,0 +1,324 @@
+/* «Переезд на Vault». Building blocks from Manage.module.css; matte glass, no highlights. */
+.page {
+  padding-bottom: var(--s-8);
+}
+.subtitle {
+  max-width: 62ch;
+  text-wrap: pretty;
+}
+.error {
+  background: rgba(255, 69, 58, 0.12);
+  color: var(--destructive);
+}
+
+/* ---------- service cards ---------- */
+.sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--s-2h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.source {
+  border-radius: var(--r-group);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+.sourceOn {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.missing {
+  background: var(--fill-4);
+}
+.missing .sourceName,
+.missing .sourceWhat,
+.missing .sourceIcon {
+  opacity: 0.55;
+}
+.sourceLabel {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3h);
+  cursor: pointer;
+  min-height: var(--control-h-md);
+}
+.missing .sourceLabel {
+  cursor: default;
+}
+.checkbox {
+  width: 20px;
+  height: 20px;
+  margin: var(--s-2) 0 0;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+.sourceIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--fill-3);
+  color: var(--label);
+}
+.sourceText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+}
+.sourceName {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.sourceWhat {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.sourceFound {
+  margin-top: var(--s-1);
+  font: 600 13px / 1.35 var(--font-text);
+  color: var(--success);
+}
+.sourceDetail {
+  margin-top: var(--s-1);
+  font: var(--t-footnote);
+  color: var(--label-3);
+  overflow-wrap: anywhere;
+}
+.sourceError {
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--warning);
+}
+.sourceNote {
+  margin-top: var(--s-1h);
+  font: var(--t-footnote);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+
+.select {
+  max-width: 46vw;
+}
+.leftoverIcon {
+  flex: none;
+  color: var(--warning);
+}
+
+/* ---------- actions ---------- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2h) var(--s-3);
+  margin: var(--s-6) 0 var(--s-5);
+}
+.actionsHint {
+  flex: 1 1 220px;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+
+/* ---------- report ---------- */
+.report {
+  margin-top: var(--s-2);
+  padding: var(--s-4);
+  border-radius: 16px;
+}
+.reportHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.reportTitle {
+  font: var(--t-title-3);
+  color: var(--label);
+}
+.reportMeta {
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-0) 0;
+  margin: var(--s-3) 0;
+  font: 600 15px / 1.4 var(--font-text);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.sumItem {
+  white-space: nowrap;
+}
+.dot {
+  margin: 0 var(--s-2);
+  color: var(--label-3);
+}
+.sum_planned {
+  color: var(--accent);
+}
+.sum_imported {
+  color: var(--success);
+}
+.sum_skipped {
+  color: var(--label);
+}
+.sum_failed {
+  color: var(--destructive);
+}
+.sum_warning {
+  color: var(--warning);
+}
+.interrupted {
+  margin-top: var(--s-2h);
+  font: var(--t-footnote);
+  color: var(--warning);
+}
+.progress {
+  margin-top: var(--s-3);
+}
+.progressBar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-2);
+  overflow: hidden;
+}
+.progressBar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width var(--d-slow) var(--ease-out);
+}
+.progressText {
+  margin-top: var(--s-1h);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.lineGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.lineGroup {
+  border-radius: var(--r-control);
+  background: var(--fill-4);
+  border: 1px solid var(--glass-border);
+}
+.lineGroup > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: var(--control-h-md);
+  padding: 11px var(--s-3h);
+  cursor: pointer;
+  list-style: none;
+}
+.lineGroup > summary::-webkit-details-marker {
+  display: none;
+}
+.lineGroup > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--r-control);
+}
+.lineGroupTitle {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.lineGroupCount {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.lines {
+  margin: 0;
+  padding: 0 var(--s-3h) var(--s-2);
+  list-style: none;
+}
+.line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2h);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--separator);
+}
+.lineIcon {
+  flex: none;
+  margin-top: var(--s-0);
+}
+.st_planned .lineIcon {
+  color: var(--accent);
+}
+.st_imported .lineIcon {
+  color: var(--success);
+}
+.st_skipped .lineIcon {
+  color: var(--label-3);
+}
+.st_failed .lineIcon {
+  color: var(--destructive);
+}
+.st_warning .lineIcon {
+  color: var(--warning);
+}
+.lineText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.lineName {
+  font: var(--t-callout);
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+.lineReason {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+.st_failed .lineReason {
+  color: var(--destructive);
+}
+
+.historyControl {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---------- sheets ---------- */
+.confirmList {
+  margin: 0;
+  padding-left: 18px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+}
+
+@media (max-width: 699px) {
+  .actions > button {
+    flex: 1 1 140px;
+  }
+  .historyRow {
+    flex-wrap: wrap;
+  }
+  .historyControl {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progressBar span,
+  .source {
+    transition: none;
+  }
+}

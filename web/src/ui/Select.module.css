@@ -1,0 +1,48 @@
+/* The pop-up button: the small control height, the choice in the label
+   colour, ⌃⌄ at the end like a macOS pop-up button */
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  max-width: 100%;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3) 0 var(--s-3h);
+  border-radius: var(--r-pill);
+  font: var(--t-field);
+  color: var(--label-2);
+  cursor: pointer;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+/* a finger's 44 pt target: taller hit area, same look */
+@media (pointer: coarse) {
+  .trigger::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-sm) - var(--touch-target)) / 2 - var(--hairline-w)) 0;
+  }
+}
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded='true'] {
+  background: var(--glass-fill-hover);
+}
+.trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--label);
+}
+.label {
+  flex: none;
+}
+.chevron {
+  flex: none;
+  margin-left: var(--s-0);
+  color: var(--label-2);
+}

@@ -1,0 +1,6 @@
+internal/music/musictest/shuffle.go  # test-helper fixture data (artist/album/genre names), never shown to users
+internal/playlistimport/files/applexml.go: аудиокниг  # matched in Apple Library.xml track Kind (parser data)
+internal/playlistimport/files/applexml.go: любимые песни  # matched playlist name in Library.xml (parser data)
+internal/playlistimport/files/csv.go  # Russian CSV column-header aliases and file names matched on upload (parser data)
+internal/playlistimport/files/takeout.go: плейлисты  # Takeout folder name matched in the zip (parser data)
+internal/playlistimport/match.go: и  # artist separator matched in service artist names (parser data)

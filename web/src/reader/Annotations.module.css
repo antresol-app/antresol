@@ -1,0 +1,208 @@
+/* «Закладки и заметки», the note sheet and the selection menu. */
+.jump,
+.icon,
+.color,
+.menuColor,
+.menuButton {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabs {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--s-3);
+}
+.empty {
+  margin: var(--s-4) var(--s-1);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-1);
+  border-bottom: 1px solid var(--separator);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.jump {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--s-3);
+  border-radius: var(--r-card-sm);
+  text-align: left;
+}
+.jump:hover,
+.jump:focus-visible,
+.icon:hover,
+.icon:focus-visible {
+  background: var(--fill-3);
+  outline: none;
+}
+.jump:focus-visible,
+.icon:focus-visible,
+.color:focus-visible,
+.menuColor:focus-visible,
+.menuButton:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+  outline: none;
+}
+.ribbon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--red);
+}
+.swatch {
+  flex: none;
+  width: 4px;
+  align-self: stretch;
+  border-radius: var(--r-pill);
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.excerpt {
+  font: var(--t-callout);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.note {
+  font: var(--t-subhead);
+  color: var(--label);
+  white-space: pre-wrap;
+}
+.excerpt + .note {
+  color: var(--label-2);
+}
+.where {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.failed {
+  font: var(--t-footnote);
+  color: var(--red);
+}
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: 2px;
+  border-radius: var(--r-card-sm);
+  color: var(--label-2);
+}
+.export {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: var(--s-4);
+}
+
+/* the note sheet */
+.quote {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-1) 0 var(--s-1) var(--s-3);
+  border-left: 3px solid var(--separator);
+  font: var(--t-subhead);
+  color: var(--label-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: var(--s-3) 14px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: var(--fill-2);
+  color: var(--label);
+  font: var(--t-body);
+  resize: vertical;
+}
+.textarea:focus {
+  outline: none;
+  background: var(--fill-1);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.colors {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.color {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.color[aria-checked='true'] {
+  box-shadow:
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 4px var(--label);
+}
+
+/* the menu over selected text */
+.menu {
+  position: fixed;
+  z-index: 40;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--glass-fill-menu);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lift);
+  color: var(--label);
+  font: 500 15px / 1 var(--font-text);
+}
+.menuColor {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-pill);
+}
+.menuColor[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px var(--glass-fill-menu),
+    0 0 0 4px var(--label);
+}
+.menuSep {
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--separator);
+}
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+}
+.menuButton:hover {
+  background: var(--fill-3);
+}

@@ -1,0 +1,67 @@
+/* The trigger of «Скорость» and «Таймер сна»: a small capsule with an icon
+   and a value (shared by SleepMenu). */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  font: 600 15px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.trigger:active {
+  transform: scale(0.94);
+}
+.trigger svg {
+  flex: none;
+}
+.trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* on the blurred full player */
+.player {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.86);
+}
+/* on a page */
+.page {
+  background: var(--fill-2);
+  color: var(--label);
+}
+/* the sleep timer runs */
+.on.player {
+  background: rgba(255, 255, 255, 0.9);
+  color: #111;
+}
+.on.page {
+  background: var(--accent);
+  color: #fff;
+}
+@media (hover: hover) {
+  .player:not(.on):hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+  }
+  .page:not(.on):hover {
+    background: var(--fill-3);
+  }
+}
+
+/* The menus open over the cover and controls: nearly opaque. */
+.menu.menu {
+  background: rgba(30, 30, 32, 0.96);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}

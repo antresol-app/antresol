@@ -1,0 +1,25 @@
+/* Wide screens: no box of its own, the buttons join the page's action row.
+   Phones: equal columns, one tile each (the tile look itself is
+   IconButton's, under [data-action-tiles]). */
+.tiles {
+  display: contents;
+}
+@media (max-width: 699px) {
+  .tiles {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--s-2h);
+  }
+  .tiles > * {
+    width: 100%;
+    min-width: 0;
+  }
+  /* a wrapper around a tile (a Menu's, «Следить» with its hint): the tile
+     fills it, so every tile of the row is as tall as the tallest */
+  .tiles > :not(button) {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+  }
+}

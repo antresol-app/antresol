@@ -1,0 +1,103 @@
+/* the colour of the arc (and of the middle) says the state */
+.ring,
+.overlay {
+  color: var(--accent);
+}
+.ring[data-state='paused'] {
+  color: var(--label-3);
+}
+.overlay[data-state='paused'] {
+  color: var(--label-2);
+}
+.ring[data-state='error'] {
+  color: var(--warning);
+}
+.ring[data-state='done'] {
+  color: var(--success);
+}
+
+.ring {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+.ring > .svg {
+  position: absolute;
+  inset: 0;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition:
+    transform var(--d-fast) var(--ease-out),
+    opacity var(--d-fast) var(--ease-out);
+}
+.overlay > .svg {
+  display: block;
+  overflow: visible;
+}
+
+.track {
+  fill: none;
+  stroke: var(--fill-2);
+}
+.overlay .track {
+  stroke: var(--hairline);
+}
+.arc {
+  fill: none;
+  stroke: currentColor;
+  /* square ends on the status ring: round caps would close the gap of 99 %
+     and draw a dot at 0 % */
+  stroke-linecap: butt;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dasharray var(--d-slow) var(--ease-out);
+}
+.overlay .arc {
+  stroke-linecap: round;
+  transition-duration: var(--d-fast);
+  transition-timing-function: linear;
+}
+
+/* no percent yet: a short arc circles until the first bytes arrive */
+.overlay[data-starting] > .svg {
+  animation: orbit 1.1s linear infinite;
+}
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .overlay[data-starting] > .svg {
+    animation: none;
+  }
+  /* a still arc would read as a percent: a faint full ring instead */
+  .overlay[data-starting] .arc {
+    stroke-dasharray: none;
+    opacity: 0.3;
+  }
+  .arc {
+    transition: none;
+  }
+}
+
+.middle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  font: var(--t-caption-2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--label-2);
+}
+.ring[data-state='error'] .middle {
+  font: 700 17px / 1 var(--font-text);
+  color: var(--warning);
+}
+.ring[data-state='done'] .middle {
+  color: var(--success);
+}

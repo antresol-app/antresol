@@ -1,0 +1,153 @@
+.root {
+  display: inline-flex;
+}
+
+/* In a portal, fixed: floating.ts writes top, left and max-height */
+.menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-menu);
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 2 * var(--s-4)));
+  overflow-y: auto;
+  padding: var(--s-1h);
+  border-radius: var(--r-group);
+  box-shadow: var(--shadow-menu);
+  overscroll-behavior: contain;
+}
+.menu:global(.glass-strong) {
+  background: var(--glass-fill-menu);
+  border-color: var(--hairline);
+}
+
+.heading {
+  padding: var(--s-2h) var(--s-3) var(--s-1h);
+  font: var(--t-footnote-em);
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+}
+.sep {
+  height: 1px;
+  margin: var(--s-1h) var(--s-2h);
+  background: var(--separator);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  width: 100%;
+  min-height: var(--control-h-sm);
+  padding: var(--s-1h) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--label);
+  font: var(--t-callout);
+  text-align: left;
+  cursor: pointer;
+}
+.item:hover,
+.item:focus-visible {
+  background: var(--fill-hover);
+  outline: none;
+}
+.item:focus-visible {
+  box-shadow: var(--focus-ring-inset);
+}
+.destructive {
+  color: var(--destructive);
+}
+.item[aria-disabled='true'] {
+  cursor: default;
+  color: var(--label-3);
+}
+.item[aria-disabled='true']:hover {
+  background: transparent;
+}
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-xs);
+  color: var(--label);
+}
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  color: var(--label-2);
+}
+.destructive .icon {
+  color: inherit;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* a label with a capsule after it («Очищено»): the app's badge */
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1h);
+  min-width: 0;
+}
+.badge {
+  composes: badge strong round from './Badge.module.css';
+  flex: none;
+}
+.detail {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item[aria-disabled='true'] .detail {
+  color: var(--label-3);
+}
+
+/* Focus returned after a pointer-opened menu: no keyboard ring. */
+:global([data-quiet-focus]:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Phones: a sheet across the bottom that always fits the screen */
+@media (max-width: 599px) {
+  .menu {
+    top: auto;
+    left: var(--s-2);
+    right: var(--s-2);
+    bottom: calc(var(--s-2) + env(safe-area-inset-bottom));
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: 70vh;
+    padding: var(--s-2);
+    border-radius: var(--r-sheet);
+    transform-origin: bottom center;
+  }
+  .item {
+    min-height: var(--control-h-md);
+  }
+}
+/* opened with a pointer: the focused item is highlighted like one under
+   the pointer, without the keyboard ring (as a macOS menu) */
+.menu[data-pointer] .item:focus-visible {
+  box-shadow: none;
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .item {
+    min-height: var(--control-h-md);
+  }
+}

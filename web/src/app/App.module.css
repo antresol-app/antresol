@@ -1,0 +1,35 @@
+.splash {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3h);
+  padding: var(--gutter);
+  text-align: center;
+  color: var(--label-2);
+  animation: appear var(--d-slow) var(--ease-out) both;
+}
+.splash svg {
+  color: var(--label-3);
+}
+.offlineTitle {
+  font: var(--t-title-1);
+  color: var(--label);
+}
+.offlineText {
+  max-width: 40ch;
+  margin-bottom: var(--s-2h);
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.playerFallback {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-top);
+  background: var(--black);
+}

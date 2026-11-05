@@ -1,0 +1,91 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  width: 100%;
+  margin-top: var(--s-3);
+  text-align: left;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.label {
+  margin: 0;
+  font: var(--t-headline);
+  color: var(--label);
+}
+.hint {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.hint:empty,
+.ok:empty {
+  display: none;
+}
+.ok {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1h);
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--success);
+}
+.warning {
+  margin: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-card);
+  background: var(--fill-2);
+  font: var(--t-footnote);
+  color: var(--label);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-3);
+}
+.codeRow > :first-child {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+  padding: var(--s-1) 0;
+  border-bottom: 1px solid var(--separator);
+}
+.item:last-child {
+  border-bottom: 0;
+}
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+  font: var(--t-callout);
+  color: var(--label);
+}
+.error {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--warning);
+}

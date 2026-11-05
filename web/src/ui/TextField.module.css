@@ -1,0 +1,74 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  text-align: left;
+}
+.label {
+  padding-left: var(--s-1);
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+.control {
+  position: relative;
+}
+.input {
+  width: 100%;
+  height: var(--control-h-field);
+  padding: 0 var(--s-4);
+  border: 0;
+  border-radius: var(--r-field);
+  background: var(--fill-2);
+  color: var(--label);
+  font: var(--t-body);
+  caret-color: var(--accent);
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out);
+}
+.input::placeholder {
+  color: var(--label-3);
+}
+.input:hover {
+  background: var(--fill-1);
+}
+.input:focus-visible,
+.input:focus {
+  outline: none;
+  background: var(--fill-1);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+/* numbers read from the right edge, in even digits */
+.input[inputmode='numeric'],
+.input[inputmode='decimal'] {
+  font-variant-numeric: tabular-nums;
+}
+.control:has(.reveal) .input {
+  padding-right: calc(var(--control-h-sm) + var(--s-3));
+}
+.reveal {
+  position: absolute;
+  top: 50%;
+  right: var(--s-1h);
+  transform: translateY(-50%);
+}
+.invalid .input {
+  box-shadow: 0 0 0 2px var(--destructive);
+}
+.error,
+.hint {
+  padding-left: var(--s-1);
+  font: var(--t-footnote);
+}
+.error {
+  color: var(--destructive-text);
+}
+.hint {
+  color: var(--label-2);
+}
+/* small: the small control height (a search field at the top of a menu) */
+.small .input {
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  font: var(--t-callout);
+}

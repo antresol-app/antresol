@@ -1,0 +1,8 @@
+#EXTM3U
+#EXTINF:401,Кино - Кукушка
+D:\Music\Кино\Чёрный альбом\02 Кукушка.flac
+#EXTINF:354,Queen - Bohemian Rhapsody
+/home/me/Music/Queen/A Night at the Opera/11 Bohemian Rhapsody.mp3
+
+#EXTINF:-1,Аквариум - Город золотой
+http://example.com/stream/3

@@ -1,0 +1,22 @@
+/* The ring is a sibling of the button, not a child: a button's content is
+   presentational, and the wrapper gives the ring the button's exact box. */
+.wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The ring follows the button's press and disabled states. */
+.wrap:has(button:active:not(:disabled)) > [role='progressbar'] {
+  transform: scale(0.94);
+}
+.wrap:has(button:disabled) > [role='progressbar'] {
+  opacity: 0.45;
+}
+
+.wrap .done {
+  color: var(--accent);
+}
+/* nothing to start again: the same check, just not clickable */
+.wrap .done[aria-disabled='true'] {
+  cursor: default;
+}

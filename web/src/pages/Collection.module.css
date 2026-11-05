@@ -1,0 +1,12 @@
+/* The collection page reuses the item page's hero (ItemDetail.module.css),
+   shorter: the parts are what the page is for. */
+.hero {
+  min-height: 58vh;
+  min-height: 58svh;
+}
+.parts {
+  padding: var(--s-6) var(--gutter) 0;
+}
+.loading {
+  min-height: 60vh;
+}

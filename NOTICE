@@ -1,0 +1,29 @@
+Antresol Server
+Copyright (c) 2026 Antresol Contributors
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version (SPDX: AGPL-3.0-or-later). See LICENSE.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+for more details.
+
+Some files are under the Mozilla Public License 2.0 (SPDX: MPL-2.0) instead:
+web/reader-native.html, nine files in web/src/reader, and everything in
+web/src/i18n. LICENSING.md lists them; web/src/reader/LICENSE and
+web/src/i18n/LICENSE hold the licence text.
+
+Third-party software in the server binary and the web bundle, each with its
+licence: THIRD_PARTY_LICENSES.md. Vendored code keeps its own notices:
+web/src/vendor/foliate (foliate-js, MIT; zip.js, BSD-3-Clause; fflate, MIT)
+and third_party/sevenzip (a patched copy of github.com/bodgit/sevenzip).
+
+The name "Antresol" and the Antresol logo are not licensed under the above;
+see TRADEMARKS.md.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
+Metadata and artwork may also come from MusicBrainz, the Cover Art Archive
+and Open Library, under their own terms.

@@ -1,0 +1,137 @@
+.page {
+  min-height: 100dvh;
+  padding: calc(var(--nav-height) + var(--s-6)) 0 var(--page-end);
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: 0 var(--gutter);
+  margin-bottom: var(--s-4);
+}
+.title {
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
+}
+.shelves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14vh;
+  padding: 0 var(--gutter);
+  text-align: center;
+  color: var(--label-2);
+}
+.empty > svg {
+  color: var(--label-3);
+  margin-bottom: 6px;
+}
+.empty h2 {
+  font: var(--t-title-2);
+  color: var(--label);
+}
+.empty p {
+  max-width: 42ch;
+  margin-bottom: 8px;
+  text-wrap: balance;
+}
+
+/* Static skeleton (no shimmer). */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  padding: 14px var(--gutter) 0;
+}
+.skeletonTitle {
+  width: 220px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--fill-3);
+  margin-bottom: 16px;
+}
+.skeletonRow {
+  display: flex;
+  gap: var(--shelf-gap);
+  overflow: hidden;
+}
+.skeletonCard {
+  flex: none;
+  width: calc((100vw - 2 * var(--gutter) - 6 * var(--shelf-gap)) / 7);
+  min-width: 140px;
+  aspect-ratio: 1;
+  border-radius: var(--r-card);
+  background: var(--fill-4);
+}
+
+@media (max-width: 699px) {
+  .page {
+    padding-top: var(--page-top);
+  }
+}
+
+/* «Все альбомы» · «Артисты» · «Песни» · «Плейлисты» */
+.headerEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.shuffleError {
+  margin: calc(-1 * var(--s-2)) 0 var(--s-4);
+  padding: 0 var(--gutter);
+  font: var(--t-subhead);
+  color: var(--red);
+}
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 4px;
+}
+/* up to a small laptop the title, the links and the tools do not share one
+   line: they stack (the links scroll sideways) */
+@media (max-width: 1099px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-2);
+  }
+  /* the tools share a row (the library's scope, «Перемешать все»), the
+     links take the next one */
+  .headerEnd {
+    flex-wrap: wrap;
+    align-items: center;
+    align-self: stretch;
+    gap: var(--s-2);
+  }
+  .headerEnd > :last-child {
+    order: -1;
+  }
+  .links {
+    order: 1;
+    /* edge to edge: the links scroll under the screen's sides */
+    flex-basis: calc(100% + 2 * var(--gutter));
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-self: stretch;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 calc(var(--gutter) - 12px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .links::-webkit-scrollbar {
+    display: none;
+  }
+  .links > * {
+    flex: none;
+  }
+}

@@ -1,0 +1,42 @@
+/* One capsule of two parts: the main button and the ▾ segment, split by a short hairline. */
+.group {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+/* The menu hangs from the whole capsule, not from the narrow ▾ (Popover's root
+   would anchor it there and push a 260px menu past the page's left edge). */
+.group > :last-child {
+  position: static;
+}
+.group .main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.group .more {
+  position: relative;
+  min-width: 0;
+  /* the chevron's ink sits in the middle of its segment */
+  padding: 0 var(--s-3h) 0 var(--s-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* A short inset hairline, like AppKit's split NSComboButton — not a cut
+   through the whole capsule. */
+.group .more::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 28%;
+  bottom: 28%;
+  width: 1px;
+  background: currentColor;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+/* The later part's fill would paint over the earlier part's focus ring. */
+.group .main:focus-visible,
+.group .more:focus-visible {
+  z-index: 1;
+}

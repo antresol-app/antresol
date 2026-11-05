@@ -1,0 +1,130 @@
+/* The player bar floats --playerbar-bottom above the window's edge (above
+   the tab bar on phones), centred, at most --playerbar-max-w wide. */
+.bar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--playerbar-bottom);
+  z-index: var(--z-playerbar);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: min(var(--playerbar-max-w), calc(100vw - 2 * var(--gutter)));
+  height: var(--playerbar-h);
+  padding: 0 var(--s-1h) 0 var(--s-2);
+  border-radius: var(--r-playerbar);
+  overflow: hidden;
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-pop);
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+button.info {
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+button.info:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+
+.artwork {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--control-h-md);
+  height: var(--control-h-md);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--fill-2);
+  color: var(--label-3);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.title,
+.subtitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.title {
+  font: var(--t-subhead-em);
+  letter-spacing: var(--track-text);
+}
+.subtitle {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+
+.controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.button {
+  display: grid;
+  place-items: center;
+  width: var(--control-h-md);
+  height: var(--control-h-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--label);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.button:active {
+  transform: scale(0.9);
+}
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+@media (hover: hover) {
+  .button:hover {
+    background: var(--fill-hover);
+  }
+}
+
+/* a hairline of progress along the bottom edge, clipped by the capsule */
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--fill-3);
+  pointer-events: none;
+}
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--label-2);
+}

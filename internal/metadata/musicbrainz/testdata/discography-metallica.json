@@ -1,0 +1,375 @@
+{
+ "count": 20,
+ "offset": 0,
+ "release-groups": [
+  {
+   "id": "1149ffbb-2c9d-3de5-87b1-7219fdb2ea89",
+   "title": "The Unnamed Feeling E.P.",
+   "score": 100,
+   "first-release-date": "2004-01-12",
+   "primary-type": "EP",
+   "count": 3,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "88a72262-993a-47b4-a9fe-126e7f31c81b",
+   "title": "Leftovers From the Black Album Box Set",
+   "score": 100,
+   "first-release-date": "2023-02-01",
+   "primary-type": "EP",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "b9d807d5-ed5a-320a-8f51-dbb5d7b196dd",
+   "title": "St. Anger",
+   "score": 100,
+   "first-release-date": "2003-06-23",
+   "primary-type": "EP",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "2f46273d-e0e3-3ffd-8ece-a40c3a99e939",
+   "title": "Hero of the Day EP",
+   "score": 100,
+   "first-release-date": "1996-10-23",
+   "primary-type": "EP",
+   "count": 1,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "89bc5b7f-d43a-49a8-940e-c589d1ce5444",
+   "title": "Beyond Magnetic",
+   "score": 100,
+   "first-release-date": "2011-12-13",
+   "primary-type": "EP",
+   "count": 8,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "69e28b4d-7509-392d-999d-46792277879d",
+   "title": "Some Kind of Monster",
+   "score": 100,
+   "first-release-date": "2004-07-13",
+   "primary-type": "EP",
+   "count": 3,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "b4b44d21-2433-3518-99eb-c9b3ba68c41c",
+   "title": "The $5.98 E.P.: Garage Days Re‐Revisited",
+   "score": 100,
+   "first-release-date": "1987-08-20",
+   "primary-type": "EP",
+   "count": 17,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "ccd24009-ae49-36f4-b407-85a1c28cddaa",
+   "title": "Creeping Death / Jump in the Fire",
+   "score": 100,
+   "first-release-date": "1987-11-23",
+   "primary-type": "EP",
+   "count": 14,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "38d1077e-c270-49a8-92ca-87e7eb8d9fe4",
+   "title": "Lulu",
+   "score": 86,
+   "first-release-date": "2011-10-31",
+   "primary-type": "Album",
+   "count": 8,
+   "artist-credit": [
+    {
+     "name": "Lou Reed",
+     "joinphrase": " & ",
+     "artist": {
+      "id": "9d1ebcfe-4c15-4d18-95d3-d919898638a1",
+      "name": "Lou Reed"
+     }
+    },
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "55d8ab42-990b-4c94-93c8-9ca7927b5fc0",
+   "title": "Hardwired… to Self‐Destruct",
+   "score": 86,
+   "first-release-date": "2016-11-08",
+   "primary-type": "Album",
+   "count": 23,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "e389b7df-862d-3d91-a612-acca150f6e71",
+   "title": "Load",
+   "score": 86,
+   "first-release-date": "1996-05-04",
+   "primary-type": "Album",
+   "count": 40,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "a0b7b436-94db-4df6-8c5f-bc0e5932a90e",
+   "title": "72 Seasons",
+   "score": 86,
+   "first-release-date": "2023-04-14",
+   "primary-type": "Album",
+   "count": 14,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "5c8a25bf-4764-3cce-8f37-30af79d3b101",
+   "title": "Death Magnetic",
+   "score": 86,
+   "first-release-date": "2008-09-06",
+   "primary-type": "Album",
+   "count": 37,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "0da580f2-6768-498f-af9d-2becaddf15e0",
+   "title": "Ride the Lightning",
+   "score": 86,
+   "first-release-date": "1984-07-27",
+   "primary-type": "Album",
+   "count": 60,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "8f1cc89b-7e80-3e1c-b571-8cf2b98db347",
+   "title": "St. Anger",
+   "score": 86,
+   "first-release-date": "2003-06-04",
+   "primary-type": "Album",
+   "count": 31,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "e8f70201-8899-3f0c-9e07-5d6495bc8046",
+   "title": "Metallica",
+   "score": 86,
+   "first-release-date": "1991-08-12",
+   "primary-type": "Album",
+   "count": 59,
+   "disambiguation": "“The Black Album”",
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "3d00fb45-f8ab-3436-a8e1-b4bfc4d66913",
+   "title": "Master of Puppets",
+   "score": 86,
+   "first-release-date": "1986-03-03",
+   "primary-type": "Album",
+   "count": 73,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "f44f4f73-a714-31a1-a4b8-bfcaaf311f50",
+   "title": "Kill ’Em All",
+   "score": 86,
+   "first-release-date": "1983-07-25",
+   "primary-type": "Album",
+   "count": 67,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "8fd32554-02a7-3788-a761-7012e0e75e55",
+   "title": "Reload",
+   "score": 86,
+   "first-release-date": "1997-11-15",
+   "primary-type": "Album",
+   "count": 35,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  },
+  {
+   "id": "67553e23-8dad-3792-b6f2-8fedd5650ff3",
+   "title": "…And Justice for All",
+   "score": 86,
+   "first-release-date": "1988-08-25",
+   "primary-type": "Album",
+   "count": 54,
+   "artist-credit": [
+    {
+     "name": "Metallica",
+     "joinphrase": "",
+     "artist": {
+      "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+      "name": "Metallica"
+     }
+    }
+   ]
+  }
+ ]
+}

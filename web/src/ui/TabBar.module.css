@@ -1,0 +1,100 @@
+/* The phone's tab bar: the capsule of tabs and the round accessory float
+   --tabbar-margin above the home indicator; a soft scrim under them keeps
+   the labels readable over artwork. The sizes are the --tabbar-* tokens,
+   which the rest of the layout reads to keep clear of the bar. */
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* the screen's width (vw follows the initial containing block), not the
+     layout viewport's: if anything ever overflows the page, a phone's Chrome
+     grows the layout viewport and left/right alone would stretch the bar */
+  max-width: 100vw;
+  z-index: var(--z-nav);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  padding: 0 max(var(--tabbar-inset), env(safe-area-inset-right)) calc(var(--tabbar-margin) + env(safe-area-inset-bottom))
+    max(var(--tabbar-inset), env(safe-area-inset-left));
+  pointer-events: none;
+}
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--s-8)) 0 0 0;
+  z-index: -1;
+  background: var(--scrim-bottom);
+  pointer-events: none;
+}
+.tabs {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+  margin: 0;
+  padding: var(--tabbar-pad);
+  list-style: none;
+  border-radius: var(--r-pill);
+  pointer-events: auto;
+}
+.tabs li {
+  flex: 1;
+  min-width: 0;
+}
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-0);
+  height: var(--tabbar-item-h);
+  border-radius: var(--r-pill);
+  color: var(--label-2);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--d-fast) var(--ease-out),
+    background-color var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.tab:active {
+  transform: scale(0.94);
+}
+.label {
+  max-width: 100%;
+  padding: 0 var(--s-0);
+  overflow: hidden;
+  font: var(--t-tab);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.active {
+  color: var(--accent);
+  background: var(--fill-hover);
+}
+.accessory {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tabbar-height);
+  height: var(--tabbar-height);
+  border-radius: 50%;
+  color: var(--label);
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.accessory:active {
+  transform: scale(0.94);
+}
+.accessory.active {
+  color: var(--accent);
+  background: var(--glass-fill);
+}
+.tab:focus-visible,
+.accessory:focus-visible {
+  outline-offset: -2px;
+}

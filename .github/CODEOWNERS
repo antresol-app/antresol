@@ -1,0 +1,23 @@
+# The maintainers review every change; the paths below are what the closed
+# App Store app depends on, so a change there always needs their review even
+# when other maintainers join (see GOVERNANCE.md).
+*                                @antresol-app/maintainers
+
+# The native reader closure and the translations (MPL-2.0, LICENSING.md)
+/LICENSING.md                    @antresol-app/maintainers
+/web/reader-native.html          @antresol-app/maintainers
+/web/src/reader/                 @antresol-app/maintainers
+/web/src/i18n/                   @antresol-app/maintainers
+/scripts/check-mpl-zone.mjs      @antresol-app/maintainers
+
+# Licences
+/LICENSE                         @antresol-app/maintainers
+/NOTICE                          @antresol-app/maintainers
+/TRADEMARKS.md                   @antresol-app/maintainers
+
+# The frozen API shape the App Store app build 1.0 decodes (and its test),
+# and the source offer (AGPL §13)
+/internal/api/contract/**        @antresol-app/maintainers
+/internal/api/contract_app10_test.go @antresol-app/maintainers
+/internal/api/about.go           @antresol-app/maintainers
+/legal.go                        @antresol-app/maintainers

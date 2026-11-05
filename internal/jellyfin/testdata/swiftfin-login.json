@@ -1,0 +1,16 @@
+{
+  "client": "Swiftfin iOS 1.3.0 (jellyfin-sdk-swift 3.3.0)",
+  "note": "Add server, then sign in. Authorization is unquoted, fields in the SDK's order; Token appears after login. {{app}} = Аня's app password, {{token}} = AccessToken of the login, {{userId}} = User.Id.",
+  "steps": [
+    {"method": "GET", "path": "/System/Info/Public", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0", "status": 200},
+    {"method": "GET", "path": "/Branding/Configuration", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0", "status": 200},
+    {"method": "GET", "path": "/QuickConnect/Enabled", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0", "status": 200},
+    {"method": "GET", "path": "/Users/Public", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0", "status": 200},
+    {"method": "POST", "path": "/Users/AuthenticateByName", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0", "body": {"Username": "Аня", "Pw": "{{app}}"}, "status": 200, "save": "login"},
+    {"method": "GET", "path": "/Users/Me", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0, Token={{token}}", "status": 200, "save": "me"},
+    {"method": "POST", "path": "/Sessions/Capabilities/Full", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0, Token={{token}}", "body": {"PlayableMediaTypes": ["Video"], "SupportedCommands": [], "SupportsMediaControl": false}, "status": 204},
+    {"method": "GET", "path": "/System/Info", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0, Token={{token}}", "status": 200},
+    {"method": "GET", "path": "/UserViews?userId={{userId}}", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0, Token={{token}}", "status": 200, "save": "views"},
+    {"method": "GET", "path": "/DisplayPreferences/usersettings?client=swiftfin&userId={{userId}}", "auth": "MediaBrowser DeviceId=3F2B-iphone, Device=iPhone, Client=Swiftfin iOS, Version=1.3.0, Token={{token}}", "status": 200}
+  ]
+}

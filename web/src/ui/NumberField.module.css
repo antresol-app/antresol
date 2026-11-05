@@ -1,0 +1,61 @@
+/* One filled box: the number right-aligned against its unit, both on the
+   field's baseline. The width is the number's (in digits) plus the unit. */
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--fill-2);
+  color: var(--label-2);
+  font: var(--t-field);
+  cursor: text;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out);
+}
+.field:hover {
+  background: var(--fill-1);
+}
+.field:focus-within {
+  background: var(--fill-1);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+.input {
+  width: calc(var(--nf-chars, 4) * 1ch + 2px);
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  caret-color: var(--accent);
+}
+.input:focus,
+.input:focus-visible {
+  outline: none;
+}
+.unit {
+  flex: none;
+  white-space: nowrap;
+}
+.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .field {
+    position: relative;
+  }
+  .field::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-sm) - var(--touch-target)) / 2 - var(--hairline-w)) 0;
+  }
+}

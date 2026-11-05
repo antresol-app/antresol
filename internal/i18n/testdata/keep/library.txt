@@ -1,0 +1,37 @@
+# group "library": Russian kept on purpose
+internal/library/bookmeta/bookmetatest/build.go  # test fixtures (sample EPUB/FB2 content), not user-facing
+internal/library/folders.go  # regexes matching disc folders and featured artists (parser data)
+internal/library/textenc.go  # Cyrillic letter frequencies for encoding detection
+internal/metadata/musicbrainz/match.go  # Russian words matched in release titles (live/concert)
+internal/natsort/natsort.go  # ё→е folding for sorting
+internal/release/parse.go  # Russian words matched in release names (parser data)
+internal/release/media.go  # Russian words matched in release names (parser data)
+internal/release/editions.go  # edition/version words matched in titles (parser data)
+internal/release/fold.go  # stop word and transliteration table for matching
+internal/release/seasons.go  # season-range regexes matched in Russian release names (parser data)
+internal/release/studios.go  # voice-over studio names and aliases matched in release names (parser data)
+internal/subtitles/sidecar.go  # language tags matched in subtitle file names; Cyrillic letters for sniffing
+internal/extaudio/find.go  # sound-folder name parts matched in release folder names (parser data)
+internal/config/config.go: VAULT_LRCLIB_URL: неверный адрес  # startup error printed to the operator console, not shown in the UI
+internal/config/config.go: VAULT_IMDB_RATINGS_URL: неверный адрес  # startup error printed to the operator console, not shown in the UI
+internal/library/music_repo.go: разные исполнители  # aliases of “various artists” matched in tags
+internal/library/music_repo.go: сборник  # aliases of “various artists” matched in tags
+internal/library/scan_audiobooks.go: (?i)^(?:cd|disc|disk|диск|часть|part)\s*\d+(?:[^\p{L}\p{N}].*)?$  # regex matching folder/file names (parser data)
+internal/library/scan_audiobooks.go: (?i)^(?:#|№|книга|кн\.?|том|т\.|часть|ч\.|vol\.?|volume|book|bk\.?)?\s*(\d+(?:\.\d+)?)$  # regex matching folder/file names (parser data)
+internal/library/scan_audiobooks.go: (?i)^(?:#|№|книга|кн\.?|том|vol\.?|volume|book)\s*(\d+(?:\.\d+)?)[.:]\s+(.+)$  # regex matching folder/file names (parser data)
+internal/library/scan_audiobooks.go: (?i)[\s._-]*(?:part|pt|часть|ч|cd|disc|том|глава|chapter|ch)?\.?\s*\d+$  # regex matching folder/file names (parser data)
+internal/library/scan_comics.go: (?i)(?:^|[^\p{L}\p{N}])(?:volume|vol|v|tome|том|т)\.?[\s_]*(\d+(?:[.,]\d+)?)  # regex matching folder/file names (parser data)
+internal/library/scan_comics.go: (?i)(?:^|[^\p{L}\p{N}])(?:chapter|chap|ch|c|глава|гл)\.?[\s_]*(\d+(?:[.,]\d+)?)  # regex matching folder/file names (parser data)
+internal/library/scan_video.go: (?i)(?:^|[^\p{L}\p{N}])(?:episode|ep|серия)[\s._-]*(\d{1,3})(?:[^\p{L}\p{N}]|$)  # regex matching folder/file names (parser data)
+internal/library/scan_video.go: (?i)^(?:(?:season|сезон)[\s._-]*|s)(\d{1,2})(?:[^\p{L}\p{N}].*)?$  # regex matching folder/file names (parser data)
+internal/library/scan_video.go: (?i)^(?:specials?|спецвыпуски?|спешлы|extras)$  # regex matching folder/file names (parser data)
+internal/metadata/openlibrary/enrich.go: ович  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: евич  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: ич  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: овна  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: евна  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: ична  # Russian patronymic suffixes matched in author names
+internal/metadata/openlibrary/enrich.go: инична  # Russian patronymic suffixes matched in author names
+internal/jellyfin/parts.go  # regex matching part numbers in file names (parser data, the web player's PART_RE)
+internal/voclean/job.go:  (очищено)  # title tag written into the cleaned Russian track file (stream metadata of a Russian track, not UI)
+internal/voclean/job.go: Очищено  # title tag of a cleaned Russian track without a title of its own (stream metadata, not UI)

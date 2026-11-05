@@ -1,0 +1,46 @@
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2h);
+  min-width: 0;
+  max-width: 100%;
+}
+/* Same height and pill as the SegmentedControl track beside it (--control-h). */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--control-h);
+  padding: 0 13px 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--label);
+  font: var(--t-field);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  background: var(--glass-fill-hover);
+}
+.caret {
+  color: var(--label-2);
+  margin-left: 1px;
+}
+.short {
+  display: none;
+}
+@media (max-width: 699px) {
+  .tools {
+    align-self: flex-start;
+  }
+  .long {
+    display: none;
+  }
+  .short {
+    display: inline;
+  }
+}

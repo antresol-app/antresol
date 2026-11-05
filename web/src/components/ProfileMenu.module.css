@@ -1,0 +1,64 @@
+.root {
+  position: relative;
+}
+
+.trigger {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: var(--control-h-md);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+/* requests waiting for an admin's answer: a dot on the avatar */
+.trigger {
+  position: relative;
+}
+.trigger > .dot,
+.trigger:hover > .dot,
+.trigger[aria-expanded='true'] > .dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--bg);
+  transform: none;
+}
+.trigger > span:not(.dot) {
+  box-shadow: 0 0 0 1px var(--hairline);
+  transition: transform var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out);
+}
+.trigger:hover > span,
+.trigger[aria-expanded='true'] > span {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+/* the app's Menu, a little wider for the profile's name */
+.menu {
+  min-width: 260px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2h) var(--s-2h) var(--s-2);
+}
+.name {
+  font: var(--t-headline);
+}
+.role {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.failed {
+  padding: var(--s-1) var(--s-3) var(--s-0);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}

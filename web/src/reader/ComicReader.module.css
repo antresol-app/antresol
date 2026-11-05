@@ -1,0 +1,362 @@
+/* The comic reader: pages on black, dark glass panels that hide. */
+.reader {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  background: #000;
+  color: #f2f2f7;
+  color-scheme: dark;
+  overscroll-behavior: none;
+  --cr-top: calc(52px + env(safe-area-inset-top));
+  --cr-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+.blank {
+  display: grid;
+  place-items: center;
+}
+
+/* --- paged --- */
+.stage {
+  position: absolute;
+  inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: default;
+}
+.spread {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  will-change: transform;
+}
+.rtl {
+  flex-direction: row-reverse;
+}
+/* The whole page always fits: by height on a wide screen, by width on a
+   narrow one (object-fit: contain decides). */
+.page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+}
+.page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+/* a spread: the two pages meet at the gutter (the first page is on the
+   right when reading right to left) */
+.two .page:first-child img {
+  object-position: right center;
+}
+.two .page:last-child img {
+  object-position: left center;
+}
+.two.rtl .page:first-child img {
+  object-position: left center;
+}
+.two.rtl .page:last-child img {
+  object-position: right center;
+}
+
+/* --- ribbon (webtoon) --- */
+.ribbon {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(var(--cr-bottom) + 24px) env(safe-area-inset-left);
+  -webkit-overflow-scrolling: touch;
+}
+.strip {
+  width: min(100%, 860px);
+  margin: 0 auto;
+  background: #0d0d0f;
+  /* pages far off screen are not painted or kept decoded (long volumes on iOS) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1200px;
+}
+.ribbon:focus-visible {
+  outline: none;
+}
+.strip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+.ribbonEnd {
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+}
+
+.broken {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  font: var(--t-footnote);
+  color: rgba(235, 235, 245, 0.6);
+}
+
+/* --- panels --- */
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  color: #f2f2f7;
+  background: rgba(22, 22, 24, 0.78);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  transition:
+    opacity var(--d-base) var(--ease-out),
+    transform var(--d-base) var(--ease-out);
+}
+.top {
+  top: 0;
+  height: var(--cr-top);
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.bottom {
+  bottom: 0;
+  height: var(--cr-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+  gap: 16px;
+  padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right));
+  border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.reader[data-hidden] .bar {
+  opacity: 0;
+  pointer-events: none;
+}
+.reader[data-hidden] .top {
+  transform: translateY(-8px);
+}
+.reader[data-hidden] .bottom {
+  transform: translateY(8px);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bar {
+    background: #1c1c1e;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.back,
+.tool {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  max-width: 34%;
+  height: 40px;
+  padding: 0 10px 0 4px;
+  border-radius: 10px;
+  font: 500 17px / 1 var(--font-text);
+  color: #0a84ff;
+}
+.back span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tool {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.back:hover,
+.tool:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.back:focus-visible,
+.tool:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font: 600 15px / 1.2 var(--font-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sliderBox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+/* «Семья»: faces on the track; the thumb's centre runs 9 px in from each end */
+.sliderBox > [data-family-marks] {
+  left: 9px;
+  right: 9px;
+  top: calc(50% - 2px - 5px - 20px);
+}
+.slider {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.24);
+}
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.24);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+}
+.slider:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.count {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+  font: 500 14px / 1.2 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  color: rgba(235, 235, 245, 0.72);
+}
+.next {
+  flex: none;
+}
+.saveError {
+  flex: none;
+  font: 500 13px / 1.2 var(--font-text);
+  color: #ff9f0a;
+}
+
+.overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  text-align: center;
+}
+.overlay svg {
+  opacity: 0.5;
+}
+.overlay h2 {
+  font: var(--t-title-2);
+}
+.overlay p {
+  max-width: 42ch;
+  opacity: 0.72;
+  margin-bottom: 8px;
+}
+.row {
+  display: flex;
+  gap: 12px;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.45;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+  .bar {
+    transition: opacity var(--d-fast) linear;
+  }
+  .reader[data-hidden] .top,
+  .reader[data-hidden] .bottom {
+    transform: none;
+  }
+}
+
+@media (max-width: 699px) {
+  .bottom {
+    gap: 12px;
+    padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
+  }
+  .count {
+    min-width: 52px;
+    font-size: 13px;
+  }
+}
+
+/* «↩ Вернуться к …» over the page, just above the bottom bar */
+.returnPill {
+  position: fixed;
+  z-index: 31;
+  left: 50%;
+  bottom: calc(var(--cr-bottom) + 12px);
+  transform: translateX(-50%);
+}

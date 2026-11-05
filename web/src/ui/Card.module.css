@@ -1,0 +1,26 @@
+.card {
+  border-radius: var(--r-group);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  list-style: none;
+}
+.none {
+  padding: 0;
+}
+.sm {
+  padding: var(--s-3);
+}
+.md {
+  padding: var(--s-4) var(--s-5);
+}
+.lg {
+  padding: var(--s-6);
+}
+@media (max-width: 699px) {
+  .md {
+    padding: var(--s-3h) var(--s-4);
+  }
+  .lg {
+    padding: var(--s-5) var(--s-4);
+  }
+}

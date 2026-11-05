@@ -1,0 +1,71 @@
+/* The service tiles of «Импорт»: matte glass cards, like «Переезд». */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--s-2h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+  padding: var(--s-3h);
+  border-radius: var(--r-group);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  color: var(--white);
+}
+.name {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.what {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.unconfigured {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1h);
+  font: 600 13px / 1.35 var(--font-text);
+  color: var(--warning);
+}
+.fallback {
+  font: var(--t-footnote);
+  color: var(--label-3);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding-top: var(--s-2);
+}
+.steps {
+  margin: var(--s-1) 0 0;
+  padding-left: 22px;
+  text-align: left;
+  font: var(--t-subhead);
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+.steps li + li {
+  margin-top: var(--s-2);
+}

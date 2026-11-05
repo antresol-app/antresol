@@ -1,0 +1,107 @@
+.shelf {
+  --cols: 8;
+  /* Sized from the shelf's own width (container query units), not the viewport. */
+  --card-w: calc((100cqw - 2 * var(--gutter) - (var(--cols) - 1) * var(--shelf-gap)) / var(--cols));
+  position: relative;
+  container-type: inline-size;
+}
+.wide {
+  --cols: 4;
+}
+.square {
+  --cols: 7;
+}
+@media (max-width: 1799px) {
+  .poster {
+    --cols: 7;
+  }
+}
+@media (max-width: 1279px) {
+  .poster,
+  .square {
+    --cols: 6;
+  }
+}
+@media (max-width: 1099px) {
+  .poster,
+  .square {
+    --cols: 5;
+  }
+  .wide {
+    --cols: 3;
+  }
+}
+@media (max-width: 899px) {
+  .poster,
+  .square {
+    --cols: 4;
+  }
+  .wide {
+    --cols: 2;
+  }
+}
+/* in a centred column (--column-max) a wide window has the column's width,
+   so it keeps the column count of a window just wide enough for it */
+@media (min-width: 1800px) {
+  .contained.poster {
+    --cols: 7;
+  }
+}
+/* Phones: a deliberate peek of the next card signals that the row scrolls. */
+@media (max-width: 699px) {
+  .poster,
+  .square {
+    --cols: 2.25;
+  }
+  .wide {
+    --cols: 1.25;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  padding: 0 var(--gutter);
+  margin-bottom: var(--s-0);
+}
+.title {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.titleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-0);
+  border-radius: var(--r-sm);
+}
+.titleLink svg {
+  color: var(--label-2);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.titleLink:hover svg {
+  transform: translateX(2px);
+}
+
+.cell {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+
+/* the rail's chevrons: centred on the artwork, not on the text below it */
+.poster {
+  --rail-pager-top: calc(14px + var(--card-w) * 1.5 / 2);
+}
+.square {
+  --rail-pager-top: calc(14px + var(--card-w) / 2);
+}
+.wide {
+  --rail-pager-top: calc(14px + var(--card-w) * 9 / 16 / 2);
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  /* taller to the finger, the line keeps its place */
+  .titleLink {
+    padding-block: var(--s-3);
+    margin-block: calc(-1 * var(--s-3));
+  }
+}

@@ -1,0 +1,153 @@
+/* A glass track of the toolbar height (--control-h) holding segments of the
+   small control height: 36 + 2 × 3 padding + 2 × 1 hairline = 44. */
+.track {
+  display: inline-flex;
+  gap: var(--s-0);
+  height: var(--control-h);
+  padding: 3px;
+  border-radius: var(--r-pill);
+  max-width: 100%;
+  overflow-x: auto;
+  /* overflow-x alone makes the other axis scroll too: the 44 pt targets
+     reach past the track, and a finger could drag the pill down */
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.track::-webkit-scrollbar {
+  display: none;
+}
+.segment {
+  position: relative;
+  flex: none;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--label-2);
+  font: var(--t-field);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition: color var(--d-fast) var(--ease-out);
+}
+/* a finger's target is the track's full height, not the 36 pt segment */
+@media (pointer: coarse) {
+  .segment::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-sm) - var(--touch-target)) / 2 - var(--hairline-w)) 0;
+  }
+}
+.segment:hover {
+  color: var(--label);
+}
+.segment[aria-checked='true'] {
+  color: var(--label-inverse);
+}
+.segment:focus-visible {
+  outline-offset: 1px;
+}
+.thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--label);
+  box-shadow: var(--shadow-card);
+}
+.label {
+  position: relative;
+}
+.short {
+  display: none;
+}
+@media (max-width: 699px) {
+  .long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .short {
+    display: inline;
+  }
+}
+
+/* `row`: a page's filter. The row scrolls, not the track, so the whole pill
+   moves out to the window's edges: --segmented-bleed is how far past its
+   container the row may run (the page's gutter on phones). The track is
+   centred while it fits (auto margins) and starts at the edge when it does
+   not. A mask fades the edge with more segments past it. */
+.row {
+  --bleed: var(--segmented-bleed, 0px);
+  --fade: var(--s-8);
+  --fade-l: #000;
+  --fade-r: #000;
+  display: block;
+  margin: calc(-1 * var(--s-1h)) calc(-1 * var(--bleed));
+  /* room for the focus ring, which a scroller would clip */
+  padding: var(--s-1h) var(--bleed);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r));
+  mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r));
+}
+.row::-webkit-scrollbar {
+  display: none;
+}
+.row[data-fade-start] {
+  --fade-l: transparent;
+}
+.row[data-fade-end] {
+  --fade-r: transparent;
+}
+.inRow {
+  display: flex;
+  width: max-content;
+  max-width: none;
+  margin-inline: auto;
+  overflow: visible;
+}
+
+/* Phones: the filter is a row of separate capsules, as Apple Music's search
+   has it — a segmented track is for at most five segments on an iPhone
+   (HIG), and a single pill cut by the screen's edge reads as broken. Each
+   capsule is whole; the one past the edge says the row scrolls. The track
+   keeps its role and the white thumb, only its own glass is gone. */
+@media (max-width: 699px) {
+  .track.inRow {
+    gap: var(--s-2);
+    height: auto;
+    /* room for the 44 pt targets and the focus ring, which the track's
+       overflow would clip; the margin keeps the row's height */
+    padding: var(--s-1h) 0;
+    margin-block: calc(-1 * var(--s-1h));
+    border-color: transparent;
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .inRow .segment {
+    border: var(--hairline-w) solid var(--glass-border);
+    background: var(--glass-fill);
+  }
+  .inRow .segment[aria-checked='true'] {
+    border-color: transparent;
+    background: transparent;
+  }
+}
+
+/* Phones: iOS's segmented control — 13 pt labels, segments sharing the
+   track's width, so five sections and the filter button fit one row of a
+   375 pt screen (a track that still cannot fit scrolls sideways, never
+   up and down). */
+@media (max-width: 699px) {
+  .track:not(.inRow) .segment {
+    flex: 1 0 auto;
+    padding: 0 var(--s-2);
+    font: var(--t-footnote-em);
+  }
+}

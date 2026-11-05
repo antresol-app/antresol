@@ -1,0 +1,11 @@
+/* Quiet, under the screen's own content. */
+.source {
+  margin-top: var(--s-8);
+  font: var(--t-footnote);
+  color: var(--label-3);
+}
+@media (max-height: 500px) {
+  .source {
+    margin-top: var(--s-4);
+  }
+}

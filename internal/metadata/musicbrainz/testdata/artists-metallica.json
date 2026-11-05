@@ -1,0 +1,66 @@
+{
+ "count": 148,
+ "offset": 0,
+ "artists": [
+  {
+   "id": "65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab",
+   "name": "Metallica",
+   "sort-name": "Metallica",
+   "score": 100,
+   "type": "Group",
+   "country": "US",
+   "aliases": [
+    {
+     "name": "メタリカ",
+     "sort-name": "メタリカ"
+    },
+    {
+     "name": "Metalica",
+     "sort-name": "Metalica"
+    },
+    {
+     "name": "메탈리카",
+     "sort-name": "메탈리카"
+    },
+    {
+     "name": "Metallica",
+     "sort-name": "Metallica"
+    }
+   ]
+  },
+  {
+   "id": "3cc58f89-767e-4926-9ac4-160b8e280cd4",
+   "name": "Metallica 2",
+   "sort-name": "Metallica 2",
+   "score": 61,
+   "type": "Group",
+   "country": "CL",
+   "disambiguation": "Chilean tribal ambient/metal"
+  },
+  {
+   "id": "9e8e7fd5-9d42-4474-bc39-bb4a3811e278",
+   "name": "Metallica Reloaded",
+   "sort-name": "Metallica Reloaded",
+   "score": 60,
+   "type": "Group",
+   "disambiguation": "Metallica tribute band"
+  },
+  {
+   "id": "4b34e494-bbdf-49db-b035-ea2729c1ea2f",
+   "name": "Metallica Jam",
+   "sort-name": "Metallica Jam",
+   "score": 60,
+   "type": "Group",
+   "country": "DK",
+   "disambiguation": "Metallica tribute band"
+  },
+  {
+   "id": "f55b4371-a3ef-4d95-8b5f-0f1bc02a3d10",
+   "name": "Black Metallica",
+   "sort-name": "Black Metallica Tribute Band",
+   "score": 60,
+   "type": "Group",
+   "disambiguation": "Metallica tribute band from Novi Sad, Serbia"
+  }
+ ]
+}

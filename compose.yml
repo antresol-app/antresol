@@ -1,0 +1,39 @@
+# Antresol Server with Docker Compose (see README.md, "Install with Docker").
+#
+#   cp .env.example .env               # optional settings
+#   MEDIA_DIR=/srv/media docker compose up -d
+#
+# then open http://<host>:8420 from your home network. MEDIA_DIR holds
+# movies/, series/, music/ and books/ (ebooks/, audiobooks/, manga/).
+# To build the image from this checkout instead of pulling it:
+#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
+services:
+  antresol:
+    image: ghcr.io/antresol-app/antresol-server:latest
+    container_name: antresol
+    restart: unless-stopped
+    # stops ffmpeg, then waits for open requests
+    stop_grace_period: 30s
+    ports:
+      - "8420:8420"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VAULT_DATA_DIR: /config
+      VAULT_MEDIA_ROOT: /media
+      VAULT_MOVIES_DIR: movies
+      VAULT_SERIES_DIR: series
+      VAULT_MUSIC_DIR: music
+      VAULT_BOOKS_DIR: books
+      # HLS segments of a transcode: on the media disk, not in the config volume
+      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
+    volumes:
+      - antresol-config:/config
+      # read-write: fetched subtitles, transcode segments, offline copies
+      - ${MEDIA_DIR:-./media}:/media
+    # The image has no GPU video driver yet, so it decodes on the CPU; run the
+    # binary on the host for hardware decoding.
+
+volumes:
+  antresol-config:

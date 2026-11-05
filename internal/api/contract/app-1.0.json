@@ -1,0 +1,417 @@
+{
+  "contract": "App Store app build 1.0",
+  "derivedFrom": {
+    "appCommit": "2243ee5088dac5ecebd94079528a3281fadecbe0",
+    "from": "keys and types from the app's captured fixtures (named per endpoint); required, integer and enums from how the app decodes them (decodedAs)",
+    "enums": {
+      "play.mode": "PlayMode"
+    }
+  },
+  "rules": "Keys and JSON types of each answer, no values. A required key must be there with one of its types; an optional key, when there, too; \"integer\" is a whole number and \"number\" takes one too; \"any\" takes every type; a key not listed is allowed; enum lists the closed values. Changing this file needs the maintainers (CODEOWNERS).",
+  "endpoints": [
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/api/health",
+      "fixtures": [
+        "health.json"
+      ],
+      "decodedAs": "Health",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "ok": {
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "serverId",
+          "version"
+        ]
+      }
+    },
+    {
+      "name": "setup",
+      "method": "GET",
+      "path": "/api/setup",
+      "fixtures": [
+        "setup.json"
+      ],
+      "decodedAs": "SetupInfo",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "needsSetup": {
+            "type": "boolean"
+          },
+          "remote": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "needsSetup",
+          "remote"
+        ]
+      }
+    },
+    {
+      "name": "profiles",
+      "method": "GET",
+      "path": "/api/profiles",
+      "fixtures": [
+        "profiles.json"
+      ],
+      "decodedAs": "[ProfileSummary]",
+      "shape": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "keys": {
+            "avatar": {
+              "type": "string"
+            },
+            "hasPassword": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "avatar",
+            "hasPassword",
+            "id",
+            "name"
+          ]
+        }
+      }
+    },
+    {
+      "name": "authToken",
+      "method": "POST",
+      "path": "/api/auth/token",
+      "fixtures": [
+        "auth-token.json",
+        "auth-token-kid.json"
+      ],
+      "decodedAs": "TokenResponse",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "type": "object",
+            "keys": {
+              "avatar": {
+                "type": "string"
+              },
+              "hasPassword": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "isAdmin": {
+                "type": "boolean"
+              },
+              "isKid": {
+                "type": "boolean"
+              },
+              "maxRating": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "remote": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "avatar",
+              "hasPassword",
+              "id",
+              "isAdmin",
+              "isKid",
+              "name",
+              "remote"
+            ]
+          }
+        },
+        "required": [
+          "token",
+          "user"
+        ]
+      }
+    },
+    {
+      "name": "me",
+      "method": "GET",
+      "path": "/api/me",
+      "fixtures": [
+        "me.json",
+        "me-kid.json"
+      ],
+      "decodedAs": "Me",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "avatar": {
+            "type": "string"
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "isKid": {
+            "type": "boolean"
+          },
+          "maxRating": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "remote": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "avatar",
+          "hasPassword",
+          "id",
+          "isAdmin",
+          "isKid",
+          "name",
+          "remote"
+        ]
+      }
+    },
+    {
+      "name": "items",
+      "method": "GET",
+      "path": "/api/items?kind=movie&sort=recent&limit=100",
+      "fixtures": [
+        "items-movies.json"
+      ],
+      "decodedAs": "ItemsPage",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "keys": {
+                "backdrop": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "logo": {
+                  "type": "string"
+                },
+                "onServer": {
+                  "type": "boolean"
+                },
+                "poster": {
+                  "type": "string"
+                },
+                "progress": {
+                  "type": "number"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "year": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "title"
+              ]
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "play",
+      "method": "POST",
+      "path": "/api/play/{fileId}",
+      "fixtures": [
+        "play-direct.json",
+        "play-hls.json"
+      ],
+      "decodedAs": "PlayResponse",
+      "shape": {
+        "type": "object",
+        "keys": {
+          "audio": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "keys": {
+                "channels": {
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "default": {
+                  "type": "boolean"
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "lang": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "codec",
+                "default",
+                "index",
+                "lang",
+                "title"
+              ]
+            }
+          },
+          "audioIndex": {
+            "type": "integer"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "hlsComplete": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "remux",
+              "transcode"
+            ]
+          },
+          "quality": {
+            "type": "object",
+            "keys": {
+              "applied": {
+                "type": "string"
+              },
+              "remote": {
+                "type": "boolean"
+              },
+              "selected": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "applied",
+              "remote",
+              "selected"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "startSec": {
+            "type": "number"
+          },
+          "subtitles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "keys": {
+                "burnIn": {
+                  "type": "boolean"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "default": {
+                  "type": "boolean"
+                },
+                "external": {
+                  "type": "boolean"
+                },
+                "forced": {
+                  "type": "boolean"
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "lang": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "burnIn",
+                "codec",
+                "default",
+                "external",
+                "forced",
+                "index",
+                "lang",
+                "title"
+              ]
+            }
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "url"
+        ]
+      }
+    }
+  ]
+}

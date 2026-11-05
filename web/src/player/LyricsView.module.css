@@ -1,0 +1,108 @@
+.box {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  /* lines fade in and out at the edges */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 82%, transparent 100%);
+}
+.box::-webkit-scrollbar {
+  display: none;
+}
+.box:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.empty {
+  display: grid;
+  place-items: center;
+  mask-image: none;
+  font: 600 22px / 1.3 var(--font-display);
+  color: rgba(255, 255, 255, 0.55);
+}
+.plain {
+  padding: 12% 4px 30%;
+  font: 600 clamp(20px, 1rem + 0.6vw, 26px) / 1.4 var(--font-display);
+  letter-spacing: var(--track-display);
+  color: rgba(255, 255, 255, 0.86);
+  white-space: pre-line;
+}
+.plain p + p {
+  margin-top: 1.1em;
+}
+.lines {
+  margin: 0;
+  padding: 30% 0 45%;
+  list-style: none;
+}
+.line {
+  display: block;
+  width: 100%;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: rgba(255, 255, 255, 0.36);
+  font: 700 clamp(22px, 1rem + 0.9vw, 30px) / 1.3 var(--font-display);
+  letter-spacing: var(--track-display);
+  text-align: left;
+  transform-origin: left center;
+  transition:
+    color var(--d-base) var(--ease-out),
+    transform var(--d-base) var(--ease-out);
+}
+.past {
+  color: rgba(255, 255, 255, 0.5);
+}
+.active {
+  color: #fff;
+  transform: scale(1.04);
+}
+@media (hover: hover) {
+  .line:hover {
+    background: rgba(255, 255, 255, 0.07);
+  }
+}
+.line:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .line {
+    transition: none;
+  }
+  .active {
+    transform: none;
+  }
+}
+
+/* Synced words with «Раньше» / «Позже» under them. */
+.syncedWrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.syncedWrap > .box {
+  flex: 1;
+  height: auto;
+}
+.offset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+.offsetValue {
+  min-width: 9ch;
+  font: 600 15px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+.offsetValue:empty {
+  min-width: 0;
+}

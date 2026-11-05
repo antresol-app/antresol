@@ -1,0 +1,124 @@
+.page {
+  min-height: 100dvh;
+  padding: calc(var(--nav-height) + var(--s-6)) 0 var(--page-end);
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: clamp(24px, 3vw, 44px);
+  padding: 0 var(--gutter);
+  margin-bottom: var(--s-10);
+}
+.avatar {
+  flex: none;
+  width: clamp(160px, 16vw, 220px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--fill-3);
+  box-shadow: var(--shadow-lift);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--label-3);
+  background: linear-gradient(160deg, var(--bg-elevated), var(--bg-raised));
+}
+.skeleton {
+  box-shadow: none;
+  background: var(--fill-4);
+}
+.info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.name {
+  font: var(--t-hero);
+  letter-spacing: var(--track-tight);
+  overflow-wrap: anywhere;
+}
+.meta {
+  margin-top: 4px;
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.actions {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+}
+.shuffleError {
+  margin-top: var(--s-3);
+  font: var(--t-subhead);
+  color: var(--red);
+}
+.section {
+  padding: 0 var(--gutter);
+  margin-bottom: var(--section-gap);
+}
+.heading {
+  margin-bottom: var(--s-3);
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.top10 {
+  max-width: 1180px;
+}
+.shelves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(var(--nav-height) + 14vh) var(--gutter) 0;
+  text-align: center;
+  color: var(--label-2);
+}
+.empty svg {
+  color: var(--label-3);
+}
+.empty h1 {
+  font: var(--t-title-2);
+  color: var(--label);
+}
+@media (max-width: 699px) {
+  .page {
+    padding-top: var(--page-top);
+  }
+  .top {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--s-4);
+    margin-bottom: var(--s-8);
+  }
+  .avatar {
+    width: min(52vw, 220px);
+  }
+  .info {
+    align-items: center;
+    width: 100%;
+  }
+  .name {
+    font: var(--t-large-title);
+  }
+  .actions {
+    width: 100%;
+  }
+  .actions > * {
+    flex: 1;
+  }
+}

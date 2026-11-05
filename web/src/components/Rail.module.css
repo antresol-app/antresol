@@ -1,0 +1,83 @@
+/* The one horizontal rail: the list scrolls and snaps, the chevrons sit in
+   the gutters, centred on the artwork (--rail-pager-top, set by the caller). */
+.viewport {
+  position: relative;
+}
+
+/* no specificity: a caller's own list class (the cast's flex row) always wins */
+:where(.list) {
+  /* The containing block of anything absolute in the cells (a badge's
+     visually-hidden word): it scrolls and clips with the row. With the
+     wrapper as its block it sits at its place far down the row, past the
+     scroller's clip, and widens the page: a phone's Chrome then grows the
+     layout viewport up to 4x the screen. */
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--card-w);
+  gap: var(--shelf-gap);
+  margin: 0;
+  /* Vertical padding leaves room for the hover lift and focus ring. */
+  padding: var(--s-3h) var(--gutter) var(--s-2h);
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+}
+:where(.list)::-webkit-scrollbar {
+  display: none;
+}
+
+.pager {
+  position: absolute;
+  top: var(--rail-pager-top, 50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: var(--control-h-md);
+  padding: 0;
+  border-radius: 50%;
+  color: var(--label);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    opacity var(--d-base) var(--ease-out),
+    background-color var(--d-fast) var(--ease-out);
+  z-index: 2;
+}
+.pager[hidden] {
+  display: none;
+}
+/* in the gutter's middle; never past the window's edge where the gutter is narrow */
+.prev {
+  left: max(4px, calc(var(--gutter) / 2 - 18px));
+}
+.next {
+  right: max(4px, calc(var(--gutter) / 2 - 18px));
+}
+@media (max-width: 999px) {
+  .pager {
+    width: 36px;
+    height: var(--control-h-sm);
+  }
+}
+.pager:hover {
+  background: var(--glass-fill-hover);
+}
+.pager:active {
+  transform: translateY(-50%) scale(0.94);
+}
+@media (hover: hover) and (pointer: fine) {
+  .viewport:hover .pager {
+    opacity: 1;
+  }
+}
+/* touch screens and phones: the rail is swiped */
+@media (hover: none), (max-width: 699px) {
+  .pager {
+    display: none;
+  }
+}

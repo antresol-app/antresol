@@ -1,0 +1,112 @@
+/* The songs waiting for a decision. */
+.tracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2h);
+  padding: var(--s-3) var(--s-3h);
+  border-radius: var(--r-group);
+  background: var(--fill-4);
+  border: 1px solid var(--glass-border);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2h) var(--s-4);
+}
+.text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.reason {
+  margin-top: var(--s-1);
+  font: 600 13px / 1.35 var(--font-text);
+  color: var(--warning);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1h);
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.search > div {
+  flex: 1;
+  min-width: 0;
+}
+.note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.note > span {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+.error {
+  font: var(--t-footnote);
+  color: var(--destructive);
+}
+.candidates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2);
+  border-radius: var(--r-control);
+  background: var(--fill-3);
+}
+.cover {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--fill-2);
+  color: var(--label-3);
+}
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.candText {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: var(--s-0);
+}
+.candTitle {
+  font: var(--t-callout);
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+.candMeta {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}

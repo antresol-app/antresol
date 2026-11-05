@@ -1,0 +1,26 @@
+.body:focus {
+  outline: none;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-4);
+  text-align: left;
+}
+.note {
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.value {
+  font: var(--t-callout);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+/* a plain button as a whole row: its text lines up with the labels above,
+   its hover fill reaches into the row's padding */
+.rowLink {
+  margin-inline-start: calc(-1 * var(--s-3));
+}

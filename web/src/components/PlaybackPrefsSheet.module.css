@@ -1,0 +1,81 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  width: 100%;
+  margin-top: var(--s-3);
+  text-align: left;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.label {
+  margin: 0;
+  font: var(--t-headline);
+  color: var(--label);
+}
+.hint {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.hint:empty {
+  display: none;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+  min-width: 0;
+}
+/* a setting with a switch, as in iOS Settings: the label and a line under it */
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+  margin-top: var(--s-1);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--separator);
+}
+.switchText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+  font: var(--t-callout);
+  color: var(--label);
+}
+.rowLabel {
+  font: var(--t-subhead);
+  color: var(--label);
+}
+/* the line on a dark picture, at the chosen size and background */
+.preview {
+  --cue-base: 15px;
+  display: grid;
+  place-items: center;
+  min-height: 72px;
+  padding: var(--s-3);
+  border-radius: var(--r-card);
+  background: linear-gradient(135deg, #3a4a5c, #8a9aa8);
+  text-align: center;
+}
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.error {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--warning);
+}

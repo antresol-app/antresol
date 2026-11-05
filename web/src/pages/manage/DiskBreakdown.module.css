@@ -1,0 +1,113 @@
+/* The rows of a disk category: an icon, the name with a thin bar of its
+   share (in the category's colour), the size on the trailing edge. */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--r-group);
+  background: var(--fill-4);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+  padding: var(--s-2) var(--s-4);
+}
+.row + .row {
+  border-top: 1px solid var(--separator);
+}
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--t-callout);
+  color: var(--label);
+}
+.track {
+  height: 4px;
+  border-radius: var(--r-xs);
+  background: var(--fill-3);
+  overflow: hidden;
+}
+.fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--seg, var(--accent));
+}
+.size {
+  flex: none;
+  /* one column width for every row, so the bars end at one edge */
+  min-width: 7ch;
+  text-align: right;
+  font: var(--t-subhead);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+}
+/* «Ещё 7 папок», «Система и файловая система»: a summary, not a folder */
+.row[data-muted] .name {
+  color: var(--label-2);
+}
+.row[data-muted] .fill {
+  background: var(--label-3);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2h);
+  padding: var(--s-10) 0;
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid var(--fill-1);
+  border-top-color: var(--label);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.problem {
+  padding: var(--s-6) 0;
+  font: var(--t-subhead);
+  color: var(--warning);
+  text-align: center;
+}
+.trash {
+  color: var(--label-2);
+}
+/* «Обновляем…» above a list that is already there */
+.compact {
+  justify-content: flex-start;
+  padding: 0 0 var(--s-3);
+}
+.partial {
+  margin: 0 0 var(--s-3);
+  font: var(--t-footnote);
+  color: var(--warning);
+}

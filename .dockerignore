@@ -1,0 +1,13 @@
+.git
+.superpowers
+bin
+data
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+web/e2e
+docs
+*.db
+*.db-*
+.DS_Store

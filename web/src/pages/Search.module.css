@@ -1,0 +1,786 @@
+/* One centred column, as the top bar is a centred pill and there is no
+   sidebar: the title, the field and the filter centred in it; the results,
+   «Обзор» and «Найти и добавить» as wide as the column. It stops growing at
+   --column-max, so a 2560 px window gets margins, not ever-larger cards. */
+.page {
+  min-height: 100dvh;
+  max-width: calc(var(--column-max) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: calc(var(--nav-height) + var(--s-6)) var(--gutter) var(--page-end);
+}
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.heading {
+  margin: 0 0 var(--s-4);
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
+  text-align: center;
+}
+.field {
+  position: relative;
+  width: 100%;
+  max-width: var(--column-narrow);
+}
+.fieldIcon {
+  position: absolute;
+  left: var(--s-3h);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--label-3);
+  pointer-events: none;
+  transition: color var(--d-fast) var(--ease-out);
+}
+.field:focus-within .fieldIcon {
+  color: var(--label-2);
+}
+.input {
+  width: 100%;
+  height: var(--control-h-field);
+  /* the glass and the clear button sit inside the field's own padding */
+  padding: 0 calc(var(--s-3) * 2 + var(--icon-md)) 0 calc(var(--s-3h) + var(--icon-md) + var(--s-2));
+  border: 0;
+  border-radius: var(--r-control);
+  background: var(--fill-3);
+  color: var(--label);
+  font: var(--t-body);
+  caret-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out);
+}
+.input::-webkit-search-cancel-button {
+  display: none;
+}
+.input::placeholder {
+  color: var(--label-3);
+}
+.input:hover {
+  background: var(--fill-2);
+}
+/* Apple's search field: it only gets a little lighter, with a hairline — no ring. */
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  background: var(--fill-2);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.clear {
+  position: absolute;
+  right: var(--s-3);
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--label-3);
+  color: var(--bg);
+  transform: translateY(-50%);
+}
+.clear::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--s-3));
+}
+/* the one filter: under the field, centred; on a phone it scrolls out to
+   the screen's edges (the gutter) */
+.scope {
+  --segmented-bleed: var(--gutter);
+  width: 100%;
+  margin: var(--s-4) 0 0;
+}
+.browse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  margin: var(--section-gap) 0 0;
+  animation: rise var(--d-base) var(--ease-out) both;
+}
+/* «Недавние запросы»: a grouped list as wide as the field, under it */
+.recent {
+  width: 100%;
+  max-width: var(--column-narrow);
+  margin-inline: auto;
+}
+.recentHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--s-2);
+}
+.recentHead .sectionTitle {
+  margin-bottom: 0;
+}
+.recentList {
+  margin: 0;
+  padding: 0;
+  composes: group from '../ui/List.module.css';
+}
+.recentList > li + li {
+  border-top: 1px solid var(--separator);
+}
+.recentItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: var(--control-h-md);
+  padding: 0 var(--s-4);
+  border: 0;
+  background: none;
+  color: var(--label);
+  font: var(--t-callout);
+  text-align: left;
+  cursor: pointer;
+}
+.recentItem svg {
+  color: var(--label-3);
+  flex: none;
+}
+.recentItem:hover {
+  background: var(--fill-4);
+}
+.recentItem:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+/* six categories: one row on a wide window, two of three, three of two on a phone */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tiles > li {
+  animation: rise var(--d-base) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+.tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 112px;
+  padding: var(--s-3) var(--s-4);
+  border: 0;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  color: var(--white);
+  text-align: left;
+  cursor: pointer;
+  isolation: isolate;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.tile:hover {
+  transform: scale(1.02);
+}
+.tile:active {
+  transform: scale(0.98);
+}
+.tileOn {
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+/* the cover leans out of the corner over the gradient */
+.tileArt {
+  position: absolute;
+  right: -14px;
+  bottom: -18px;
+  z-index: -1;
+  width: 84px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--r-md);
+  transform: rotate(12deg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.tileTitle {
+  display: block;
+  max-width: 70%;
+  font: var(--t-headline);
+  font-weight: 700;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+}
+.tileIcon {
+  position: absolute;
+  left: var(--s-4);
+  bottom: var(--s-3);
+  opacity: 0.85;
+}
+.enter {
+  animation: rise var(--d-base) var(--ease-out) both;
+}
+.late {
+  animation: rise var(--d-base) var(--ease-out) var(--d-base) both;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browse,
+  .enter,
+  .late,
+  .tiles > li {
+    animation: none;
+  }
+  .tile:hover,
+  .tile:active {
+    transform: none;
+  }
+}
+.hint {
+  max-width: 60ch;
+  margin: 0 auto;
+  color: var(--label-2);
+  font: var(--t-callout);
+  text-align: center;
+}
+.section {
+  margin-top: var(--section-gap);
+}
+.sectionTitle {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+  margin-bottom: var(--s-4);
+}
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  margin-top: var(--section-gap);
+}
+/* «Лучшее совпадение» beside the songs (or «Ещё совпадения»), as the
+   Music app does: a compact card exactly as tall as the five rows beside it
+   (the row stretches both); one above the other on a narrow window. */
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--s-8);
+  align-items: stretch;
+}
+/* only songs (no card matched): the list takes the row */
+.top.listOnly {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* «Показать все» grew the list: the card keeps its size at the top */
+.top.expanded {
+  align-items: start;
+}
+/* the rails start at the column's edge (shelves pad themselves with the
+   gutter, which the column already has) */
+.rails {
+  --gutter: 0px;
+  /* the small sections size their cards from this width, as a rail does */
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+.rails:empty {
+  display: none;
+}
+.songs {
+  min-width: 0;
+}
+.songs .sectionTitle,
+.topSection .sectionTitle {
+  margin-bottom: var(--s-2);
+}
+/* a section title with an action at its trailing edge («Показать все») */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-bottom: var(--s-2);
+}
+.sectionHead .sectionTitle {
+  margin-bottom: 0;
+}
+/* the button does not make the title line taller than its neighbour's
+   («Лучшее совпадение»); its own padding (--s-3) puts the label's end on
+   the list's separators, which stop --s-3 short of the column too */
+.sectionHead > button {
+  margin-block: calc(-1 * var(--s-1h));
+}
+.topSection {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* the card: art on top, the name and its kind under it, the one action at
+   the trailing edge of that line; the whole card opens the item */
+.topCard {
+  /* art: the cover's height; the card is then as tall as five song rows */
+  --top-art: 168px;
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.topCard:hover {
+  background: var(--glass-fill-hover);
+}
+.topArt {
+  flex: none;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  height: var(--top-art);
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card-sm);
+  overflow: hidden;
+  background: var(--fill-3);
+  color: var(--label-3);
+  box-shadow: var(--shadow-card);
+}
+.topArt[data-shape='square'] {
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+}
+.topArt[data-shape='round'] {
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+.topArt[data-shape='book'] {
+  border-radius: var(--r-xs) var(--r-sm) var(--r-sm) var(--r-xs);
+}
+.topArt img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.topFoot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-top: auto;
+  min-width: 0;
+}
+.topText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+}
+.topName {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* the name is the card's link: its box covers the card */
+.topName::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-group);
+}
+.topName:focus-visible {
+  outline: none;
+}
+.topName:focus-visible::after {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.topKind {
+  font: var(--t-subhead);
+  color: var(--label-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* above the card's link */
+.topAction {
+  position: relative;
+  z-index: var(--z-raised);
+  flex: none;
+}
+/* the library is still answering: the top row's shape, quiet */
+.topSkeleton .topCard:hover {
+  background: var(--glass-fill);
+}
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.skeletonRows > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+}
+/* a section title's place */
+.skeletonTitle {
+  width: calc(var(--s-16) * 2);
+  height: var(--s-5);
+  margin: 0 0 var(--s-2);
+}
+.skeletonThumb {
+  flex: none;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border-radius: var(--r-xs);
+}
+.skeletonText {
+  flex: 1;
+}
+
+/* narrower windows: the card above the songs, art left and the name beside
+   it; the action stays at the trailing edge */
+@media (max-width: 899px) {
+  /* the column is hardly wider than the field: one edge for everything,
+     not two a few pixels apart */
+  .field,
+  .recent {
+    max-width: none;
+  }
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap);
+  }
+  .topCard {
+    --top-art: 96px;
+    flex-direction: row;
+    align-items: center;
+  }
+  .topFoot {
+    flex: 1;
+    align-items: center;
+    margin-top: 0;
+  }
+}
+@media (max-width: 699px) {
+  .topCard {
+    --top-art: 72px;
+    gap: var(--s-3);
+  }
+  .topFoot {
+    gap: var(--s-3);
+  }
+}
+.discoverHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: var(--s-3) var(--s-5);
+  margin-bottom: var(--s-4);
+}
+.discoverHeader .sectionTitle {
+  margin-bottom: 0;
+}
+/* where «Найти и добавить» looks: the page's filter decides, this says it */
+.discoverWhere {
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.byline {
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+/* music found by a song title: which song the album holds */
+.matched {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+/* music whose query names an artist: «Альбомы …», then «Другие совпадения» */
+.candidateGroup + .candidateGroup {
+  margin-top: var(--s-6);
+}
+.groupTitle {
+  font: var(--t-headline);
+  color: var(--label-2);
+  margin: 0 0 var(--s-3);
+}
+.candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr));
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* a catalog result: the page's one card (ui/Card), as the top result is */
+.candidate {
+  composes: card sm from '../ui/Card.module.css';
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 0 var(--s-4);
+}
+.poster {
+  grid-row: span 2;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card-sm);
+  overflow: hidden;
+  background: var(--fill-3);
+  color: var(--label-3);
+  align-self: flex-start;
+}
+.poster.square {
+  aspect-ratio: 1;
+}
+.poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--s-1);
+  padding-top: var(--s-0);
+}
+.kicker {
+  font: var(--t-caption);
+  color: var(--label-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.name {
+  font: var(--t-headline);
+  align-self: flex-start;
+}
+.name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.overview {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.footer {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--s-1h);
+  min-width: 0;
+}
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding-top: var(--s-2h);
+}
+.note,
+.muted {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.done {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-1h);
+  font: var(--t-footnote);
+  color: var(--success);
+}
+.done svg {
+  flex: none;
+  margin-top: 1px;
+}
+.problem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--warning);
+  margin-bottom: var(--s-2);
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2h);
+  margin-top: 12vh;
+  text-align: center;
+  color: var(--label-2);
+}
+.empty h2 {
+  font: var(--t-title-2);
+  color: var(--label);
+}
+.skeleton,
+.skeletonLine {
+  background: var(--fill-3);
+  animation: pulse 1.6s var(--ease-in-out) infinite;
+}
+.skeletonLine {
+  height: 12px;
+  border-radius: var(--r-sm);
+  margin-top: var(--s-1h);
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .skeletonLine {
+    animation: none;
+  }
+}
+@media (max-width: 699px) {
+  .page {
+    padding-top: var(--page-top);
+  }
+  .poster {
+    width: 84px;
+    grid-row: auto;
+  }
+  .footer {
+    grid-column: 1 / -1;
+  }
+  .candidate {
+    gap: var(--s-3);
+  }
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* narrower windows: the tiles in threes */
+@media (max-width: 1099px) {
+  .tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 699px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* «Очистить» lines up with the list's right edge, not its own padding */
+.recentHead > button {
+  margin-right: calc(-1 * var(--s-3));
+}
+
+/* kinds with a few results side by side: one row of small sections, the
+   cards the size of a rail's — the Shelf's own column count for the shape
+   (composed below) over the same width (.rails, the container) */
+.few {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6) var(--s-10);
+}
+.fewCards {
+  display: flex;
+  gap: var(--shelf-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fewPoster {
+  composes: poster contained from '../components/Shelf.module.css';
+}
+.fewSquare {
+  composes: square contained from '../components/Shelf.module.css';
+}
+.fewCards > li {
+  /* Shelf's --card-w, with the column's (zero) gutter */
+  width: calc((100cqw - (var(--cols) - 1) * var(--shelf-gap)) / var(--cols));
+}
+
+/* «Ещё совпадения»: compact rows, a grouped list like the songs beside it */
+.moreList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.moreList > li + li {
+  border-top: 1px solid var(--separator);
+}
+.moreRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--control-h-lg);
+  padding: var(--s-1h) var(--s-2);
+  border-radius: var(--r-md);
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.moreRow:hover {
+  background: var(--fill-4);
+}
+.moreRow:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.moreThumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  background: var(--fill-3);
+  color: var(--label-3);
+}
+.moreThumb.square {
+  width: 40px;
+  aspect-ratio: 1;
+}
+.moreThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.moreText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.moreTitle {
+  font: var(--t-callout);
+  color: var(--label);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.moreSub {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+/* nothing in the library, «Найти и добавить» below: a smaller empty state,
+   centred under the field like the larger one */
+.emptyCompact {
+  margin-top: var(--section-gap);
+}
+.emptyCompact h2 {
+  font: var(--t-headline);
+}

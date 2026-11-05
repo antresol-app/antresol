@@ -1,0 +1,36 @@
+/* The section switcher and the sort / filter button, under the title. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  margin-bottom: var(--s-5);
+}
+.toolbar > :first-child {
+  min-width: 0; /* the switcher scrolls sideways when it does not fit */
+}
+.toolbar > :last-child {
+  flex: none;
+}
+/* phones: the switcher takes the row beside the button (its segments share it) */
+@media (max-width: 699px) {
+  .toolbar > :first-child {
+    flex: 1 1 0;
+  }
+}
+.trigger {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+/* A filter is on. */
+.dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  pointer-events: none;
+}

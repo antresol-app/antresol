@@ -1,0 +1,46 @@
+{
+  "subsonic-response": {
+    "status": "ok",
+    "version": "1.16.1",
+    "type": "navidrome",
+    "serverVersion": "0.53.3 (13af8ed4)",
+    "openSubsonic": true,
+    "album": {
+      "id": "3bd5f4ee8c5e5c9d1f1a7b0a7a3c2e11",
+      "name": "Группа крови",
+      "artist": "Кино",
+      "artistId": "5b6a0c9b1e2d4f3a8c7d6e5f4a3b2c1d",
+      "coverArt": "al-3bd5f4ee8c5e5c9d1f1a7b0a7a3c2e11_0",
+      "songCount": 2,
+      "duration": 410,
+      "created": "2024-05-01T10:20:30.000Z",
+      "year": 1988,
+      "genre": "Rock",
+      "song": [
+        {
+          "id": "9f2c1a7e4b3d2c1e0f9a8b7c6d5e4f3a",
+          "parent": "3bd5f4ee8c5e5c9d1f1a7b0a7a3c2e11",
+          "isDir": false,
+          "title": "Группа крови",
+          "album": "Группа крови",
+          "artist": "Кино",
+          "track": 1,
+          "discNumber": 1,
+          "year": 1988,
+          "genre": "Rock",
+          "coverArt": "al-3bd5f4ee8c5e5c9d1f1a7b0a7a3c2e11_0",
+          "size": 31415926,
+          "contentType": "audio/flac",
+          "suffix": "flac",
+          "duration": 285,
+          "bitRate": 880,
+          "path": "Кино/Группа крови/01 - Группа крови.flac",
+          "albumId": "3bd5f4ee8c5e5c9d1f1a7b0a7a3c2e11",
+          "artistId": "5b6a0c9b1e2d4f3a8c7d6e5f4a3b2c1d",
+          "type": "music",
+          "created": "2024-05-01T10:20:30.000Z"
+        }
+      ]
+    }
+  }
+}

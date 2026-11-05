@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  SPDX-License-Identifier: MPL-2.0
+  Copyright (c) 2026 Antresol Contributors
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' vault-reader: blob:; script-src 'self' vault-reader:; style-src 'self' 'unsafe-inline' vault-reader: blob:; img-src 'self' vault-reader: blob: data:" />
+    <title>Antresol</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #ffffff; -webkit-user-select: none; user-select: none; }
+      /* the book inside the safe area; the app's panels sit in its margins */
+      foliate-view { position: fixed; top: env(safe-area-inset-top); right: env(safe-area-inset-right); bottom: env(safe-area-inset-bottom); left: env(safe-area-inset-left); display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/reader/native/main.ts"></script>
+  </body>
+</html>

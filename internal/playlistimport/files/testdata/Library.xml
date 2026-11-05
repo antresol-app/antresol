@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Major Version</key><integer>1</integer>
+	<key>Minor Version</key><integer>1</integer>
+	<key>Application Version</key><string>1.4.5.7</string>
+	<key>Date</key><date>2024-05-01T10:00:00Z</date>
+	<key>Features</key><integer>5</integer>
+	<key>Show Content Ratings</key><true/>
+	<key>Music Folder</key><string>file:///Users/me/Music/Music/Media.localized/</string>
+	<key>Library Persistent ID</key><string>8F1B2C3D4E5F6A7B</string>
+	<key>Tracks</key>
+	<dict>
+		<key>1001</key>
+		<dict>
+			<key>Track ID</key><integer>1001</integer>
+			<key>Name</key><string>Кукушка</string>
+			<key>Artist</key><string>Кино</string>
+			<key>Album Artist</key><string>Кино</string>
+			<key>Album</key><string>Чёрный альбом</string>
+			<key>Genre</key><string>Рок</string>
+			<key>Kind</key><string>Аудиофайл AAC, купленный в Apple Music</string>
+			<key>Size</key><integer>9741250</integer>
+			<key>Total Time</key><integer>401000</integer>
+			<key>Track Number</key><integer>2</integer>
+			<key>Year</key><integer>1990</integer>
+			<key>Date Modified</key><date>2023-01-01T00:00:00Z</date>
+			<key>Date Added</key><date>2021-03-04T05:06:07Z</date>
+			<key>Loved</key><true/>
+			<key>Persistent ID</key><string>A1B2C3D4E5F60001</string>
+			<key>Track Type</key><string>Remote</string>
+			<key>Apple Music</key><true/>
+		</dict>
+		<key>1002</key>
+		<dict>
+			<key>Track ID</key><integer>1002</integer>
+			<key>Name</key><string>Bohemian Rhapsody</string>
+			<key>Artist</key><string>Queen</string>
+			<key>Album</key><string>A Night at the Opera</string>
+			<key>Kind</key><string>Apple Music AAC audio file</string>
+			<key>Total Time</key><integer>354320</integer>
+			<key>Date Added</key><date>2022-07-08T09:10:11Z</date>
+			<key>Persistent ID</key><string>A1B2C3D4E5F60002</string>
+			<key>Track Type</key><string>Remote</string>
+		</dict>
+		<key>1003</key>
+		<dict>
+			<key>Track ID</key><integer>1003</integer>
+			<key>Name</key><string>Город золотой</string>
+			<key>Artist</key><string>Аквариум</string>
+			<key>Album</key><string>Десять стрел</string>
+			<key>Kind</key><string>Аудиофайл MPEG</string>
+			<key>Total Time</key><integer>201000</integer>
+			<key>Date Added</key><date>2020-01-02T03:04:05Z</date>
+			<key>Persistent ID</key><string>A1B2C3D4E5F60003</string>
+			<key>Track Type</key><string>File</string>
+			<key>Location</key><string>file:///Users/me/Music/%D0%90%D0%BA%D0%B2%D0%B0%D1%80%D0%B8%D1%83%D0%BC/03.mp3</string>
+		</dict>
+		<key>1004</key>
+		<dict>
+			<key>Track ID</key><integer>1004</integer>
+			<key>Name</key><string>Выпуск 12</string>
+			<key>Artist</key><string>Подкаст про музыку</string>
+			<key>Album</key><string>Подкаст про музыку</string>
+			<key>Kind</key><string>Аудиофайл MPEG</string>
+			<key>Podcast</key><true/>
+			<key>Loved</key><true/>
+			<key>Persistent ID</key><string>A1B2C3D4E5F60004</string>
+		</dict>
+		<key>1005</key>
+		<dict>
+			<key>Track ID</key><integer>1005</integer>
+			<key>Name</key><string>Кукушка (клип)</string>
+			<key>Artist</key><string>Кино</string>
+			<key>Kind</key><string>Видеофайл MPEG-4</string>
+			<key>Has Video</key><true/>
+			<key>Music Video</key><true/>
+			<key>Persistent ID</key><string>A1B2C3D4E5F60005</string>
+		</dict>
+	</dict>
+	<key>Playlists</key>
+	<array>
+		<dict>
+			<key>Name</key><string>Медиатека</string>
+			<key>Description</key><string></string>
+			<key>Master</key><true/>
+			<key>Playlist ID</key><integer>2001</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000001</string>
+			<key>Visible</key><false/>
+			<key>All Items</key><true/>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1001</integer></dict>
+				<dict><key>Track ID</key><integer>1002</integer></dict>
+				<dict><key>Track ID</key><integer>1003</integer></dict>
+			</array>
+		</dict>
+		<dict>
+			<key>Name</key><string>Музыка</string>
+			<key>Playlist ID</key><integer>2002</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000002</string>
+			<key>Distinguished Kind</key><integer>4</integer>
+			<key>Music</key><true/>
+			<key>All Items</key><true/>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1001</integer></dict>
+			</array>
+		</dict>
+		<dict>
+			<key>Name</key><string>Любимые песни</string>
+			<key>Playlist ID</key><integer>2003</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000003</string>
+			<key>All Items</key><true/>
+			<key>Smart Info</key>
+			<data>
+			AQEAAwAAAAIAAAAZAAAAAAAAAAcAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+			</data>
+			<key>Smart Criteria</key>
+			<data>
+			U0xzdAABAAEAAAADAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+			</data>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1002</integer></dict>
+			</array>
+		</dict>
+		<dict>
+			<key>Name</key><string>Недавно добавленные</string>
+			<key>Playlist ID</key><integer>2004</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000004</string>
+			<key>All Items</key><true/>
+			<key>Smart Info</key><data>AQEAAwAAAAIAAAAZ</data>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1003</integer></dict>
+			</array>
+		</dict>
+		<dict>
+			<key>Name</key><string>Мои плейлисты</string>
+			<key>Playlist ID</key><integer>2005</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000005</string>
+			<key>All Items</key><true/>
+			<key>Folder</key><true/>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1003</integer></dict>
+				<dict><key>Track ID</key><integer>1001</integer></dict>
+			</array>
+		</dict>
+		<dict>
+			<key>Name</key><string>Дорога</string>
+			<key>Description</key><string>в машину &amp; на дачу</string>
+			<key>Playlist ID</key><integer>2006</integer>
+			<key>Playlist Persistent ID</key><string>B000000000000006</string>
+			<key>Parent Persistent ID</key><string>B000000000000005</string>
+			<key>All Items</key><true/>
+			<key>Playlist Items</key>
+			<array>
+				<dict><key>Track ID</key><integer>1003</integer></dict>
+				<dict><key>Track ID</key><integer>1004</integer></dict>
+				<dict><key>Track ID</key><integer>1001</integer></dict>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

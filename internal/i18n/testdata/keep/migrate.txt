@@ -1,0 +1,2 @@
+internal/mediaimport/pathmap.go: сопоставление путей %q: нужен вид «откуда=куда»  # VAULT_IMPORT_PATHS config error at server start (no request, goes to the log)
+internal/mediaimport/report.go: ^(.+?): не переносятся (\d+ \S+) \((.+)\)$  # regexp that takes apart the saved othersWarning text to translate it

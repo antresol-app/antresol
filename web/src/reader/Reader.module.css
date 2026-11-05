@@ -1,0 +1,146 @@
+.reader {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  background: #ffffff;
+  color: #1c1c1e;
+  overscroll-behavior: none;
+}
+.blank {
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--label);
+}
+
+/* The book: inside the safe area, under the panels (they sit in its margins). */
+.host {
+  position: absolute;
+  inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 24px;
+  text-align: center;
+}
+.overlay svg {
+  opacity: 0.5;
+}
+.overlay h2 {
+  font: var(--t-title-2);
+}
+.overlay p {
+  max-width: 42ch;
+  opacity: 0.72;
+  margin-bottom: 8px;
+}
+.row {
+  display: flex;
+  gap: 12px;
+}
+.reader[data-theme='original'] .overlay,
+.reader[data-theme='paper'] .overlay {
+  color: inherit;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.45;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* PDF: a ribbon of pages on a dark desk. */
+.pdf {
+  background: #1c1c1e;
+  color: #f2f2f7;
+}
+.ribbon {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  /* the pages start under the top bar and end above the bottom bar */
+  padding: calc(64px + env(safe-area-inset-top)) 8px calc(72px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+}
+.page {
+  flex: none;
+  position: relative;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.zoomGlyph {
+  font: 500 22px / 1 var(--font-text);
+}
+.fitButton {
+  border: 0;
+  height: 32px;
+  margin: 0 4px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font: 500 14px / 1 var(--font-text);
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+.fitButton[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.22);
+}
+.fitButton:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* On <body> while the reader is open. */
+.reading :global(.glass-strong) {
+  background: #2c2c2e;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* «↩ Вернуться к …» over the page, just above the bottom bar */
+.returnPill {
+  position: fixed;
+  z-index: 31;
+  left: 50%;
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+}

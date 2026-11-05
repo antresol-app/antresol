@@ -1,0 +1,314 @@
+/* Sheets. Wide screens: a centred alert or panel over a dimmed window.
+   Phones (data-placement="bottom"): a bottom sheet across the width, inset
+   from the screen's edges, above the home indicator and the keyboard. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: grid;
+  place-items: center;
+  padding: var(--s-6) max(var(--s-4), env(safe-area-inset-right)) var(--s-6) max(var(--s-4), env(safe-area-inset-left));
+  background: var(--scrim);
+  /* a drag on the dimmed area moves nothing (scrollLock.ts locks the page) */
+  touch-action: none;
+}
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(var(--sheet-alert-w), 100%);
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  max-height: calc(100dvh - 2 * var(--s-6));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  border-radius: var(--r-sheet);
+  box-shadow: var(--shadow-sheet);
+  text-align: center;
+}
+.wide {
+  width: min(var(--sheet-wide-w), 100%);
+}
+.sheet:focus {
+  outline: none;
+}
+.icon {
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--s-3);
+}
+.title {
+  font: var(--t-alert-title);
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+}
+/* the round ✕ (an iOS / macOS sheet's close button) and room for it beside
+   the title; a centred title keeps the same room on both sides */
+.close {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+}
+.closable .title {
+  padding-inline: var(--s-8);
+}
+/* the message and the form: part of the sheet's own flow on a wide screen,
+   the part that scrolls on a phone */
+.content {
+  display: contents;
+}
+.message {
+  margin-top: var(--s-1h);
+  font: var(--t-alert-message);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+.message ul {
+  margin: var(--s-1h) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.buttons {
+  display: flex;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-4);
+}
+.button {
+  flex: 1;
+  min-width: 0;
+  height: var(--alert-button-h);
+  padding: 0 var(--s-2h);
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--fill-1);
+  color: var(--label);
+  font: var(--t-alert-button);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.button:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.primary {
+  background: var(--accent);
+  color: var(--label-on-tint);
+}
+.destructive {
+  background: var(--destructive);
+  color: var(--label-on-tint);
+}
+.button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.spinner {
+  display: inline-block;
+  width: var(--s-3);
+  height: var(--s-3);
+  border: 1.5px solid var(--label-2);
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.large {
+  width: min(var(--sheet-large-w), 100%);
+  max-height: min(var(--sheet-large-h), calc(100dvh - 2 * var(--s-6)));
+  align-items: stretch;
+  padding: var(--s-5) var(--s-6) var(--s-4);
+  text-align: left;
+  overflow: hidden;
+}
+.large .title {
+  font: var(--t-title-3);
+  letter-spacing: var(--track-display);
+}
+.large.closable .title {
+  padding-inline: 0 var(--s-10);
+}
+.large .close {
+  top: var(--s-5);
+  right: var(--s-5);
+}
+.large .message {
+  font: var(--t-subhead);
+  margin-top: var(--s-1);
+}
+.body {
+  flex: 1;
+  min-height: 0;
+  margin: var(--s-3h) calc(-1 * var(--s-6)) 0;
+  padding: 0 var(--s-6) var(--s-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.large .buttons {
+  justify-content: flex-end;
+  margin-top: var(--s-3h);
+}
+.large .button {
+  flex: none;
+  min-width: 96px;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-4);
+  font: var(--t-control-sm);
+  font-weight: 500;
+  border-radius: var(--r-field);
+}
+
+/* A window too short for a centred panel (a phone on its side): the sheet
+   takes the height, its margins shrink to the safe area's. */
+@media (max-height: 500px) and (min-width: 700px) {
+  .backdrop {
+    padding-block: max(var(--s-2), env(safe-area-inset-top)) max(var(--s-2), env(safe-area-inset-bottom));
+  }
+  .sheet,
+  .large {
+    max-height: calc(100dvh - 2 * var(--s-2) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+  .large {
+    padding: var(--s-4) var(--s-5) var(--s-3);
+  }
+  .large .close {
+    top: var(--s-3h);
+    right: var(--s-4);
+  }
+}
+
+/* Phones: the bottom sheet */
+@media (max-width: 699px) {
+  /* a picker's grabber: the pill at the top edge, a finger-tall strip to
+     drag it down by */
+  .grabber {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 1;
+    width: 50%;
+    height: var(--s-6);
+    transform: translateX(-50%);
+    touch-action: none;
+    cursor: grab;
+  }
+  .grabber::before {
+    content: '';
+    position: absolute;
+    top: var(--s-1h);
+    left: 50%;
+    width: 36px;
+    height: 5px;
+    border-radius: var(--r-pill);
+    background: var(--label-4);
+    transform: translateX(-50%);
+  }
+  .backdrop {
+    align-items: end;
+    padding: 0 var(--s-2) max(calc(var(--s-2) + env(safe-area-inset-bottom)), calc(var(--keyboard-inset, 0px) + var(--s-2)));
+  }
+  .sheet,
+  .wide,
+  .large {
+    width: 100%;
+    /* below the status bar with a gap, above the home indicator or the keyboard */
+    max-height: calc(
+      100dvh - max(env(safe-area-inset-top), var(--vv-top, 0px)) - var(--s-4) -
+        max(calc(var(--s-2) + env(safe-area-inset-bottom)), calc(var(--keyboard-inset, 0px) + var(--s-2)))
+    );
+    border-radius: var(--r-sheet-phone);
+  }
+  .sheet {
+    padding: var(--s-6) var(--s-5) var(--s-5);
+  }
+  /* a form or a long message scrolls between the pinned title and buttons,
+     so «Сохранить» is always on screen, above the keyboard */
+  .sheet:not(.large) {
+    overflow: hidden;
+  }
+  .content {
+    display: block;
+    flex: 0 1 auto;
+    align-self: stretch;
+    min-height: 0;
+    margin: 0 calc(-1 * var(--s-5));
+    padding: 0 var(--s-5) var(--s-1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .title {
+    font: var(--t-headline);
+  }
+  .message {
+    margin-top: var(--s-2);
+    font: var(--t-subhead);
+  }
+  .large {
+    padding: var(--s-5) var(--s-4) var(--s-4);
+  }
+  .large .title {
+    font: var(--t-title-3);
+  }
+  .close,
+  .large .close {
+    top: var(--s-4);
+    right: var(--s-4);
+  }
+  /* a 44pt target for a finger around the 30pt circle: the ring reaches
+     into the corner and the title's reserved room, never its text */
+  .close::before {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-xs) - var(--touch-target)) / 2 - var(--hairline-w));
+    border-radius: 50%;
+  }
+  .body {
+    margin: var(--s-3) calc(-1 * var(--s-4)) 0;
+    padding: 0 var(--s-4) var(--s-1);
+  }
+  /* the buttons at the thumb, capsules across the width: two side by side,
+     three or more stacked with the main one on top and Cancel at the
+     bottom (column-reverse keeps Cancel first in the DOM) */
+  .buttons,
+  .large .buttons {
+    gap: var(--s-2h);
+    margin-top: var(--s-5);
+  }
+  .buttons:has(> :nth-child(3)) {
+    flex-direction: column-reverse;
+  }
+  .buttons:has(> :nth-child(3)) > .button {
+    flex: none;
+  }
+  .button,
+  .large .button {
+    flex: 1;
+    min-width: 0;
+    height: var(--control-h-lg);
+    font: var(--t-control);
+    font-weight: 600;
+    border-radius: var(--r-pill);
+  }
+  .button:not(.primary):not(.destructive) {
+    background: var(--fill-2);
+  }
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .button,
+  .large .button {
+    height: auto;
+    min-height: var(--touch-target);
+  }
+}

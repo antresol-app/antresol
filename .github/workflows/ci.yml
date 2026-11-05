@@ -1,0 +1,129 @@
+# Checks of every push to main and every pull request. No secrets. The same
+# file lives in repositories of other owners, where it must not run: every job
+# carries the owner check.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  go:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Debian trixie has ffmpeg 7.1.
+    container: golang:1.27.1-trixie
+    steps:
+      - name: Install ffmpeg and procps
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ffmpeg procps
+          ffmpeg -version | head -1 | grep -E '^ffmpeg version ([^0-9]*)7\.1'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The tests of permission errors cannot fail as root, so they run as a
+      # plain user, as a contributor would run them.
+      - name: Create a plain user
+        run: |
+          useradd -m ci
+          chown -R ci: "$GITHUB_WORKSPACE"
+      - name: go vet
+        run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" go vet ./...
+      - name: go test
+        run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" go test -p 2 ./...
+
+  web:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: go.sum
+      - run: npm ci
+        working-directory: web
+      - run: npm run typecheck
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - name: MPL zone
+        run: node scripts/check-mpl-zone.mjs
+      - name: Core build holds no acquisition code
+        run: scripts/check-library-edition.sh
+
+  # Non-blocking for now: the job's result does not fail the run.
+  e2e:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    container: golang:1.27.1-trixie
+    steps:
+      # zip: the e2e seed packs its test books with it.
+      - name: Install ffmpeg, procps and zip
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ffmpeg procps zip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Build the server
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+          go build -buildvcs=false -o bin/vault ./cmd/vault
+      - name: Install Chromium
+        working-directory: web
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: /opt/playwright
+        run: npx playwright install --with-deps chromium
+      - name: Create a plain user
+        run: |
+          useradd -m ci
+          chown -R ci: "$GITHUB_WORKSPACE"
+      # The iPhone test is WebKit-only and starts WebKit even to skip itself.
+      - name: Chromium e2e
+        working-directory: web
+        run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright test --project=chromium --grep-invert 'iPhone:'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-results
+          path: web/test-results
+          retention-days: 5
+
+  gitleaks:
+    if: github.repository_owner == 'antresol-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      # The tool itself, not its action: the action wants a licence for an org.
+      - name: Scan the history
+        run: go run github.com/zricethezav/gitleaks/v8@v8.21.2 git --no-banner --no-color --redact --exit-code 1 .

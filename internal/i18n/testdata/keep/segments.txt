@@ -1,0 +1,2 @@
+internal/segments/chapters.go  # chapter-title words matched in files (parser data, never shown)
+internal/segments/worker.go: коммент  # audio-track title word matched to skip commentaries (parser data)

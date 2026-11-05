@@ -1,0 +1,47 @@
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-player);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: var(--gutter);
+  background: #000;
+  color: var(--label-2);
+  text-align: center;
+}
+.screen svg {
+  color: var(--orange);
+}
+.screen h1 {
+  font: var(--t-title-2);
+  color: var(--label);
+}
+.screen p {
+  max-width: 42ch;
+}
+.button {
+  height: 44px;
+  margin-top: 10px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--label);
+  color: var(--label-inverse);
+  font: var(--t-headline);
+}
+.spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,165 @@
+.shelf {
+  --cols: 6;
+  --card-w: calc((100cqw - (var(--cols) - 1) * var(--shelf-gap)) / var(--cols));
+  container-type: inline-size;
+  margin-bottom: var(--section-gap);
+}
+@media (max-width: 1099px) {
+  .shelf {
+    --cols: 5;
+  }
+}
+@media (max-width: 899px) {
+  .shelf {
+    --cols: 4;
+  }
+}
+/* Phones: the next card peeks out, so the row reads as scrollable. */
+@media (max-width: 699px) {
+  .shelf {
+    --cols: 2.3;
+  }
+}
+.title {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+  margin-bottom: var(--s-3);
+}
+.row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--card-w);
+  gap: var(--shelf-gap);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+.row::-webkit-scrollbar {
+  display: none;
+}
+.item {
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.open {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  text-align: left;
+  border-radius: var(--r-card);
+}
+.art {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--fill-3);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--d-base) var(--ease-out);
+}
+.square {
+  aspect-ratio: 1;
+}
+.open:hover .art {
+  transform: scale(var(--lift-scale));
+}
+.art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+.art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--label-3);
+  background: linear-gradient(160deg, var(--bg-elevated), var(--bg-raised));
+}
+.spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.name {
+  margin-top: var(--s-2);
+  font: var(--t-subhead);
+  font-weight: 600;
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 2px;
+}
+.saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font: var(--t-caption);
+  color: var(--green);
+}
+.saved svg {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+/* the remove control (an IconButton) turns red under the pointer */
+.remove {
+  margin-right: calc(-1 * var(--s-1h));
+}
+.remove:hover:not(:disabled) {
+  color: var(--destructive);
+}
+.lines {
+  display: flex;
+  flex-direction: column;
+}
+.size {
+  color: var(--label-3);
+}

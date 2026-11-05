@@ -1,0 +1,53 @@
+.ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+}
+
+/* why it can't be asked for, or what went wrong: a footnote under the button */
+.note,
+.error {
+  max-width: 44ch;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.error {
+  color: var(--destructive);
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+}
+
+/* the state of a request, a quiet capsule the height of a small button */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--fill-2);
+  color: var(--label);
+  font: 600 14px / 1.2 var(--font-text);
+}
+.status[data-status='pending'] .pill {
+  color: var(--orange);
+}
+.status[data-status='approved'] .pill {
+  color: var(--success);
+}
+.status[data-status='declined'] .pill {
+  color: var(--label-2);
+}
+
+.reason {
+  max-width: 44ch;
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}

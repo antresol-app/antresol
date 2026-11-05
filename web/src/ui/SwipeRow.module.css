@@ -1,0 +1,65 @@
+/* The row clips what slides: the content moves left, the actions fill the
+   space it leaves at the trailing edge (their width is the drag). */
+.row {
+  position: relative;
+  overflow: hidden;
+  list-style: none;
+}
+.content {
+  position: relative;
+  z-index: 1;
+  /* vertical drags stay the page's; horizontal ones are the swipe */
+  touch-action: pan-y;
+  transition: transform var(--d-base) var(--ease-out);
+}
+.row[data-swiping] .content {
+  transition: none;
+}
+.actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  overflow: hidden;
+  transition: width var(--d-base) var(--ease-out);
+}
+.row[data-swiping] .actions {
+  transition: none;
+}
+.action {
+  flex: 1 0 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  padding: 0 var(--s-1);
+  border: 0;
+  background: var(--action-neutral);
+  color: var(--label-on-tint);
+  font: var(--t-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.action[data-tone='accent'] {
+  background: var(--accent);
+}
+.action[data-tone='destructive'] {
+  background: var(--destructive);
+}
+.action:disabled {
+  opacity: 0.5;
+}
+.action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.actionLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

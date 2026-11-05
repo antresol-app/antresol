@@ -1,0 +1,20 @@
+{
+  "_source": "Swiftfin main, Shared/Objects/MediaPlayerType/MediaPlayerType+MPV.swift (2026-11-02), the default player; abridged to the profiles Vault reads",
+  "MaxStreamingBitrate": 120000000,
+  "DirectPlayProfiles": [
+    {"AudioCodec": "aac,ac3,eac3,flac,mp3,opus,vorbis,dts,truehd,alac,pcm_s16le,pcm_s24le",
+     "VideoCodec": "av1,ffv1,flv1,h263,h264,hevc,mjpeg,mpeg1video,mpeg2video,mpeg4,prores,vc1,vp8,vp9,wmv1,wmv2,wmv3",
+     "Container": "avi,flv,m4v,mkv,mov,mp4,mpegts,ts,3g2,3gp,webm", "Type": "Video"}
+  ],
+  "TranscodingProfiles": [
+    {"Protocol": "hls", "Type": "Video", "AudioCodec": "aac,ac3,eac3,flac,opus", "VideoCodec": "hevc,h264", "Container": "mp4", "MinSegments": 2}
+  ],
+  "SubtitleProfiles": [
+    {"Format": "ass", "Method": "Embed"}, {"Format": "dvdsub", "Method": "Embed"}, {"Format": "mov_text", "Method": "Embed"},
+    {"Format": "pgssub", "Method": "Embed"}, {"Format": "ssa", "Method": "Embed"}, {"Format": "subrip", "Method": "Embed"},
+    {"Format": "vtt", "Method": "Embed"},
+    {"Format": "subrip", "Method": "External"}, {"Format": "ass", "Method": "External"}, {"Format": "ssa", "Method": "External"},
+    {"Format": "vtt", "Method": "External"},
+    {"Format": "dvdsub", "Method": "Encode"}, {"Format": "pgssub", "Method": "Encode"}, {"Format": "vtt", "Method": "Encode"}
+  ]
+}

@@ -1,0 +1,242 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+.discTitle {
+  margin: 0 0 var(--s-2);
+  padding: 0 12px;
+  font: var(--t-headline);
+  color: var(--label-2);
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.rows li + li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 52px;
+  right: 12px;
+  height: 1px;
+  background: var(--separator);
+}
+.songs li + li::before {
+  left: 60px;
+}
+.rows li:hover + li::before,
+.rows li:has(+ li:hover)::before,
+.rows li:hover::before {
+  opacity: 0;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 6px 12px 6px 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--label);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .item:hover {
+    background: var(--fill-4);
+  }
+  .row:hover .no {
+    visibility: hidden;
+  }
+  .row:hover .hoverPlay {
+    opacity: 1;
+  }
+  /* the «Ещё» button shows on hover or keyboard focus */
+  .menu {
+    opacity: 0;
+  }
+  .item:hover .menu,
+  .item:focus-within .menu,
+  .menu:has([aria-expanded='true']) {
+    opacity: 1;
+  }
+}
+.item:has(.row:active) {
+  background: var(--fill-3);
+}
+.menu {
+  flex: none;
+  margin-right: 4px;
+}
+.row:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+.num {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  font: 400 15px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-3);
+}
+.songs .num {
+  width: 56px;
+  justify-items: start;
+  padding-left: 8px;
+}
+.songs .row {
+  min-height: 56px;
+}
+.thumb {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--fill-2);
+  color: var(--label-3);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumbNow {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.thumbNow.hoverPlay {
+  inset: auto;
+}
+.hoverPlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--label);
+  opacity: 0;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.title,
+.artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.title {
+  font: var(--t-callout);
+  letter-spacing: var(--track-text);
+}
+.artist {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.time {
+  flex: none;
+  padding-left: 12px;
+  font: var(--t-subhead);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+}
+
+.current .title {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* «Сейчас играет»: three equaliser bars; still when paused or with reduced motion. */
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.bars span {
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--accent);
+  transform-origin: bottom;
+  animation: bar 0.9s var(--ease-in-out) infinite alternate;
+}
+.bars span:nth-child(1) {
+  animation-delay: -0.5s;
+}
+.bars span:nth-child(2) {
+  animation-delay: -0.15s;
+  animation-duration: 0.7s;
+}
+.bars span:nth-child(3) {
+  animation-delay: -0.35s;
+  animation-duration: 1.1s;
+}
+.paused span {
+  animation-play-state: paused;
+}
+@keyframes bar {
+  from {
+    transform: scaleY(0.25);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars span {
+    animation: none;
+  }
+  .bars span:nth-child(1) {
+    transform: scaleY(0.55);
+  }
+  .bars span:nth-child(3) {
+    transform: scaleY(0.75);
+  }
+}
+
+/* a song of an imported playlist that has not been downloaded yet */
+.pending .row {
+  cursor: default;
+  opacity: 0.55;
+}
+.pending .row:hover {
+  background: none;
+}
+.badge {
+  composes: badge round from '../../ui/Badge.module.css';
+  align-self: flex-start;
+  margin-top: 2px;
+}

@@ -1,0 +1,251 @@
+/* Shared by the first-run and profile screens: centred, calm, lots of air. */
+.screen {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 96px var(--gutter) 72px;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(94, 92, 230, 0.14), rgba(0, 0, 0, 0) 70%),
+    radial-gradient(900px 600px at 50% 120%, rgba(10, 132, 255, 0.08), rgba(0, 0, 0, 0) 70%),
+    var(--bg);
+  overflow: hidden;
+}
+
+.brand {
+  position: absolute;
+  top: calc(28px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.9;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.title {
+  font: var(--t-large-title);
+  font-size: clamp(32px, 1.4rem + 1.8vw, 48px);
+  letter-spacing: var(--track-tight);
+  margin-bottom: clamp(36px, 6vh, 64px);
+}
+.subtitleTitle {
+  margin-top: 20px;
+  font: var(--t-title-1);
+  letter-spacing: var(--track-display);
+}
+.lead {
+  margin-top: 8px;
+  font: var(--t-body);
+  color: var(--label-2);
+  max-width: 34ch;
+  text-wrap: balance;
+}
+
+/* ---- Profile grid ---- */
+.profiles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(24px, 3.4vw, 52px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 980px;
+}
+.profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+.profile:disabled {
+  cursor: default;
+}
+.profile:focus-visible {
+  outline: none;
+}
+.avatarWrap {
+  position: relative;
+  border-radius: 50%;
+  transition:
+    transform var(--d-base) var(--spring),
+    box-shadow var(--d-base) var(--ease-out);
+}
+.avatarWrap > span:first-child {
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+.profileName {
+  font: 500 17px / 1.25 var(--font-text);
+  color: var(--label-2);
+  transition: color var(--d-fast) var(--ease-out);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .profile:hover:not(:disabled) .avatarWrap {
+    transform: scale(1.07);
+    box-shadow: var(--shadow-lift);
+  }
+  .profile:hover:not(:disabled) .profileName {
+    color: var(--label);
+  }
+}
+/* tvOS-style focus: lift + bright ring around the avatar. */
+.profile:focus-visible .avatarWrap {
+  transform: scale(1.07);
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 7px var(--label),
+    var(--shadow-lift);
+}
+.profile:focus-visible .profileName {
+  color: var(--label);
+}
+.profile:active:not(:disabled) .avatarWrap {
+  transform: scale(0.97);
+}
+
+.lock {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 34%;
+  max-width: 44px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: var(--label);
+}
+.avatarBusy {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-right-color: transparent;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.profileSkeleton {
+  border-radius: 50%;
+  background: var(--fill-3);
+}
+
+.problem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--label-2);
+}
+.inlineError {
+  margin-top: 28px;
+  color: #ff6961;
+  font: var(--t-callout);
+}
+
+/* ---- Password ---- */
+.passwordForm {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(360px, 100%);
+  margin-top: 28px;
+}
+.row {
+  display: flex;
+  gap: 12px;
+}
+.row > * {
+  flex: 1 1 0;
+}
+
+/* ---- First run ---- */
+.welcome {
+  width: min(640px, 100%);
+}
+.welcomeMark {
+  margin-bottom: 28px;
+}
+.welcomeTitle {
+  font: var(--t-large-title);
+  font-size: clamp(32px, 1.4rem + 1.6vw, 44px);
+  letter-spacing: var(--track-tight);
+  text-wrap: balance;
+}
+.card {
+  width: min(440px, 100%);
+  margin-top: 36px;
+  padding: 28px;
+  border-radius: var(--r-sheet);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  text-align: left;
+}
+.footnote {
+  margin-top: 20px;
+  font: var(--t-footnote);
+  color: var(--label-2);
+  max-width: 40ch;
+  text-wrap: pretty;
+}
+
+@media (max-width: 699px) {
+  .screen {
+    padding-top: 88px;
+    align-items: start;
+  }
+  .stack {
+    padding-top: 6vh;
+  }
+  .card {
+    padding: 20px;
+  }
+}
+
+/* A short window (a phone on its side): no room to centre, it scrolls from
+   the top; the brand goes, the gaps tighten, so the form and its buttons fit
+   the first screen */
+@media (max-height: 500px) {
+  .screen {
+    place-items: start center;
+    padding: max(var(--s-4), env(safe-area-inset-top)) var(--gutter) max(var(--s-4), env(safe-area-inset-bottom));
+  }
+  .brand {
+    display: none;
+  }
+  .stack {
+    padding-top: 0;
+  }
+  .title {
+    margin-bottom: var(--s-5);
+  }
+  .subtitleTitle {
+    margin-top: var(--s-2);
+  }
+  .lead {
+    margin-top: var(--s-1);
+  }
+  .passwordForm {
+    gap: var(--s-3);
+    margin-top: var(--s-4);
+  }
+}

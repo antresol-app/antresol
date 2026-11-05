@@ -1,0 +1,53 @@
+/* The preview of an import. Building blocks from Manage.module.css. */
+.preview {
+  display: flex;
+  flex-direction: column;
+}
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-4);
+  padding: 0;
+  list-style: none;
+}
+.counts li {
+  padding: var(--s-2) var(--s-3h);
+  border-radius: var(--r-pill);
+  background: var(--fill-3);
+  font: var(--t-group);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+.disk {
+  padding: var(--s-3h) var(--s-4);
+  border-radius: 16px;
+}
+.tight {
+  margin-top: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--warning);
+}
+.checkbox {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.unreadable label,
+.unreadable .checkbox {
+  opacity: 0.55;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2h) var(--s-3);
+  margin-top: var(--s-6);
+}
+.hint {
+  flex: 1 1 220px;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}

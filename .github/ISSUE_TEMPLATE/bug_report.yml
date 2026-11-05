@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in the server or the web interface does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Security problems go to SECURITY.md, not here.
+        Problems with the iPhone, iPad or Mac app are welcome too: say so below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      description: The "version" field of http://<server>:8420/api/health, or the release tag.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How the server runs
+      options:
+        - Docker image
+        - Release binary
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client
+      description: Browser and version, or the app and device (e.g. Firefox 140 on Windows, the iPhone app on iOS 26).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log
+      description: The lines around the problem (docker logs antresol). Remove anything private first.
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, the kind of media file (codec, container), how often it happens.

@@ -1,0 +1,64 @@
+
+.line {
+  display: block;
+}
+.line + .line {
+  margin-top: 4px;
+}
+
+.scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+}
+.legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font: 600 12px / 1.3 var(--font-text);
+  color: var(--label-2);
+}
+.scope {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font: 400 13px / 1.3 var(--font-text);
+  cursor: pointer;
+}
+.scope:has(input:checked) {
+  background: var(--fill-2);
+}
+.scope input {
+  margin: 0;
+  accent-color: var(--red);
+}
+.scopeLabel {
+  color: var(--label);
+}
+.scopeDetail {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.notes {
+  width: 100%;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font: 400 12px / 1.4 var(--font-text);
+  color: var(--orange);
+}
+.problem {
+  margin-top: 12px;
+  font: 400 12px / 1.4 var(--font-text);
+  color: var(--red);
+}

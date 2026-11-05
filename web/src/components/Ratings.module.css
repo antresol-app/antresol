@@ -1,0 +1,12 @@
+/* A rating chip: the page's badge with a short source name before the
+   score («IMDb 7,4», «RT 92%»), the name heavier, the score lighter. */
+.chip {
+  gap: var(--s-1);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+.source {
+  font-weight: 800;
+  letter-spacing: 0;
+  color: var(--label);
+}

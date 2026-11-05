@@ -1,0 +1,252 @@
+.table {
+  --cols: minmax(220px, 1fr) 190px 92px 150px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 0 10px 10px;
+  font: 400 13px / 1 var(--font-text);
+  letter-spacing: 0;
+}
+.table:focus-visible {
+  outline: none;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--cols);
+  height: 28px;
+  margin: 0 -10px 2px;
+  padding: 0 10px;
+  background: rgba(28, 28, 31, 0.9);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--separator);
+}
+.hcell {
+  display: flex;
+  min-width: 0;
+}
+.hcell + .hcell {
+  border-left: 1px solid var(--separator);
+  margin: 6px 0;
+}
+.hbutton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--label-2);
+  font: 500 12px / 1 var(--font-text);
+  text-align: left;
+  cursor: default;
+}
+.hcell:first-child .hbutton {
+  padding-left: 34px;
+}
+.hbutton:hover {
+  color: var(--label);
+}
+.hon {
+  color: var(--label);
+  font-weight: 600;
+}
+.arrow {
+  display: grid;
+  width: 12px;
+  color: var(--label-2);
+}
+
+.row {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 28px;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: 28px;
+  border-radius: 6px;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.odd {
+  background: rgba(255, 255, 255, 0.035);
+}
+.selected {
+  background: #0a63d8;
+  color: #fff;
+}
+.selected .dim {
+  color: rgba(255, 255, 255, 0.85);
+}
+.selectedInactive {
+  background: rgba(255, 255, 255, 0.15);
+}
+.row[data-lead]:not(.selected):not(.selectedInactive) {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.cell {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.colName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.colSize {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.colDate {
+  font-variant-numeric: tabular-nums;
+}
+.colKind {
+  text-align: left;
+}
+.dim {
+  color: var(--label-2);
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.where {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--label-3);
+  font-size: 12px;
+}
+.selected .where {
+  color: rgba(255, 255, 255, 0.7);
+}
+.disclosureBox {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 20px;
+}
+.disclosure {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 20px;
+  color: var(--label-2);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.selected .disclosure {
+  color: #fff;
+}
+.open {
+  transform: rotate(90deg);
+}
+.spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--label-3);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.filler {
+  flex: 1;
+  min-height: 40px;
+}
+
+/* ---------- Phone (iOS «Файлы») ---------- */
+.phone {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -4px;
+}
+.phone:focus-visible {
+  outline: none;
+}
+.prow {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 64px;
+  display: grid;
+  grid-template-columns: 52px 1fr 44px;
+  align-items: center;
+  min-height: 64px;
+  padding: 0 0 0 4px;
+  border-radius: 12px;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.prow:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+.pselected {
+  background: rgba(255, 255, 255, 0.1);
+}
+.pthumb {
+  display: grid;
+  place-items: center;
+}
+.ptext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 0 10px 8px;
+  border-bottom: 0.5px solid var(--separator);
+  align-self: stretch;
+  justify-content: center;
+}
+.prow:last-child .ptext {
+  border-bottom: 0;
+}
+.pname {
+  font: 400 16px / 1.25 var(--font-text);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.psub {
+  font: 400 13px / 1.3 var(--font-text);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.pmore {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  border-bottom: 0.5px solid var(--separator);
+}
+.prow:last-child .pmore {
+  border-bottom: 0;
+}
+.moreButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+}

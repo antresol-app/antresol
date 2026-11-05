@@ -1,0 +1,78 @@
+.columns {
+  display: flex;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font: 400 13px / 1 var(--font-text);
+  letter-spacing: 0;
+}
+.columns:focus-visible {
+  outline: none;
+}
+.column {
+  flex: none;
+  width: 250px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 6px;
+  border-right: 1px solid var(--separator);
+}
+.cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  border-radius: 6px;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chevron {
+  flex: none;
+  color: var(--label-3);
+}
+.selected {
+  background: #0a63d8;
+  color: #fff;
+}
+.selected .chevron {
+  color: #fff;
+}
+/* The folder on the way to the active column. */
+.path {
+  background: rgba(255, 255, 255, 0.15);
+}
+.empty {
+  padding: 18px 8px;
+  text-align: center;
+  color: var(--label-3);
+}
+.loading {
+  width: 14px;
+  height: 14px;
+  margin: 18px auto;
+  border: 1.5px solid var(--label-3);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.preview {
+  /* The preview takes the rest of the window (no empty column after it). */
+  flex: 1 0 360px;
+  max-width: 560px;
+  height: 100%;
+  overflow-y: auto;
+}

@@ -1,0 +1,77 @@
+/* The list's reset has no specificity: a page's own margin for the row
+   (the title hero's) must win whichever stylesheet loads last. */
+:where(.badges) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-1h);
+}
+/* The one badge of the app: card facts, the title hero («16+», «IMDb
+   6,7»), release tags, a menu item's capsule, a row's «Стрим». Others take
+   it with `composes`. The line box is exactly the height inside the border,
+   so the line itself centres the text: fractional heights put latin caps,
+   digits and Cyrillic a pixel low or high depending on rounding. */
+.badge {
+  /* holds BadgeLabel's visually-hidden word: in a scroller (a rail of
+     cards) it must not take an ancestor outside the scroller as its block */
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--fill-4);
+  color: var(--label-2);
+  font: 600 11px / 18px var(--font-text);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+/* Variants live here, after .badge: a chunk that bundles this file again
+   must not undo another module's override of it. */
+/* over artwork (the title hero): an outline, no fill */
+.outline {
+  border-color: var(--label-2);
+  background: none;
+  color: var(--label);
+}
+/* the fact that matters most in a row (a release's language) */
+.strong {
+  border-color: transparent;
+  background: var(--fill-2);
+  color: var(--label);
+}
+/* a status rather than a fact (a track on its way) */
+.round {
+  border-radius: var(--r-pill);
+}
+/* a fact that does not match what was asked for */
+.warning {
+  border-color: var(--warning);
+  background: none;
+  color: var(--warning);
+}
+/* tinted statuses */
+.accent {
+  border-color: transparent;
+  background: var(--accent-fill);
+  color: var(--accent);
+}
+.success {
+  border-color: transparent;
+  background: var(--success-fill);
+  color: var(--success);
+}
+.destructive {
+  border-color: transparent;
+  background: var(--destructive-fill);
+  color: var(--destructive-text);
+}
+.icon {
+  flex: none;
+  margin-right: var(--s-1);
+}

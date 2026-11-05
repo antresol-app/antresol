@@ -1,0 +1,43 @@
+/* 44 pt tall touch target around a small pill. */
+.trigger {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+}
+.pill {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 26px;
+  white-space: nowrap;
+  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+.trigger:hover .pill,
+.trigger[aria-expanded='true'] .pill {
+  background: rgba(255, 255, 255, 0.14);
+}
+.trigger:active .pill {
+  transform: scale(0.96);
+}
+.menu {
+  min-width: 260px;
+}
+@media (max-width: 599px) {
+  .menu {
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill {
+    transition: none;
+  }
+}
