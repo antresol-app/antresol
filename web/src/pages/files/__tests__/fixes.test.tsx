@@ -243,6 +243,8 @@ describe('a folder with 5000 items', () => {
     const per = (performance.now() - t0) / 10
     console.info(`5000 rows: ${per.toFixed(1)} ms per arrow key`)
     expect(screen.getByRole('row', { name: 'Файл 0011.mkv' })).toHaveAttribute('aria-selected', 'true')
-    expect(per).toBeLessThan(50)
+    // Shared CI runners are slower and noisier than a desktop: this guards against
+    // losing the memoised rows (hundreds of ms per key), not against a few ms.
+    expect(per).toBeLessThan(process.env.CI ? 200 : 50)
   }, 30_000)
 })
