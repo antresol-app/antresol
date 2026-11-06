@@ -1,7 +1,7 @@
 .meter {
   padding: 18px 18px var(--s-4);
   margin-bottom: var(--s-2);
-  border-radius: 16px;
+  border-radius: var(--r-group);
   background: var(--glass-fill);
   border: 1px solid var(--glass-border);
 }
@@ -21,7 +21,7 @@
   place-items: center;
   width: 34px;
   aspect-ratio: 2 / 3;
-  border-radius: 5px;
+  border-radius: var(--r-xs);
   overflow: hidden;
   background: var(--fill-3);
   color: var(--label-3);

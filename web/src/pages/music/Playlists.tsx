@@ -2,7 +2,7 @@
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { ApiError, createPlaylist, getPlaylists } from '../../api/client'
+import { createPlaylist, getPlaylists, errorText } from '../../api/client'
 import type { Playlist } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
@@ -32,7 +32,7 @@ export function Playlists() {
     getPlaylists(ac.signal)
       .then((items) => setState({ status: 'ready', items }))
       .catch((e: unknown) => {
-        if (!ac.signal.aborted) setState({ status: 'error', message: e instanceof ApiError ? e.message : t('music.playlists.loadFailed') })
+        if (!ac.signal.aborted) setState({ status: 'error', message: errorText(e, t('music.playlists.loadFailed')) })
       })
   }, [])
 
@@ -53,7 +53,7 @@ export function Playlists() {
       .then((p) => navigate(`/music/playlist/${p.id}`))
       .catch((e: unknown) => {
         setBusy(false)
-        setError(e instanceof ApiError ? e.message : t('music.createPlaylistFailed'))
+        setError(errorText(e, t('music.createPlaylistFailed')))
       })
   }
   const closeSheet = () => {

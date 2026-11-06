@@ -1,8 +1,8 @@
 // The play queue in «Сейчас играет»: the current track, then «Далее» with
 // «Убрать» and «Выше»/«Ниже» buttons (keyboard-friendly reordering; focus
 // follows the moved track).
-import { useLayoutEffect, useRef, useState } from 'react'
-import { imageUrl } from '../api/client'
+import { Artwork } from '../ui/Artwork'
+import { useLayoutEffect, useRef } from 'react'
 import { Icon } from '../components/Icon'
 import { audio, type QueueItem } from './audio/engine'
 import { useAudio } from './audio/useAudio'
@@ -10,11 +10,9 @@ import styles from './QueueList.module.css'
 import { useT } from '../i18n'
 
 function Cover({ src }: { src: string }) {
-  const url = imageUrl(src, 160)
-  const [failed, setFailed] = useState(false)
   return (
     <span className={styles.cover}>
-      {url && !failed ? <img src={url} alt="" draggable={false} onError={() => setFailed(true)} /> : <Icon name="music" size={18} />}
+      <Artwork src={src} width={44} fallback={<Icon name="music" size={18} />} />
     </span>
   )
 }

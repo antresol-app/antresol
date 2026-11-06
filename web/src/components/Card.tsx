@@ -165,19 +165,19 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
         {pending ? (
           <PendingOverlay pending={pending} corner={!own} />
         ) : !__LIBRARY_EDITION__ && card.online ? (
-          <span className={`${styles.chip} glass`}>{t('comp.card.online')}</span>
+          <span className={styles.chip}>{t('comp.card.online')}</span>
         ) : (
           (!card.onServer || card.watched) && (
             // the corner's badges side by side
             <span className={styles.corner} data-testid="card-corner">
               {!card.onServer && (
-                <span className={`${styles.badge} glass`} title={t('comp.card.notOnServer')}>
+                <span className={styles.badge} title={t('comp.card.notOnServer')}>
                   <Icon name="cloud" size={14} strokeWidth={2} />
                 </span>
               )}
               {card.watched && (
                 // part of the link's name («Матрица Просмотрено 1999»)
-                <span className={`${styles.badge} glass`} role="img" aria-label={t('comp.card.watched')} title={t('comp.card.watched')}>
+                <span className={styles.badge} role="img" aria-label={t('comp.card.watched')} title={t('comp.card.watched')}>
                   <Icon name="check" size={14} strokeWidth={2.6} />
                 </span>
               )}

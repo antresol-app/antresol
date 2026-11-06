@@ -44,13 +44,7 @@
 .pill:active {
   transform: scale(0.97);
 }
-/* «Следующая серия»: glass that fills with white as the countdown runs */
-.primary {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-fill-strong);
-  -webkit-backdrop-filter: blur(30px);
-  backdrop-filter: blur(30px);
-}
+/* «Следующая серия»: strong glass (.glass-strong) that fills with white as the countdown runs */
 .fill {
   position: absolute;
   inset: 0;

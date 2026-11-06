@@ -6,7 +6,9 @@ import { cleanup } from '@testing-library/react'
 // Set before the i18n store loads (it reads navigator.languages once and on
 // 'languagechange').
 Object.defineProperty(window.navigator, 'languages', { configurable: true, get: () => ['ru-RU', 'ru'] })
-const { setLanguagePref, getLanguagePref } = await import('../i18n')
+const { setLanguagePref, getLanguagePref, loadCatalog } = await import('../i18n')
+// both catalogs in at once: a switch in a test is synchronous
+await Promise.all([loadCatalog('ru'), loadCatalog('en')])
 
 afterEach(() => {
   cleanup()

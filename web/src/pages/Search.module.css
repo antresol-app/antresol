@@ -24,71 +24,6 @@
   width: 100%;
   max-width: var(--column-narrow);
 }
-.fieldIcon {
-  position: absolute;
-  left: var(--s-3h);
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--label-3);
-  pointer-events: none;
-  transition: color var(--d-fast) var(--ease-out);
-}
-.field:focus-within .fieldIcon {
-  color: var(--label-2);
-}
-.input {
-  width: 100%;
-  height: var(--control-h-field);
-  /* the glass and the clear button sit inside the field's own padding */
-  padding: 0 calc(var(--s-3) * 2 + var(--icon-md)) 0 calc(var(--s-3h) + var(--icon-md) + var(--s-2));
-  border: 0;
-  border-radius: var(--r-control);
-  background: var(--fill-3);
-  color: var(--label);
-  font: var(--t-body);
-  caret-color: var(--accent);
-  -webkit-appearance: none;
-  appearance: none;
-  transition:
-    background-color var(--d-fast) var(--ease-out),
-    box-shadow var(--d-fast) var(--ease-out);
-}
-.input::-webkit-search-cancel-button {
-  display: none;
-}
-.input::placeholder {
-  color: var(--label-3);
-}
-.input:hover {
-  background: var(--fill-2);
-}
-/* Apple's search field: it only gets a little lighter, with a hairline — no ring. */
-.input:focus,
-.input:focus-visible {
-  outline: none;
-  background: var(--fill-2);
-  box-shadow: inset 0 0 0 1px var(--hairline);
-}
-.clear {
-  position: absolute;
-  right: var(--s-3);
-  top: 50%;
-  display: grid;
-  place-items: center;
-  width: var(--icon-md);
-  height: var(--icon-md);
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--label-3);
-  color: var(--bg);
-  transform: translateY(-50%);
-}
-.clear::before {
-  content: '';
-  position: absolute;
-  inset: calc(-1 * var(--s-3));
-}
 /* the one filter: under the field, centred; on a phone it scrolls out to
    the screen's edges (the gutter) */
 .scope {
@@ -202,14 +137,14 @@
   object-fit: cover;
   border-radius: var(--r-md);
   transform: rotate(12deg);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px var(--scrim);
 }
 .tileTitle {
   display: block;
   max-width: 70%;
   font: var(--t-headline);
   font-weight: 700;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+  text-shadow: var(--text-shadow-art);
 }
 .tileIcon {
   position: absolute;

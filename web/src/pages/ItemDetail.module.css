@@ -65,7 +65,7 @@
   font: 600 13px / 1.2 var(--font-text);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(235, 235, 245, 0.72);
+  color: var(--label-on-glass);
 }
 .eyebrowLink {
   display: inline-flex;
@@ -80,7 +80,7 @@
   font: var(--t-hero);
   letter-spacing: var(--track-tight);
   text-wrap: balance;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+  text-shadow: var(--text-shadow-title-art);
 }
 .logoTitle {
   margin: 0;
@@ -92,12 +92,12 @@
   max-height: clamp(90px, 16vh, 170px);
   object-fit: contain;
   object-position: left bottom;
-  filter: drop-shadow(0 2px 18px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 2px 18px var(--scrim-art));
   transition: opacity var(--d-base) var(--ease-out);
 }
 /* black type made for light posters: white on the dark artwork */
 .logo[data-dark] {
-  filter: brightness(0) invert(1) drop-shadow(0 2px 18px rgba(0, 0, 0, 0.35));
+  filter: brightness(0) invert(1) drop-shadow(0 2px 18px var(--scrim-art));
 }
 .logo:not([data-ready]) {
   opacity: 0;
@@ -110,7 +110,7 @@
   gap: var(--s-1h) 0;
   margin-top: var(--s-4);
   font: 500 15px / 1.3 var(--font-text);
-  color: rgba(235, 235, 245, 0.82);
+  color: var(--label-on-glass);
 }
 .sep {
   margin: 0 var(--s-2);
@@ -132,8 +132,8 @@
   margin: 0;
   max-width: 60ch;
   font: var(--t-callout);
-  color: rgba(235, 235, 245, 0.86);
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
+  color: var(--label-on-glass);
+  text-shadow: var(--text-shadow-art);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -143,17 +143,12 @@
   -webkit-line-clamp: unset;
   display: block;
 }
-.more {
+/* ui/Button (link), in the label's colour over the artwork */
+.more.more {
+  display: block;
   margin-top: var(--s-1);
-  padding: var(--s-0) 0;
-  border: 0;
-  background: none;
   color: var(--label);
   font: var(--t-group);
-  border-radius: var(--r-xs);
-}
-.more:hover {
-  text-decoration: underline;
 }
 .meta + :global(div) {
   margin-top: 26px;
@@ -207,9 +202,9 @@
 .initials {
   display: grid;
   place-items: center;
-  background: linear-gradient(160deg, #3a3a40, #1f1f24);
+  background: var(--art-fallback);
   font: 600 30px / 1 var(--font-rounded);
-  color: rgba(235, 235, 245, 0.75);
+  color: var(--label-on-glass);
 }
 .personName {
   margin-top: var(--s-2h);
@@ -367,7 +362,7 @@
     height: var(--hero-phone-h);
     min-height: var(--hero-phone-min);
     z-index: 0;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.75) 82%, var(--bg) 100%);
+    background: linear-gradient(180deg, var(--scrim-art) 0%, transparent 22%, transparent 45%, var(--scrim-art-heavy) 82%, var(--bg) 100%);
   }
   .copy {
     position: relative;

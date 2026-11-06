@@ -673,12 +673,12 @@ export function VideoPlayer({
 
       {/* waiting for a tap to start: «Смотреть» below is the only control, not a second play button */}
       <div className={styles.center} hidden={p.needsTap && !p.error}>
-        <button type="button" className={styles.skip} onClick={() => skipBy(-SKIP)} aria-label={t('player.video.back10')} title={t('player.video.back10Hint')}>
+        <button type="button" className={`${styles.skip} glass-clear`} onClick={() => skipBy(-SKIP)} aria-label={t('player.video.back10')} title={t('player.video.back10Hint')}>
           <Icon name="back10" size={36} strokeWidth={1.9} />
         </button>
         <button
           type="button"
-          className={styles.bigPlay}
+          className={`${styles.bigPlay} glass-clear`}
           onClick={p.toggle}
           aria-label={p.playing ? t('common.pause') : t('common.watch')}
           title={p.playing ? t('player.video.pauseHint') : t('player.video.playHint')}
@@ -690,7 +690,7 @@ export function VideoPlayer({
             <Icon name={p.playing ? 'pause' : 'play'} size={44} />
           )}
         </button>
-        <button type="button" className={styles.skip} onClick={() => skipBy(SKIP)} aria-label={t('player.video.forward10')} title={t('player.video.forward10Hint')}>
+        <button type="button" className={`${styles.skip} glass-clear`} onClick={() => skipBy(SKIP)} aria-label={t('player.video.forward10')} title={t('player.video.forward10Hint')}>
           <Icon name="forward10" size={36} strokeWidth={1.9} />
         </button>
       </div>

@@ -32,15 +32,15 @@
   font: var(--t-large-title);
   font-size: clamp(32px, 1.4rem + 1.8vw, 48px);
   letter-spacing: var(--track-tight);
-  margin-bottom: clamp(36px, 6vh, 64px);
+  margin-bottom: clamp(36px, 6vh, var(--s-16));
 }
 .subtitleTitle {
-  margin-top: 20px;
+  margin-top: var(--s-5);
   font: var(--t-title-1);
   letter-spacing: var(--track-display);
 }
 .lead {
-  margin-top: 8px;
+  margin-top: var(--s-2);
   font: var(--t-body);
   color: var(--label-2);
   max-width: 34ch;
@@ -62,10 +62,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 8px;
+  gap: var(--s-4);
+  padding: var(--s-2);
   border: 0;
-  border-radius: 24px;
+  border-radius: var(--r-sheet);
   background: transparent;
   -webkit-tap-highlight-color: transparent;
 }
@@ -128,13 +128,14 @@
   max-width: 44px;
   aspect-ratio: 1;
   border-radius: 50%;
-  color: var(--label);
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
 }
 .avatarBusy {
   position: absolute;
   inset: -6px;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.85);
+  border: 3px solid var(--label-over-art-2);
   border-right-color: transparent;
   animation: spin 0.9s linear infinite;
 }
@@ -152,12 +153,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: var(--s-4);
   color: var(--label-2);
 }
 .inlineError {
   margin-top: 28px;
-  color: #ff6961;
+  color: var(--destructive-text);
   font: var(--t-callout);
 }
 
@@ -165,13 +166,13 @@
 .passwordForm {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--s-5);
   width: min(360px, 100%);
   margin-top: 28px;
 }
 .row {
   display: flex;
-  gap: 12px;
+  gap: var(--s-3);
 }
 .row > * {
   flex: 1 1 0;
@@ -197,11 +198,11 @@
   border-radius: var(--r-sheet);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--s-5);
   text-align: left;
 }
 .footnote {
-  margin-top: 20px;
+  margin-top: var(--s-5);
   font: var(--t-footnote);
   color: var(--label-2);
   max-width: 40ch;
@@ -217,7 +218,7 @@
     padding-top: 6vh;
   }
   .card {
-    padding: 20px;
+    padding: var(--s-5);
   }
 }
 
@@ -247,5 +248,33 @@
   .passwordForm {
     gap: var(--s-3);
     margin-top: var(--s-4);
+  }
+}
+
+/* a profile of the row rises in after the one before (ProfilePicker) */
+.profileItem {
+  --enter-distance: 10px;
+}
+/* a wrong password shakes the form, as macOS does */
+.shake {
+  animation: shake 420ms var(--ease-out);
+}
+@keyframes shake {
+  20% {
+    transform: translateX(-10px);
+  }
+  40% {
+    transform: translateX(9px);
+  }
+  60% {
+    transform: translateX(-6px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shake {
+    animation: none;
   }
 }

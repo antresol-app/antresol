@@ -5,7 +5,7 @@
 import { APP_NAME } from '../brand'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
-import { ApiError, getCollection, imageUrl } from '../api/client'
+import { ApiError, getCollection, imageUrl, errorText } from '../api/client'
 import type { CollectionRow } from '../api/types'
 import { ButtonLink, Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
@@ -30,7 +30,7 @@ export function Collection() {
       .catch((e: unknown) => {
         if (ac.signal.aborted) return
         const notFound = e instanceof ApiError && (e.status === 404 || e.status === 400)
-        setState({ status: 'error', notFound, message: e instanceof ApiError ? e.message : tr('common.loadFailed') })
+        setState({ status: 'error', notFound, message: errorText(e, tr('common.loadFailed')) })
       })
     return () => ac.abort()
   }, [id, attempt])

@@ -6,8 +6,7 @@
 // anyway); the picker is in the profile menu and on the section pages.
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
-import { ApiError, getHome, useEvents } from '../api/client'
+import { getHome, useEvents, errorText } from '../api/client'
 import type { CardKind, Home as HomeData, Shelf as ShelfData } from '../api/types'
 import { isSquareKind } from '../components/Card'
 import { ButtonLink, Button } from '../ui/Button'
@@ -21,7 +20,6 @@ import { answerSlot, forgetAnswer, lastAnswer, rememberAnswer } from '../state/l
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingCards, withPending } from '../state/pendingCards'
 import { useSession } from '../state/session'
-import { useReducedMotion } from '../state/useMediaQuery'
 import styles from './Home.module.css'
 import { t as tr, useT } from '../i18n'
 
@@ -64,7 +62,6 @@ function shelfVariant(s: ShelfData) {
 export function Home() {
   const t = useT()
   const { user } = useSession()
-  const reduce = useReducedMotion()
   const { scope } = useLibraryScope()
   // back to the tab: its last answer at once, then a quiet refresh (state/lastAnswer)
   const answerKey = `home ${scope}`
@@ -94,7 +91,7 @@ export function Home() {
         // A background refresh never replaces content fetched in this visit.
         if (quiet && !kept) return
         if (kept) forgetAnswer(`home ${scope}`)
-        setState({ status: 'error', message: e instanceof ApiError ? e.message : tr('browse.home.loadFailed') })
+        setState({ status: 'error', message: errorText(e, tr('browse.home.loadFailed')) })
       })
   }, [scope])
 
@@ -157,16 +154,12 @@ export function Home() {
   }
 
   return (
-    <motion.div
-      className={styles.home}
-      // a revisit draws the kept shelves as they were: no fade-in
-      initial={revisit ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: reduce ? 0 : 0.4 }}
-    >
+    <div className={styles.home}>
       <h1 className="visually-hidden">{t('common.home')}</h1>
       {hero.length > 0 ? <Hero items={hero} /> : <div className={styles.navSpacer} />}
-      <div className={[styles.shelves, hero.length > 0 ? styles.overlap : ''].join(' ')}>
+      {/* the shelves fade in under the hero (the hero's picture is the page's
+          first paint: never held back); a revisit draws them as they were */}
+      <div className={[styles.shelves, hero.length > 0 ? styles.overlap : '', revisit ? '' : 'enter-fade'].join(' ')}>
         <ScreenTimeChip />
         {filled.map((s, i) => (
           <Shelf
@@ -179,7 +172,7 @@ export function Home() {
           />
         ))}
       </div>
-    </motion.div>
+    </div>
   )
 }
 

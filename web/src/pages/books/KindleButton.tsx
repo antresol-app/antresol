@@ -2,7 +2,7 @@
 // white and says so, then settles on «На Kindle»; pressed again, it asks before
 // sending the same book twice. A failure goes to the page's error line.
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, sendToKindle } from '../../api/client'
+import { sendToKindle, errorText } from '../../api/client'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { MenuItem, Menu } from '../../ui/Menu'
@@ -34,7 +34,7 @@ export function KindleButton({ bookId, sent, compact, onError }: { bookId: numbe
         window.clearTimeout(timer.current)
         timer.current = window.setTimeout(() => setJustSent(false), SENT_MS)
       })
-      .catch((e: unknown) => onError(e instanceof ApiError ? e.message : t('books.book.kindleFailed')))
+      .catch((e: unknown) => onError(errorText(e, t('books.book.kindleFailed'))))
       .finally(() => setSending(false))
   }
 

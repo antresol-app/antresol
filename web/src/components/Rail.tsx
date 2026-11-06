@@ -4,7 +4,8 @@
 // scroll. The caller lays out the cells and says where the chevrons sit
 // vertically (--rail-pager-top: the middle of the artwork, not of the text).
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Icon } from './Icon'
+import { IconButton } from '../ui/IconButton'
+import { useT } from '../i18n'
 import styles from './Rail.module.css'
 
 export interface RailProps {
@@ -24,6 +25,7 @@ export interface RailProps {
 export const PAGE = 0.85
 
 export function Rail({ label, labelledBy, children, listClassName, className, listRef }: RailProps) {
+  const t = useT()
   const own = useRef<HTMLUListElement>(null)
   const ref = listRef ?? own
   const [edges, setEdges] = useState({ start: true, end: true })
@@ -60,28 +62,28 @@ export function Rail({ label, labelledBy, children, listClassName, className, li
       </ul>
       {/* pointer only: the keyboard and screen readers go through the cells,
           which scroll themselves into view — the chevrons stay out of their way */}
-      <button
-        type="button"
-        className={`${styles.pager} ${styles.prev} glass`}
+      <IconButton
+        icon="chevronLeft"
+        label={t('common.back')}
+        material="glass"
+        className={`${styles.pager} ${styles.prev}`}
         data-dir="prev"
         aria-hidden="true"
         tabIndex={-1}
         hidden={edges.start}
         onClick={() => page(-1)}
-      >
-        <Icon name="chevronLeft" size={22} strokeWidth={2.4} />
-      </button>
-      <button
-        type="button"
-        className={`${styles.pager} ${styles.next} glass`}
+      />
+      <IconButton
+        icon="chevronRight"
+        label={t('common.forward')}
+        material="glass"
+        className={`${styles.pager} ${styles.next}`}
         data-dir="next"
         aria-hidden="true"
         tabIndex={-1}
         hidden={edges.end}
         onClick={() => page(1)}
-      >
-        <Icon name="chevronRight" size={22} strokeWidth={2.4} />
-      </button>
+      />
     </div>
   )
 }

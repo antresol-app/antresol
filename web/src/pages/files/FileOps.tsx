@@ -3,7 +3,7 @@
 // (needsConfirm + warnings); the second sheet says what will stop and only
 // then repeats the request with confirm.
 import { useRef, useState } from 'react'
-import { ApiError } from '../../api/client'
+import { errorText } from '../../api/client'
 import { mkdir, moveFile, needsConfirm, renameFile, restoreTrash, trashFiles } from '../../api/files'
 import type { FileEntry, FileRoot } from '../../api/types'
 import { joinPath, objects, parentPath } from './model'
@@ -45,7 +45,7 @@ export interface FileOpsProps {
 }
 
 const what = (es: FileEntry[]) => (es.length === 1 ? t('files.quoted', { name: es[0]!.name }) : objects(es.length))
-const errText = (e: unknown) => (e instanceof ApiError ? e.message : t('files.op.failed'))
+const errText = (e: unknown) => (errorText(e, t('files.op.failed')))
 
 function uniqueName(base: string, names: string[]) {
   const taken = new Set(names.map((n) => n.toLowerCase()))

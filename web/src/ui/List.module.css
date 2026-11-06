@@ -1,4 +1,4 @@
-/* The System Settings list: a section's name, a rounded glass group of rows
+/* The System Settings list: a section's name, a rounded solid group of rows
    with hairlines between them, a footnote under it. The one implementation:
    GroupedSection / ListRow render it, and pages that build rows by hand
    (Manage.module.css) compose these classes. */
@@ -22,8 +22,8 @@
   padding: 0;
   list-style: none;
   border-radius: var(--r-group);
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-grouped);
+  border: var(--hairline-w) solid var(--surface-grouped-border);
   /* menus open in a portal, so nothing needs to hang out of a group */
   overflow: hidden;
 }

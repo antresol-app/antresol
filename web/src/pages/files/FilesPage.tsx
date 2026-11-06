@@ -1,10 +1,12 @@
 // «Файлы»: a Finder / iCloud Drive–style browser of the media disk. The URL
 // is the location (/files/<root>/<path…>, /files/trash); the page keeps the
 // selection, the view and the sheets, and handles the keyboard like Finder.
+import { Button, ButtonLink } from '../../ui/Button'
+import { IconButton } from '../../ui/IconButton'
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
-import { ApiError, useEvents } from '../../api/client'
+import { useEvents, errorText } from '../../api/client'
 import { downloadFileUrl, getRoots, type FileSort, type SortOrder } from '../../api/files'
 import type { FileEntry, FileRoot } from '../../api/types'
 import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
@@ -74,7 +76,7 @@ function useRoots() {
     setState({})
     getRoots().then(
       (roots) => setState({ roots }),
-      (e: unknown) => setState({ error: e instanceof ApiError ? e.message : t('files.rootsFailed') }),
+      (e: unknown) => setState({ error: errorText(e, t('files.rootsFailed')) }),
     )
   }, [])
   useEffect(load, [load])
@@ -574,9 +576,9 @@ export function FilesPage() {
     body = (
       <div className={styles.empty} role="alert">
         <p className={styles.emptyTitle}>{rootsError}</p>
-        <button type="button" className={styles.retry} onClick={reloadRoots}>
+        <Button variant="secondary" size="small" className={styles.retry} onClick={reloadRoots}>
           {tr('common.retry')}
-        </button>
+        </Button>
       </div>
     )
   } else if (notFound) {
@@ -586,9 +588,9 @@ export function FilesPage() {
         <p className={styles.emptyTitle}>{tr('files.folderNotFound')}</p>
         <p>{tr('files.folderNotFoundHint')}</p>
         {root && rootInfo && (
-          <Link className={styles.retry} to={folderHref(root, '')}>
+          <ButtonLink variant="secondary" size="small" className={styles.retry} to={folderHref(root, '')}>
             {tr('files.openRoot', { title: rootInfo.title })}
-          </Link>
+          </ButtonLink>
         )}
       </div>
     )
@@ -596,9 +598,9 @@ export function FilesPage() {
     body = (
       <div className={styles.empty} role="alert">
         <p className={styles.emptyTitle}>{dir.error}</p>
-        <button type="button" className={styles.retry} onClick={changed}>
+        <Button variant="secondary" size="small" className={styles.retry} onClick={changed}>
           {tr('common.retry')}
-        </button>
+        </Button>
       </div>
     )
   } else if (!dir.data) {
@@ -683,9 +685,10 @@ export function FilesPage() {
           y={menu.y}
           title={menu.targets.length === 1 ? menu.targets[0]!.name : menu.targets.length ? objects(menu.targets.length) : folderName}
           items={menuItems(menu.targets)}
-          sheet={compact}
           onClose={(refocus) => {
             setMenu(null)
+            // the long press that opened it is over: the next tap is a tap
+            press.current = null
             if (refocus) containerRef.current?.focus()
           }}
         />
@@ -757,9 +760,7 @@ export function FilesPage() {
               label={tr('files.viewSort')}
               placement="bottom-end"
               trigger={(t) => (
-                <button {...t} type="button" className={styles.pmore} aria-label={tr('files.viewSort')}>
-                  <Glyph name="ellipsisCircle" size={24} strokeWidth={1.6} />
-                </button>
+                <IconButton {...t} variant="plain" className={styles.pmore} icon={<Glyph name="ellipsisCircle" size={24} strokeWidth={1.6} />} label={tr('files.viewSort')} />
               )}
             >
               {(close) => (
@@ -806,7 +807,7 @@ export function FilesPage() {
   return (
     <div className={styles.page}>
       <div className={`${styles.window} ${infoOpen && !trash ? styles.withInfo : ''}`} onKeyDown={onKeyDown}>
-        {roots ? <Sidebar roots={roots} isAdmin={isAdmin} usageRefresh={refresh} /> : <div className={styles.sidebarPlaceholder} />}
+        {roots ? <Sidebar roots={roots} isAdmin={isAdmin} usageRefresh={refresh} /> : <div className={`${styles.sidebarPlaceholder} glass`} />}
         <div className={styles.main}>
           {trash ? (
             <TrashView

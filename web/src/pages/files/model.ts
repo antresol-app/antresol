@@ -260,7 +260,6 @@ export const parentPath = (p: string) => {
   const i = p.lastIndexOf('/')
   return i < 0 ? '' : p.slice(0, i)
 }
-export const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 
 /** URL of a folder in the app: /files/movies/Интерстеллар%20(2014). */
 export function folderHref(root: string, path: string): string {

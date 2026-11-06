@@ -3,21 +3,21 @@
   display: block;
 }
 .line + .line {
-  margin-top: 4px;
+  margin-top: var(--s-1);
 }
 
 .scopes {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--s-0);
   width: 100%;
-  margin: 14px 0 0;
+  margin: var(--s-3h) 0 0;
   padding: 0;
   border: 0;
   text-align: left;
 }
 .legend {
-  margin-bottom: 6px;
+  margin-bottom: var(--s-1h);
   padding: 0;
   font: 600 12px / 1.3 var(--font-text);
   color: var(--label-2);
@@ -26,10 +26,10 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-2h);
   min-height: 36px;
-  padding: 6px 10px;
-  border-radius: 9px;
+  padding: var(--s-1h) var(--s-2h);
+  border-radius: var(--r-md);
   font: 400 13px / 1.3 var(--font-text);
   cursor: pointer;
 }
@@ -51,14 +51,14 @@
 
 .notes {
   width: 100%;
-  margin: 12px 0 0;
+  margin: var(--s-3) 0 0;
   padding: 0;
   list-style: none;
   font: 400 12px / 1.4 var(--font-text);
   color: var(--orange);
 }
 .problem {
-  margin-top: 12px;
+  margin-top: var(--s-3);
   font: 400 12px / 1.4 var(--font-text);
   color: var(--red);
 }

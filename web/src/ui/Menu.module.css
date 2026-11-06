@@ -13,8 +13,16 @@
   overflow-y: auto;
   padding: var(--s-1h);
   border-radius: var(--r-group);
-  box-shadow: var(--shadow-menu);
+  --glass-lift: var(--shadow-menu);
   overscroll-behavior: contain;
+  /* it opens with a quick pop and closes at once, as a macOS menu */
+  animation: pop var(--d-fast) var(--ease-out) backwards;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 .menu:global(.glass-strong) {
   background: var(--glass-fill-menu);
@@ -114,6 +122,20 @@
 .item[aria-disabled='true'] .detail {
   color: var(--label-3);
 }
+/* a key that does the same (a context menu's «⌘I»), at the trailing edge */
+.shortcut {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--s-4);
+  font: var(--t-footnote);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 599px) {
+  .shortcut {
+    display: none;
+  }
+}
 
 /* Focus returned after a pointer-opened menu: no keyboard ring. */
 :global([data-quiet-focus]:focus-visible) {
@@ -150,4 +172,10 @@
   .item {
     min-height: var(--control-h-md);
   }
+}
+
+/* a phone's context menu ends with «Отменить», centred and bold (iOS) */
+.cancel {
+  justify-content: center;
+  font-weight: 600;
 }

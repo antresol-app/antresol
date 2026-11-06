@@ -112,8 +112,3 @@ export function useTrimmedLogo(src: string | undefined): { url?: string; dark: b
   if (!src || !out || out.src !== src) return { dark: false }
   return { url: out.t.url, dark: out.t.dark }
 }
-
-/** Returns a version of `src` without transparent margins (or `src` itself while working). */
-export function useTrimmedImage(src: string | undefined): string | undefined {
-  return useTrimmedLogo(src).url
-}

@@ -1,4 +1,4 @@
-// The library picker of the library pages: a glass pull-down button next to
+// The library picker of the library pages: a filled pull-down button next to
 // the page's sort control, as Photos puts «Обе медиатеки / Личная / Общая»
 // in its toolbar. It names the library on screen («Общая медиатека» /
 // «Моя медиатека»), so a filtered grid never passes for the whole server;
@@ -29,7 +29,7 @@ export function LibraryScopeMenu() {
       label={t('comp.library.label')}
       placement="bottom-end"
       trigger={(tp) => (
-        <button {...tp} type="button" className={`${styles.trigger} glass`} data-scope={scope} aria-label={`${t('comp.library.label')}: ${t(cur.label)}`}>
+        <button {...tp} type="button" className={styles.trigger} data-scope={scope} aria-label={`${t('comp.library.label')}: ${t(cur.label)}`}>
           <Icon name={cur.icon} size={18} />
           <span className={styles.long}>{t(cur.label)}</span>
           <span className={styles.short} aria-hidden>

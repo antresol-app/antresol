@@ -1,10 +1,11 @@
 // An album: cover on the left (on top on phones), title, artist, «Рок ·
 // 1988 · Lossless», «Слушать» / «Перемешать» / «На это устройство» («Сохранить
 // офлайн», ZIP) and the track list. Playing a track queues the whole album from it.
+import { Artwork } from '../../ui/Artwork'
 import { APP_NAME } from '../../brand'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { ApiError, albumZipUrl, getAlbum, imageUrl, useEvents } from '../../api/client'
+import { ApiError, albumZipUrl, getAlbum } from '../../api/client'
 import type { AlbumDetail } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
@@ -18,10 +19,10 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { useSession } from '../../state/session'
 import { DeleteItem, DeleteItemSheet, useLeaveDeleted } from '../../components/DeleteItem'
 import { TrackList } from './TrackList'
+import { useLoad } from '../../state/useLoad'
 import styles from './Album.module.css'
 import { t as tr, useT } from '../../i18n'
 
-type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; album: AlbumDetail }
 
 /** A year from file tags can be garbage (1 for a zero date): only 1000-2999 is shown. */
 export function plausibleYear(y: number | undefined): number | undefined {
@@ -47,38 +48,13 @@ export function Album() {
   const compact = useIsCompact()
   const { user } = useSession()
   const leave = useLeaveDeleted()
-  const [state, setState] = useState<State>({ status: 'loading' })
-  const [coverFailed, setCoverFailed] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(
-    (quiet = false) => {
-      abortRef.current?.abort()
-      const ac = new AbortController()
-      abortRef.current = ac
-      if (!quiet) setState({ status: 'loading' })
-      getAlbum(albumId, ac.signal)
-        .then((album) => setState({ status: 'ready', album }))
-        .catch((e: unknown) => {
-          if (ac.signal.aborted || quiet) return
-          setState({
-            status: 'error',
-            message: e instanceof ApiError ? (e.status === 404 ? t('music.album.notFound') : e.message) : t('music.album.loadFailed'),
-          })
-        })
-    },
-    [albumId],
-  )
+  const { state, load } = useLoad((signal) => getAlbum(albumId, signal), [albumId], {
+    message: (e) => e instanceof ApiError ? (e.status === 404 ? t('music.album.notFound') : e.message) : t('music.album.loadFailed'),
+  })
 
-  useEffect(() => {
-    load()
-    return () => abortRef.current?.abort()
-  }, [load])
-
-  useEvents(() => load(true), ['library.updated'])
-
-  const title = state.status === 'ready' ? state.album.card.title : ''
+  const title = state.status === 'ready' ? state.data.card.title : ''
   useEffect(() => {
     document.title = `${title || t('common.kind.album')} — ${APP_NAME}`
   }, [title])
@@ -106,8 +82,7 @@ export function Album() {
     )
   }
 
-  const a = state.album
-  const cover = imageUrl(a.card.poster, 960)
+  const a = state.data
   const meta = albumMeta(a)
   const items = () => songItems(a.tracks)
   const playFrom = (i: number) => audio.play(items(), i)
@@ -128,13 +103,13 @@ export function Album() {
     <div className={styles.page}>
       <header className={styles.top}>
         <div className={styles.art}>
-          {cover && !coverFailed ? (
-            <img src={cover} alt="" decoding="async" draggable={false} onError={() => setCoverFailed(true)} />
-          ) : (
+          <Artwork src={a.card.poster} width={300} sizes="clamp(220px, 22vw, 300px)" eager
+              fallback={
             <span className={styles.artFallback}>
               <Icon name="music" size={56} strokeWidth={1.3} />
             </span>
-          )}
+              }
+            />
         </div>
         <div className={styles.info}>
           <h1 className={styles.title}>{a.card.title}</h1>

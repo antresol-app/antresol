@@ -2,9 +2,8 @@
 // Advances every 8 s; the active page dot fills up as a timer. Pauses on hover,
 // keyboard focus and when the tab is hidden; never auto-advances with
 // reduced motion (WCAG 2.2.2). Slides crossfade.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AnimatePresence, motion } from 'motion/react'
 import { imageSrcSet, imageUrl } from '../api/client'
 import type { Card } from '../api/types'
 import { useReducedMotion } from '../state/useMediaQuery'
@@ -81,13 +80,26 @@ export function Hero({ items, eyebrow, onPlay }: HeroProps) {
     }
   }, [index, items, count])
 
+  // The crossfade: the slide that was there stays under the new one until
+  // the new one has faded in (Hero.module.css .fadeIn). The first slide just appears.
+  const [under, setUnder] = useState<Card | null>(null)
+  const [moved, setMoved] = useState(false)
+  const shown = useRef(current)
+  useLayoutEffect(() => {
+    const was = shown.current
+    shown.current = current
+    if (!was || !current || was.id === current.id) return
+    setUnder(was)
+    setMoved(true)
+    const id = setTimeout(() => setUnder(null), 1500)
+    return () => clearTimeout(id)
+  }, [current])
+
   const logoSrc = current && !logoFailed[current.id] ? imageUrl(current.logo) : undefined
   const { url: trimmedLogo, dark: darkLogo } = useTrimmedLogo(logoSrc)
 
   if (!current) return null
 
-  const backdropRef = current.backdrop || current.poster
-  const backdrop = imageUrl(backdropRef, 1280)
   const kindKey = KIND_LABEL[current.kind]
   const kind = kindKey ? t(kindKey) : ''
   const meta = metaLine(current)
@@ -111,29 +123,20 @@ export function Hero({ items, eyebrow, onPlay }: HeroProps) {
         if (e.key === 'ArrowLeft') setIndex((i) => (i - 1 + count) % count)
       }}
     >
-      <AnimatePresence initial={false} mode="sync">
-        <motion.div
-          key={current.id}
-          className={styles.backdrop}
-          initial={{ opacity: 0, scale: reduce ? 1 : 1.03 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: reduce ? 0 : 1.1, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {backdrop && <img src={backdrop} srcSet={imageSrcSet(backdropRef, 640, 1920)} sizes="100vw" alt="" decoding="async" fetchPriority="high" draggable={false} />}
-        </motion.div>
-      </AnimatePresence>
+      {under && (
+        <div key={`under-${under.id}`} className={styles.backdrop} aria-hidden>
+          <HeroBackdrop card={under} />
+        </div>
+      )}
+      <div key={current.id} className={moved ? `${styles.backdrop} ${styles.fadeIn}` : styles.backdrop} onAnimationEnd={() => setUnder(null)}>
+        <HeroBackdrop card={current} />
+      </div>
       <div className={styles.scrim} aria-hidden />
 
       <div className={styles.content} aria-live={paused ? 'polite' : 'off'}>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
+          <div
             key={current.id}
-            className={styles.copy}
-            initial={{ opacity: 0, y: reduce ? 0 : 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: reduce ? 0 : -6 }}
-            transition={{ duration: reduce ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className={moved ? `${styles.copy} enter-rise` : styles.copy}
             role="group"
             aria-roledescription={t('comp.hero.slide')}
             aria-label={t('comp.hero.slideLabel', { n: index + 1, count, title: current.title })}
@@ -161,12 +164,11 @@ export function Hero({ items, eyebrow, onPlay }: HeroProps) {
               <Button size="large" icon="play" onClick={play} data-hero-action="play" ref={focusTarget('play')}>
                 {current.progress > 0 ? t('common.resume') : t('common.watch')}
               </Button>
-              <Button size="large" variant="secondary" icon="info" onClick={() => navigate(`/item/${current.id}`)} data-hero-action="info" ref={focusTarget('info')}>
+              <Button size="large" variant="secondary" material="clear" icon="info" onClick={() => navigate(`/item/${current.id}`)} data-hero-action="info" ref={focusTarget('info')}>
                 {t('comp.hero.details')}
               </Button>
             </div>
-          </motion.div>
-        </AnimatePresence>
+          </div>
       </div>
 
       {count > 1 && (
@@ -198,4 +200,11 @@ export function Hero({ items, eyebrow, onPlay }: HeroProps) {
       )}
     </section>
   )
+}
+
+/** A slide's backdrop picture. */
+function HeroBackdrop({ card }: { card: Card }) {
+  const ref = card.backdrop || card.poster
+  const src = imageUrl(ref, 1280)
+  return src ? <img src={src} srcSet={imageSrcSet(ref, 640, 1920)} sizes="100vw" alt="" decoding="async" fetchPriority="high" draggable={false} /> : null
 }

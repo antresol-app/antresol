@@ -36,7 +36,7 @@
 .trigger:hover > span,
 .trigger[aria-expanded='true'] > span {
   transform: scale(1.06);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px var(--label-over-art-2);
 }
 
 /* the app's Menu, a little wider for the profile's name */

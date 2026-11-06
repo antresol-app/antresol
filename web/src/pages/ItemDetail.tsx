@@ -4,8 +4,7 @@
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
-import { motion } from 'motion/react'
-import { ApiError, downloadUrl, getItem, getTitle, imageSrcSet, imageUrl, useEvents } from '../api/client'
+import { ApiError, downloadUrl, getItem, getTitle, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
 import type { Episode, ItemDetail as Detail, MediaFile, TitleInfo } from '../api/types'
 import { ActionBar, episodeToPlay, type PlayOptions } from '../components/ActionBar'
 import type { WatchWay } from '../components/WatchButton'
@@ -24,7 +23,6 @@ import { useTrimmedLogo } from '../components/useTrimmedImage'
 import { durationSec, humanMinutes, isMultiPart, languageName, playbackParts } from '../player/timeline'
 import { useSession } from '../state/session'
 import { useScreenLimits } from '../state/screenTime'
-import { useReducedMotion } from '../state/useMediaQuery'
 import { Badges } from '../ui/Badge'
 import { useLeaveDeleted } from '../components/DeleteItem'
 import { RatingChips, ratingRows, useRatings } from '../components/Ratings'
@@ -121,7 +119,6 @@ export function ItemDetail() {
   const navigate = useNavigate()
   const { user } = useSession()
   const limits = useScreenLimits(Boolean(user?.isKid))
-  const reduce = useReducedMotion()
   const leave = useLeaveDeleted()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [expanded, setExpanded] = useState(false)
@@ -163,7 +160,7 @@ export function ItemDetail() {
           if (ac.signal.aborted || quiet) return
           const notFound = e instanceof ApiError && (e.status === 404 || e.status === 400)
           const forbidden = isTitle && e instanceof ApiError && e.status === 403
-          setState({ status: 'error', notFound, forbidden, message: e instanceof ApiError ? e.message : tr('common.loadFailed') })
+          setState({ status: 'error', notFound, forbidden, message: errorText(e, tr('common.loadFailed')) })
         })
     },
     [id, isTitle, tmdbKind, tmdbId, navigate, user?.isKid],
@@ -317,13 +314,7 @@ export function ItemDetail() {
   )
 
   return (
-    <motion.article
-      className={styles.page}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: reduce ? 0 : 0.35 }}
-      aria-labelledby="item-title"
-    >
+    <article className={styles.page} aria-labelledby="item-title">
       <div className={[styles.hero, isShow ? styles.heroShow : ''].join(' ')}>
         <div className={styles.backdrop} aria-hidden>
           {backdrop && <img src={backdrop} srcSet={imageSrcSet(backdropRef, 640, 1920)} sizes="100vw" alt="" fetchPriority="high" decoding="async" draggable={false} />}
@@ -370,9 +361,9 @@ export function ItemDetail() {
             <div className={styles.overviewWrap}>
               <p className={[styles.overview, expanded ? styles.expanded : ''].join(' ')}>{it.overview}</p>
               {!expanded && it.overview.length > 200 && (
-                <button type="button" className={styles.more} onClick={() => setExpanded(true)}>
+                <Button variant="link" className={styles.more} onClick={() => setExpanded(true)}>
                   {t('item.readMore')}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -490,7 +481,7 @@ export function ItemDetail() {
           </section>
         )}
       </div>
-    </motion.article>
+    </article>
   )
 }
 

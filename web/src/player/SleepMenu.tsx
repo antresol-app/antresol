@@ -29,7 +29,6 @@ export function SleepMenu({ tone = 'page', placement = 'bottom-start' }: SleepMe
     <Menu
       label={t('player.sleep.title')}
       placement={placement}
-      className={styles.menu}
       trigger={(p) => (
         <button
           {...p}

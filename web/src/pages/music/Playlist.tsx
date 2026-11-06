@@ -11,7 +11,7 @@
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { ApiError, deletePlaylist, getPlaylist, getPlaylistPending, updatePlaylist, useEvents } from '../../api/client'
+import { ApiError, deletePlaylist, getPlaylist, getPlaylistPending, updatePlaylist, useEvents, errorText } from '../../api/client'
 import type { PendingEntry, PlaylistDetail, PlaylistPatch, PlaylistTrack } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
@@ -192,7 +192,7 @@ export function Playlist() {
       .catch((e: unknown) => {
         setBusy(false)
         setConfirmDelete(false)
-        setError(e instanceof ApiError ? e.message : t('music.playlist.deleteFailed'))
+        setError(errorText(e, t('music.playlist.deleteFailed')))
       })
   }
 

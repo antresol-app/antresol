@@ -2,6 +2,8 @@ export {
   LANGS,
   STORAGE_KEY,
   formatPercent,
+  loadCatalog,
+  loadCatalogAtBoot,
   getLanguage,
   getLanguagePref,
   locale,

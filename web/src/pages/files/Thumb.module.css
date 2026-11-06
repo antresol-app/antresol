@@ -6,7 +6,7 @@
 }
 .icon {
   grid-area: 1 / 1;
-  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 1px 1.5px var(--scrim-art));
 }
 .frame {
   grid-area: 1 / 1;
@@ -24,7 +24,7 @@
 /* Pictures keep their aspect ratio inside the square, like Finder previews. */
 .frame img {
   object-fit: contain;
-  border-radius: max(2px, 4%);
+  border-radius: max(var(--r-xs), 4%);
   box-shadow:
     0 0 0 0.5px rgba(255, 255, 255, 0.16),
     0 1px 3px rgba(0, 0, 0, 0.45);
@@ -38,5 +38,5 @@
   right: 12%;
   bottom: -4%;
   display: grid;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 1px 2px var(--scrim-art-strong));
 }

@@ -37,8 +37,6 @@
   background: rgba(255, 255, 255, 0.22);
   overflow: hidden;
   transition: height var(--d-fast) var(--ease-out);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 .hit:hover .track,
 .active .track {

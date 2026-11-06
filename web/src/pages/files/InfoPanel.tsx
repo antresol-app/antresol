@@ -1,6 +1,7 @@
 // «Свойства»: Finder's preview pane / Get Info. Picture, name, kind and size,
 // then dates and location, the library item and download the file belongs to,
 // and for media the codecs, resolution, duration and tracks.
+import { IconButton } from '../../ui/IconButton'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { FileEntry, FileProbe, FileStat } from '../../api/types'
@@ -240,9 +241,7 @@ export function InfoPanel({ root, selected, folder, whereOf, onClose, refresh }:
     <aside className={styles.panel} aria-label={t('files.info')}>
       <header className={styles.head}>
         <span className={styles.headTitle}>{t('files.info')}</span>
-        <button type="button" className={styles.close} aria-label={t('files.info.close')} onClick={onClose}>
-          <Glyph name="close" size={14} strokeWidth={2.2} />
-        </button>
+        <IconButton size="xs" variant="plain" icon="close" label={t('files.info.close')} onClick={onClose} />
       </header>
       {root && one ? (
         <InfoContent key={one.path} root={root} entry={one} where={whereOf(one)} refresh={refresh} />

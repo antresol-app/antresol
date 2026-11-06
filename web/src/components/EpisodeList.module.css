@@ -46,23 +46,9 @@
 }
 .download {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  color: var(--label);
+  top: var(--s-2);
+  left: var(--s-2);
   opacity: 0;
-  transition: opacity var(--d-fast) var(--ease-out);
-}
-.download::before {
-  content: '';
-  position: absolute;
-  /* 44 pt to a finger, the glass hairline included */
-  inset: calc((32px - var(--touch-target)) / 2 - var(--hairline-w));
 }
 .cell:hover .download,
 .download:focus-visible {
@@ -103,7 +89,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-shadow: var(--artwork-outline);
   pointer-events: none;
 }
 .media img {
@@ -137,11 +123,11 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: linear-gradient(160deg, #2a2a30 0%, #18181c 100%);
+  background: var(--art-fallback);
 }
 .fallbackNo {
   font: 700 clamp(40px, 4vw, 64px) / 1 var(--font-rounded);
-  color: rgba(235, 235, 245, 0.22);
+  color: var(--label-4);
 }
 .playGlyph {
   position: absolute;
@@ -154,23 +140,22 @@
   margin: -26px 0 0 -26px;
   padding-left: 3px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  color: var(--white);
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
   opacity: 0;
   transition: opacity var(--d-base) var(--ease-out);
 }
 .watched {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--s-2);
+  right: var(--s-2);
   display: grid;
   place-items: center;
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  color: var(--label);
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
 }
 /* «Семья»: who is on this episode */
 .faces {
@@ -184,13 +169,13 @@
   right: 10px;
   bottom: 10px;
   height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.3);
+  border-radius: var(--r-xs);
+  background: var(--progress-track-art);
   overflow: hidden;
 }
 .progress > div {
   height: 100%;
-  background: var(--white);
+  background: var(--label-over-art);
 }
 
 .text {

@@ -8,7 +8,7 @@
 // page, «Следующий том ›». The position is saved as `page:N`.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { ApiError, comicPageUrl, getComicPages } from '../api/client'
+import { ApiError, comicPageUrl, getComicPages, errorText } from '../api/client'
 import type { BookDetail } from '../api/types'
 import { Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
@@ -167,7 +167,7 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
         if (ac.signal.aborted) return
         // removed, or hidden for this profile: «Повторить» cannot help
         if (e instanceof ApiError && e.status === 404) setStatus({ status: 'error', message: t(GONE_TEXT), gone: true })
-        else setStatus({ status: 'error', message: e instanceof ApiError ? e.message : t('reader.comic.openFailed') })
+        else setStatus({ status: 'error', message: errorText(e, t('reader.comic.openFailed')) })
       })
     return () => ac.abort()
     // the saved position is read once per open
@@ -625,7 +625,7 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
         </div>
       )}
 
-      <header className={`${styles.bar} ${styles.top}`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
+      <header className={`${styles.bar} ${styles.top} glass-bar`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
         <button type="button" className={styles.back} onClick={exit} aria-label={t('common.back')}>
           <Icon name="chevronLeft" size={22} />
           {!compact && <span>{book.series?.name || t('common.books')}</span>}
@@ -664,7 +664,7 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
         </Menu>
       </header>
 
-      <footer className={`${styles.bar} ${styles.bottom}`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
+      <footer className={`${styles.bar} ${styles.bottom} glass-bar`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
         <span className={styles.sliderBox}>
           <input
             type="range"

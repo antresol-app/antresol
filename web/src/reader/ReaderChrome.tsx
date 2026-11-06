@@ -171,7 +171,7 @@ export function ReaderChrome(p: ReaderChromeProps) {
   // Hidden panels stay reachable with Tab: focus in them shows them (and keeps them up).
   return (
     <div className={styles.chrome} data-theme={p.theme} data-hidden={hidden || undefined} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
-      <header className={`${styles.top} ${styles.bar}`}>
+      <header className={`${styles.top} ${styles.bar} glass-bar`}>
         <button type="button" className={styles.back} onClick={p.onBack}>
           <Icon name="chevronLeft" size={22} strokeWidth={2.4} />
           <span>{t('common.books')}</span>
@@ -225,7 +225,7 @@ export function ReaderChrome(p: ReaderChromeProps) {
         </div>
       </header>
 
-      <footer className={`${styles.bottom} ${styles.bar}`} aria-hidden={hidden || undefined}>
+      <footer className={`${styles.bottom} ${styles.bar} glass-bar`} aria-hidden={hidden || undefined}>
         {p.note ? (
           <span className={`${styles.chapter} ${styles.note}`} role="status">
             {p.note}

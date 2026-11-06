@@ -52,6 +52,12 @@
   font: var(--t-callout);
   color: var(--label);
 }
+/* the subtitle look's two choices: each under its name, one above the other,
+   aligned on the same edge (one inline and one wrapped looked unrelated) */
+.stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
 .rowLabel {
   font: var(--t-subhead);
   color: var(--label);
@@ -64,7 +70,7 @@
   min-height: 72px;
   padding: var(--s-3);
   border-radius: var(--r-card);
-  background: linear-gradient(135deg, #3a4a5c, #8a9aa8);
+  background: var(--art-fallback-video);
   text-align: center;
 }
 .footer {

@@ -157,7 +157,6 @@ export default {
   'comp.playback.preview': 'Так выглядят субтитры',
   'comp.playback.household': 'Сейчас — языки семьи из настроек.',
   'comp.playback.reset': 'Как у семьи',
-  'comp.playback.kidHint': 'Для детского профиля это меняет администратор.',
   'comp.playback.loadFailed': 'Не удалось загрузить настройки',
   'comp.playback.saveFailed': 'Не удалось сохранить настройки',
   // «Уведомления на почту»

@@ -62,9 +62,20 @@
 .destructive {
   color: var(--label);
 }
-.secondary:hover:not(:disabled),
-.destructive:hover:not(:disabled) {
+/* the material of a secondary button (Button.tsx materialClass) */
+.fill {
+  border: 0;
+  background: var(--fill-2);
+}
+.fill:hover:not(:disabled) {
+  background: var(--fill-1);
+}
+:global(.glass).secondary:hover:not(:disabled),
+:global(.glass).destructive:hover:not(:disabled) {
   background: var(--glass-fill-hover);
+}
+.clear:hover:not(:disabled) {
+  background: var(--glass-fill-clear-hover);
 }
 .destructive {
   color: var(--destructive);

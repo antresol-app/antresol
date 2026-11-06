@@ -2,8 +2,14 @@
 // The service worker (built by vite.sw.config.ts into dist/sw.js; the build
 // prepends `self.__VAULT_ASSETS` and `self.__VAULT_BUILD`).
 //
-// - install: the app shell (every built file and index.html) goes to
-//   `vault-shell-<build>`; activate deletes older shells.
+// - install: the built files go to `vault-assets-v1`, one cache across builds:
+//   a file under /assets/ has its content's hash in its name, so a deploy
+//   downloads only the files it changed (public files — icons, the web
+//   manifest — are fetched again each time). index.html goes to
+//   `vault-shell-<build>`; activate deletes older shells, any other cache of
+//   ours it does not know, and the files neither this build nor the one
+//   before names (a tab opened before the deploy still finds its chunks). A
+//   file asked for that is not there yet is fetched and kept.
 // - navigations: the network; index.html from the shell (with the server's
 //   headers, CSP included) when it fails, when the proxy answers 502/503/504
 //   or, with saved items, after 4 s without an answer.
@@ -16,7 +22,7 @@
 import { CHANGED_MESSAGE, LOCK_PATH, MEDIA_PATH, OFFLINE_CACHE, WIPED_MESSAGE } from './saved'
 import { rangeResponse } from './range'
 
-declare const self: ServiceWorkerGlobalScope & { __VAULT_ASSETS?: string[]; __VAULT_BUILD?: string }
+declare const self: ServiceWorkerGlobalScope & { __VAULT_ASSETS?: string[]; __VAULT_ON_DEMAND?: string[]; __VAULT_BUILD?: string }
 
 export type Route = 'skip' | 'navigate' | 'shell' | 'media' | 'api'
 
@@ -31,6 +37,17 @@ export function routeOf(method: string, url: URL, mode: RequestMode, origin: str
 }
 
 const SHELL_PREFIX = 'vault-shell-'
+/** The built files of every build, by path (hashed names never change content). */
+export const ASSETS_CACHE = 'vault-assets-v1'
+const immutable = (path: string) => path.startsWith('/assets/')
+/** The asset lists of this build and the one before (activate keeps both: a tab opened before a deploy still loads its lazy chunks). */
+export const META_CACHE = 'vault-meta-v1'
+const BUILDS = '/builds.json'
+interface Builds {
+  build: string
+  current: string[]
+  previous: string[]
+}
 const shellName = () => SHELL_PREFIX + (self.__VAULT_BUILD ?? 'dev')
 const INDEX = '/index.html'
 /** A slow network that is up but delivers nothing: the saved app opens after this long. */
@@ -88,11 +105,20 @@ export function resetSWForTests() {
 /**
  * The whole app shell or nothing: a failed file fails the install, so the
  * old worker and its complete shell stay (the browser tries again later).
+ * Files already kept from an earlier build are not downloaded again.
  */
 export async function install() {
-  const cache = await caches.open(shellName())
-  const assets = (self.__VAULT_ASSETS ?? []).filter((a) => a !== INDEX)
-  await cache.addAll(assets.map((a) => new Request(new URL(a, self.location.origin), { cache: 'reload' })))
+  const files = await caches.open(ASSETS_CACHE)
+  const kept = new Set((await files.keys()).map((r) => new URL(r.url).pathname))
+  const wanted = (self.__VAULT_ASSETS ?? []).filter((a) => a !== INDEX && !(immutable(a) && kept.has(a)))
+  // everything first, then the cache: a failure leaves it as it was
+  const fetched = await Promise.all(
+    wanted.map(async (a) => {
+      const res = await fetch(new Request(new URL(a, self.location.origin), { cache: 'reload' }))
+      if (!res.ok) throw new Error(`${a}: ${res.status}`)
+      return [a, res] as const
+    }),
+  )
   // `/` (not /index.html, which the file server redirects); the server's
   // headers are kept: the app offline runs under the same CSP
   const res = await fetch('/', { cache: 'reload' })
@@ -100,14 +126,42 @@ export async function install() {
   // the body is stored decoded and whole; no cookie is replayed offline
   const headers = new Headers(res.headers)
   for (const h of ['Content-Encoding', 'Content-Length', 'Set-Cookie', 'Transfer-Encoding']) headers.delete(h)
-  await cache.put(INDEX, new Response(await res.arrayBuffer(), { status: 200, headers }))
+  const index = new Response(await res.arrayBuffer(), { status: 200, headers })
+  await Promise.all(fetched.map(([a, r]) => files.put(a, r)))
+  await (await caches.open(shellName())).put(INDEX, index)
 }
 
-async function activate() {
+export async function activate() {
   const names = await caches.keys()
-  await Promise.all(names.filter((n) => n.startsWith(SHELL_PREFIX) && n !== shellName()).map((n) => caches.delete(n)))
+  // older shells, and app caches of another version (a newer build's, left
+  // by a rollback): only the kinds this worker owns — shells, built files,
+  // their lists. Any other vault-* cache (the saved downloads, under whatever
+  // name a later build gives them) is never touched.
+  const own = /^vault-(shell|assets|meta)-/
+  const known = new Set([shellName(), ASSETS_CACHE, META_CACHE])
+  await Promise.all(names.filter((n) => own.test(n) && !known.has(n)).map((n) => caches.delete(n)))
+  const list = self.__VAULT_ASSETS
+  if (list) await pruneAssets([...list, ...(self.__VAULT_ON_DEMAND ?? [])], self.__VAULT_BUILD ?? 'dev')
   await readSaved()
   await self.clients.claim()
+}
+
+/**
+ * Drops the kept files that neither this build nor the one before names
+ * (`list`: what it precaches and what it fetches on demand, hls.js). A
+ * tab opened before the deploy runs the previous build: its lazy chunks stay
+ * until the build after this one, by when it has reloaded.
+ */
+export async function pruneAssets(list: string[], build: string) {
+  const meta = await caches.open(META_CACHE)
+  const hit = await meta.match(BUILDS)
+  const was = hit ? ((await hit.json().catch(() => null)) as Builds | null) : null
+  const previous = !was ? [] : was.build === build ? was.previous : was.current
+  const keep = new Set([...list, ...previous])
+  const files = await caches.open(ASSETS_CACHE)
+  await Promise.all((await files.keys()).filter((r) => !keep.has(new URL(r.url).pathname)).map((r) => files.delete(r)))
+  const next: Builds = { build, current: list, previous }
+  await meta.put(BUILDS, new Response(JSON.stringify(next), { headers: { 'Content-Type': 'application/json' } }))
 }
 
 async function cachedIndex(): Promise<Response | undefined> {
@@ -139,9 +193,15 @@ export async function navigate(req: Request): Promise<Response> {
   return res
 }
 
-async function shell(req: Request): Promise<Response> {
-  const cache = await caches.open(shellName())
-  return (await cache.match(req, { ignoreSearch: true })) ?? fetch(req)
+/** A built file: the kept copy, else the network (a hashed file is kept for next time). */
+export async function shell(req: Request): Promise<Response> {
+  const files = await caches.open(ASSETS_CACHE)
+  const hit = await files.match(req, { ignoreSearch: true })
+  if (hit) return hit
+  const res = await fetch(req)
+  const path = new URL(req.url).pathname
+  if (res.ok && res.status === 200 && immutable(path)) await files.put(path, res.clone()).catch(() => undefined)
+  return res
 }
 
 /** A saved file by its path (any query); `Range` gets 206 from the whole file. */

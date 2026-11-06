@@ -140,7 +140,7 @@ export function SkipControls({
         </button>
         <button
           type="button"
-          className={`${styles.pill} ${styles.primary}`}
+          className={`${styles.pill} ${styles.primary} glass-strong`}
           onClick={goNext}
           title={t('player.skip.keyHint', { label })}
           style={{ ['--fill' as string]: `${Math.round(fill * 1000) / 10}%` }}

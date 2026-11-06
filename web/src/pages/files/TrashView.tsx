@@ -1,7 +1,8 @@
 // «Корзина» (admin): what was moved to the trash, where it came from and when.
 // Restore puts it back; «Удалить навсегда» and «Очистить корзину» ask first.
+import { Button } from '../../ui/Button'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { ApiError } from '../../api/client'
+import { ApiError, errorText } from '../../api/client'
 import { deleteTrash, getTrash, restoreTrash } from '../../api/files'
 import type { FileRoot, TrashItem } from '../../api/types'
 import { clickSelect, emptySelection, formatDate, formatSize, moveLead, objects, pruneSelection, selectAll, type Selection } from './model'
@@ -42,7 +43,7 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
         setSel((s) => pruneSelection(s, sorted.map(key)))
         setError(undefined)
       },
-      (e: unknown) => setError(e instanceof ApiError ? e.message : tr('files.trash.openFailed')),
+      (e: unknown) => setError(errorText(e, tr('files.trash.openFailed'))),
     )
   }, [])
   useEffect(load, [load])
@@ -105,17 +106,12 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
 
   const buttons = (
     <>
-      <button type="button" className={styles.action} disabled={!selected.length || busy} onClick={() => restore(selected)}>
-        <Glyph name="restore" size={15} /> {tr('files.trash.restore')}
-      </button>
-      <button
-        type="button"
-        className={styles.action}
-        disabled={!items?.length || busy}
-        onClick={() => items && setConfirm({ kind: 'empty', items })}
-      >
+      <Button variant="secondary" material="glass" size="small" icon="restart" disabled={!selected.length || busy} onClick={() => restore(selected)}>
+        {tr('files.trash.restore')}
+      </Button>
+      <Button variant="secondary" material="glass" size="small" disabled={!items?.length || busy} onClick={() => items && setConfirm({ kind: 'empty', items })}>
         {tr('files.trash.empty')}
-      </button>
+      </Button>
     </>
   )
 
@@ -211,7 +207,6 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
           title={menu.items.length === 1 ? menu.items[0]!.name : objects(menu.items.length)}
           items={menuItems(menu.items)}
           onClose={() => setMenu(null)}
-          sheet={compact}
         />
       )}
       {confirm && (

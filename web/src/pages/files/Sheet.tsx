@@ -7,6 +7,8 @@ import { joinPath, sortEntries } from './model'
 import { FileIcon } from './FileIcon'
 import { Glyph, rootGlyph } from './glyphs'
 import { useDir } from './useDir'
+import { IconButton } from '../../ui/IconButton'
+import { TextField } from '../../ui/TextField'
 import styles from './Sheet.module.css'
 import { t, useT } from '../../i18n'
 
@@ -21,25 +23,7 @@ export function NameField({ value, onChange, label, error }: { value: string; on
     const dot = el.value.lastIndexOf('.')
     el.setSelectionRange(0, dot > 0 ? dot : el.value.length)
   }, [])
-  return (
-    <div className={styles.field}>
-      <input
-        ref={ref}
-        className={styles.input}
-        aria-label={label}
-        aria-invalid={error ? true : undefined}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        autoComplete="off"
-      />
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  )
+  return <TextField ref={ref} size="small" className={styles.field} label={label} hideLabel error={error} value={value} onChange={(e) => onChange(e.target.value)} spellCheck={false} autoComplete="off" />
 }
 
 /** Client-side name check (the server checks again). */
@@ -87,15 +71,14 @@ export function MovePicker({
   return (
     <div className={styles.picker}>
       <div className={styles.pickerBar}>
-        <button
-          type="button"
-          className={styles.pickerBack}
-          aria-label={tr('common.back')}
+        <IconButton
+          size="xs"
+          variant="plain"
+          icon="chevronLeft"
+          label={tr('common.back')}
           disabled={!at}
           onClick={() => go(at && at.path ? { root: at.root, path: at.path.includes('/') ? at.path.slice(0, at.path.lastIndexOf('/')) : '' } : null)}
-        >
-          <Glyph name="chevronLeft" size={14} strokeWidth={2.4} />
-        </button>
+        />
         <span className={styles.pickerWhere}>{at ? crumbs.join(' › ') : tr('files.places')}</span>
       </div>
       <div className={styles.pickerList} role="listbox" aria-label={tr('files.move.destination')}>

@@ -34,7 +34,6 @@ export function SpeedMenu({ tone = 'page', placement = 'bottom-start' }: SpeedMe
     <Menu
       label={t('player.speed.title')}
       placement={placement}
-      className={styles.menu}
       trigger={(p) => (
         <button {...p} type="button" className={`${styles.trigger} ${styles[tone]}`} aria-label={t('player.speed.aria', { label })}>
           <Icon name="speed" size={18} />

@@ -7,7 +7,7 @@
   text-wrap: pretty;
 }
 .error {
-  background: rgba(255, 69, 58, 0.12);
+  background: var(--destructive-fill);
   color: var(--destructive);
 }
 .notice {
@@ -17,7 +17,7 @@
   padding: var(--s-3) var(--s-3h);
   margin-bottom: var(--s-4);
   border-radius: var(--r-control);
-  background: rgba(48, 209, 88, 0.12);
+  background: var(--success-fill);
   color: var(--success);
   font: var(--t-subhead);
 }

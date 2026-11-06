@@ -14,7 +14,7 @@
 // those services. The core build's bundle has no MigrateFull at all.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { ApiError, migrateReport, migrateReports, migrateRun, migrateState, migrateStatus, useEvents } from '../../api/client'
+import { migrateReport, migrateReports, migrateRun, migrateState, migrateStatus, useEvents, errorText as apiErrorText } from '../../api/client'
 import type {
   MigrateLine,
   MigrateReport,
@@ -131,7 +131,7 @@ function planKey(sources: string[], userMap: Record<string, number>) {
 }
 
 export function errorText(e: unknown, fallback?: string) {
-  return e instanceof ApiError ? e.message : (fallback ?? t('migrate.failedRetry'))
+  return apiErrorText(e, fallback ?? t('migrate.failedRetry'))
 }
 
 /**

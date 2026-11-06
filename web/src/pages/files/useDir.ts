@@ -3,7 +3,7 @@
 // and a change (rename, move, trash) marks everything stale so whatever is on
 // screen refreshes in place, without flashing empty.
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { ApiError } from '../../api/client'
+import { ApiError, errorText } from '../../api/client'
 import { listDir, statFile } from '../../api/files'
 import type { FileListing, FileStat } from '../../api/types'
 import { t } from '../../i18n'
@@ -168,7 +168,7 @@ export function useStat(
         },
         (e: unknown) => {
           if (ac.signal.aborted) return
-          setState({ key, error: e instanceof ApiError ? e.message : t('files.info.statFailed') })
+          setState({ key, error: errorText(e, t('files.info.statFailed')) })
         },
       )
     }

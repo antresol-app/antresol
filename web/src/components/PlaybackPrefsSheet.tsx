@@ -4,7 +4,7 @@
 // in a series come first). An adult opens it from the profile menu; a
 // kid's is the administrator's (Профили), as «Скрывать прогресс» is.
 import { useEffect, useId, useState } from 'react'
-import { ApiError, getPlaybackPrefs, resetPlaybackPrefs, savePlaybackPrefs, setPreferCleaned } from '../api/client'
+import { getPlaybackPrefs, resetPlaybackPrefs, savePlaybackPrefs, setPreferCleaned, errorText } from '../api/client'
 import type { LangCode, PlaybackPrefs, SubBackground, SubMode, SubSize } from '../api/types'
 import { useT } from '../i18n'
 import look from '../player/SubtitleLook.module.css'
@@ -42,7 +42,7 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
     const ac = new AbortController()
     getPlaybackPrefs(userId, ac.signal).then(
       (prefs) => setState({ status: 'ready', prefs }),
-      (e: unknown) => !ac.signal.aborted && setState({ status: 'error', message: e instanceof ApiError ? e.message : t('comp.playback.loadFailed') }),
+      (e: unknown) => !ac.signal.aborted && setState({ status: 'error', message: errorText(e, t('comp.playback.loadFailed')) }),
     )
     return () => ac.abort()
   }, [userId, t])
@@ -58,7 +58,7 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
       if (close) onClose()
       else setState({ status: 'ready', prefs: p })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('comp.playback.saveFailed'))
+      setError(errorText(e, t('comp.playback.saveFailed')))
     } finally {
       setBusy(false)
     }
@@ -80,7 +80,7 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
       change({ preferCleaned: Boolean(p.preferCleaned) })
     } catch (e) {
       change({ preferCleaned: !on })
-      setError(e instanceof ApiError ? e.message : t('comp.playback.saveFailed'))
+      setError(errorText(e, t('comp.playback.saveFailed')))
     } finally {
       setCleanedBusy(false)
     }
@@ -183,18 +183,19 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
               <div className={styles.preview} data-size={prefs.subSize} data-bg={prefs.subBackground} aria-hidden>
                 <span className={look.cue}>{t('comp.playback.preview')}</span>
               </div>
-              <div className={styles.row}>
+              <div className={`${styles.row} ${styles.stacked}`}>
                 <span className={styles.rowLabel} aria-hidden>
                   {t('comp.playback.size')}
                 </span>
                 <SegmentedControl
+                  shortLabels
                   label={t('comp.playback.size')}
                   segments={SIZES.map((s) => ({ value: s, label: t(`comp.playback.sizeAria.${s}`), short: t(`comp.playback.size.${s}`) }))}
                   value={prefs.subSize}
                   onChange={(subSize) => change({ subSize })}
                 />
               </div>
-              <div className={styles.row}>
+              <div className={`${styles.row} ${styles.stacked}`}>
                 <span className={styles.rowLabel} aria-hidden>
                   {t('comp.playback.background')}
                 </span>

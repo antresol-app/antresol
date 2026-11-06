@@ -2,9 +2,9 @@
 // profile and downloads on the right. Below 700px the pill is replaced by the
 // bottom tab bar (ui/TabBar) and the header keeps only the brand and the profile.
 import { APP_NAME } from '../brand'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
-import { motion } from 'motion/react'
+import { useSlidingThumb } from '../ui/slidingThumb'
 import type { User } from '../api/types'
 import { SECTIONS, searchHref } from '../app/sections'
 import { useIsCompact } from '../state/useMediaQuery'
@@ -39,12 +39,15 @@ export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
   const compact = useIsCompact()
   const scrolled = useScrolled()
   const { pathname } = useLocation()
+  const items = useRef<HTMLUListElement>(null)
+  // the white capsule slides to the current section
+  const capsule = useSlidingThumb(items, 'a[aria-current="page"]', `${pathname}:${compact}`)
   const search = SECTIONS.find((s) => s.iconOnly)
 
   return (
     <>
       {/* the layout's top bar: menus open below it, never over it (ui/floating.ts) */}
-      <header className={[styles.header, compact ? styles.compact : '', scrolled ? styles.scrolled : ''].join(' ')} data-top-bar>
+      <header className={[styles.header, 'scroll-edge', compact ? styles.compact : '', scrolled ? styles.scrolled : ''].join(' ')} data-top-bar>
         <Link to="/" className={styles.brand} aria-label={t('comp.topNav.home', { app: APP_NAME })}>
           <LogoMark size={compact ? 28 : 30} />
           <span className={styles.wordmark}>{APP_NAME}</span>
@@ -52,7 +55,8 @@ export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
 
         {!compact && (
           <nav aria-label={t('comp.sections')} className={`${styles.pill} glass`} data-testid="topnav-pill">
-            <ul className={styles.items}>
+            <ul ref={items} className={styles.items}>
+              {capsule && <li className={styles.capsule} style={capsule.style} data-slide={capsule.slide || undefined} aria-hidden />}
               {SECTIONS.map((s) => (
                 <li key={s.to}>
                   <NavLink
@@ -61,20 +65,9 @@ export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
                     aria-label={s.iconOnly ? s.label : undefined}
                     className={({ isActive }) => [styles.item, isActive ? styles.active : '', s.iconOnly ? styles.iconOnly : ''].join(' ')}
                   >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && (
-                          <motion.span
-                            layoutId="topnav-active"
-                            className={styles.capsule}
-                            transition={{ type: 'spring', stiffness: 520, damping: 42, mass: 0.9 }}
-                          />
-                        )}
-                        <span className={styles.itemLabel}>
-                          {s.iconOnly ? <Icon name={s.icon} size={18} strokeWidth={2.2} /> : <span className={styles.itemText}>{s.label}</span>}
-                        </span>
-                      </>
-                    )}
+                    <span className={styles.itemLabel}>
+                      {s.iconOnly ? <Icon name={s.icon} size={18} strokeWidth={2.2} /> : <span className={styles.itemText}>{s.label}</span>}
+                    </span>
                   </NavLink>
                 </li>
               ))}

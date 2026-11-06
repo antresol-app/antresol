@@ -1,8 +1,7 @@
 // A playlist's artwork: a 2×2 mosaic of its first four album covers, one
 // cover across the whole square when there is only one, a gradient with a
 // note when there are none.
-import { useState } from 'react'
-import { imageUrl } from '../../api/client'
+import { Artwork } from '../../ui/Artwork'
 import { Icon } from '../../components/Icon'
 import styles from './PlaylistCover.module.css'
 import { useT } from '../../i18n'
@@ -14,9 +13,8 @@ export interface PlaylistCoverProps {
 }
 
 function Tile({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return <span className={styles.tileFallback} />
-  return <img src={imageUrl(src)} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />
+  // a tile of the mosaic, or the whole square: at most a grid cell wide
+  return <Artwork src={src} width={240} fallback={<span className={styles.tileFallback} />} />
 }
 
 export function PlaylistCover({ covers, name, className }: PlaylistCoverProps) {

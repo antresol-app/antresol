@@ -11,6 +11,45 @@
   background: var(--scrim);
   /* a drag on the dimmed area moves nothing (scrollLock.ts locks the page) */
   touch-action: none;
+  animation: fade-in var(--d-fast) var(--ease-out) backwards;
+  transition: opacity var(--d-sheet-close) var(--ease-sheet-close);
+}
+.backdrop[data-closing] {
+  opacity: 0;
+}
+/* A centred sheet settles in place; a bottom sheet (phones) slides up from
+   below the edge, follows the grabber while dragged, springs back or slides
+   away (Sheet.tsx). The enter animation fills backwards only, so the drag's
+   and the slide away's transform take over once it has run. */
+.sheet {
+  animation: settle var(--d-base) var(--ease-out) backwards;
+  transition: transform var(--d-base) var(--ease-out);
+}
+.sheet[data-placement='bottom'] {
+  animation: slide-up var(--d-sheet) var(--ease-out) backwards;
+}
+.sheet[data-dragging] {
+  transition: none;
+}
+.sheet[data-closing] {
+  transform: translateY(100%);
+  transition: transform var(--d-sheet-close) var(--ease-sheet-close);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
 }
 .sheet {
   position: relative;
@@ -24,7 +63,7 @@
   overscroll-behavior: contain;
   touch-action: pan-y;
   border-radius: var(--r-sheet);
-  box-shadow: var(--shadow-sheet);
+  --glass-lift: var(--shadow-sheet);
   text-align: center;
 }
 .wide {

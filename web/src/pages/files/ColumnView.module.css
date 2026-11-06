@@ -14,7 +14,7 @@
   width: 250px;
   height: 100%;
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--s-1h);
   border-right: 1px solid var(--separator);
 }
 .cell {
@@ -22,8 +22,8 @@
   align-items: center;
   gap: 7px;
   height: 26px;
-  padding: 0 6px 0 8px;
-  border-radius: 6px;
+  padding: 0 var(--s-1h) 0 var(--s-2);
+  border-radius: var(--r-sm);
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
@@ -40,18 +40,18 @@
   color: var(--label-3);
 }
 .selected {
-  background: #0a63d8;
-  color: #fff;
+  background: var(--selection-row);
+  color: var(--label-over-art);
 }
 .selected .chevron {
-  color: #fff;
+  color: var(--label-over-art);
 }
 /* The folder on the way to the active column. */
 .path {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--selection-row-inactive);
 }
 .empty {
-  padding: 18px 8px;
+  padding: 18px var(--s-2);
   text-align: center;
   color: var(--label-3);
 }

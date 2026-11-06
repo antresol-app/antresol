@@ -4,7 +4,7 @@
 // asks what to delete — the whole series or one season.
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { ApiError, deleteItem, getDeletePlan } from '../api/client'
+import { deleteItem, getDeletePlan, errorText } from '../api/client'
 import type { DeletePlan, DeleteResult } from '../api/types'
 import { formatSize } from './ActionBar'
 import { IconButton, type IconButtonSize } from '../ui/IconButton'
@@ -83,7 +83,7 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
     getDeletePlan(itemId, ac.signal).then(
       (plan) => setLoad({ status: 'ready', plan }),
       (e: unknown) => {
-        if (!ac.signal.aborted) setLoad({ status: 'error', message: e instanceof ApiError ? e.message : t('comp.delete.loadFailed') })
+        if (!ac.signal.aborted) setLoad({ status: 'error', message: errorText(e, t('comp.delete.loadFailed')) })
       },
     )
     return () => ac.abort()
@@ -113,7 +113,7 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
       onClose()
       onDeleted({ id: scope, whole: !season || !result.parentShown, result })
     } catch (e) {
-      setProblem(e instanceof ApiError ? e.message : t('comp.delete.failed'))
+      setProblem(errorText(e, t('comp.delete.failed')))
       setBusy(false)
     }
   }

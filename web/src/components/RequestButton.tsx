@@ -5,7 +5,7 @@
 // появится», «Уже в медиатеке» (a link to it) or «Родитель отказал» with
 // the reason. Above the profile's age limit it stays disabled and says why.
 import { useId, useState } from 'react'
-import { ApiError, askRequest, type KidRequestAsk } from '../api/client'
+import { ApiError, askRequest, type KidRequestAsk, errorText } from '../api/client'
 import type { KidRequest, KidRequestState } from '../api/types'
 import { useT } from '../i18n'
 import { requestKey, useMyRequests } from '../state/kidRequests'
@@ -74,7 +74,7 @@ export function RequestButton({ ask, state, size = 'small' }: { ask: KidRequestA
     askRequest(ask)
       .then(put, (e: unknown) => {
         if (e instanceof ApiError && e.code === 'rating') setBlocked(e.message)
-        else setError(e instanceof ApiError ? e.message : t('requests.askFailed'))
+        else setError(errorText(e, t('requests.askFailed')))
       })
       .finally(() => setBusy(false))
   }

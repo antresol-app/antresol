@@ -1,5 +1,5 @@
 // The app's pop-up button, in place of a native <select> (which cannot take
-// the app's look): a glass capsule with the current choice and ⌃⌄ that opens
+// the app's look): a filled capsule with the current choice and ⌃⌄ that opens
 // the app's Menu — floating, in a portal, always inside the window, the
 // choice scrolled into view; keyboard, focus return and the phone sheet come
 // with it. Select picks one (radio items); MultiSelect several (checkbox
@@ -34,7 +34,7 @@ function Trigger({ label, showLabel, text, disabled, className, id, p }: { label
     <button
       type="button"
       id={id}
-      className={[styles.trigger, 'glass', className].filter(Boolean).join(' ')}
+      className={[styles.trigger, className].filter(Boolean).join(' ')}
       aria-label={`${label}: ${text}`}
       disabled={disabled}
       {...p}

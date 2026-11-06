@@ -1689,16 +1689,6 @@ export interface MigrateSwitchPlan {
   blocked: string
 }
 
-/** migrate.progress (admins): sent after each source. */
-export interface MigrateProgress {
-  reportId: string
-  source: string
-  done: number
-  total: number
-  counts: Partial<Record<MigrateStatusKind, number>>
-  finished: boolean
-}
-
 // «Импорт медиатеки»
 
 export type ImportServiceId = 'spotify' | 'apple' | 'yandex' | 'youtube' | 'deezer' | 'file'

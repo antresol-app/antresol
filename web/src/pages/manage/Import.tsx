@@ -14,15 +14,7 @@
 import { APP_NAME } from '../../brand'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import {
-  ApiError,
-  cancelImportJob,
-  getImportJobs,
-  patchImportJob,
-  retryImportGroup,
-  startImportJob,
-  uploadImportFiles,
-} from '../../api/client'
+import { ApiError, cancelImportJob, getImportJobs, patchImportJob, retryImportGroup, startImportJob, uploadImportFiles, errorText as apiErrorText } from '../../api/client'
 import type { ImportJob, ImportJobPatch } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
@@ -41,7 +33,7 @@ import { useCanDownload } from '../../state/canDownload'
 /** The sources build's service tiles and sign-ins; the core build has none. */
 const Services = __LIBRARY_EDITION__ ? null : lazy(() => import('./import/Services'))
 
-const errorText = (e: unknown, fallback = tr('sources.failedRetry')) => (e instanceof ApiError ? e.message : fallback)
+const errorText = (e: unknown, fallback = tr('sources.failedRetry')) => apiErrorText(e, fallback)
 /** What a cancel keeps (said before and after it). */
 const kept = (downloads: boolean) => tr(downloads ? 'import.kept' : 'import.keptLocal')
 

@@ -4,7 +4,7 @@
 // on weekdays and at weekends) and «Бонус на сегодня +30 мин». The bonus
 // is given at once; the limits on «Сохранить».
 import { useEffect, useId, useState } from 'react'
-import { addScreenBonus, ApiError, getScreenTime, saveScreenLimits } from '../api/client'
+import { addScreenBonus, getScreenTime, saveScreenLimits, errorText } from '../api/client'
 import type { ScreenLimits, ScreenReport, ScreenWindow } from '../api/types'
 import { humanMinutes } from '../player/timeline'
 import { locale, t as tr, useT } from '../i18n'
@@ -77,7 +77,7 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
         setReport(r)
         setDraft(draftOf(r.limits))
       },
-      (e: unknown) => !ac.signal.aborted && setLoadError(e instanceof ApiError ? e.message : t('comp.screen.loadFailed')),
+      (e: unknown) => !ac.signal.aborted && setLoadError(errorText(e, t('comp.screen.loadFailed'))),
     )
     return () => ac.abort()
   }, [userId, t])
@@ -101,7 +101,7 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
       })
       onClose()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('comp.screen.saveFailed'))
+      setError(errorText(e, t('comp.screen.saveFailed')))
     } finally {
       setBusy(false)
     }
@@ -113,7 +113,7 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
     try {
       setReport(await addScreenBonus(userId, BONUS_MIN))
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('comp.screen.saveFailed'))
+      setError(errorText(e, t('comp.screen.saveFailed')))
     } finally {
       setBusy(false)
     }

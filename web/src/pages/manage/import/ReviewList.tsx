@@ -3,7 +3,7 @@
 // catalog search), picks one of the albums that hold the song («Выбрать
 // альбом…») or leaves the song out («Пропустить»).
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, getImportCandidates, getImportReview, imageUrl, resolveImportTrack, searchImport } from '../../../api/client'
+import { getImportCandidates, getImportReview, imageUrl, resolveImportTrack, searchImport, errorText } from '../../../api/client'
 import type { Candidate, ReviewTrack } from '../../../api/types'
 import { Button } from '../../../ui/Button'
 import { Icon } from '../../../components/Icon'
@@ -13,7 +13,7 @@ import m from '../Manage.module.css'
 import { t as tr, useT } from '../../../i18n'
 import styles from './ReviewList.module.css'
 
-const message = (e: unknown, fallback = tr('sources.failedRetry')) => (e instanceof ApiError ? e.message : fallback)
+const message = (e: unknown, fallback = tr('sources.failedRetry')) => (errorText(e, fallback))
 
 type Found = { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; candidates: Candidate[] }
 

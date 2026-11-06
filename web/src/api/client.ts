@@ -51,7 +51,6 @@ import type {
   TitleInfo,
   Device,
   DiskUsage,
-  Health,
   HlsStatus,
   Home,
   ItemDetail,
@@ -92,6 +91,9 @@ export class ApiError extends Error {
     this.code = code
   }
 }
+
+/** What to tell the person when a request failed: the server's own words, else `fallback`. */
+export const errorText = (e: unknown, fallback: string): string => (e instanceof ApiError ? e.message : fallback)
 
 // (exported for ./clientFull, the sources build's endpoints)
 export const offline = () => t('common.offlineRetry')
@@ -203,7 +205,6 @@ export function imageSrcSet(ref: string | null | undefined, min = 240, max = 960
 }
 
 // --- System & auth ---
-export const getHealth = () => request<Health>('GET', '/api/health')
 export const getAbout = () => request<About>('GET', '/api/about')
 export const getSetup = () => request<SetupState>('GET', '/api/setup')
 export const setup = (name: string, password: string) => request<User>('POST', '/api/setup', { name, password })
@@ -583,7 +584,6 @@ export function uploadImportFiles(files: File[]): Promise<ImportJob> {
 export const patchImportJob = (id: number, patch: ImportJobPatch) => request<ImportJob>('PATCH', `/api/import/jobs/${id}`, patch)
 export const startImportJob = (id: number) => request<void>('POST', `/api/import/jobs/${id}/start`)
 export const cancelImportJob = (id: number) => request<void>('POST', `/api/import/jobs/${id}/cancel`)
-export const deleteImportJob = (id: number) => request<void>('DELETE', `/api/import/jobs/${id}`)
 export const getImportReview = (id: number, signal?: AbortSignal) =>
   request<{ tracks: ReviewTrack[] }>('GET', `/api/import/jobs/${id}/review`, undefined, signal).then((r) => r.tracks)
 export const getImportCandidates = (trackId: number, signal?: AbortSignal) =>
@@ -600,8 +600,6 @@ export const getPlaylistPending = (playlistId: number, signal?: AbortSignal) =>
   request<{ pending: PendingEntry[] }>('GET', `/api/import/playlists/${playlistId}/pending`, undefined, signal).then((r) => r.pending ?? [])
 
 // --- «Экранное время» ---
-/** The error code of a playback refused by screen time (403). */
-export const SCREEN_TIME_CODE = 'screen_time'
 export const getMyScreenTime = (signal?: AbortSignal) => request<ScreenStatus>('GET', '/api/me/screen-time', undefined, signal)
 export const getScreenLimited = (signal?: AbortSignal) => request<ScreenLimited>('GET', '/api/screen-time/limited', undefined, signal)
 export const getScreenTime = (userId: number, signal?: AbortSignal) => request<ScreenReport>('GET', `/api/users/${userId}/screen-time`, undefined, signal)

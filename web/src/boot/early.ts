@@ -38,6 +38,23 @@ function bootLanguage(): 'ru' | 'en' {
   return 'en'
 }
 
+/**
+ * Preloads the active language's catalog (a chunk of its own, see
+ * i18n/core.ts) so it downloads beside the bundle rather than after it. The
+ * build writes the chunks' paths on this script's tag (vite.config.ts).
+ */
+export function preloadCatalog() {
+  if (typeof document === 'undefined') return
+  const tag = document.querySelector<HTMLScriptElement>('script[data-i18n-ru]')
+  const href = tag?.dataset[bootLanguage() === 'ru' ? 'i18nRu' : 'i18nEn']
+  if (!href) return
+  const link = document.createElement('link')
+  link.rel = 'modulepreload'
+  link.crossOrigin = ''
+  link.href = href
+  document.head.appendChild(link)
+}
+
 /** Starts GET /api/me (as request() would send it) and leaves the promise for getMe(). */
 export function startEarlyMe() {
   // the app's first getMe ran before this script (a slow boot file): it asked itself

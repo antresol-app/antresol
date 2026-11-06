@@ -70,7 +70,6 @@ export default {
   'profiles.subtitle': 'Everyone gets their own “Resume” and “Watchlist”.',
   'profiles.new': 'New Profile',
   'profiles.you': 'you',
-  'profiles.editAria': 'Edit profile {name}',
   'profiles.actions': 'Actions for {name}',
   'profiles.edit': 'Edit',
   'profiles.deleteAria': 'Delete profile {name}',
@@ -119,7 +118,6 @@ export default {
   'stats.disk.later': 'Still counting: the disk is slow. Check back later.',
   'stats.disk.partial': 'Not everything was counted: the disk is too slow. These are the sizes counted so far.',
   'stats.disk.empty': 'Nothing here.',
-  'stats.disk.share': '{share} of the section',
 
   // the sources build's, but named by core code (were in ./full.ts)
   'manage.section.follows': 'Following',

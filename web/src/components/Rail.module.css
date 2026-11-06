@@ -31,24 +31,18 @@
   display: none;
 }
 
-.pager {
+/* ui/IconButton (glass: it floats over the row) */
+.viewport .pager {
   position: absolute;
   top: var(--rail-pager-top, 50%);
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: var(--control-h-md);
-  padding: 0;
-  border-radius: 50%;
-  color: var(--label);
   opacity: 0;
   transform: translateY(-50%);
   transition:
     opacity var(--d-base) var(--ease-out),
     background-color var(--d-fast) var(--ease-out);
-  z-index: 2;
+  z-index: var(--z-above);
 }
-.pager[hidden] {
+.viewport .pager[hidden] {
   display: none;
 }
 /* in the gutter's middle; never past the window's edge where the gutter is narrow */
@@ -59,15 +53,11 @@
   right: max(4px, calc(var(--gutter) / 2 - 18px));
 }
 @media (max-width: 999px) {
-  .pager {
-    width: 36px;
-    height: var(--control-h-sm);
+  .viewport .pager {
+    --h: var(--control-h-sm);
   }
 }
-.pager:hover {
-  background: var(--glass-fill-hover);
-}
-.pager:active {
+.viewport .pager:active {
   transform: translateY(-50%) scale(0.94);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -77,7 +67,7 @@
 }
 /* touch screens and phones: the rail is swiped */
 @media (hover: none), (max-width: 699px) {
-  .pager {
+  .viewport .pager {
     display: none;
   }
 }

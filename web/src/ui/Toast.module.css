@@ -19,7 +19,7 @@
   min-height: var(--control-h-md);
   padding: var(--s-2h) var(--s-4);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-pop);
+  --glass-lift: var(--shadow-pop);
   font: var(--t-toast);
   color: var(--label);
   text-align: center;

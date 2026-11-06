@@ -19,11 +19,21 @@
     opacity var(--d-fast) var(--ease-out);
 }
 /* the reset of a <button>: glass draws its own hairline */
-.button:not(:global(.glass)) {
+.button:not(:global(.glass), :global(.glass-clear)) {
   border: 0;
 }
-.button:hover:not(:disabled) {
+/* the material (IconButton.tsx): a fill in content, glass, clear glass */
+.fill {
+  background: var(--fill-2);
+}
+.fill:hover:not(:disabled) {
+  background: var(--fill-1);
+}
+.button:global(.glass):hover:not(:disabled) {
   background: var(--glass-fill-hover);
+}
+.button.clear:hover:not(:disabled) {
+  background: var(--glass-fill-clear-hover);
 }
 .button:active:not(:disabled) {
   transform: scale(0.94);

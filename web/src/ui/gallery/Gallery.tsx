@@ -31,7 +31,8 @@ import styles from './Gallery.module.css'
 
 const COLORS: [string, string[]][] = [
   ['Backgrounds', ['--bg', '--bg-raised', '--bg-elevated', '--bg-elevated-2']],
-  ['Materials', ['--glass-fill', '--glass-fill-hover', '--glass-fill-strong', '--glass-fill-menu']],
+  ['Materials', ['--glass-fill', '--glass-fill-hover', '--glass-fill-strong', '--glass-fill-menu', '--glass-fill-clear', '--glass-dim']],
+  ['Surfaces', ['--surface-grouped', '--surface-grouped-hover', '--surface-grouped-border', '--scrim-art', '--scrim-art-strong']],
   ['Fills', ['--fill-1', '--fill-2', '--fill-3', '--fill-4', '--fill-hover']],
   ['Labels', ['--label', '--label-2', '--label-3', '--label-4']],
   ['Separators', ['--separator', '--hairline', '--glass-border']],
@@ -240,6 +241,22 @@ export function Gallery() {
             <IconButton size="lg" icon="arrowDown" label="Начинается" />
             <ProgressRing diameter={52} mode="starting" pct={0} label="Прогресс" />
           </span>
+        </div>
+      </Section>
+
+      <Section title="Liquid Glass" note="design/glass.css: regular (bars, the player bar), strong (menus, sheets, toasts), clear (over video and artwork), bar (edge to edge). Content is never glass. Check with Reduce transparency and Increase contrast.">
+        <div className={styles.glassStage}>
+          {(['glass', 'glass-strong', 'glass-clear', 'glass-bar'] as const).map((g) => (
+            <div key={g} className={`${styles.glassSample} ${g}`}>
+              .{g}
+            </div>
+          ))}
+          <Button variant="secondary" material="clear" icon="info">
+            Clear
+          </Button>
+          <IconButton icon="ellipsis" label="Clear" material="clear" size="lg" />
+          <IconButton icon="ellipsis" label="Glass" material="glass" size="lg" />
+          <IconButton icon="ellipsis" label="Fill" size="lg" />
         </div>
       </Section>
 

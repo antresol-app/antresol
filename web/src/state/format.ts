@@ -17,7 +17,6 @@ export function plural(n: number, forms: [string, string, string]): string {
   return forms[2]
 }
 
-export const count = (n: number, forms: [string, string, string]) => `${n} ${plural(n, forms)}`
 
 /** Bytes per second as «2,4 МБ/с» / "2.4 MB/s". */
 export function formatRate(bps: number): string {

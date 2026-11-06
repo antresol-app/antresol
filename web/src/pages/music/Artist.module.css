@@ -47,7 +47,7 @@
   overflow-wrap: anywhere;
 }
 .meta {
-  margin-top: 4px;
+  margin-top: var(--s-1);
   font: var(--t-subhead);
   color: var(--label-2);
 }
@@ -83,7 +83,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--s-3);
   padding: calc(var(--nav-height) + 14vh) var(--gutter) 0;
   text-align: center;
   color: var(--label-2);

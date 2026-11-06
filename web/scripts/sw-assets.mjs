@@ -27,6 +27,16 @@ const walk = (dir) => {
 }
 walk(dist)
 
+// hls.js is for a browser without native HLS (player/hlsSupport.ts): Safari
+// and iOS must never download it, so it is not precached. It goes in a list
+// of its own (self.__VAULT_ON_DEMAND): a browser that needs it fetches it on
+// first play, the worker keeps it, and activate's pruning keeps it too while
+// a build still names it (so Chrome does not download it again every deploy).
+const onDemand = new Set()
+for (const [src, chunk] of Object.entries(manifest)) if (/(^|\/)node_modules\/hls\.js\//.test(src)) onDemand.add('/' + chunk.file)
+for (const f of onDemand) files.delete(f)
+if (!onDemand.size) throw new Error('sw-assets: no hls.js chunk in the manifest')
+
 const list = [...files].sort()
 // the contents too: a changed public file (icon, web manifest) keeps its name
 const hash = createHash('sha1')
@@ -34,7 +44,7 @@ for (const f of list) hash.update(f + '\n').update(readFileSync(join(dist, f.sli
 const build = hash.digest('hex').slice(0, 12)
 const swPath = join(dist, 'sw.js')
 const sw = readFileSync(swPath, 'utf8')
-writeFileSync(swPath, `self.__VAULT_ASSETS = ${JSON.stringify(list)}; self.__VAULT_BUILD = '${build}';\n${sw}`)
+writeFileSync(swPath, `self.__VAULT_ASSETS = ${JSON.stringify(list)}; self.__VAULT_ON_DEMAND = ${JSON.stringify([...onDemand].sort())}; self.__VAULT_BUILD = '${build}';\n${sw}`)
 // the manifest is only for this script: not served
 rmSync(join(dist, '.vite'), { recursive: true, force: true })
 console.log(`sw.js: ${list.length} files, build ${build}`)

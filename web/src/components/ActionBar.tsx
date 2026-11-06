@@ -5,10 +5,11 @@
 // `download`). Less frequent actions (start over, another version, mark as
 // watched) live in the «Ещё» menu.
 import { useEffect, useState, type ReactNode } from 'react'
-import { addToWatchlist, ApiError, downloadUrl, removeFromWatchlist, setWatched } from '../api/client'
+import { addToWatchlist, downloadUrl, removeFromWatchlist, setWatched, errorText } from '../api/client'
 import type { Episode, ItemDetail, MediaFile } from '../api/types'
 import { clock, durationSec, FINISHED, humanMinutes, isMultiPart, langBadge, partNumber, playbackParts, resumeSec } from '../player/timeline'
 import { ActionTiles } from '../ui/ActionTiles'
+import { MaterialContext } from '../ui/Button'
 import { IconButton } from '../ui/IconButton'
 import { ProgressBar } from '../ui/ProgressBar'
 import { DeleteItem, DeleteItemSheet, type Deleted } from './DeleteItem'
@@ -181,7 +182,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
       await (next ? addToWatchlist(item.id) : removeFromWatchlist(item.id))
     } catch (e) {
       setInList(!next)
-      setProblem(e instanceof ApiError ? e.message : t('comp.action.failed'))
+      setProblem(errorText(e, t('comp.action.failed')))
     }
   }
 
@@ -194,7 +195,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
       discardProgress([item.id, ...(item.seasons ?? []).flatMap((s) => s.episodes.map((e) => e.id))], markedAt)
       onChanged?.()
     } catch (e) {
-      setProblem(e instanceof ApiError ? e.message : t('comp.action.markFailed'))
+      setProblem(errorText(e, t('comp.action.markFailed')))
     } finally {
       setBusy(false)
     }
@@ -202,6 +203,8 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
 
   return (
     <div className={styles.wrap}>
+      {/* the title's action row floats over its artwork: round and secondary buttons are clear glass */}
+      <MaterialContext.Provider value="clear">
       <div className={styles.bar}>
         {(lead || dl) && (
           // one line on phones: «Смотреть ▾» takes the width, the round button sits beside it
@@ -317,6 +320,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
           <DeleteItemSheet itemId={deletion.itemId} title={deletion.title} onClose={() => setDeleting(false)} onDeleted={deletion.onDeleted} />
         )}
       </div>
+      </MaterialContext.Provider>
       {problem && (
         <p className={styles.problem} role="alert">
           {problem}

@@ -1,11 +1,13 @@
-/* A glass track of the toolbar height (--control-h) holding segments of the
+/* A filled track (iOS: a control in content, not glass) of the toolbar height (--control-h) holding segments of the
    small control height: 36 + 2 × 3 padding + 2 × 1 hairline = 44. */
 .track {
   display: inline-flex;
   gap: var(--s-0);
   height: var(--control-h);
   padding: 3px;
+  border: var(--hairline-w) solid transparent;
   border-radius: var(--r-pill);
+  background: var(--fill-3);
   max-width: 100%;
   overflow-x: auto;
   /* overflow-x alone makes the other axis scroll too: the 44 pt targets
@@ -51,12 +53,23 @@
 .segment:focus-visible {
   outline-offset: 1px;
 }
+/* one thumb for the track, on the chosen segment's box (ui/slidingThumb.ts) */
+.track {
+  position: relative;
+}
 .thumb {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  top: 0;
+  left: 0;
+  border-radius: var(--r-pill);
   background: var(--label);
   box-shadow: var(--shadow-card);
+  pointer-events: none;
+}
+.thumb[data-slide] {
+  transition:
+    transform var(--d-base) var(--ease-spring-soft),
+    width var(--d-base) var(--ease-spring-soft);
 }
 /* the label centres on its capitals (over the thumb) */
 .label {
@@ -121,7 +134,7 @@
    has it — a segmented track is for at most five segments on an iPhone
    (HIG), and a single pill cut by the screen's edge reads as broken. Each
    capsule is whole; the one past the edge says the row scrolls. The track
-   keeps its role and the white thumb, only its own glass is gone. */
+   keeps its role and the white thumb, only its own fill is gone. */
 @media (max-width: 699px) {
   .track.inRow {
     gap: var(--s-2);
@@ -132,12 +145,10 @@
     margin-block: calc(-1 * var(--s-1h));
     border-color: transparent;
     background: transparent;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
   }
   .inRow .segment {
-    border: var(--hairline-w) solid var(--glass-border);
-    background: var(--glass-fill);
+    border: var(--hairline-w) solid transparent;
+    background: var(--fill-3);
   }
   .inRow .segment[aria-checked='true'] {
     border-color: transparent;
@@ -155,4 +166,23 @@
     padding: 0 var(--s-2);
     font: var(--t-footnote-em);
   }
+}
+
+/* small: the small control height, for a toolbar (36 = 30 + 2 × 2 + 2 × 1) */
+.small {
+  height: var(--control-h-sm);
+  padding: var(--s-0);
+}
+.small .segment {
+  height: var(--control-h-xs);
+  padding: 0 var(--s-3);
+}
+/* a glyph in place of the text: a square-ish segment */
+.track .iconSegment {
+  min-width: calc(var(--control-h-xs) + var(--s-3));
+  padding: 0 var(--s-2h);
+}
+.iconSegment .label {
+  display: grid;
+  place-items: center;
 }

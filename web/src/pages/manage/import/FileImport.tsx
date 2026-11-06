@@ -29,7 +29,7 @@ export function FileImport({ onFiles, busy }: { onFiles: (files: File[]) => void
       <ul className={styles.tiles} aria-label={t('import.tiles.servicesAria')}>
         <li className={styles.tile} data-testid="import-tile">
           <div className={styles.head}>
-            <span className={styles.icon} style={{ background: '#64d2ff' }} aria-hidden>
+            <span className={styles.icon} style={{ background: 'var(--teal)' }} aria-hidden>
               <Icon name="folder" size={20} strokeWidth={2.2} />
             </span>
             <h3 className={styles.name}>{serviceName('file')}</h3>

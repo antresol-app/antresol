@@ -17,23 +17,14 @@
   position: absolute;
   inset: 0 0 -56px 0;
   z-index: -1;
-  background: linear-gradient(rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.32) 55%, rgba(0, 0, 0, 0));
+  background: var(--scrim-top);
   pointer-events: none;
 }
-/* Scroll edge effect: once content slides under the bar, a soft blur and dim
-   fade in behind it (progressively masked, so there is no hard edge). */
+/* Scroll edge effect (design/glass.css .scroll-edge): once content slides
+   under the bar, a soft blur and dim fade in behind it. */
 .header::after {
-  content: '';
-  position: absolute;
   /* Starts above the viewport so the blur has no visible top edge (halo). */
   inset: -48px 0 -28px 0;
-  z-index: -1;
-  /* Dense enough that big titles scrolling underneath do not show through. */
-  background: linear-gradient(rgba(0, 0, 0, 0.9) 45%, rgba(0, 0, 0, 0.62) 78%, rgba(0, 0, 0, 0));
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-mask-image: linear-gradient(#000 65%, transparent);
-  mask-image: linear-gradient(#000 65%, transparent);
   opacity: 0;
   transition: opacity var(--d-base) var(--ease-out);
   pointer-events: none;
@@ -54,8 +45,8 @@
   border-radius: var(--r-control);
 }
 .wordmark {
-  font: 700 21px / 1 var(--font-display);
-  letter-spacing: -0.02em;
+  font: var(--t-wordmark);
+  letter-spacing: var(--track-tight);
 }
 
 .pill {
@@ -64,6 +55,7 @@
   padding: var(--s-1);
 }
 .items {
+  position: relative;
   display: flex;
   gap: var(--s-0);
   margin: 0;
@@ -78,7 +70,7 @@
   height: var(--control-h-sm);
   padding: 0 var(--s-4);
   border-radius: var(--r-pill);
-  color: rgba(235, 235, 245, 0.78);
+  color: var(--label-on-glass);
   font: var(--t-field);
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -86,13 +78,13 @@
 }
 .item:hover {
   color: var(--label);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--fill-hover);
 }
 .item:focus-visible {
   outline-offset: 1px;
 }
 .iconOnly {
-  width: 44px;
+  width: var(--control-h-md);
   padding: 0;
 }
 .active,
@@ -101,11 +93,19 @@
   font-weight: 600;
   background: transparent;
 }
+/* one capsule for the pill, on the current section (ui/slidingThumb.ts) */
 .capsule {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--label);
+  pointer-events: none;
+}
+.capsule[data-slide] {
+  transition:
+    transform var(--d-base) var(--ease-spring-soft),
+    width var(--d-base) var(--ease-spring-soft);
 }
 .itemLabel {
   position: relative;
@@ -127,21 +127,9 @@
 .compact {
   grid-template-columns: 1fr auto;
   height: var(--nav-height-compact);
-  transition: background-color var(--d-base) var(--ease-out), border-color var(--d-base) var(--ease-out);
-  border-bottom: 1px solid transparent;
 }
 .compact .wordmark {
-  font-size: 19px;
-}
-.compact.scrolled {
-  background: var(--glass-fill-strong);
-  border-bottom-color: var(--glass-border);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-}
-.compact.scrolled::before,
-.compact.scrolled::after {
-  opacity: 0;
+  font: var(--t-wordmark-compact);
 }
 
 @media (max-width: 1000px) {

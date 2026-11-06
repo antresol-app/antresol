@@ -8,7 +8,9 @@
   max-width: 100%;
   height: var(--control-h-sm);
   padding: 0 var(--s-3) 0 var(--s-3h);
+  border: 0;
   border-radius: var(--r-pill);
+  background: var(--fill-2);
   font: var(--t-field);
   color: var(--label-2);
   cursor: pointer;
@@ -24,7 +26,7 @@
 }
 .trigger:hover:not(:disabled),
 .trigger[aria-expanded='true'] {
-  background: var(--glass-fill-hover);
+  background: var(--fill-1);
 }
 .trigger:disabled {
   opacity: 0.45;

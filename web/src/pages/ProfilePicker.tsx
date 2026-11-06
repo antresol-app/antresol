@@ -3,8 +3,7 @@
 // a protected one asks for its password in place.
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { AnimatePresence, motion } from 'motion/react'
-import { ApiError, getProfiles } from '../api/client'
+import { getProfiles, errorText } from '../api/client'
 import type { Profile } from '../api/types'
 import { Avatar } from '../components/Avatar'
 import { Button } from '../ui/Button'
@@ -13,7 +12,7 @@ import { LogoMark } from '../components/Logo'
 import { SourceLink } from '../components/SourceLink'
 import { TextField } from '../ui/TextField'
 import { remotePasswordless, session, useSession } from '../state/session'
-import { SHORT_QUERY, useIsCompact, useMediaQuery, useReducedMotion } from '../state/useMediaQuery'
+import { SHORT_QUERY, useIsCompact, useMediaQuery } from '../state/useMediaQuery'
 import styles from './Auth.module.css'
 import { useT } from '../i18n'
 
@@ -29,7 +28,6 @@ export function ProfilePicker() {
   const t = useT()
   const location = useLocation()
   const compact = useIsCompact()
-  const reduce = useReducedMotion()
   const { remote } = useSession()
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [selected, setSelected] = useState<Profile | null>(null)
@@ -44,7 +42,7 @@ export function ProfilePicker() {
     getProfiles()
       .then((profiles) => setLoad({ state: 'ready', profiles }))
       .catch((e: unknown) =>
-        setLoad({ state: 'error', message: e instanceof ApiError ? e.message : t('app.profiles.loadFailed') }),
+        setLoad({ state: 'error', message: errorText(e, t('app.profiles.loadFailed')) }),
       )
   }
   useEffect(fetchProfiles, [])
@@ -67,7 +65,7 @@ export function ProfilePicker() {
       await session.login(p.id)
       done()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('app.profiles.signInFailed'))
+      setError(errorText(e, t('app.profiles.signInFailed')))
     } finally {
       setBusyId(null)
     }
@@ -86,7 +84,7 @@ export function ProfilePicker() {
       await session.login(selected.id, password)
       done()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('app.profiles.signInFailed'))
+      setError(errorText(err, t('app.profiles.signInFailed')))
       setShake((n) => n + 1)
       setPassword('')
       pwRef.current?.focus()
@@ -98,23 +96,14 @@ export function ProfilePicker() {
   // a phone on its side: everything must fit above the keyboard
   const short = useMediaQuery(SHORT_QUERY)
   const size = short ? 72 : compact ? 96 : 132
-  const fade = { duration: reduce ? 0 : 0.35, ease: [0.22, 1, 0.36, 1] as const }
 
   return (
     <main className={styles.screen}>
       <div className={styles.brand}>
         <LogoMark size={36} />
       </div>
-      <AnimatePresence mode="wait" initial={false}>
-        {!selected ? (
-          <motion.section
-            key="pick"
-            className={styles.stack}
-            initial={{ opacity: 0, scale: reduce ? 1 : 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: reduce ? 1 : 1.02 }}
-            transition={fade}
-          >
+      {!selected ? (
+          <section key="pick" className={`${styles.stack} enter-pop`}>
             <h1 className={styles.title}>{t('app.profiles.whoIsWatching')}</h1>
 
             {load.state === 'loading' && (
@@ -137,12 +126,7 @@ export function ProfilePicker() {
             {load.state === 'ready' && (
               <ul className={styles.profiles}>
                 {load.profiles.map((p, i) => (
-                  <motion.li
-                    key={p.id}
-                    initial={{ opacity: 0, y: reduce ? 0 : 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ ...fade, delay: reduce ? 0 : 0.05 * i }}
-                  >
+                  <li key={p.id} className={`${styles.profileItem} enter-rise`} style={{ animationDelay: `calc(${i} * var(--d-stagger))` }}>
                     <button
                       type="button"
                       className={styles.profile}
@@ -153,7 +137,7 @@ export function ProfilePicker() {
                       <span className={styles.avatarWrap}>
                         <Avatar name={p.name} avatar={p.avatar} size={size} />
                         {p.hasPassword && (
-                          <span className={`${styles.lock} glass`} aria-hidden>
+                          <span className={styles.lock} aria-hidden>
                             <Icon name="lock" size={compact ? 17 : 21} strokeWidth={2.3} />
                           </span>
                         )}
@@ -164,7 +148,7 @@ export function ProfilePicker() {
                         {p.hasPassword && <span className="visually-hidden">{t('app.profiles.withPassword')}</span>}
                       </span>
                     </button>
-                  </motion.li>
+                  </li>
                 ))}
               </ul>
             )}
@@ -174,22 +158,15 @@ export function ProfilePicker() {
               </p>
             )}
             <SourceLink />
-          </motion.section>
+          </section>
         ) : (
-          <motion.section
-            key="password"
-            className={styles.stack}
-            initial={{ opacity: 0, scale: reduce ? 1 : 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fade}
-          >
+          <section key="password" className={`${styles.stack} enter-pop`}>
             <Avatar name={selected.name} avatar={selected.avatar} size={short ? 64 : compact ? 104 : 120} />
             <h1 className={styles.subtitleTitle}>{selected.name}</h1>
             <p className={styles.lead}>{t('app.profiles.enterPasswordToContinue')}</p>
-            <motion.form
+            <form
               key={shake}
-              className={styles.passwordForm}
+              className={shake ? `${styles.passwordForm} ${styles.shake}` : styles.passwordForm}
               onSubmit={(e) => void submitPassword(e)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -197,8 +174,6 @@ export function ProfilePicker() {
                   setError(null)
                 }
               }}
-              animate={shake && !reduce ? { x: [0, -10, 9, -6, 4, 0] } : undefined}
-              transition={{ duration: 0.42 }}
               noValidate
             >
               <TextField
@@ -229,10 +204,9 @@ export function ProfilePicker() {
                   {t('app.profiles.signIn')}
                 </Button>
               </div>
-            </motion.form>
-          </motion.section>
+            </form>
+          </section>
         )}
-      </AnimatePresence>
     </main>
   )
 }

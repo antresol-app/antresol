@@ -11,6 +11,7 @@ import { Notice } from '../components/Notice'
 import { useAudioSelect } from '../player/audio/useAudio'
 import { useSession } from '../state/session'
 import { useLang, useT } from '../i18n'
+import { prefetchSections } from './chunks'
 import styles from './Shell.module.css'
 
 // the admin's downloads badge (none in the core build)
@@ -36,6 +37,16 @@ export function Shell() {
     window.scrollTo(0, 0)
     setFull(false)
   }, [pathname])
+
+  // the other sections' chunks, once this page is up
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'function') {
+      const id = setTimeout(prefetchSections, 2000)
+      return () => clearTimeout(id)
+    }
+    const id = requestIdleCallback(prefetchSections, { timeout: 4000 })
+    return () => cancelIdleCallback(id)
+  }, [])
 
   if (!user) return null
   return (

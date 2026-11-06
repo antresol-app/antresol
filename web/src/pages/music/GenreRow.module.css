@@ -1,7 +1,7 @@
 .section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--s-0);
 }
 .title {
   padding: 0 var(--gutter);
@@ -13,7 +13,7 @@
   gap: var(--s-2);
   margin: 0;
   /* Vertical padding leaves room for the focus ring. */
-  padding: 12px var(--gutter) 6px;
+  padding: var(--s-3) var(--gutter) var(--s-1h);
   list-style: none;
   overflow-x: auto;
   overflow-y: hidden;

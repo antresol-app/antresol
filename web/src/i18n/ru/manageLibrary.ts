@@ -68,7 +68,6 @@ export default {
   'profiles.subtitle': 'У каждого — свои «Продолжить» и «Хочу посмотреть».',
   'profiles.new': 'Новый профиль',
   'profiles.you': 'это вы',
-  'profiles.editAria': 'Изменить профиль {name}',
   'profiles.actions': 'Действия: {name}',
   'profiles.edit': 'Изменить',
   'profiles.deleteAria': 'Удалить профиль {name}',
@@ -117,7 +116,6 @@ export default {
   'stats.disk.later': 'Подсчёт ещё идёт: диск медленный. Загляните позже.',
   'stats.disk.partial': 'Подсчитано не всё: диск слишком медленный. Здесь то, что успели сосчитать.',
   'stats.disk.empty': 'Здесь пусто.',
-  'stats.disk.share': '{share} от раздела',
 
   // the sources build's, but named by core code (were in ./full.ts)
   'manage.section.follows': 'Слежение',

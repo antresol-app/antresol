@@ -3,8 +3,9 @@
 // type in the app: the server address, the profile name and the password.
 // The password is shown once, right after it is created; afterwards only
 // «Создать новый» (which replaces it) or «Отозвать».
+import { Button } from '../ui/Button'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, createAppPassword, getAppPassword, revokeAppPassword } from '../api/client'
+import { createAppPassword, getAppPassword, revokeAppPassword, errorText } from '../api/client'
 import { locale, t as tr, useT } from '../i18n'
 import { Icon } from './Icon'
 import { Sheet } from '../ui/Sheet'
@@ -25,7 +26,7 @@ type State =
 
 type Confirm = 'revoke' | 'replace' | null
 
-const errText = (e: unknown) => (e instanceof ApiError ? e.message : tr('comp.serverUnreachable'))
+const errText = (e: unknown) => (errorText(e, tr('comp.serverUnreachable')))
 
 /** «25 октября 2026». */
 const createdLabel = (iso: string | null) => {
@@ -67,8 +68,10 @@ function CopyRow({ label, value, field }: { label: string; value: string; field?
         aria-label={label}
         onFocus={(e) => e.currentTarget.select()}
       />
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="small"
+        icon={copied ? 'check' : undefined}
         className={styles.copy}
         aria-label={t('comp.appPassword.copyLabel', { label: label.toLowerCase() })}
         onClick={() =>
@@ -80,15 +83,8 @@ function CopyRow({ label, value, field }: { label: string; value: string; field?
           })
         }
       >
-        {copied ? (
-          <>
-            <Icon name="check" size={15} />
-            <span>{t('comp.appPassword.copied')}</span>
-          </>
-        ) : (
-          <span>{t('comp.appPassword.copy')}</span>
-        )}
-      </button>
+        {copied ? t('comp.appPassword.copied') : t('comp.appPassword.copy')}
+      </Button>
     </div>
   )
 }
@@ -165,9 +161,9 @@ export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswor
           {state.status === 'error' && (
             <div className={styles.retry} role="alert">
               <span className={styles.error}>{state.message}</span>
-              <button type="button" className={styles.button} onClick={load}>
+              <Button variant="secondary" size="small" onClick={load}>
                 {t('common.retry')}
-              </button>
+              </Button>
             </div>
           )}
 
@@ -195,17 +191,17 @@ export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswor
             <div className={styles.buttons}>
               {ready.exists ? (
                 <>
-                  <button type="button" className={styles.button} disabled={busy} onClick={() => setConfirm('replace')}>
+                  <Button variant="secondary" size="small" className={styles.button} disabled={busy} onClick={() => setConfirm('replace')}>
                     {t('comp.appPassword.createNew')}
-                  </button>
-                  <button type="button" className={`${styles.button} ${styles.danger}`} disabled={busy} onClick={() => setConfirm('revoke')}>
+                  </Button>
+                  <Button variant="destructive" size="small" className={styles.button} disabled={busy} onClick={() => setConfirm('revoke')}>
                     {t('comp.appPassword.revoke')}
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button type="button" className={`${styles.button} ${styles.primary}`} disabled={busy} onClick={create}>
+                <Button size="small" className={styles.button} disabled={busy} onClick={create}>
                   {t('comp.appPassword.create')}
-                </button>
+                </Button>
               )}
             </div>
           )}

@@ -160,20 +160,13 @@
   width: 88px;
   height: 88px;
 }
-/* one glass circle for all three, the play button the largest (Apple TV) */
-.skip,
-.bigPlay {
-  background: rgba(30, 30, 36, 0.42);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
+/* one clear-glass circle for all three (.glass-clear), the play button the largest (Apple TV) */
 .bigPlay svg[aria-hidden] {
   margin-left: 0;
 }
 .skip:hover,
 .bigPlay:hover {
-  background: rgba(60, 60, 70, 0.55);
+  background: var(--glass-fill-clear-hover);
 }
 .skip:active,
 .bigPlay:active {

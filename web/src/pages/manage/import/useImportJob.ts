@@ -4,7 +4,7 @@
 // reading or preview, else the newest finished one not yet put away with
 // «Готово». After a sign-in the page asks for the job it started (?job=).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getImportGroups, getImportJob, getImportJobs, getImportServices, useEvents } from '../../../api/client'
+import { ApiError, getImportGroups, getImportJob, getImportJobs, getImportServices, useEvents, errorText } from '../../../api/client'
 import type { ImportGroup, ImportJob, ImportProgressEvent, ImportService } from '../../../api/types'
 import { t } from '../../../i18n'
 
@@ -36,7 +36,7 @@ export function pickJob(jobs: ImportJob[], dismissed: number): ImportJob | null 
   )
 }
 
-const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
+const message = (e: unknown, fallback: string) => (errorText(e, fallback))
 
 /** `prefer`: a job to show on the first load (?job= after a sign-in), if it is the profile's. */
 export function useImportJob(prefer?: number) {

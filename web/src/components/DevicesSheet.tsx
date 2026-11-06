@@ -4,7 +4,7 @@
 // asked to sign in again).
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, getDevices, revokeDevice } from '../api/client'
+import { getDevices, revokeDevice, errorText } from '../api/client'
 import type { Device } from '../api/types'
 import { locale, t as tr, useT } from '../i18n'
 import { Avatar } from './Avatar'
@@ -21,7 +21,7 @@ export interface DevicesSheetProps {
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Device[] }
 
-const errText = (e: unknown) => (e instanceof ApiError ? e.message : tr('comp.serverUnreachable'))
+const errText = (e: unknown) => (errorText(e, tr('comp.serverUnreachable')))
 
 /** «Последний вход: 25 октября». */
 const lastSeenLabel = (iso: string) => {

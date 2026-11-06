@@ -3,10 +3,11 @@
 // «Читать» / «Продолжить · 34%», «Хочу прочитать», «Отметить как
 // прочитанное», «На это устройство» («Сохранить офлайн», one item per format) and the
 // description. Audiobooks and comics have their own pages.
+import { Artwork } from '../../ui/Artwork'
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
-import { addToWatchlist, ApiError, downloadUrl, getBook, imageUrl, removeFromWatchlist, setWatched, useEvents } from '../../api/client'
+import { addToWatchlist, ApiError, downloadUrl, getBook, removeFromWatchlist, setWatched, useEvents, errorText } from '../../api/client'
 import type { BookDetail as BookDetailData } from '../../api/types'
 import { formatSize } from '../../components/ActionBar'
 import { Button, ButtonLink } from '../../ui/Button'
@@ -58,7 +59,6 @@ export function BookDetail() {
   const bookId = Number(id)
   const compact = useIsCompact()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [coverFailed, setCoverFailed] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState<'want' | 'read' | null>(null)
   const [actionError, setActionError] = useState('')
@@ -127,7 +127,6 @@ export function BookDetail() {
   if (b.kind === 'comic') return <Navigate to={`/books/comic/${b.card.id}`} replace />
   if (b.kind === 'comic_volume') return <Navigate to={`/read/${b.card.id}`} replace />
 
-  const cover = imageUrl(b.card.poster, 960)
   const pct = b.progress && !b.progress.finished ? Math.round(b.progress.fraction * 100) : 0
   const finished = !!b.progress?.finished
   const series = seriesLine(b)
@@ -144,7 +143,7 @@ export function BookDetail() {
     ;(next ? addToWatchlist(b.card.id) : removeFromWatchlist(b.card.id))
       .catch((e: unknown) => {
         update({ want: !next })
-        setActionError(e instanceof ApiError ? e.message : t('books.listChangeFailed'))
+        setActionError(errorText(e, t('books.listChangeFailed')))
       })
       .finally(() => setBusy(null))
   }
@@ -158,7 +157,7 @@ export function BookDetail() {
         discardProgress([b.card.id], markedAt)
         return load(true)
       })
-      .catch((e: unknown) => setActionError(e instanceof ApiError ? e.message : t('books.book.markFailed')))
+      .catch((e: unknown) => setActionError(errorText(e, t('books.book.markFailed'))))
       .finally(() => setBusy(null))
   }
 
@@ -166,13 +165,13 @@ export function BookDetail() {
     <div className={styles.page}>
       <header className={styles.top}>
         <div className={styles.cover}>
-          {cover && !coverFailed ? (
-            <img src={cover} alt="" decoding="async" draggable={false} onError={() => setCoverFailed(true)} />
-          ) : (
+          <Artwork src={b.card.poster} width={280} sizes="clamp(200px, 20vw, 280px)" eager
+              fallback={
             <span className={styles.coverFallback}>
               <span>{b.card.title}</span>
             </span>
-          )}
+              }
+            />
         </div>
         <div className={styles.info}>
           {series && <p className={styles.series}>{series}</p>}
@@ -251,9 +250,9 @@ export function BookDetail() {
         <section className={styles.about} aria-label={t('books.description')}>
           <p className={`${styles.description} ${long && !expanded ? styles.folded : ''}`}>{b.description}</p>
           {long && (
-            <button type="button" className={styles.more} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+            <Button variant="link" className={styles.more} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
               {expanded ? t('common.collapse') : t('common.more')}
-            </button>
+            </Button>
           )}
         </section>
       )}

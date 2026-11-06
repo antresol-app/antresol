@@ -2,49 +2,49 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: rgba(44, 44, 50, 0.55);
-  border-right: 1px solid rgba(0, 0, 0, 0.5);
-  -webkit-backdrop-filter: blur(30px);
-  backdrop-filter: blur(30px);
+  /* .glass, floating inset in the window (macOS 26 Finder) */
+  margin: var(--s-2) 0 var(--s-2) var(--s-2);
+  border-radius: var(--r-group);
+  overflow: hidden;
 }
 .scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 10px;
+  padding: var(--s-3) var(--s-2h);
 }
 .group + .group {
-  margin-top: 18px;
+  margin-top: var(--s-4);
 }
 .title {
-  padding: 0 10px 5px;
-  font: 600 11px / 1.2 var(--font-text);
+  padding: 0 var(--s-2h) var(--s-1);
+  font: var(--t-caption-2);
   color: var(--label-3);
 }
 .link {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
   height: 28px;
-  padding: 0 10px;
-  border-radius: 7px;
+  padding: 0 var(--s-2h);
+  border-radius: var(--r-sm);
   color: var(--label);
-  font: 400 13px / 1 var(--font-text);
+  font: var(--t-footnote);
   letter-spacing: 0;
   cursor: default;
 }
 .link:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--fill-4);
 }
 .glyph {
   flex: none;
   color: var(--accent);
 }
 .active {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--fill-2);
 }
 .active:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--fill-1);
 }
 .name {
   min-width: 0;
@@ -56,8 +56,8 @@
   outline-offset: -2px;
 }
 .storage {
-  padding: 6px 8px 8px;
-  border-top: 1px solid var(--separator);
+  padding: var(--s-1h) var(--s-2) var(--s-2);
+  border-top: var(--hairline-w) solid var(--separator);
 }
 .storage > div {
   display: flex;
@@ -68,20 +68,20 @@
 .overview {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: var(--s-6);
 }
 .otitle {
-  padding: 0 4px 8px;
-  font: 700 20px / 1.2 var(--font-display);
-  letter-spacing: -0.01em;
+  padding: 0 var(--s-1) var(--s-2);
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
 }
 .olist {
   margin: 0;
   padding: 0;
   list-style: none;
-  border-radius: 14px;
+  border-radius: var(--r-group);
   overflow: hidden;
-  background: var(--bg-elevated);
+  background: var(--surface-grouped);
 }
 .olist li + li .oname,
 .olist li + li .ochev {
@@ -95,7 +95,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 .orow:active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill-hover);
 }
 .oicon {
   display: grid;
@@ -108,12 +108,12 @@
 .oname {
   display: flex;
   align-items: center;
-  font: 400 17px / 1.2 var(--font-text);
+  font: var(--t-body);
 }
 .ochev {
   box-sizing: content-box;
   height: 100%;
-  padding-right: 14px;
+  padding-right: var(--s-3h);
   color: var(--label-3);
   width: 13px;
 }

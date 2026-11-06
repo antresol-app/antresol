@@ -2,10 +2,11 @@
 // «Читать» / «Продолжить: Том 3», «На это устройство» (every volume saved
 // offline), then the volumes as a grid of covers with
 // a read bar. A volume opens in the reader (/read/:id).
+import { Artwork } from '../../ui/Artwork'
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
-import { addToWatchlist, ApiError, getBook, imageUrl, removeFromWatchlist, useEvents } from '../../api/client'
+import { addToWatchlist, ApiError, getBook, imageUrl, removeFromWatchlist, useEvents, errorText } from '../../api/client'
 import type { BookDetail, VolumeCard } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
@@ -80,7 +81,6 @@ export function ComicSeries() {
   const seriesId = Number(id)
   const compact = useIsCompact()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [coverFailed, setCoverFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -155,7 +155,6 @@ export function ComicSeries() {
   if (b.kind === 'audiobook') return <Navigate to={`/books/audiobook/${b.card.id}`} replace />
   if (b.kind === 'comic_volume') return <Navigate to={`/read/${b.card.id}`} replace />
 
-  const cover = imageUrl(b.card.poster, 960)
   const next = nextVolume(b.volumes)
   const n = b.volumes.length
 
@@ -167,7 +166,7 @@ export function ComicSeries() {
     ;(want ? addToWatchlist(b.card.id) : removeFromWatchlist(b.card.id))
       .catch((e: unknown) => {
         setState((s) => (s.status === 'ready' ? { status: 'ready', book: { ...s.book, want: !want } } : s))
-        setActionError(e instanceof ApiError ? e.message : t('books.listChangeFailed'))
+        setActionError(errorText(e, t('books.listChangeFailed')))
       })
       .finally(() => setBusy(false))
   }
@@ -176,13 +175,17 @@ export function ComicSeries() {
     <div className={styles.page}>
       <header className={styles.top}>
         <div className={styles.cover}>
-          {cover && !coverFailed ? (
-            <img src={cover} alt="" decoding="async" draggable={false} onError={() => setCoverFailed(true)} />
-          ) : (
-            <span className={styles.coverFallback}>
-              <span>{b.card.title}</span>
-            </span>
-          )}
+          <Artwork
+            src={b.card.poster}
+            width={260}
+            sizes="clamp(190px, 19vw, 260px)"
+            eager
+            fallback={
+              <span className={styles.coverFallback}>
+                <span>{b.card.title}</span>
+              </span>
+            }
+          />
         </div>
         <div className={styles.info}>
           <p className={styles.eyebrow}>{b.direction === 'ltr' ? t('common.kind.comic') : t('common.kind.manga')}</p>

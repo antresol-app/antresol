@@ -1,9 +1,9 @@
 // «Альбомы»: every album as a grid of squares, a segmented sort control
 // (kept in the URL) and more loaded as you scroll — the music twin of Browse.
 import { APP_NAME } from '../../brand'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import { ApiError, getAlbums, useEvents } from '../../api/client'
+import { getAlbums } from '../../api/client'
 import type { AlbumSort, Card } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
@@ -14,6 +14,7 @@ import { SegmentedControl, type Segment } from '../../ui/SegmentedControl'
 import { useLibraryScope } from '../../state/libraryScope'
 import { usePendingCards, withPending } from '../../state/pendingCards'
 import { useSession } from '../../state/session'
+import { usePagedList } from '../../state/usePagedList'
 import styles from './Albums.module.css'
 import { useT, type Key } from '../../i18n'
 
@@ -31,11 +32,6 @@ const SORTS: { value: Sort; label: Key }[] = [
 
 const isSort = (v: string | null): v is Sort => v === 'added' || v === 'title' || v === 'artist' || v === 'year'
 
-type State =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; items: Card[]; total: number; more: boolean }
-
 export function Albums() {
   const t = useT()
   const title = t('common.albums')
@@ -44,70 +40,17 @@ export function Albums() {
   const raw = params.get('sort')
   const sort: Sort = isSort(raw) ? raw : 'added'
   const { scope } = useLibraryScope()
-  const [state, setState] = useState<State>({ status: 'loading' })
-  const abortRef = useRef<AbortController | null>(null)
-  const loadingMore = useRef(false)
-  const [moreError, setMoreError] = useState('')
-  const sentinel = useRef<HTMLDivElement>(null)
+  const { state, load, loadMore, moreError, sentinel } = usePagedList<Card>((offset, limit, signal) => getAlbums({ sort, limit, offset, scope }, signal), [sort, scope], {
+    page: PAGE,
+    failed: t('common.loadFailed'),
+    moreFailed: t('music.loadMoreFailed'),
+  })
   const pending = usePendingCards()
   const items = useMemo(() => (state.status === 'ready' ? withPending(state.items, pending, ALBUM) : []), [state, pending])
 
   useEffect(() => {
     document.title = `${title} — ${APP_NAME}`
   }, [title])
-
-  const load = useCallback(
-    (quiet = false) => {
-      abortRef.current?.abort()
-      const ac = new AbortController()
-      abortRef.current = ac
-      if (!quiet) setState({ status: 'loading' })
-      getAlbums({ sort, limit: PAGE, scope }, ac.signal)
-        .then((p) => setState({ status: 'ready', items: p.items, total: p.total, more: p.items.length < p.total }))
-        .catch((e: unknown) => {
-          if (ac.signal.aborted || quiet) return
-          setState({ status: 'error', message: e instanceof ApiError ? e.message : t('common.loadFailed') })
-        })
-    },
-    [sort, scope],
-  )
-
-  useEffect(() => {
-    load()
-    return () => abortRef.current?.abort()
-  }, [load])
-
-  useEvents(() => load(true), ['library.updated'])
-
-  const loadMore = useCallback(() => {
-    if (state.status !== 'ready' || !state.more || loadingMore.current) return
-    loadingMore.current = true
-    setMoreError('')
-    const ac = abortRef.current ?? new AbortController()
-    getAlbums({ sort, limit: PAGE, offset: state.items.length, scope }, ac.signal)
-      .then((p) =>
-        setState((s) => {
-          if (s.status !== 'ready') return s
-          const items = [...s.items, ...p.items]
-          return { status: 'ready', items, total: p.total, more: p.items.length > 0 && items.length < p.total }
-        }),
-      )
-      .catch((e: unknown) => {
-        if (ac.signal.aborted) return
-        setMoreError(e instanceof ApiError ? e.message : t('music.loadMoreFailed'))
-      })
-      .finally(() => {
-        loadingMore.current = false
-      })
-  }, [sort, scope, state])
-
-  useEffect(() => {
-    const el = sentinel.current
-    if (!el) return
-    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadMore(), { rootMargin: '800px' })
-    io.observe(el)
-    return () => io.disconnect()
-  }, [loadMore])
 
   const setSort = (v: Sort) => {
     const next = new URLSearchParams(params)

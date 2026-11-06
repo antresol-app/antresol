@@ -1,10 +1,14 @@
 // Finder toolbar: back / forward, the path as breadcrumbs, the view switcher
 // (Значки / Список / Колонки), sort menu, «Новая папка», «Свойства» and a
-// search field that searches inside the current folder.
-import { useRef, type ReactNode } from 'react'
+// search field that searches inside the current folder — all of them the
+// app's controls (ui/), the tools glass over the window as in macOS 26.
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { FileSort, SortOrder } from '../../api/files'
+import { IconButton } from '../../ui/IconButton'
 import { MenuItem, MenuSeparator, Menu, type TriggerProps } from '../../ui/Menu'
+import { SegmentedControl } from '../../ui/SegmentedControl'
+import { TextField } from '../../ui/TextField'
 import { Glyph, type GlyphName } from './glyphs'
 import type { ViewMode } from './views'
 import styles from './Toolbar.module.css'
@@ -30,42 +34,14 @@ const VIEWS: { value: ViewMode; label: Key; glyph: GlyphName }[] = [
 
 export function ViewSwitch({ value, onChange, views = VIEWS }: { value: ViewMode; onChange: (v: ViewMode) => void; views?: typeof VIEWS }) {
   const t = useT()
-  const refs = useRef<(HTMLButtonElement | null)[]>([])
-  const i = Math.max(0, views.findIndex((v) => v.value === value))
   return (
-    <div
-      className={styles.segmented}
-      role="radiogroup"
-      aria-label={t('files.view')}
-      onKeyDown={(e) => {
-        const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
-        if (!d) return
-        e.preventDefault()
-        e.stopPropagation()
-        const n = (i + d + views.length) % views.length
-        onChange(views[n]!.value)
-        refs.current[n]?.focus()
-      }}
-    >
-      {views.map((v, k) => (
-        <button
-          key={v.value}
-          ref={(el) => {
-            refs.current[k] = el
-          }}
-          type="button"
-          role="radio"
-          aria-checked={v.value === value}
-          aria-label={t(v.label)}
-          title={t(v.label)}
-          tabIndex={v.value === value ? 0 : -1}
-          className={styles.segment}
-          onClick={() => onChange(v.value)}
-        >
-          <Glyph name={v.glyph} size={16} strokeWidth={1.8} />
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      size="small"
+      label={t('files.view')}
+      value={value}
+      onChange={onChange}
+      segments={views.map((v) => ({ value: v.value, label: t(v.label), icon: <Glyph name={v.glyph} size={16} strokeWidth={1.8} /> }))}
+    />
   )
 }
 
@@ -89,12 +65,7 @@ export function SortMenu({
       placement="bottom-end"
       trigger={
         trigger ??
-        ((tp) => (
-          <button {...tp} type="button" className={styles.tool} aria-label={t('common.sort')} title={t('common.sort')}>
-            <Glyph name="sort" size={16} />
-            <Glyph name="chevronDown" size={10} strokeWidth={2.6} className={styles.caret} />
-          </button>
-        ))
+        ((tp) => <IconButton {...tp} size="sm" material="glass" icon={<Glyph name="sort" size={16} />} label={t('common.sort')} />)
       }
     >
       {(close) => (
@@ -136,30 +107,20 @@ export function SortMenu({
 export function SearchField({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
   const t = useT()
   return (
-    <label className={`${styles.search} ${className ?? ''}`}>
-      <Glyph name="search" size={14} strokeWidth={2.1} className={styles.searchGlyph} />
-      <input
-        type="search"
-        value={value}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape' && value) {
-            e.preventDefault()
-            e.stopPropagation()
-            onChange('')
-          }
-        }}
-        spellCheck={false}
-        autoComplete="off"
-      />
-      {value && (
-        <button type="button" className={styles.clear} aria-label={t('files.search.clear')} onClick={() => onChange('')}>
-          <Glyph name="xmarkCircle" size={14} />
-        </button>
-      )}
-    </label>
+    <TextField
+      type="search"
+      size="small"
+      label={placeholder}
+      hideLabel
+      placeholder={placeholder}
+      className={`${styles.search} ${className ?? ''}`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onClear={() => onChange('')}
+      clearLabel={t('files.search.clear')}
+      spellCheck={false}
+      autoComplete="off"
+    />
   )
 }
 
@@ -192,13 +153,10 @@ export function Toolbar(p: ToolbarProps) {
   const shown = p.crumbs.length > 4 ? [p.crumbs[0]!, null, ...p.crumbs.slice(-2)] : p.crumbs
   return (
     <div className={styles.toolbar} role="toolbar" aria-label={t('files.toolbar')}>
-      <div className={styles.nav}>
-        <button type="button" className={styles.tool} aria-label={t('common.back')} title={t('common.back')} disabled={!p.canBack} onClick={p.onBack}>
-          <Glyph name="chevronLeft" size={17} strokeWidth={2.2} />
-        </button>
-        <button type="button" className={styles.tool} aria-label={t('common.forward')} title={t('common.forward')} disabled={!p.canForward} onClick={p.onForward}>
-          <Glyph name="chevronRight" size={17} strokeWidth={2.2} />
-        </button>
+      {/* back and forward share one glass capsule, as in macOS 26 */}
+      <div className={`${styles.nav} glass`}>
+        <IconButton size="sm" variant="plain" icon="chevronLeft" label={t('common.back')} disabled={!p.canBack} onClick={p.onBack} />
+        <IconButton size="sm" variant="plain" icon="chevronRight" label={t('common.forward')} disabled={!p.canForward} onClick={p.onForward} />
       </div>
       <nav className={styles.crumbs} aria-label={t('files.path')}>
         <ol>
@@ -228,22 +186,17 @@ export function Toolbar(p: ToolbarProps) {
         {p.children}
         {p.view && p.onView && <ViewSwitch value={p.view} onChange={p.onView} />}
         {p.sort && p.order && p.onSort && p.onOrder && <SortMenu sort={p.sort} order={p.order} onSort={p.onSort} onOrder={p.onOrder} />}
-        {p.onNewFolder && (
-          <button type="button" className={styles.tool} aria-label={t('files.newFolder')} title={t('files.newFolder')} onClick={p.onNewFolder}>
-            <Glyph name="folderPlus" size={17} />
-          </button>
-        )}
+        {p.onNewFolder && <IconButton size="sm" material="glass" icon={<Glyph name="folderPlus" size={17} />} label={t('files.newFolder')} onClick={p.onNewFolder} />}
         {p.onInfo && (
-          <button
-            type="button"
-            className={`${styles.tool} ${p.infoOpen ? styles.pressed : ''}`}
-            aria-label={t('files.info')}
-            aria-pressed={p.infoOpen}
-            title={t('files.infoShortcut')}
+          <IconButton
+            size="sm"
+            material="glass"
+            icon={<Glyph name="info" size={17} />}
+            label={t('files.info')}
+            tooltip={t('files.infoShortcut')}
+            toggled={p.infoOpen}
             onClick={p.onInfo}
-          >
-            <Glyph name="info" size={17} />
-          </button>
+          />
         )}
         {p.onQuery && <SearchField value={p.query ?? ''} onChange={p.onQuery} placeholder={p.searchPlaceholder ?? t('common.search')} />}
       </div>

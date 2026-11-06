@@ -8,7 +8,7 @@
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ApiError, getStorage, imageUrl } from '../../api/client'
+import { ApiError, getStorage, imageUrl, errorText } from '../../api/client'
 import { getUsage, trashFiles } from '../../api/files'
 import type { FileUsage, StorageItem, StorageReport } from '../../api/types'
 import { ButtonLink, Button } from '../../ui/Button'
@@ -144,7 +144,7 @@ export function Files() {
         setReport(r)
         setError('')
       },
-      (e: unknown) => setError(e instanceof ApiError ? e.message : t('common.loadFailed')),
+      (e: unknown) => setError(errorText(e, t('common.loadFailed'))),
     )
   }, [])
   useEffect(() => {
@@ -172,7 +172,7 @@ export function Files() {
       window.setTimeout(load, 1500) // the scanner drops the item from the library
     } catch (e) {
       setConfirm(null)
-      setError(e instanceof ApiError ? e.message : t('mfiles.deleteFailed'))
+      setError(errorText(e, t('mfiles.deleteFailed')))
     } finally {
       setBusy(false)
     }

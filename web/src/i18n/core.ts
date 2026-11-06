@@ -2,9 +2,12 @@
 // интерфейса», per browser), else the browser's preferred languages by the
 // shared rule (the first ru*/en* wins; none → en). One store for the tab;
 // components re-render through useT()/useLang().
+//
+// A catalog is a chunk of its own, loaded on demand (loadCatalog): a page
+// downloads only the language it shows. main.tsx renders once the active one
+// is in (the boot script has already asked for it, see boot/early.ts).
 import { useMemo, useSyncExternalStore } from 'react'
-import { ru } from './ru'
-import { en } from './en'
+import type { ru } from './ru'
 import type { Entry, Params, Plural } from './types'
 
 export type Lang = 'ru' | 'en'
@@ -15,7 +18,52 @@ export type TFunction = (key: Key, params?: Params) => string
 export const LANGS: readonly Lang[] = ['ru', 'en']
 export const STORAGE_KEY = 'vault.uiLanguage'
 
-const catalogs: Record<Lang, Partial<Record<Key, Entry>>> = { ru, en }
+type Catalog = Partial<Record<Key, Entry>>
+const catalogs: Partial<Record<Lang, Catalog>> = {}
+const loading = new Map<Lang, Promise<void>>()
+/** How each catalog is fetched (exported for tests, which stub a failure). */
+export const catalogImporters: Record<Lang, () => Promise<Catalog>> = {
+  ru: () => import('./ru').then((m) => m.ru),
+  en: () => import('./en').then((m) => m.en),
+}
+
+/** Loads `l`'s catalog (once); resolves when translate() has it. A failure is forgotten: the next call asks again. */
+export function loadCatalog(l: Lang): Promise<void> {
+  if (catalogs[l]) return Promise.resolve()
+  let p = loading.get(l)
+  if (!p) {
+    p = catalogImporters[l]().then(
+      (c) => {
+        catalogs[l] = c
+      },
+      (e: unknown) => {
+        loading.delete(l)
+        throw e
+      },
+    )
+    loading.set(l, p)
+  }
+  return p
+}
+
+/** The first frame's catalog: asked twice before giving up (false: there are no strings to show). */
+export async function loadCatalogAtBoot(l: Lang): Promise<boolean> {
+  for (let i = 0; i < 2; i++) {
+    try {
+      await loadCatalog(l)
+      return true
+    } catch {
+      /* once more */
+    }
+  }
+  return false
+}
+
+/** Tests: forget a loaded catalog. */
+export function forgetCatalogForTests(l: Lang) {
+  delete catalogs[l]
+  loading.delete(l)
+}
 
 /** The contract's rule: walk the preferred languages; the first ru-… or en-… wins; none → en. */
 export function resolveLanguage(preferred: readonly string[] | undefined | null): Lang {
@@ -51,12 +99,19 @@ function applyDocumentLang() {
 }
 applyDocumentLang()
 
+const notify = () => {
+  for (const l of [...listeners]) l()
+}
+
 function recompute() {
   const next = pref === 'system' ? resolveLanguage(browserLanguages()) : pref
   if (next === lang) return
   lang = next
   applyDocumentLang()
-  for (const l of [...listeners]) l()
+  notify()
+  // until it is in, the strings stay in the language already loaded
+  // a failure leaves the strings in the language already loaded; the next change asks again
+  if (!catalogs[next]) loadCatalog(next).then(() => lang === next && notify(), () => undefined)
 }
 
 if (typeof window !== 'undefined') {
@@ -119,7 +174,7 @@ function interpolate(s: string, params?: Params): string {
 
 /** Translates `key` into `l`: `{name}` placeholders come from `params`; plural entries pick by `params.count`. */
 export function translate(l: Lang, key: Key, params?: Params): string {
-  const entry = catalogs[l][key] ?? catalogs.ru[key]
+  const entry = catalogs[l]?.[key] ?? catalogs.ru?.[key] ?? catalogs.en?.[key]
   if (entry === undefined) return String(key)
   const s = typeof entry === 'string' ? entry : pluralForm(l, entry, Number(params?.count ?? 0))
   return interpolate(s, params)
@@ -128,13 +183,20 @@ export function translate(l: Lang, key: Key, params?: Params): string {
 /** Translates into the active language (outside React, or inside a component that called useLang/useT). */
 export const t: TFunction = (key, params) => translate(lang, key, params)
 
+// what a component renders from: the language, and whether its catalog is in yet
+const snapshot = () => (catalogs[lang] ? lang : `${lang}…`)
+
 /** The active language; the component re-renders when it changes. */
 export function useLang(): Lang {
-  return useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage)
+  useSyncExternalStore(subscribeLanguage, snapshot, snapshot)
+  return lang
 }
 
-/** `t` bound to the active language; a new function after a change, so memo deps see it. */
+/** `t` bound to the active language; a new function after a change (and once its catalog is in), so memo deps see it. */
 export function useT(): TFunction {
-  const l = useLang()
-  return useMemo<TFunction>(() => (key, params) => translate(l, key, params), [l])
+  const s = useSyncExternalStore(subscribeLanguage, snapshot, snapshot)
+  return useMemo<TFunction>(() => {
+    const l = s.slice(0, 2) as Lang
+    return (key, params) => translate(l, key, params)
+  }, [s])
 }

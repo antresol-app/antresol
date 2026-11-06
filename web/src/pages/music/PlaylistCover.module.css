@@ -12,7 +12,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-shadow: var(--artwork-outline);
   pointer-events: none;
 }
 .mosaic {
@@ -36,6 +36,6 @@
   place-items: center;
   width: 100%;
   height: 100%;
-  color: rgba(255, 255, 255, 0.7);
-  background: linear-gradient(150deg, #ff375f, #bf5af2 60%, #5e5ce6);
+  color: var(--label-over-art-2);
+  background: var(--art-playlist);
 }

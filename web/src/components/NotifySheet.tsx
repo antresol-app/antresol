@@ -6,7 +6,7 @@
 // «Звук и субтитры» are. The letters come in the interface language the
 // settings were saved in.
 import { useEffect, useId, useState } from 'react'
-import { ApiError, confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, type NotifyPrefsInput } from '../api/client'
+import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, type NotifyPrefsInput, errorText } from '../api/client'
 import type { NotifyPrefs, NotifyTopic } from '../api/types'
 import { getLanguage, useT, type Key } from '../i18n'
 import { Button } from '../ui/Button'
@@ -73,14 +73,14 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
         setState({ status: 'ready', prefs })
         setSavedEmail(prefs.email)
       },
-      (e: unknown) => !ac.signal.aborted && setState({ status: 'error', message: e instanceof ApiError ? e.message : t('comp.notify.loadFailed') }),
+      (e: unknown) => !ac.signal.aborted && setState({ status: 'error', message: errorText(e, t('comp.notify.loadFailed')) }),
     )
     return () => ac.abort()
   }, [userId, t])
 
   const prefs = state.status === 'ready' ? state.prefs : null
   const change = (patch: Partial<NotifyPrefs>) => setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, ...patch } } : s))
-  const failed = (e: unknown, fallback: Key) => setError(e instanceof ApiError ? e.message : t(fallback))
+  const failed = (e: unknown, fallback: Key) => setError(errorText(e, t(fallback)))
 
   const save = async () => {
     if (!prefs) return

@@ -4,7 +4,7 @@
 // (with a confirmation).
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, createUser, deleteUser, getScreenLimited, getUsers, resetAppPassword, updateUser, type UserInput } from '../../api/client'
+import { createUser, deleteUser, getScreenLimited, getUsers, resetAppPassword, updateUser, type UserInput, errorText } from '../../api/client'
 import type { ScreenLimited, User } from '../../api/types'
 import { Avatar } from '../../components/Avatar'
 import { Button } from '../../ui/Button'
@@ -55,7 +55,7 @@ export function Profiles() {
   // kids with screen-time rules and the profiles open without a password (a way around them)
   const [limited, setLimited] = useState<ScreenLimited | null>(null)
   const load = useCallback(() => {
-    getUsers().then(setList, (e: unknown) => setError(e instanceof ApiError ? e.message : t('common.loadFailed')))
+    getUsers().then(setList, (e: unknown) => setError(errorText(e, t('common.loadFailed'))))
     getScreenLimited().then(setLimited, () => setLimited(null))
   }, [])
   const openTo = (kid: User) =>
@@ -178,7 +178,7 @@ export function Profiles() {
               run: () => {
                 const u = removing
                 setRemoving(null)
-                deleteUser(u.id).then(load, (e: unknown) => setError(e instanceof ApiError ? e.message : t('mfiles.deleteFailed')))
+                deleteUser(u.id).then(load, (e: unknown) => setError(errorText(e, t('mfiles.deleteFailed'))))
               },
             },
           ]}
@@ -220,7 +220,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
       const u = user ? await updateUser(user.id, body) : await createUser(body as UserInput)
       onSaved(u)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('profiles.saveFailed'))
+      setError(errorText(e, t('profiles.saveFailed')))
     } finally {
       setBusy(false)
     }
@@ -363,7 +363,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
                 setError('')
                 resetAppPassword(user.id).then(
                   () => setAppReset(t('profiles.appPasswordReset')),
-                  (e: unknown) => setError(e instanceof ApiError ? e.message : t('profiles.appPasswordResetFailed')),
+                  (e: unknown) => setError(errorText(e, t('profiles.appPasswordResetFailed'))),
                 )
               }}
             >

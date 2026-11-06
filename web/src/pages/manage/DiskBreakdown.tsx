@@ -6,7 +6,7 @@
 // the disk the first time (the server runs it once, in the background):
 // the sheet asks again until it is done.
 import { useEffect, useState } from 'react'
-import { ApiError, getDiskBreakdown } from '../../api/client'
+import { getDiskBreakdown, errorText } from '../../api/client'
 import type { DiskBreakdown } from '../../api/types'
 import { formatSize } from '../../components/ActionBar'
 import type { DiskSegment } from '../../components/DiskMeter'
@@ -55,7 +55,7 @@ export function DiskBreakdownSheet({ segment, onClose }: { segment: DiskSegment;
           timer = window.setTimeout(ask, delay)
           delay = Math.min(POLL_MAX_MS, delay * POLL_GROWTH)
         },
-        (e: unknown) => !ac.signal.aborted && setLoad({ status: 'error', message: e instanceof ApiError ? e.message : t('common.loadFailed') }),
+        (e: unknown) => !ac.signal.aborted && setLoad({ status: 'error', message: errorText(e, t('common.loadFailed')) }),
       )
     void ask()
     return () => {

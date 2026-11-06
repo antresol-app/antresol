@@ -5,7 +5,7 @@
 }
 .card {
   padding: var(--s-4);
-  border-radius: 16px;
+  border-radius: var(--r-group);
 }
 .phase {
   display: flex;
@@ -32,7 +32,7 @@
 .groupBar {
   height: 6px;
   margin-top: var(--s-2h);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   background: var(--fill-2);
   overflow: hidden;
 }
@@ -40,7 +40,7 @@
 .groupBar span {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   background: var(--accent);
   transition: width var(--d-slow) var(--ease-out);
 }

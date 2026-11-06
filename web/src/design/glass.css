@@ -1,33 +1,93 @@
 /*
- * Matte glass material. One translucent fill, a 1px hairline and a backdrop
- * blur — no highlights, no sheen gradients, no inner glow.
+ * Liquid Glass, CSS only (no library, no script): the navigation and control
+ * layer that floats over content. tokens.css holds the values and says where
+ * each variant goes. Each variant is a tint, a blur with a saturation boost,
+ * a lit rim and a soft shadow; a component that lifts higher (a menu, a
+ * sheet) sets --glass-lift instead of its own box-shadow, so the rim stays.
+ * No page writes backdrop-filter: a component picks one of these classes
+ * (scripts: src/design/__tests__/glassOnly.test.ts).
  */
-.glass {
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-border);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
+.glass,
+.glass-strong,
+.glass-clear {
+  border: var(--hairline-w) solid var(--glass-border);
+  box-shadow: var(--glass-rim), var(--glass-edge), var(--glass-lift, var(--glass-shadow));
 }
 
-/* Denser variant for menus and sheets that sit over busy artwork. */
+/* regular: bars, sidebars, the player bar, the tab bar */
+.glass {
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* menus, sheets, toasts */
 .glass-strong {
   background: var(--glass-fill-strong);
-  border: 1px solid var(--glass-border);
-  -webkit-backdrop-filter: blur(var(--glass-blur-strong));
-  backdrop-filter: blur(var(--glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+}
+
+/* over video and artwork: the picture shows through, under a dim layer
+   (--glass-dim) that keeps a white glyph legible over a bright frame */
+.glass-clear {
+  background: linear-gradient(var(--glass-dim), var(--glass-dim)), var(--glass-fill-clear);
+  -webkit-backdrop-filter: blur(var(--glass-blur-clear)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-clear)) saturate(var(--glass-saturate));
+}
+
+/* An edge-to-edge bar (the reader's top and bottom bars, macOS Books): the
+   material without the floating rim and shadow; the bar draws its own
+   hairline. --glass-bar-fill / --glass-bar-solid tint it (the reader's
+   paper themes). */
+.glass-bar {
+  background: var(--glass-bar-fill, var(--glass-fill-strong));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* The scroll edge effect of a bar (iOS 26): content sliding under it is
+   blurred and dimmed, progressively masked so there is no hard edge. The bar
+   places its ::after and fades it in. */
+.scroll-edge::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  background: var(--scroll-edge-fill);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-mask-image: linear-gradient(#000 65%, transparent);
+  mask-image: linear-gradient(#000 65%, transparent);
+  pointer-events: none;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass,
-  .glass-strong {
+  .glass-strong,
+  .glass-clear {
     background: var(--glass-fill-strong);
+  }
+  .glass-bar {
+    background: var(--glass-bar-solid, var(--bg-elevated));
   }
 }
 
+/* «Reduce transparency»: an opaque surface, the same shape and rim */
 @media (prefers-reduced-transparency: reduce) {
   .glass,
-  .glass-strong {
+  .glass-strong,
+  .glass-clear {
     background: var(--bg-elevated);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-bar {
+    background: var(--glass-bar-solid, var(--bg-elevated));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .scroll-edge::after {
+    background: var(--bg);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

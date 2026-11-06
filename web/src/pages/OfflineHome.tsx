@@ -123,7 +123,7 @@ export function OfflineHome() {
         <span>{APP_NAME}</span>
       </header>
       <div className={styles.page}>
-        <div className={`${styles.banner} glass`} role="status">
+        <div className={styles.banner} role="status">
           <Icon name="cloud" size={22} strokeWidth={1.8} />
           <p>{t('app.offlineHome.banner')}</p>
           <Button variant="secondary" size="small" loading={retrying} onClick={retry}>

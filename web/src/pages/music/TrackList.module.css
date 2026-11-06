@@ -5,7 +5,7 @@
 }
 .discTitle {
   margin: 0 0 var(--s-2);
-  padding: 0 12px;
+  padding: 0 var(--s-3);
   font: var(--t-headline);
   color: var(--label-2);
 }
@@ -18,8 +18,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 10px;
+  border-radius: var(--r-field);
   transition: background-color var(--d-fast) var(--ease-out);
+  /* a long list («Песни») lays out and paints only the rows near the screen;
+     a row keeps its last height while away (its focus ring is inside it) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 .rows li + li::before {
   content: '';
@@ -43,13 +47,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s-1);
   flex: 1;
   min-width: 0;
   min-height: 52px;
-  padding: 6px 12px 6px 0;
+  padding: var(--s-1h) var(--s-3) var(--s-1h) 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-field);
   background: transparent;
   color: var(--label);
   text-align: left;
@@ -80,11 +84,11 @@
 }
 .menu {
   flex: none;
-  margin-right: 4px;
+  margin-right: var(--s-1);
 }
 .row:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 0;
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 .num {
@@ -100,7 +104,7 @@
 .songs .num {
   width: 56px;
   justify-items: start;
-  padding-left: 8px;
+  padding-left: var(--s-2);
 }
 .songs .row {
   min-height: 56px;
@@ -110,7 +114,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   overflow: hidden;
   background: var(--fill-2);
   color: var(--label-3);
@@ -127,11 +131,11 @@
   left: 8px;
   width: 40px;
   height: 40px;
-  margin-top: -20px;
-  border-radius: 6px;
+  margin-top: calc(-1 * var(--s-5));
+  border-radius: var(--r-sm);
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--scrim-art-strong);
 }
 .thumbNow.hoverPlay {
   inset: auto;
@@ -167,7 +171,7 @@
 }
 .time {
   flex: none;
-  padding-left: 12px;
+  padding-left: var(--s-3);
   font: var(--t-subhead);
   font-variant-numeric: tabular-nums;
   color: var(--label-2);
@@ -182,13 +186,13 @@
 .bars {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--s-0);
   height: 14px;
 }
 .bars span {
   width: 3px;
   height: 100%;
-  border-radius: 1px;
+  border-radius: var(--r-xs);
   background: var(--accent);
   transform-origin: bottom;
   animation: bar 0.9s var(--ease-in-out) infinite alternate;
@@ -238,5 +242,5 @@
 .badge {
   composes: badge round from '../../ui/Badge.module.css';
   align-self: flex-start;
-  margin-top: 2px;
+  margin-top: var(--s-0);
 }

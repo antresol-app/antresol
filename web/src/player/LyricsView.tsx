@@ -5,7 +5,7 @@
 // them with «Раньше» / «Позже» (0,25 s a press, for this track and every
 // profile): applied at once, saved a moment after the last press.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, getLyrics, setLyricsOffset } from '../api/client'
+import { ApiError, getLyrics, setLyricsOffset, errorText } from '../api/client'
 import { Icon } from '../components/Icon'
 import { useReducedMotion } from '../state/useMediaQuery'
 import { activeLine, clampOffset, OFFSET_STEP_MS, offsetSeconds, parseLrc, shiftLines, type LrcLine } from './lrc'
@@ -65,7 +65,7 @@ export function LyricsView({ trackId, hasLyrics, positionSec, onSeek, canAdjust 
       .catch((e: unknown) => {
         if (ac.signal.aborted) return
         if (e instanceof ApiError && e.status === 404) setState({ status: 'none' })
-        else setState({ status: 'error', message: e instanceof ApiError ? e.message : t('player.lyrics.loadFailed') })
+        else setState({ status: 'error', message: errorText(e, t('player.lyrics.loadFailed')) })
       })
     return () => ac.abort()
   }, [trackId, hasLyrics])

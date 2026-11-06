@@ -7,7 +7,7 @@
   text-wrap: pretty;
 }
 .error {
-  background: rgba(255, 69, 58, 0.12);
+  background: var(--destructive-fill);
   color: var(--destructive);
 }
 
@@ -61,7 +61,7 @@
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: var(--fill-3);
   color: var(--label);
 }
@@ -128,7 +128,7 @@
 .report {
   margin-top: var(--s-2);
   padding: var(--s-4);
-  border-radius: 16px;
+  border-radius: var(--r-group);
 }
 .reportHead {
   display: flex;
@@ -186,14 +186,14 @@
 }
 .progressBar {
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   background: var(--fill-2);
   overflow: hidden;
 }
 .progressBar span {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   background: var(--accent);
   transition: width var(--d-slow) var(--ease-out);
 }

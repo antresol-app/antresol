@@ -13,12 +13,12 @@
 // (keyboard.ts), so a field and its buttons are never covered.
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'motion/react'
+import { MaterialContext } from './Button'
 import { useT } from '../i18n'
 import { useIsCompact, useReducedMotion } from '../state/useMediaQuery'
 import { IconButton } from './IconButton'
 import { useKeyboardInset } from './keyboard'
-import { menuTrigger } from './Menu'
+import { menuTrigger, recentMenuTrigger } from './Menu'
 import { useScrollLock } from './scrollLock'
 import styles from './Sheet.module.css'
 
@@ -73,14 +73,14 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
   const still = useReducedMotion()
   useKeyboardInset()
   useScrollLock()
-  // a bottom sheet slides up from below the edge; a centred one settles in place
-  const enter = still ? false : bottom ? { y: '100%' } : { opacity: 0, y: -12, scale: 0.98 }
-  const spring = bottom ? { type: 'spring' as const, stiffness: 420, damping: 42 } : { type: 'spring' as const, stiffness: 560, damping: 40 }
+  // a bottom sheet slides up from below the edge, a centred one settles in
+  // place (Sheet.module.css: the enter animations, the slide away, the drag)
   // A bottom sheet leaves the way it came: it slides down, then the page's
   // onCancel unmounts it. A read-only picker can also be dragged down by
   // its grabber (a form never: what was typed is not thrown away).
   const [closing, setClosing] = useState(false)
   const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const drag = useRef<{ y: number; t: number; vy: number; dy: number } | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(closeTimer.current), [])
@@ -96,6 +96,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
   const onGrabDown = (e: ReactPointerEvent<HTMLElement>) => {
     if (latest.current.busy) return
     drag.current = { y: e.clientY, t: e.timeStamp, vy: 0, dy: 0 }
+    setDragging(true)
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }
   const onGrabMove = (e: ReactPointerEvent<HTMLElement>) => {
@@ -111,6 +112,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
   const onGrabEnd = () => {
     const d = drag.current
     drag.current = null
+    setDragging(false)
     if (!d) return
     if (d.dy > DISMISS_DRAG || d.vy > DISMISS_FLICK) dismiss()
     else setDragY(0)
@@ -135,7 +137,8 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
     // opened from an item of a menu (that menu is closing; its keys would
     // swallow the page's Esc): focus goes back to the menu's trigger instead
     const menu = restore?.closest('[role="menu"]')
-    const back = menu ? (menuTrigger(menu) ?? menu.parentElement?.querySelector<HTMLElement>('[aria-haspopup="menu"]')) : restore
+    const lost = !restore || restore === document.body
+    const back = menu ? (menuTrigger(menu) ?? menu.parentElement?.querySelector<HTMLElement>('[aria-haspopup="menu"]')) : lost ? (recentMenuTrigger() ?? restore) : restore
     const el = ref.current
     const first =
       el?.querySelector<HTMLElement>('[data-autofocus]') ??
@@ -195,11 +198,11 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
   }
 
   return createPortal(
-    <motion.div
+    // a sheet is glass: what it holds is never glass again
+    <MaterialContext.Provider value="fill">
+    <div
       className={styles.backdrop}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: closing ? 0 : 1 }}
-      transition={{ duration: closing ? CLOSE_MS / 1000 : 0.15 }}
+      data-closing={closing || undefined}
       // a click on the dimmed area must not take focus out of the sheet
       // (Esc and Tab are handled on the sheet; in the player, Esc on <body> would close the player)
       onMouseDown={(e) => {
@@ -217,7 +220,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
         if (outside && dismissOnOutside && !latest.current.busy) dismiss()
       }}
     >
-      <motion.div
+      <div
         ref={ref}
         role={role}
         aria-modal="true"
@@ -225,10 +228,9 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
         className={`${styles.sheet} ${styles[kind]} ${close ? styles.closable : ''} glass-strong`}
         data-placement={bottom ? 'bottom' : 'center'}
         data-closing={closing || undefined}
+        data-dragging={dragging || undefined}
+        style={dragY && !closing ? { transform: `translateY(${dragY}px)` } : undefined}
         onKeyDown={onKey}
-        initial={enter}
-        animate={closing ? { y: '100%' } : { opacity: 1, y: dragY, scale: 1 }}
-        transition={closing ? { duration: CLOSE_MS / 1000, ease: [0.32, 0.72, 0, 1] } : drag.current ? { duration: 0 } : spring}
       >
         {grabber && (
           <div
@@ -284,8 +286,9 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
         {close && (
           <IconButton size="xs" icon="close" className={styles.close} label={t('common.close')} onClick={() => dismiss()} />
         )}
-      </motion.div>
-    </motion.div>,
+      </div>
+    </div>
+    </MaterialContext.Provider>,
     container ?? document.body,
   )
 }

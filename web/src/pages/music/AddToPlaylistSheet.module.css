@@ -1,7 +1,7 @@
 .list {
   width: 100%;
   max-height: min(46vh, 380px);
-  margin: 14px 0 0;
+  margin: var(--s-3h) 0 0;
   padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -11,11 +11,11 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--s-3);
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--s-1h) var(--s-2);
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-field);
   background: none;
   color: var(--label);
   text-align: left;
@@ -36,7 +36,7 @@
   flex: none;
   width: 44px !important;
   height: 44px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
 }
 .plus {
   display: grid;
@@ -61,15 +61,15 @@
   color: var(--label-2);
 }
 .note {
-  margin-top: 10px;
+  margin-top: var(--s-2h);
 }
 .error {
-  margin-top: 10px;
+  margin-top: var(--s-2h);
   font: var(--t-footnote);
   color: var(--red);
 }
 .field {
   width: 100%;
-  margin-top: 14px;
+  margin-top: var(--s-3h);
   text-align: left;
 }

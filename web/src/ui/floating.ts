@@ -76,16 +76,16 @@ function barBox(sel: string): DOMRect | null {
   return r && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight ? r : null
 }
 
-/** The vertical band a menu opened from `trigger` may use. */
-export function floatingBand(trigger: Element): { ceiling: number; floor: number } {
-  if (trigger.closest('[role="dialog"],[role="alertdialog"]')) {
+/** The vertical band a menu opened from `trigger` (an element, or a point's box) may use. */
+export function floatingBand(trigger: Element | Box): { ceiling: number; floor: number } {
+  if (trigger instanceof Element && trigger.closest('[role="dialog"],[role="alertdialog"]')) {
     const safe = safeInsets()
     return { ceiling: safe.top, floor: window.innerHeight - safe.bottom }
   }
   const top = barBox('[data-top-bar]')
   const bottom = barBox('[data-bottom-bar]')
   // a top bar lower than the trigger (scrolled oddly, a sticky header inside the page) is no ceiling
-  const t = trigger.getBoundingClientRect()
+  const t = trigger instanceof Element ? trigger.getBoundingClientRect() : trigger
   const safe = safeInsets()
   return {
     ceiling: top && top.bottom <= t.top ? top.bottom : safe.top,
@@ -157,18 +157,19 @@ function fixedOrigin(el: HTMLElement): { x: number; y: number } {
  * Places `el` (position: fixed) next to `trigger`. Writes the style
  * directly: called before the first paint and on every scroll or resize.
  */
-export function positionFloating(trigger: HTMLElement, el: HTMLElement, placement: Placement, cap?: number): FloatResult {
+export function positionFloating(trigger: HTMLElement | Box, el: HTMLElement, placement: Placement, cap?: number, gap?: number): FloatResult {
   const { ceiling, floor } = floatingBand(trigger)
   // measure at its natural height: a cut from the last placement must not stick
   el.style.maxHeight = ''
   const r = placeFloating({
-    anchor: trigger.getBoundingClientRect(),
+    anchor: trigger instanceof Element ? trigger.getBoundingClientRect() : trigger,
     size: { width: el.offsetWidth, height: el.offsetHeight },
     viewport: { width: window.innerWidth, height: window.innerHeight },
     ceiling,
     floor,
     placement,
     cap,
+    gap,
     insets: safeInsets(),
   })
   const o = fixedOrigin(el)
@@ -179,6 +180,9 @@ export function positionFloating(trigger: HTMLElement, el: HTMLElement, placemen
   el.dataset.side = r.side
   return r
 }
+
+/** The box of a point (a right click): a context menu opens with its corner there. */
+export const pointBox = (x: number, y: number): Box => ({ top: y, bottom: y, left: x, right: x, width: 0, height: 0 })
 
 /** Scrolls a scrolling menu so its chosen item is in view (centred when it was out of view). */
 export function revealChosen(el: HTMLElement, chosen: HTMLElement | null) {

@@ -34,8 +34,10 @@
 // it plays — never from a detached or still-seeking element — so progress is
 // always saved at the real position.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import Hls, { type ErrorData } from 'hls.js'
+import type Hls from 'hls.js'
+import type { ErrorData } from 'hls.js'
 import { ApiError, play, stopHls, touchHls } from '../api/client'
+import { nativeHls } from './hlsSupport'
 import type { ClientCaps, MediaFile, OnlineQualityInfo, PlayRequest, PlayResponse, PlaySegment, Quality, QualityInfo, SubTrack, Track } from '../api/types'
 import { EXTERNAL_AUDIO_BASE } from '../api/types'
 import {
@@ -70,12 +72,10 @@ const offlineError = () => t('player.video.offline')
 
 const sessionOf = (url: string) => /\/api\/hls\/([^/]+)\//.exec(url)?.[1]
 
-const isSafari = () => typeof navigator !== 'undefined' && /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)
-
-function nativeHls(video: HTMLVideoElement): boolean {
-  const can = video.canPlayType('application/vnd.apple.mpegurl') !== ''
-  return can && (isSafari() || !Hls.isSupported())
-}
+// hls.js (about 175 KB gz) is fetched only by a browser without native HLS,
+// as soon as such a browser starts playing (in parallel with the server's answer).
+let hlsModule: Promise<typeof import('hls.js')> | null = null
+const loadHls = () => (hlsModule ??= import('hls.js'))
 
 /** The codecs a failed attempt may have tripped on: everything but H.264/AAC. */
 const retryCaps = (c: ClientCaps) =>
@@ -320,6 +320,16 @@ export function usePlayback({
     [heartbeat, slowSource],
   )
 
+  /** Starts playback; a browser that wants a tap first says so (the big play button). */
+  const playNow = useCallback((video: HTMLVideoElement) => {
+    video.play().then(
+      () => setNeedsTap(false),
+      (e: unknown) => {
+        if (e instanceof DOMException && e.name === 'NotAllowedError') setNeedsTap(true)
+      },
+    )
+  }, [])
+
   const attach = useCallback(
     (r: PlayResponse, token: number, localStart: number) => {
       const video = videoRef.current
@@ -340,28 +350,29 @@ export function usePlayback({
       if (r.mode === 'direct' || session.current.native || (r.mode === 'online' && r.kind === 'mp4')) {
         video.src = r.url
       } else {
-        const hls = new Hls({ ...hlsConfig(slowSource, r.mode === 'online'), startPosition: pendingSeek.current ?? 0 })
+        const startPosition = pendingSeek.current ?? 0
         pendingSeek.current = null // hls.js starts there itself
-        hlsRef.current = hls
-        hls.on(Hls.Events.ERROR, (_e, data: ErrorData) => {
-          if (session.current.token !== token) return
-          // online: the proxy's 410 (a stale link) never gets better by retrying
-          const stale = r.mode === 'online' && onlineExpired(data.response?.code)
-          if (!data.fatal && !stale) return
-          const expired = stale || data.type === Hls.ErrorTypes.NETWORK_ERROR
-          fail.current(expired ? 'expired' : 'media', token)
-        })
-        hls.loadSource(r.url)
-        hls.attachMedia(video)
+        void loadHls().then(({ default: Hls }) => {
+          if (session.current.token !== token || videoRef.current !== video) return
+          const hls = new Hls({ ...hlsConfig(slowSource, r.mode === 'online'), startPosition })
+          hlsRef.current = hls
+          hls.on(Hls.Events.ERROR, (_e, data: ErrorData) => {
+            if (session.current.token !== token) return
+            // online: the proxy's 410 (a stale link) never gets better by retrying
+            const stale = r.mode === 'online' && onlineExpired(data.response?.code)
+            if (!data.fatal && !stale) return
+            const expired = stale || data.type === Hls.ErrorTypes.NETWORK_ERROR
+            fail.current(expired ? 'expired' : 'media', token)
+          })
+          hls.loadSource(r.url)
+          hls.attachMedia(video)
+          playNow(video)
+        }, () => fail.current('media', token))
+        return
       }
-      video.play().then(
-        () => setNeedsTap(false),
-        (e: unknown) => {
-          if (e instanceof DOMException && e.name === 'NotAllowedError') setNeedsTap(true)
-        },
-      )
+      playNow(video)
     },
-    [checkWait, heartbeat, slowSource, videoRef],
+    [checkWait, heartbeat, slowSource, playNow, videoRef],
   )
 
   load.current = async (partIdx: number, localStart: number, opts: { audioIndex?: number } = {}) => {
@@ -382,6 +393,8 @@ export function usePlayback({
       at: Date.now(),
       started: false,
     }
+    // hls.js downloads while the server answers (unless the browser plays HLS itself)
+    if (video && !session.current.native) void loadHls().catch(() => undefined)
     if (video) {
       video.pause()
       video.removeAttribute('src')

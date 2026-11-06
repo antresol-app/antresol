@@ -10,11 +10,12 @@
 .trigger {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--s-1h);
   height: var(--control-h);
-  padding: 0 13px 0 var(--s-3);
+  padding: 0 var(--s-3);
   border: 0;
   border-radius: var(--r-pill);
+  background: var(--fill-2);
   color: var(--label);
   font: var(--t-field);
   letter-spacing: -0.01em;
@@ -24,7 +25,7 @@
 }
 .trigger:hover,
 .trigger[aria-expanded='true'] {
-  background: var(--glass-fill-hover);
+  background: var(--fill-1);
 }
 .caret {
   color: var(--label-2);

@@ -5,7 +5,7 @@
 // or sharing (docs/build-tags.md).
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getLibraryStatus, getSettings, getTorrentEngine, onlineStatus, saveSettings, scanLibrary } from '../../api/client'
+import { getLibraryStatus, getSettings, getTorrentEngine, onlineStatus, saveSettings, scanLibrary, errorText } from '../../api/client'
 import type { LangCode, LibraryStatus, MailSettings, OnlineStatus, Settings as Values, TorrentEngineStatus, Voice } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Sheet } from '../../ui/Sheet'
@@ -79,7 +79,7 @@ export function Settings() {
         latest.current = v
         setValues(v)
       },
-      (e: unknown) => !ac.signal.aborted && setError(e instanceof ApiError ? e.message : t('settings.loadFailed')),
+      (e: unknown) => !ac.signal.aborted && setError(errorText(e, t('settings.loadFailed'))),
     )
     return () => ac.abort()
   }, [])
@@ -99,7 +99,7 @@ export function Settings() {
       }
     } catch (e) {
       setSaved('')
-      setError(e instanceof ApiError ? e.message : t('settings.saveFailed'))
+      setError(errorText(e, t('settings.saveFailed')))
     }
   }, [])
 
@@ -642,7 +642,7 @@ function Rescan() {
       setStatus((s) => (s ? { ...s, queued: true } : s))
       setPolling(true)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('settings.rescan.startFailed'))
+      setError(errorText(e, t('settings.rescan.startFailed')))
     }
   }
 

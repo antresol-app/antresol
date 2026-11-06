@@ -6,9 +6,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--s-3);
   padding: var(--gutter);
-  background: #000;
+  background: var(--black);
   color: var(--label-2);
   text-align: center;
 }
@@ -23,21 +23,14 @@
   max-width: 42ch;
 }
 .button {
-  height: 44px;
-  margin-top: 10px;
-  padding: 0 24px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--label);
-  color: var(--label-inverse);
-  font: var(--t-headline);
+  margin-top: var(--s-2h);
 }
 .spinner {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #fff;
+  border: 3px solid var(--spinner-track-art);
+  border-top-color: var(--white);
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin {

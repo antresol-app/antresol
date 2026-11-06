@@ -1,11 +1,11 @@
-// iOS-style segmented control: a glass track with a sliding white-on-grey
+// iOS-style segmented control: a filled track with a sliding white-on-grey
 // thumb. Radio-group semantics; ←/→ move the selection.
 // `row`: a page's filter under its title (Поиск). Centred in its container;
 // when the segments do not fit (phones) the whole control scrolls sideways,
 // out to the window's edges (--segmented-bleed, the page's gutter), and the
 // edge with more segments past it fades.
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
-import { motion } from 'motion/react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useSlidingThumb } from './slidingThumb'
 import styles from './SegmentedControl.module.css'
 
 export interface Segment<T extends string> {
@@ -13,6 +13,8 @@ export interface Segment<T extends string> {
   label: string
   /** Shorter label for phones. */
   short?: string
+  /** A glyph in place of the text (Files' view switch); `label` is its name and tooltip. */
+  icon?: ReactNode
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -22,6 +24,10 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (v: T) => void
   /** A centred filter row that scrolls with edge fades when it does not fit. */
   row?: boolean
+  /** small: the small control height (a toolbar's view switch beside 36 pt buttons). */
+  size?: 'regular' | 'small'
+  /** Show every segment's `short` label at every width (a narrow place: a sheet); the full label is its name and tooltip. */
+  shortLabels?: boolean
 }
 
 /** Which edges of a sideways scroller have content past them. */
@@ -48,9 +54,9 @@ function useEdgeFades(ref: RefObject<HTMLDivElement | null>, on: boolean) {
   return { fade, measure }
 }
 
-export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false }: SegmentedControlProps<T>) {
-  const group = useId()
+export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false, size = 'regular', shortLabels = false }: SegmentedControlProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const trackRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const { fade, measure } = useEdgeFades(rowRef, row)
   const i = Math.max(
@@ -73,17 +79,22 @@ export function SegmentedControl<T extends string>({ label, segments, value, onC
     else if (r.right > t.right - pad) scroller.scrollLeft += r.right - t.right + pad
   }, [i, row])
 
+  const thumb = useSlidingThumb(trackRef, '[aria-checked="true"]', `${i}:${segments.length}`)
+
   const onKey = (e: KeyboardEvent) => {
     const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
     if (!d) return
     e.preventDefault()
+    // the arrows belong to the control, not to a list around it
+    e.stopPropagation()
     const n = (i + d + segments.length) % segments.length
     onChange(segments[n]!.value)
     refs.current[n]?.focus()
   }
 
   const control = (
-    <div className={`${styles.track} ${row ? styles.inRow : ''} glass`} role="radiogroup" aria-label={label} onKeyDown={onKey}>
+    <div ref={trackRef} className={[styles.track, row ? styles.inRow : '', size === 'small' ? styles.small : ''].filter(Boolean).join(' ')} role="radiogroup" aria-label={label} onKeyDown={onKey}>
+      {thumb && <span className={styles.thumb} style={thumb.style} data-slide={thumb.slide || undefined} aria-hidden />}
       {segments.map((s, k) => {
         const on = k === i
         return (
@@ -96,11 +107,18 @@ export function SegmentedControl<T extends string>({ label, segments, value, onC
             role="radio"
             aria-checked={on}
             tabIndex={on ? 0 : -1}
-            className={styles.segment}
+            className={s.icon ? `${styles.segment} ${styles.iconSegment}` : styles.segment}
+            aria-label={s.icon || (shortLabels && s.short) ? s.label : undefined}
+            title={s.icon || (shortLabels && s.short) ? s.label : undefined}
             onClick={() => onChange(s.value)}
           >
-            {on && <motion.span layoutId={`seg-${group}`} className={styles.thumb} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
-            {s.short ? (
+            {s.icon ? (
+              <span className={styles.label}>{s.icon}</span>
+            ) : shortLabels && s.short ? (
+              <span className={styles.label} aria-hidden>
+                {s.short}
+              </span>
+            ) : s.short ? (
               <>
                 <span className={`${styles.label} ${styles.long}`}>{s.label}</span>
                 <span className={`${styles.label} ${styles.short}`} aria-hidden>

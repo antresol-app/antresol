@@ -1,11 +1,11 @@
 // An artist: a round avatar and the name in large type, «Слушать» (the top
 // songs), «Перемешать» (the whole catalogue, drawn by the server),
 // «Популярные песни» (up to 10), «Альбомы» and «Встречается в».
+import { Artwork } from '../../ui/Artwork'
 import { APP_NAME } from '../../brand'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
-import { ApiError, getArtist, imageUrl, useEvents } from '../../api/client'
-import type { ArtistDetail } from '../../api/types'
+import { ApiError, getArtist } from '../../api/client'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
 import { Shelf } from '../../components/Shelf'
@@ -14,44 +14,21 @@ import { songItems } from '../../player/audio/queue'
 import { playShuffled } from './shuffle'
 import { SongMenu } from './SongMenu'
 import { TrackList } from './TrackList'
+import { useLoad } from '../../state/useLoad'
 import styles from './Artist.module.css'
 import { useT } from '../../i18n'
 
-type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: ArtistDetail }
 
 export function Artist() {
   const t = useT()
   const { id = '' } = useParams()
   const artistId = Number(id)
-  const [state, setState] = useState<State>({ status: 'loading' })
-  const [failed, setFailed] = useState(false)
   const [shuffling, setShuffling] = useState(false)
   const [shuffleError, setShuffleError] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(
-    (quiet = false) => {
-      abortRef.current?.abort()
-      const ac = new AbortController()
-      abortRef.current = ac
-      if (!quiet) setState({ status: 'loading' })
-      getArtist(artistId, ac.signal)
-        .then((data) => setState({ status: 'ready', data }))
-        .catch((e: unknown) => {
-          if (ac.signal.aborted || quiet) return
-          setState({
-            status: 'error',
-            message: e instanceof ApiError ? (e.status === 404 ? t('music.artist.notFound') : e.message) : t('music.artist.loadFailed'),
-          })
-        })
-    },
-    [artistId],
-  )
-  useEffect(() => {
-    load()
-    return () => abortRef.current?.abort()
-  }, [load])
-  useEvents(() => load(true), ['library.updated'])
+  const { state, load } = useLoad((signal) => getArtist(artistId, signal), [artistId], {
+    message: (e) => e instanceof ApiError ? (e.status === 404 ? t('music.artist.notFound') : e.message) : t('music.artist.loadFailed'),
+  })
 
   const title = state.status === 'ready' ? state.data.card.title : ''
   useEffect(() => {
@@ -79,7 +56,6 @@ export function Artist() {
     )
 
   const d = state.data
-  const cover = imageUrl(d.card.poster, 960)
   const top = d.topTracks
   const listen = () => audio.play(songItems(top), 0, { shuffle: false })
   const shuffle = () => {
@@ -96,13 +72,13 @@ export function Artist() {
     <div className={styles.page}>
       <header className={styles.top}>
         <div className={styles.avatar}>
-          {cover && !failed ? (
-            <img src={cover} alt="" decoding="async" draggable={false} onError={() => setFailed(true)} />
-          ) : (
+          <Artwork src={d.card.poster} width={320} eager
+              fallback={
             <span className={styles.fallback}>
               <Icon name="person" size={56} strokeWidth={1.3} />
             </span>
-          )}
+              }
+            />
         </div>
         <div className={styles.info}>
           <h1 className={styles.name}>{d.card.title}</h1>

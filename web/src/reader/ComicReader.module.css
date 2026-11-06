@@ -128,10 +128,8 @@
   align-items: center;
   gap: 8px;
   padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
-  color: #f2f2f7;
-  background: rgba(22, 22, 24, 0.78);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
+  color: var(--label);
+  /* .glass-bar, over the pages */
   transition:
     opacity var(--d-base) var(--ease-out),
     transform var(--d-base) var(--ease-out);
@@ -140,7 +138,7 @@
   top: 0;
   height: var(--cr-top);
   padding-top: env(safe-area-inset-top);
-  border-bottom: 0.5px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 0.5px solid var(--separator);
 }
 .bottom {
   bottom: 0;
@@ -148,7 +146,7 @@
   padding-bottom: env(safe-area-inset-bottom);
   gap: 16px;
   padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right));
-  border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+  border-top: 0.5px solid var(--separator);
 }
 .reader[data-hidden] .bar {
   opacity: 0;
@@ -159,13 +157,6 @@
 }
 .reader[data-hidden] .bottom {
   transform: translateY(8px);
-}
-@media (prefers-reduced-transparency: reduce) {
-  .bar {
-    background: #1c1c1e;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
 }
 
 .back,

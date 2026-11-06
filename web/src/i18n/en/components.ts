@@ -158,7 +158,6 @@ export default {
   'comp.playback.preview': 'This is how subtitles look',
   'comp.playback.household': 'Now: the family languages from the settings.',
   'comp.playback.reset': 'Same as Family',
-  'comp.playback.kidHint': 'For a kid’s profile, an administrator changes this.',
   'comp.playback.loadFailed': 'Couldn’t load the settings',
   'comp.playback.saveFailed': 'Couldn’t save the settings',
   // «Уведомления на почту»

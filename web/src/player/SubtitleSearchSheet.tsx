@@ -3,7 +3,7 @@
 // for exactly this file). «Скачать» saves the subtitles next to the video;
 // the player then lists the new track and turns it on.
 import { Fragment, useEffect, useState } from 'react'
-import { ApiError, downloadSubtitle, searchSubtitles } from '../api/client'
+import { ApiError, downloadSubtitle, searchSubtitles, errorText } from '../api/client'
 import type { SubtitleResult } from '../api/types'
 import { Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
@@ -65,7 +65,7 @@ export function SubtitleSearchSheet({ fileId, onClose, onDownloaded, initialLang
         setState({
           status: 'error',
           notConfigured,
-          message: notConfigured ? notConfiguredMessage() : e instanceof ApiError ? e.message : t('player.subs.searchFailed'),
+          message: notConfigured ? notConfiguredMessage() : errorText(e, t('player.subs.searchFailed')),
         })
       },
     )
@@ -78,7 +78,7 @@ export function SubtitleSearchSheet({ fileId, onClose, onDownloaded, initialLang
     try {
       await downloadSubtitle(fileId, r.subtitleId, lang)
     } catch (e) {
-      setProblem(e instanceof ApiError ? e.message : t('player.subs.downloadFailed'))
+      setProblem(errorText(e, t('player.subs.downloadFailed')))
       setBusy(null)
       return
     }

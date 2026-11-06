@@ -11,7 +11,7 @@
 /* The first shelf starts in the hero's fade, with at least 40px of air
    below the hero buttons (the hero reserves it as bottom padding). */
 .overlap {
-  margin-top: -8px;
+  margin-top: calc(-1 * var(--s-2));
 }
 .navSpacer {
   height: calc(var(--nav-height) + var(--s-6));

@@ -2,7 +2,7 @@
   --cols: 8;
   display: grid;
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  gap: clamp(20px, 2vw, 32px) var(--shelf-gap);
+  gap: clamp(20px, 2vw, var(--s-8)) var(--shelf-gap);
   margin: 0;
   padding: 0;
   list-style: none;

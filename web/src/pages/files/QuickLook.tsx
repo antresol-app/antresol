@@ -1,10 +1,11 @@
 // Quick Look: a glass panel over the browser. Video and audio play, pictures
 // and PDFs show, text, subtitles and .nfo open in a monospaced view. ← → (and
 // ↑ ↓) go to the neighbouring files; Space or Esc closes.
+import { Button } from '../../ui/Button'
+import { IconButton, IconButtonAnchor } from '../../ui/IconButton'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'motion/react'
-import { ApiError } from '../../api/client'
+import { ApiError, errorText } from '../../api/client'
 import { contentUrl, downloadFileUrl } from '../../api/files'
 import { audio } from '../../player/audio/engine'
 import type { FileEntry } from '../../api/types'
@@ -49,7 +50,7 @@ function TextPreview({ url }: { url: string }) {
       .then(
         (text) => setState({ text }),
         (e: unknown) => {
-          if (!ac.signal.aborted) setState({ error: e instanceof ApiError ? e.message : t('files.ql.openFailed') })
+          if (!ac.signal.aborted) setState({ error: errorText(e, t('files.ql.openFailed')) })
         },
       )
     return () => ac.abort()
@@ -70,9 +71,9 @@ function Fallback({ entry, text, onOpenItem }: { entry: FileEntry; text?: string
       <FileIcon entry={entry} size={160} emblem={folderEmblem(entry)} />
       {text && <p className={styles.message}>{text}</p>}
       {onOpenItem && (
-        <button type="button" className={styles.pill} onClick={onOpenItem}>
-          <Glyph name="play" size={14} /> {t('files.openInApp')}
-        </button>
+        <Button size="small" icon="play" onClick={onOpenItem}>
+          {t('files.openInApp')}
+        </Button>
       )}
     </div>
   )
@@ -191,52 +192,38 @@ export function QuickLook({ root, entries, path, onNavigate, onClose, onOpenItem
   const sub = entry.isDir ? t('files.kind.folder') : `${kindLabel(entry)} · ${formatSize(entry.size)}`
 
   return createPortal(
-    <motion.div
-      className={styles.backdrop}
+    <div
+      className={`${styles.backdrop} enter-fade`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.18 }}
     >
-      <motion.div
+      <div
         ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-label={t('files.ql.title', { name: entry.name })}
         tabIndex={-1}
-        className={`${styles.panel} ${large ? styles.large : ''} ${compact ? styles.compact : ''} glass-strong`}
-        initial={{ opacity: 0, scale: 0.94 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 520, damping: 38 }}
+        className={`${styles.panel} ${large ? styles.large : ''} ${compact ? styles.compact : ''} glass-strong enter-pop`}
       >
         <header className={styles.bar}>
-          <button type="button" className={styles.round} aria-label={t('common.close')} onClick={onClose}>
-            <Glyph name="close" size={14} strokeWidth={2.4} />
-          </button>
+          <IconButton size="xs" icon="close" label={t('common.close')} onClick={onClose} />
           <div className={styles.title}>
             <span className={styles.name}>{entry.name}</span>
             <span className={styles.sub}>{sub}</span>
           </div>
           <div className={styles.actions}>
             {linked && (
-              <button type="button" className={styles.pill} onClick={linked}>
+              <Button size="small" className={styles.pill} onClick={linked}>
                 {t('files.openInApp')}
-              </button>
+              </Button>
             )}
             {!entry.isDir && (
-              <a className={styles.round} href={downloadFileUrl(root, entry.path)} download aria-label={t('files.download')} title={t('files.downloadShort')}>
-                <Glyph name="arrowDownCircle" size={16} strokeWidth={2} />
-              </a>
+              <IconButtonAnchor size="xs" icon={<Glyph name="arrowDownCircle" size={16} strokeWidth={2} />} href={downloadFileUrl(root, entry.path)} download label={t('files.download')} tooltip={t('files.downloadShort')} />
             )}
             <span className={styles.pager}>
-              <button type="button" className={styles.round} aria-label={t('files.ql.prev')} disabled={!prev} onClick={() => prev && onNavigate(prev.path)}>
-                <Glyph name="chevronLeft" size={15} strokeWidth={2.4} />
-              </button>
-              <button type="button" className={styles.round} aria-label={t('files.ql.next')} disabled={!next} onClick={() => next && onNavigate(next.path)}>
-                <Glyph name="chevronRight" size={15} strokeWidth={2.4} />
-              </button>
+              <IconButton size="xs" icon="chevronLeft" label={t('files.ql.prev')} disabled={!prev} onClick={() => prev && onNavigate(prev.path)} />
+              <IconButton size="xs" icon="chevronRight" label={t('files.ql.next')} disabled={!next} onClick={() => next && onNavigate(next.path)} />
             </span>
           </div>
         </header>
@@ -262,8 +249,8 @@ export function QuickLook({ root, entries, path, onNavigate, onClose, onOpenItem
         >
           <Body key={entry.path} root={root} entry={entry} onOpenItem={linked} />
         </div>
-      </motion.div>
-    </motion.div>,
+      </div>
+    </div>,
     document.body,
   )
 }

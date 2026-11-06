@@ -1,6 +1,6 @@
 // Route table. The root gate sends people to first-run setup, the profile picker
 // or the app depending on the session; admin-only sections are guarded too.
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ComponentType } from 'react'
 import { Navigate, Outlet, createBrowserRouter, useLocation, type RouteObject } from 'react-router'
 import { Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
@@ -8,30 +8,12 @@ import { LogoMark } from '../components/Logo'
 import { ComingSoon } from '../pages/ComingSoon'
 import { Home } from '../pages/Home'
 import { ItemDetail } from '../pages/ItemDetail'
-import { Collection } from '../pages/Collection'
-import { Movies } from '../pages/Movies'
 import { OfflineHome } from '../pages/OfflineHome'
 import { offlineAvailable } from '../offline/store'
-import { AudiobookDetail } from '../pages/books/AudiobookDetail'
-import { BookDetail } from '../pages/books/BookDetail'
-import { BooksGrid } from '../pages/books/BooksGrid'
-import { BooksHome } from '../pages/books/BooksHome'
-import { ComicSeries } from '../pages/books/ComicSeries'
-import { Album } from '../pages/music/Album'
-import { Albums } from '../pages/music/Albums'
-import { Artist } from '../pages/music/Artist'
-import { Artists } from '../pages/music/Artists'
-import { MusicHome } from '../pages/music/MusicHome'
-import { Playlist } from '../pages/music/Playlist'
-import { Playlists } from '../pages/music/Playlists'
-import { Songs } from '../pages/music/Songs'
-import { Series } from '../pages/Series'
-import { ProfilePicker } from '../pages/ProfilePicker'
-import { Search } from '../pages/Search'
-import { Setup } from '../pages/Setup'
 import { session, useSession } from '../state/session'
 import { ChunkBoundary } from './ChunkBoundary'
-import { chunk, lazyFrom } from './lazyChunk'
+import { auth, books, browse, music, search } from './chunks'
+import { chunk, lazyFrom, type Chunk } from './lazyChunk'
 import { FullSectionPrefetch, fullManageRoutes, fullNoKidsRoutes, fullPlayerRoutes, fullShellRoutes } from './routesFull'
 import { Shell } from './Shell'
 import styles from './App.module.css'
@@ -57,6 +39,16 @@ function Offline() {
         {t('common.retry')}
       </Button>
     </div>
+  )
+}
+
+/** A page of a lazily loaded chunk, with the chunk's loading and failure states. */
+function page<M>(c: Chunk<M>, pick: (m: M) => ComponentType) {
+  const C = lazyFrom(c, pick)
+  return (
+    <ChunkBoundary>
+      <C />
+    </ChunkBoundary>
   )
 }
 
@@ -170,8 +162,8 @@ export const routes: RouteObject[] = [
   {
     element: <Gate />,
     children: [
-      { path: '/welcome', element: <Setup /> },
-      { path: '/profiles', element: <ProfilePicker /> },
+      { path: '/welcome', element: page(auth, (m) => m.Setup) },
+      { path: '/profiles', element: page(auth, (m) => m.ProfilePicker) },
       // The player covers the whole window: no navigation around it.
       { path: '/watch/:id', element: <PlayerRoute /> },
       // The reader too; the music engine keeps playing.
@@ -182,39 +174,39 @@ export const routes: RouteObject[] = [
         element: <Shell />,
         children: [
           { index: true, element: <Home /> },
-          { path: 'search', element: <Search /> },
+          { path: 'search', element: page(search, (m) => m.Search) },
           // the design system's gallery: dev server only, never in a build
           ...(import.meta.env.DEV ? [{ path: 'dev/gallery', element: <GalleryRoute /> }] : []),
           { path: 'offline', element: <OfflineHome /> },
-          { path: 'movies', element: <Movies /> },
-          { path: 'series', element: <Series /> },
+          { path: 'movies', element: page(browse, (m) => m.Movies) },
+          { path: 'series', element: page(browse, (m) => m.Series) },
           {
             path: 'music',
             children: [
-              { index: true, element: <MusicHome /> },
-              { path: 'albums', element: <Albums /> },
-              { path: 'album/:id', element: <Album /> },
-              { path: 'artists', element: <Artists /> },
-              { path: 'artist/:id', element: <Artist /> },
-              { path: 'songs', element: <Songs /> },
-              { path: 'playlists', element: <Playlists /> },
-              { path: 'playlist/:id', element: <Playlist /> },
+              { index: true, element: page(music, (m) => m.MusicHome) },
+              { path: 'albums', element: page(music, (m) => m.Albums) },
+              { path: 'album/:id', element: page(music, (m) => m.Album) },
+              { path: 'artists', element: page(music, (m) => m.Artists) },
+              { path: 'artist/:id', element: page(music, (m) => m.Artist) },
+              { path: 'songs', element: page(music, (m) => m.Songs) },
+              { path: 'playlists', element: page(music, (m) => m.Playlists) },
+              { path: 'playlist/:id', element: page(music, (m) => m.Playlist) },
               { path: '*', element: <MusicSoon /> },
             ],
           },
           {
             path: 'books',
             children: [
-              { index: true, element: <BooksHome /> },
-              { path: 'all/:kind', element: <BooksGrid /> },
-              { path: 'comic/:id', element: <ComicSeries /> },
-              { path: 'audiobook/:id', element: <AudiobookDetail /> },
-              { path: ':id', element: <BookDetail /> },
+              { index: true, element: page(books, (m) => m.BooksHome) },
+              { path: 'all/:kind', element: page(books, (m) => m.BooksGrid) },
+              { path: 'comic/:id', element: page(books, (m) => m.ComicSeries) },
+              { path: 'audiobook/:id', element: page(books, (m) => m.AudiobookDetail) },
+              { path: ':id', element: page(books, (m) => m.BookDetail) },
               { path: '*', element: <BooksSoon /> },
             ],
           },
           { path: 'item/:id', element: <ItemDetail /> },
-          { path: 'item/:id/collection', element: <Collection /> },
+          { path: 'item/:id/collection', element: page(browse, (m) => m.Collection) },
           // TMDB title pages (none in the core build)
           ...(__LIBRARY_EDITION__ ? [] : fullShellRoutes()),
           {

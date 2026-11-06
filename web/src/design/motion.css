@@ -1,0 +1,35 @@
+/*
+ * Entrances, CSS only (no animation library). A page or a block that should
+ * not just appear takes one of these classes; the durations are tokens, so
+ * «Reduce motion» turns every one of them off. Exits are a component's own
+ * (ui/Sheet slides away, a menu closes at once as on macOS).
+ */
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-distance, 12px));
+  }
+}
+@keyframes enter-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+/* a page's content as it arrives */
+.enter-fade {
+  animation: enter-fade var(--d-enter) var(--ease-out) backwards;
+}
+/* a block that rises into place (sign-in, a hero's text) */
+.enter-rise {
+  animation: enter-rise var(--d-slow) var(--ease-out) backwards;
+}
+/* a panel that grows in place (Quick Look) */
+.enter-pop {
+  animation: enter-pop var(--d-base) var(--ease-out) backwards;
+}

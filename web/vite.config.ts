@@ -29,10 +29,18 @@ function bootScript(): Plugin {
         const chunk = ctx.bundle && Object.values(ctx.bundle).find((c) => c.type === 'chunk' && c.isEntry && c.name === 'boot')
         if (ctx.bundle && !chunk) throw new Error('vault-boot-script: no boot chunk in the bundle')
         const src = chunk ? `/${chunk.fileName}` : `/${BOOT}`
+        // the catalogs' chunks (i18n/core.ts loads them on demand): the boot
+        // script preloads the active one beside the bundle (boot/early.ts)
+        const catalog = (lang: string) =>
+          ctx.bundle && Object.values(ctx.bundle).find((c) => c.type === 'chunk' && c.facadeModuleId?.endsWith(`/src/i18n/${lang}.ts`))
+        const ru = catalog('ru')
+        const en = catalog('en')
+        if (ctx.bundle && (!ru || !en)) throw new Error('vault-boot-script: no catalog chunks in the bundle')
+        const i18n = ru && en ? ` data-i18n-ru="/${ru.fileName}" data-i18n-en="/${en.fileName}"` : ''
         // right after the charset and viewport metas: the first request after the page's own
         const at = /<meta name="viewport"[^>]*>/
         if (!at.test(html)) throw new Error('vault-boot-script: no viewport meta in index.html')
-        return html.replace(at, (m) => `${m}\n    <script type="module" async crossorigin src="${src}"></script>`)
+        return html.replace(at, (m) => `${m}\n    <script type="module" async crossorigin src="${src}"${i18n}></script>`)
       },
     },
   }

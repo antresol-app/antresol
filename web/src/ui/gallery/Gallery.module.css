@@ -250,3 +250,22 @@
   outline: 1px dashed var(--separator);
   outline-offset: var(--s-4);
 }
+
+/* Liquid Glass over a picture: what each variant does to what is behind it */
+.glassStage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-8);
+  border-radius: var(--r-group);
+  background: var(--grad-3);
+}
+.glassSample {
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 96px;
+  border-radius: var(--r-group);
+  font: var(--t-callout);
+}

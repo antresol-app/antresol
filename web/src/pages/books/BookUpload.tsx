@@ -3,7 +3,7 @@
 // this profile's. One request per file: a proxy limit then costs one book, not
 // the whole batch, and the line below can say how far it got.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ApiError, uploadBook } from '../../api/client'
+import { ApiError, uploadBook, errorText } from '../../api/client'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { Icon } from '../../components/Icon'
@@ -32,7 +32,7 @@ export function useBookUpload(onUploaded: () => void) {
         else out.added++
       } catch (e) {
         // a proxy's refusal has no message of ours
-        const why = e instanceof ApiError && e.status === 413 ? t('books.upload.tooLarge') : e instanceof ApiError ? e.message : t('books.upload.failed')
+        const why = e instanceof ApiError && e.status === 413 ? t('books.upload.tooLarge') : errorText(e, t('books.upload.failed'))
         out.failed.push(`${f.name}: ${why}`)
       }
     }

@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
-import { AnimatePresence, motion, useDragControls } from 'motion/react'
+import { usePresence } from '../ui/presence'
 import { imageUrl } from '../api/client'
 import { Icon } from '../components/Icon'
 import { FamilyMarks, ReturnPill } from '../components/FamilyMarks'
@@ -73,6 +73,11 @@ function bufferedSec(): number {
   return 0
 }
 
+/** How long it takes to slide away; a drag this far (pt) or a flick this fast (pt per ms) closes it. */
+const CLOSE_MS = 240
+const DISMISS_DRAG = 120
+const DISMISS_FLICK = 0.7
+
 export function NowPlaying({ open, onClose }: NowPlayingProps) {
   const s = useAudio()
   const it = s.queue[s.index]
@@ -80,7 +85,12 @@ export function NowPlaying({ open, onClose }: NowPlayingProps) {
   useEffect(() => {
     if (open && !it) onClose()
   }, [open, it, onClose])
-  return createPortal(<AnimatePresence>{open && it && <Player key="now-playing" item={it} onClose={onClose} />}</AnimatePresence>, document.body)
+  // it slides down when closed: the last item stays on it meanwhile
+  const last = useRef(it)
+  if (it) last.current = it
+  const { mounted, leaving } = usePresence(open && !!it, CLOSE_MS)
+  const shown = it ?? last.current
+  return createPortal(mounted && shown ? <Player key="now-playing" item={shown} onClose={onClose} leaving={leaving} /> : null, document.body)
 }
 
 function Cover({ src, className, book }: { src: string; className?: string; book?: boolean }) {
@@ -99,7 +109,7 @@ function Cover({ src, className, book }: { src: string; className?: string; book
   )
 }
 
-function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void }) {
+function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () => void; leaving: boolean }) {
   const t = useT()
   const s = useAudio()
   const compact = useIsCompact()
@@ -110,7 +120,9 @@ function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void })
   const ch = book ? chapterAt(it, s.positionSec) : null
   const rootRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
-  const drag = useDragControls()
+  // Phone: dragged down by the top bar or the cover (NowPlaying.module.css follows it)
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const bg = imageUrl(it.cover, 480)
   const volume = engineMode() === 'dual' // iOS ignores the element volume
   const swap = compact && panel !== null
@@ -157,8 +169,39 @@ function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void })
   }
 
   // Phone: a swipe down from the top bar or the cover closes it.
+  // the window listeners of a drag under way (removed when it ends or the player unmounts)
+  const endDrag = useRef<(() => void) | null>(null)
+  useEffect(() => () => endDrag.current?.(), [])
   const startDrag = (e: PointerEvent) => {
-    if (compact && !reduce) drag.start(e)
+    if (!compact || reduce || e.button !== 0) return
+    endDrag.current?.()
+    const d = { y0: e.clientY, t: e.timeStamp, vy: 0, dy: 0 }
+    const move = (ev: globalThis.PointerEvent) => {
+      const dy = Math.max(0, ev.clientY - d.y0)
+      const dt = ev.timeStamp - d.t
+      if (dt > 0) d.vy = (dy - d.dy) / dt
+      d.dy = dy
+      d.t = ev.timeStamp
+      if (dy > 0) setDragging(true)
+      setDragY(dy)
+    }
+    const detach = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      endDrag.current = null
+    }
+    const up = () => {
+      detach()
+      setDragging(false)
+      setDragY(0)
+      // far enough, or a flick: it slides away from where it is
+      if (d.dy > DISMISS_DRAG || d.vy > DISMISS_FLICK) onClose()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    endDrag.current = detach
   }
 
   const { user } = useSession()
@@ -229,25 +272,18 @@ function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void })
   )
 
   return (
-    <motion.div
+    <div
       ref={rootRef}
       role="dialog"
       aria-modal="true"
       aria-label={t('player.nowPlaying')}
       className={styles.root}
       onKeyDown={onKeyDown}
-      initial={reduce ? { opacity: 0 } : { y: '100%' }}
-      animate={reduce ? { opacity: 1 } : { y: 0 }}
-      exit={reduce ? { opacity: 0 } : { y: '100%' }}
-      transition={reduce ? { duration: 0.2 } : { type: 'spring', stiffness: 380, damping: 40 }}
-      drag={compact && !reduce ? 'y' : false}
-      dragListener={false}
-      dragControls={drag}
-      dragConstraints={{ top: 0, bottom: 0 }}
-      dragElastic={{ top: 0, bottom: 0.7 }}
-      onDragEnd={(_, info) => {
-        if (info.offset.y > 120 || info.velocity.y > 700) onClose()
-      }}
+      data-leaving={leaving || undefined}
+      // sliding away: nothing in it takes a click, focus or a screen reader any more
+      inert={leaving || undefined}
+      data-dragging={dragging || undefined}
+      style={dragY && !leaving ? { transform: `translateY(${dragY}px)` } : undefined}
     >
       <div className={styles.bg} aria-hidden>
         {bg && <img src={bg} alt="" draggable={false} />}
@@ -265,13 +301,9 @@ function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void })
         <div className={`${styles.deck} ${swap ? styles.deckSwap : ''}`}>
           {!swap && (
             <div className={styles.artBox} onPointerDown={startDrag}>
-              <motion.div
-                className={styles.art}
-                animate={{ scale: s.playing ? 1 : 0.86 }}
-                transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 260, damping: 26 }}
-              >
+              <div className={styles.art} data-paused={!s.playing || undefined}>
                 <Cover src={it.cover} book={book} />
-              </motion.div>
+              </div>
             </div>
           )}
 
@@ -441,6 +473,6 @@ function Player({ item: it, onClose }: { item: QueueItem; onClose: () => void })
 
         {!compact && panel && <div className={styles.panel}>{panelView}</div>}
       </div>
-    </motion.div>
+    </div>
   )
 }

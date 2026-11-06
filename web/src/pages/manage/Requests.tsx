@@ -7,7 +7,7 @@
 // optional reason the kid sees. Updates live (request.changed, library.updated).
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ApiError, approveRequest, declineRequest, getRequests, useEvents } from '../../api/client'
+import { approveRequest, declineRequest, getRequests, useEvents, errorText } from '../../api/client'
 import type { KidRequest } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
@@ -49,7 +49,7 @@ export function Requests() {
       (list) => setState({ status: 'ready', list }),
       (e: unknown) => {
         if (ac.signal.aborted || quiet) return
-        setState({ status: 'error', message: e instanceof ApiError ? e.message : t('common.loadFailed') })
+        setState({ status: 'error', message: errorText(e, t('common.loadFailed')) })
       },
     )
   }, [t])
@@ -70,7 +70,7 @@ export function Requests() {
         load(true)
         refreshPendingRequests()
       })
-      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : t('requests.approveFailed')))
+      .catch((e: unknown) => setError(errorText(e, t('requests.approveFailed'))))
       .finally(() => setBusy(null))
   }
   const approve = (r: KidRequest) => {
@@ -198,7 +198,7 @@ function DeclineSheet({ request, onClose, onDone }: { request: KidRequest; onClo
     setError('')
     declineRequest(request.id, reason.trim()).then(onDone, (e: unknown) => {
       setBusy(false)
-      setError(e instanceof ApiError ? e.message : t('requests.declineFailed'))
+      setError(errorText(e, t('requests.declineFailed')))
     })
   }
   return (

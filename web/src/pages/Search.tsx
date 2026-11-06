@@ -9,10 +9,12 @@
 // films get «Смотреть ▾» and the download button, albums and books «На
 // сервер»; admins can pick the release by hand. The query and the filter
 // live in the URL (?q=, ?scope=).
+import { Artwork } from '../ui/Artwork'
+import { TextField } from '../ui/TextField'
 import { APP_NAME } from '../brand'
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { ApiError, getAlbum, getArtist, getHome, imageUrl, search } from '../api/client'
+import { getAlbum, getArtist, getHome, imageUrl, search, errorText } from '../api/client'
 import { SEARCH_SCOPES, type SearchScope } from '../app/sections'
 import type { Card, SearchResult, Song } from '../api/types'
 import { Button, ButtonLink } from '../ui/Button'
@@ -242,7 +244,7 @@ export function Search() {
     setLibrary((s) => (s.status === 'ready' ? s : { status: 'loading' }))
     search(q, ac.signal).then(
       (r) => setLibrary({ status: 'ready', items: normalized(r) }),
-      (e: unknown) => !ac.signal.aborted && setLibrary({ status: 'error', message: e instanceof ApiError ? e.message : t('search.failed') }),
+      (e: unknown) => !ac.signal.aborted && setLibrary({ status: 'error', message: errorText(e, t('search.failed')) }),
     )
     return () => ac.abort()
   }, [q])
@@ -273,25 +275,20 @@ export function Search() {
             inputRef.current?.blur()
           }}
         >
-          <Icon name="search" size={20} className={styles.fieldIcon} />
-          <input
+          <TextField
             ref={inputRef}
             type="search"
-            className={styles.input}
-            aria-label={placeholder}
+            label={placeholder}
+            hideLabel
             placeholder={placeholder}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onClear={() => (setText(''), inputRef.current?.focus())}
             onBlur={commit}
             autoComplete="off"
             spellCheck={false}
             enterKeyHint="search"
           />
-          {text && (
-            <button type="button" className={styles.clear} aria-label={t('search.clear')} onClick={() => (setText(''), inputRef.current?.focus())}>
-              <Icon name="close" size={12} strokeWidth={2.8} />
-            </button>
-          )}
         </form>
         <div className={styles.scope}>
           <SegmentedControl label={t('search.scopeLabel')} segments={scopeSegments()} value={scope} onChange={setScope} row />
@@ -478,13 +475,12 @@ function MoreResults({ cards }: { cards: Card[] }) {
       </h2>
       <ul className={styles.moreList}>
         {cards.map((c) => {
-          const src = imageUrl(c.poster || c.backdrop, 160)
           const sub = [kindLabel(c.kind), c.subtitle || (c.year ? String(c.year) : '')].filter(Boolean).join(' · ')
           return (
             <li key={`${c.kind}-${c.id}`}>
               <Link to={cardHref(c)} className={styles.moreRow}>
                 <span className={`${styles.moreThumb} ${isSquareKind(c.kind) ? styles.square : ''}`}>
-                  {src ? <img src={src} alt="" loading="lazy" /> : <Icon name={KIND_ICON[c.kind] ?? 'film'} size={16} />}
+                  <Artwork src={c.poster || c.backdrop} width={48} fallback={<Icon name={KIND_ICON[c.kind] ?? 'film'} size={16} />} />
                 </span>
                 <span className={styles.moreText}>
                   <span className={styles.moreTitle}>{c.title}</span>

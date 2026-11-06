@@ -21,7 +21,7 @@
 }
 .disk {
   padding: var(--s-3h) var(--s-4);
-  border-radius: 16px;
+  border-radius: var(--r-group);
 }
 .tight {
   margin-top: var(--s-2);

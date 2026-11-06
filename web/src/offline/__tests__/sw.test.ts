@@ -1,7 +1,7 @@
 import { Blob as NodeBlob } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCK_PATH, OFFLINE_CACHE } from '../saved'
-import { api, install, media, NAVIGATE_TIMEOUT_MS, navigate, resetSWForTests, routeOf, savedChanged } from '../sw'
+import { activate, api, ASSETS_CACHE, install, media, NAVIGATE_TIMEOUT_MS, navigate, resetSWForTests, routeOf, savedChanged, shell } from '../sw'
 import { FakeCaches } from './fakeCaches'
 
 const ORIGIN = 'http://vault.test'
@@ -44,6 +44,7 @@ describe('service worker handlers', () => {
     resetSWForTests()
     caches = new FakeCaches()
     vi.stubGlobal('caches', caches)
+    vi.stubGlobal('clients', { claim: async () => undefined })
     self_.__VAULT_ASSETS = ['/assets/app-1.js', '/index.html']
     self_.__VAULT_BUILD = 'b1'
     net = async (url) =>
@@ -84,6 +85,70 @@ describe('service worker handlers', () => {
   it('install fails when any file of the shell fails (the old shell stays)', async () => {
     net = async (url) => (url.endsWith('/assets/app-1.js') ? new Response('gone', { status: 404 }) : new Response('<html>'))
     await expect(install()).rejects.toThrow()
+  })
+
+  it('a new build downloads only the hashed files it changed; public files every time', async () => {
+    self_.__VAULT_ASSETS = ['/assets/app-1.js', '/icon.png', '/index.html']
+    await install()
+    const asked = () => (fetch as unknown as { mock: { calls: [Request | string][] } }).mock.calls.map(([r]) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).pathname)
+    expect(asked()).toEqual(['/assets/app-1.js', '/icon.png', '/'])
+    vi.mocked(fetch).mockClear()
+    self_.__VAULT_ASSETS = ['/assets/app-1.js', '/assets/page-2.js', '/icon.png', '/index.html']
+    self_.__VAULT_BUILD = 'b2'
+    await install()
+    expect(asked()).toEqual(['/assets/page-2.js', '/icon.png', '/'])
+  })
+
+  it('activate keeps the previous build\'s files one more deploy, then drops them', async () => {
+    const kept = async () => (await (await caches.open(ASSETS_CACHE)).keys()).map((r) => new URL(r.url).pathname).sort()
+    const files = await caches.open(ASSETS_CACHE)
+    for (const f of ['/assets/a-1.js', '/assets/b-1.js', '/assets/c-1.js', '/assets/stray.js']) await files.put(f, new Response('x'))
+    const deploy = async (build: string, list: string[]) => {
+      self_.__VAULT_BUILD = build
+      self_.__VAULT_ASSETS = list
+      await activate()
+    }
+    await deploy('b1', ['/assets/a-1.js', '/assets/b-1.js'])
+    expect(await kept()).toEqual(['/assets/a-1.js', '/assets/b-1.js'])
+    // b2's install brings its new file, then it activates
+    await files.put('/assets/c-1.js', new Response('x'))
+    await deploy('b2', ['/assets/a-1.js', '/assets/c-1.js'])
+    // b-1 is b1's: an open tab of b1 may still ask for it
+    expect(await kept()).toEqual(['/assets/a-1.js', '/assets/b-1.js', '/assets/c-1.js'])
+    await deploy('b3', ['/assets/c-1.js'])
+    expect(await kept()).toEqual(['/assets/a-1.js', '/assets/c-1.js'])
+  })
+
+  it('activate drops only shells, built files and lists of another version, never another vault-* cache', async () => {
+    for (const n of ['vault-assets-v2', 'vault-meta-v9', 'vault-shell-old', OFFLINE_CACHE, 'vault-offline-v2', 'vault-downloads', 'someone-else']) await caches.open(n)
+    await activate()
+    const names = await caches.keys()
+    for (const n of [OFFLINE_CACHE, 'vault-offline-v2', 'vault-downloads', 'someone-else']) expect(names).toContain(n)
+    for (const n of ['vault-assets-v2', 'vault-meta-v9', 'vault-shell-old']) expect(names).not.toContain(n)
+  })
+
+  it('a file fetched on demand (hls.js) is kept across activations while a build names it', async () => {
+    const self2 = self_ as typeof self_ & { __VAULT_ON_DEMAND?: string[] }
+    const files = await caches.open(ASSETS_CACHE)
+    await files.put('/assets/hls-1.js', new Response('x'))
+    self2.__VAULT_ON_DEMAND = ['/assets/hls-1.js']
+    for (const b of ['b1', 'b2', 'b3']) {
+      self_.__VAULT_BUILD = b
+      self_.__VAULT_ASSETS = [`/assets/app-${b}.js`]
+      await activate()
+    }
+    expect(await files.match('/assets/hls-1.js')).toBeDefined()
+    delete self2.__VAULT_ON_DEMAND
+  })
+
+  it('a built file not kept yet is fetched once and then served from the cache', async () => {
+    const req = new Request(`${ORIGIN}/assets/app-1.js`)
+    expect(await (await shell(req)).text()).toBe('js')
+    expect(await (await caches.open(ASSETS_CACHE)).match('/assets/app-1.js')).toBeDefined()
+    net = async () => {
+      throw new TypeError('Failed to fetch')
+    }
+    expect(await (await shell(req)).text()).toBe('js')
   })
 
   it('a hanging network opens the saved app after the timeout once something is saved', async () => {

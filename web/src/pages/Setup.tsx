@@ -2,21 +2,18 @@
 // signs in straight away.
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { motion } from 'motion/react'
-import { ApiError } from '../api/client'
+import { errorText } from '../api/client'
 import { Button } from '../ui/Button'
 import { LogoMark } from '../components/Logo'
 import { SourceLink } from '../components/SourceLink'
 import { TextField } from '../ui/TextField'
 import { session, useSession } from '../state/session'
-import { useReducedMotion } from '../state/useMediaQuery'
 import styles from './Auth.module.css'
 import { useT } from '../i18n'
 
 export function Setup() {
   const navigate = useNavigate()
   const t = useT()
-  const reduce = useReducedMotion()
   const { remote } = useSession()
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
@@ -36,7 +33,7 @@ export function Setup() {
       await session.setup(name.trim(), password)
       navigate('/', { replace: true })
     } catch (err) {
-      setErrors({ form: err instanceof ApiError ? err.message : t('app.failedTryAgain') })
+      setErrors({ form: errorText(err, t('app.failedTryAgain')) })
     } finally {
       setBusy(false)
     }
@@ -44,12 +41,7 @@ export function Setup() {
 
   return (
     <main className={styles.screen}>
-      <motion.section
-        className={`${styles.stack} ${styles.welcome}`}
-        initial={{ opacity: 0, y: reduce ? 0 : 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reduce ? 0 : 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
+      <section className={`${styles.stack} ${styles.welcome} enter-rise`}>
         <div className={styles.welcomeMark}>
           <LogoMark size={76} />
         </div>
@@ -57,13 +49,13 @@ export function Setup() {
         <p className={styles.lead}>{t('app.setup.lead')}</p>
 
         {remote ? (
-          <div className={`${styles.card} glass`} role="alert">
+          <div className={`${styles.card} glass-strong`} role="alert">
             <p className={styles.lead} style={{ margin: 0 }}>
               {t('app.setup.remote')}
             </p>
           </div>
         ) : (
-          <form className={`${styles.card} glass`} onSubmit={(e) => void submit(e)} noValidate>
+          <form className={`${styles.card} glass-strong`} onSubmit={(e) => void submit(e)} noValidate>
             <TextField
               label={t('app.setup.name')}
               autoComplete="name"
@@ -96,7 +88,7 @@ export function Setup() {
         )}
         <p className={styles.footnote}>{t('app.setup.footnote')}</p>
         <SourceLink />
-      </motion.section>
+      </section>
     </main>
   )
 }

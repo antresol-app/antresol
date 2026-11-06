@@ -32,7 +32,7 @@
 }
 .mark:hover,
 .mark:focus-visible {
-  z-index: 2;
+  z-index: var(--z-above);
 }
 .face {
   position: relative;
@@ -57,9 +57,9 @@
   width: 2px;
   height: var(--stem, 4px);
   margin-left: -1px;
-  border-radius: 1px;
+  border-radius: var(--r-xs);
   background: var(--label);
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 2px var(--scrim);
 }
 .tip {
   position: absolute;
@@ -91,7 +91,7 @@
   gap: var(--s-0);
   height: 34px;
   padding: 0 var(--s-1) 0 0;
-  border-radius: 17px;
+  border-radius: var(--r-sheet);
   color: var(--label);
   animation: pill-in var(--d-base, 240ms) var(--ease-out);
 }
@@ -109,7 +109,7 @@
   gap: 7px;
   height: 100%;
   padding: 0 var(--s-2) 0 13px;
-  border-radius: 17px;
+  border-radius: var(--r-sheet);
   font: 600 14px / 1 var(--font-text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

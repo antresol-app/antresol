@@ -3,7 +3,7 @@
 import { APP_NAME } from '../../brand'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { ApiError, getStats, imageUrl } from '../../api/client'
+import { getStats, imageUrl, errorText } from '../../api/client'
 import type { Stats as Data } from '../../api/types'
 import { Avatar } from '../../components/Avatar'
 import { itemHref } from '../../components/Card'
@@ -34,7 +34,7 @@ export function Stats() {
   useEffect(() => {
     document.title = `${t('stats.title')} — ${APP_NAME}`
     const ac = new AbortController()
-    getStats(ac.signal).then(setData, (e: unknown) => !ac.signal.aborted && setError(e instanceof ApiError ? e.message : t('common.loadFailed')))
+    getStats(ac.signal).then(setData, (e: unknown) => !ac.signal.aborted && setError(errorText(e, t('common.loadFailed'))))
     return () => ac.abort()
   }, [t])
 

@@ -1,11 +1,11 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: var(--z-overlay);
   display: grid;
   place-items: center;
-  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-  background: rgba(0, 0, 0, 0.5);
+  padding: max(var(--s-6), env(safe-area-inset-top)) var(--s-6) max(var(--s-6), env(safe-area-inset-bottom));
+  background: var(--scrim);
 }
 .panel {
   display: flex;
@@ -13,8 +13,8 @@
   min-width: min(440px, 100%);
   max-width: min(1100px, 100%);
   max-height: 100%;
-  border-radius: 18px;
-  box-shadow: var(--shadow-pop);
+  border-radius: var(--r-sheet);
+  --glass-lift: var(--shadow-pop);
   overflow: hidden;
 }
 /* Video and PDF: a fixed large window. */
@@ -29,66 +29,41 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 12px;
-  height: 52px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--separator);
+  gap: var(--s-3);
+  height: var(--control-h-lg);
+  padding: 0 var(--s-3);
+  border-bottom: var(--hairline-w) solid var(--separator);
 }
 .title {
   display: flex;
   flex-direction: column;
   align-items: center;
   min-width: 0;
-  gap: 2px;
+  gap: var(--s-0);
 }
 .name {
   max-width: 100%;
-  font: 600 13px / 1.2 var(--font-text);
+  font: var(--t-footnote-em);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .sub {
-  font: 400 11px / 1.2 var(--font-text);
+  font: var(--t-caption);
   color: var(--label-2);
 }
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .pager {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--s-1);
 }
-.round {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--fill-3);
-  color: var(--label);
-}
-.round:hover:not(:disabled) {
-  background: var(--fill-2);
-}
-.round:disabled {
-  color: var(--label-3);
-  cursor: default;
-}
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--label);
-  color: var(--label-inverse);
-  font: 600 13px / 1 var(--font-text);
+/* «Открыть в Antresol»: ui/Button (primary, small) at the round buttons' height */
+.actions .pill {
+  --h: var(--control-h-xs);
 }
 .body {
   position: relative;
@@ -97,8 +72,8 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  /* Opaque enough that text never mixes with the window underneath. */
-  background: rgba(14, 14, 16, 0.94);
+  /* Opaque: text never mixes with the window underneath. */
+  background: var(--bg-raised);
 }
 .media,
 .pdf {
@@ -108,7 +83,7 @@
 .media {
   width: 100%;
   height: 100%;
-  background: #000;
+  background: var(--black);
   object-fit: contain;
 }
 .image {
@@ -116,13 +91,13 @@
   /* Natural size at most (no upscaling), fitted to the window. */
   max-width: min(1068px, calc(100vw - 80px));
   max-height: calc(100dvh - 150px);
-  margin: 16px;
+  margin: var(--s-4);
 }
 .pdf {
   width: 100%;
   height: 100%;
   border: 0;
-  background: #fff;
+  background: var(--white);
 }
 .text {
   align-self: stretch;
@@ -130,13 +105,13 @@
   width: min(860px, calc(100vw - 48px));
   max-height: calc(100dvh - 150px);
   margin: 0;
-  padding: 20px 24px;
+  padding: var(--s-5) var(--s-6);
   overflow: auto;
-  font: 400 12.5px / 1.55 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font: var(--t-mono);
   color: var(--label);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--fill-4);
 }
 .text:focus-visible {
   outline: none;
@@ -145,12 +120,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 24px;
+  gap: var(--s-4);
+  padding: var(--s-6);
   text-align: center;
 }
 .message {
-  font: 400 14px / 1.4 var(--font-text);
+  font: var(--t-subhead);
   color: var(--label-2);
   max-width: 36ch;
 }
@@ -191,7 +166,7 @@
   .image {
     max-width: calc(100vw - 16px);
     max-height: calc(100dvh - 140px);
-    margin: 8px;
+    margin: var(--s-2);
   }
   .text {
     width: 100%;
@@ -199,7 +174,7 @@
   }
   .bar {
     height: auto;
-    padding: calc(env(safe-area-inset-top) + 8px) 10px 8px;
+    padding: calc(env(safe-area-inset-top) + var(--s-2)) var(--s-2h) var(--s-2);
   }
   .pager {
     display: none;

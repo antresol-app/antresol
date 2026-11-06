@@ -9,6 +9,7 @@ import { TileFaces, tileFacesLabel } from './FamilyProgress'
 import { Icon } from './Icon'
 import { Rail } from './Rail'
 import { SegmentedControl } from '../ui/SegmentedControl'
+import { IconButton } from '../ui/IconButton'
 import styles from './EpisodeList.module.css'
 
 export interface EpisodeListProps {
@@ -92,7 +93,7 @@ function EpisodeTile({
           <Icon name="play" size={22} />
         </span>
         {ep.watched && (
-          <span className={`${styles.watched} glass`} aria-hidden>
+          <span className={styles.watched} aria-hidden>
             <Icon name="check" size={14} strokeWidth={2.6} />
           </span>
         )}
@@ -158,15 +159,15 @@ export function EpisodeList({ seasons, initialSeason, nextId, seriesArt, onPlay,
               onPlay={() => onPlay(e)}
             />
             {onDownload && (
-              <button
-                type="button"
-                className={`${styles.download} glass`}
-                aria-label={t('comp.episode.toDevice', { n: e.episodeNo })}
-                title={t('comp.episode.toDeviceTitle')}
+              <IconButton
+                icon="download"
+                size="xs"
+                material="clear"
+                className={styles.download}
+                label={t('comp.episode.toDevice', { n: e.episodeNo })}
+                tooltip={t('comp.episode.toDeviceTitle')}
                 onClick={() => onDownload(e)}
-              >
-                <Icon name="download" size={16} strokeWidth={2.2} />
-              </button>
+              />
             )}
           </li>
         ))}

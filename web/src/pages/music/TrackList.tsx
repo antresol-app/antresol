@@ -7,8 +7,8 @@
 // brought as dimmed rows in their places: «Ещё не скачано» while on its way,
 // otherwise why not («Пропущено», «не найдено в источниках», …). A server
 // that downloads nothing says «Нет в медиатеке» for what its library lacks.
-import { Fragment, useState, type ReactNode } from 'react'
-import { imageUrl } from '../../api/client'
+import { Fragment, type ReactNode } from 'react'
+import { Artwork } from '../../ui/Artwork'
 import type { Song } from '../../api/types'
 import { Icon } from '../../components/Icon'
 import { useCanDownload } from '../../state/canDownload'
@@ -87,11 +87,9 @@ function PendingRow({ artist, title, state, waitingFor }: { artist: string; titl
 }
 
 function Thumb({ src }: { src: string }) {
-  const url = imageUrl(src, 160)
-  const [failed, setFailed] = useState(false)
   return (
     <span className={styles.thumb}>
-      {url && !failed ? <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} /> : <Icon name="music" size={16} />}
+      <Artwork src={src} width={40} fallback={<Icon name="music" size={16} />} />
     </span>
   )
 }

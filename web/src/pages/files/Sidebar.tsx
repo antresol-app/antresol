@@ -66,7 +66,7 @@ export function Sidebar({ roots, isAdmin, overview, usageRefresh }: SidebarProps
     )
   }
   return (
-    <nav className={styles.sidebar} aria-label={t('files.places')}>
+    <nav className={`${styles.sidebar} glass`} aria-label={t('files.places')}>
       <div className={styles.scroll}>
         {gs.map((g) => (
           <section key={g.title} className={styles.group} aria-label={g.title}>

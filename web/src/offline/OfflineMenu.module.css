@@ -3,12 +3,12 @@
 .error {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-1h);
   margin-top: var(--s-3);
   font: var(--t-footnote);
 }
 .badge {
-  padding: 4px 10px 4px 8px;
+  padding: var(--s-1) var(--s-2h) var(--s-1) var(--s-2);
   border-radius: var(--r-pill);
   color: var(--green);
   background: color-mix(in srgb, var(--green) 14%, transparent);
@@ -19,7 +19,7 @@
   background: color-mix(in srgb, var(--green) 20%, transparent);
 }
 .saving {
-  gap: 10px;
+  gap: var(--s-2h);
   color: var(--label-2);
   font-variant-numeric: tabular-nums;
 }
@@ -30,7 +30,7 @@
   position: relative;
   width: 120px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   overflow: hidden;
   background: var(--fill-2);
 }
@@ -47,8 +47,8 @@
   background: none;
   border: 0;
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
+  padding: var(--s-0) var(--s-1h);
+  border-radius: var(--r-sm);
   color: var(--accent);
   font: inherit;
 }

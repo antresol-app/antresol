@@ -1,11 +1,11 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-1h);
   width: 100%;
-  padding: 10px 10px 8px;
+  padding: var(--s-2h) var(--s-2h) var(--s-2);
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-field);
   background: transparent;
   color: var(--label);
   text-align: left;
@@ -22,7 +22,7 @@ button.card:hover {
   display: flex;
   gap: 1px;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   overflow: hidden;
   background: var(--fill-2);
 }
@@ -44,14 +44,14 @@ button.card:hover {
 .popBody {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 10px 6px;
+  gap: var(--s-2h);
+  padding: var(--s-2h) var(--s-2h) var(--s-1h);
 }
 .head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--s-3);
 }
 .used {
   font: 400 12px / 1 var(--font-text);
@@ -61,7 +61,7 @@ button.card:hover {
 .popBody .bar,
 .large .bar {
   height: 10px;
-  border-radius: 5px;
+  border-radius: var(--r-xs);
 }
 .legend {
   margin: 0;
@@ -69,13 +69,13 @@ button.card:hover {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-1h);
   font: 400 12px / 1.2 var(--font-text);
 }
 .legend li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .dot {
   flex: none;
@@ -96,9 +96,9 @@ button.card:hover {
 
 /* Phone «Обзор»: an inset card. */
 .large {
-  gap: 12px;
-  padding: 16px;
-  border-radius: 14px;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-group);
   background: var(--bg-elevated);
 }
 .large .title {
@@ -108,6 +108,6 @@ button.card:hover {
 .large .legend {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 16px;
+  gap: var(--s-2) var(--s-4);
   font-size: 13px;
 }

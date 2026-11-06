@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: var(--s-3);
   margin-top: 14vh;
   padding: 0 var(--gutter);
   text-align: center;
@@ -39,7 +39,7 @@
 }
 .empty > svg {
   color: var(--label-3);
-  margin-bottom: 6px;
+  margin-bottom: var(--s-1h);
 }
 .empty h2 {
   font: var(--t-title-2);
@@ -47,7 +47,7 @@
 }
 .empty p {
   max-width: 42ch;
-  margin-bottom: 8px;
+  margin-bottom: var(--s-2);
   text-wrap: balance;
 }
 
@@ -56,14 +56,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--section-gap);
-  padding: 14px var(--gutter) 0;
+  padding: var(--s-3h) var(--gutter) 0;
 }
 .skeletonTitle {
   width: 220px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: var(--fill-3);
-  margin-bottom: 16px;
+  margin-bottom: var(--s-4);
 }
 .skeletonRow {
   display: flex;
@@ -90,7 +90,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 2px 4px;
+  gap: var(--s-0) var(--s-1);
 }
 @media (max-width: 699px) {
   .header {
@@ -109,7 +109,7 @@
     justify-content: flex-start;
     align-self: stretch;
     margin: 0 calc(-1 * var(--gutter));
-    padding: 0 calc(var(--gutter) - 12px);
+    padding: 0 calc(var(--gutter) - var(--s-3));
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -137,14 +137,14 @@
 .dropVeil {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-top);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--s-3);
-  background: rgb(0 0 0 / 0.72);
-  color: #fff;
+  background: var(--scrim-art-heavy);
+  color: var(--label-over-art);
   font: var(--t-title-3);
   pointer-events: none;
 }

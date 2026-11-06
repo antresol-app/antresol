@@ -4,7 +4,7 @@
 // changes.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getBooksHome, useEvents } from '../../api/client'
+import { getBooksHome, useEvents, errorText } from '../../api/client'
 import type { BooksHome as BooksHomeData } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
@@ -62,7 +62,7 @@ export function BooksHome() {
       .catch((e: unknown) => {
         if (ac.signal.aborted || (quiet && !kept)) return
         if (kept) forgetAnswer(`books ${scope}`)
-        setState({ status: 'error', message: e instanceof ApiError ? e.message : t('books.homeLoadFailed') })
+        setState({ status: 'error', message: errorText(e, t('books.homeLoadFailed')) })
       })
   }, [t, scope])
 

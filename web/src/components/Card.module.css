@@ -40,7 +40,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-shadow: var(--artwork-outline);
   pointer-events: none;
 }
 .media img {
@@ -75,14 +75,14 @@
   padding: 12%;
   font: 700 clamp(15px, 1.2vw, 20px) / 1.15 var(--font-display);
   letter-spacing: var(--track-display);
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--label);
 }
 
 /* «Ещё не на сервере», «Просмотрено»: round badges side by side in the corner */
 .corner {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--s-2);
+  right: var(--s-2);
   display: flex;
   gap: var(--s-1h);
 }
@@ -92,21 +92,23 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  color: var(--label);
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
 }
 
 /* «Онлайн»: an online title in «Продолжить просмотр» (not on the server) */
 .chip {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--s-2);
+  right: var(--s-2);
   display: inline-flex;
   align-items: center;
   height: 22px;
   padding: 0 var(--s-2);
   border-radius: var(--r-pill);
+  background: var(--scrim-art-strong);
   font: var(--t-caption);
-  color: var(--label);
+  color: var(--label-over-art);
 }
 
 .progress {
@@ -115,23 +117,21 @@
   right: 10px;
   bottom: 10px;
   height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.28);
+  border-radius: var(--r-xs);
+  background: var(--progress-track-art);
   overflow: hidden;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 .progressFill {
   height: 100%;
-  border-radius: 2px;
-  background: var(--white);
+  border-radius: var(--r-xs);
+  background: var(--label-over-art);
 }
 /* Legibility scrim under the progress bar only. */
 .wide .media:has(.progress)::before {
   content: '';
   position: absolute;
   inset: 55% 0 0 0;
-  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.45));
+  background: linear-gradient(transparent, var(--scrim-art-strong));
   pointer-events: none;
   z-index: 0;
 }
@@ -169,13 +169,13 @@
 
 /* Books: a printed cover — small radius, a soft shadow and spine shading. */
 .book .media {
-  border-radius: 3px 5px 5px 3px;
+  border-radius: var(--r-xs) var(--r-xs) var(--r-xs) var(--r-xs);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 8px 20px rgba(0, 0, 0, 0.32);
 }
 .book .media::after {
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.24) 0, rgba(255, 255, 255, 0.14) 2.5%, rgba(0, 0, 0, 0.06) 5%, rgba(0, 0, 0, 0) 9%);
+  background: var(--book-spine);
 }
 
 .badges {

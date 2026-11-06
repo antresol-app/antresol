@@ -15,6 +15,7 @@
    «Бумага», dark glass on «Ночь». */
 .chrome {
   --rc-fill: rgba(255, 255, 255, 0.72);
+  --rc-solid: #f2f2f7;
   --rc-border: rgba(0, 0, 0, 0.08);
   --rc-label: #1c1c1e;
   --rc-label-2: rgba(60, 60, 67, 0.72);
@@ -26,6 +27,7 @@
 }
 .chrome[data-theme='paper'] {
   --rc-fill: rgba(248, 241, 227, 0.78);
+  --rc-solid: #efe6d3;
   --rc-border: rgba(59, 47, 34, 0.12);
   --rc-label: #3b2f22;
   --rc-label-2: rgba(59, 47, 34, 0.68);
@@ -34,6 +36,7 @@
 }
 .chrome[data-theme='night'] {
   --rc-fill: rgba(28, 28, 30, 0.72);
+  --rc-solid: var(--bg-elevated);
   --rc-border: rgba(255, 255, 255, 0.1);
   --rc-label: #f2f2f7;
   --rc-label-2: rgba(235, 235, 245, 0.6);
@@ -52,9 +55,9 @@
   gap: 8px;
   padding: 0 max(12px, env(safe-area-inset-left)) 0 max(12px, env(safe-area-inset-right));
   color: var(--rc-label);
-  background: var(--rc-fill);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
+  /* .glass-bar, tinted by the page's theme */
+  --glass-bar-fill: var(--rc-fill);
+  --glass-bar-solid: var(--rc-solid);
   transition:
     opacity var(--d-base) var(--ease-out),
     transform var(--d-base) var(--ease-out);
@@ -86,21 +89,6 @@
 }
 .chrome[data-hidden] .bottom {
   transform: translateY(8px);
-}
-@media (prefers-reduced-transparency: reduce) {
-  .bar {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .chrome {
-    --rc-fill: #f2f2f7;
-  }
-  .chrome[data-theme='paper'] {
-    --rc-fill: #efe6d3;
-  }
-  .chrome[data-theme='night'] {
-    --rc-fill: #1c1c1e;
-  }
 }
 
 .back {

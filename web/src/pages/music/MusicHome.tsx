@@ -3,7 +3,7 @@
 // playlists). Refreshes when the library changes.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getGenres, getMusicHome, useEvents } from '../../api/client'
+import { getGenres, getMusicHome, useEvents, errorText } from '../../api/client'
 import type { Genre, MusicHome as MusicHomeData } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
@@ -68,7 +68,7 @@ export function MusicHome() {
       .catch((e: unknown) => {
         if (ac.signal.aborted || (quiet && !kept)) return
         if (kept) forgetAnswer(`music ${scope}`)
-        setState({ status: 'error', message: e instanceof ApiError ? e.message : t('music.home.loadFailed') })
+        setState({ status: 'error', message: errorText(e, t('music.home.loadFailed')) })
       })
     // The genre row is extra: when it fails, the row stays as it was (hidden at first).
     getGenres(ac.signal)

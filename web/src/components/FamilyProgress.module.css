@@ -36,7 +36,7 @@
 }
 /* the rings overlap a little, like a stack of profiles */
 .faces > * + * {
-  margin-left: -6px;
+  margin-left: calc(-1 * var(--s-1h));
 }
 .extra {
   display: inline-grid;
@@ -139,7 +139,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    z-index: 20;
+    z-index: var(--z-sticky);
     width: min(460px, calc(100vw - 2 * var(--gutter)));
     box-shadow: var(--shadow-pop);
   }
@@ -228,5 +228,5 @@
   margin-left: -5px;
 }
 .tileFaces .face {
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px var(--scrim-art-strong);
 }

@@ -1,7 +1,7 @@
 .card {
   border-radius: var(--r-group);
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-grouped);
+  border: var(--hairline-w) solid var(--surface-grouped-border);
   list-style: none;
 }
 .none {

@@ -4,7 +4,7 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-2h);
   height: var(--nav-height);
   padding: 0 var(--gutter);
   font: var(--t-headline);
@@ -39,7 +39,9 @@
   gap: var(--s-3);
   padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
   margin-bottom: var(--s-8);
-  border-radius: var(--r-sheet);
+  border: var(--hairline-w) solid var(--surface-grouped-border);
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
 }
 .banner svg {
   flex: none;

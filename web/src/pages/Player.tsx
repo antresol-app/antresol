@@ -1,10 +1,11 @@
 // /watch/:id — resolves what to play (a movie, an episode, or the next
 // episode of a series/season), where to start, and what comes next, then
 // hands over to VideoPlayer. Closing returns to wherever the viewer came from.
+import { Button } from '../ui/Button'
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useState, useLayoutEffect } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
-import { ApiError, getItem, getTrackPrefs } from '../api/client'
+import { ApiError, getItem, getTrackPrefs, errorText } from '../api/client'
 import type { Episode, ItemDetail, TrackPrefs } from '../api/types'
 import { episodeToPlay } from '../components/ActionBar'
 import { episodeCode, episodeTitle } from '../components/EpisodeList'
@@ -75,7 +76,7 @@ export function Player() {
       setState({ status: 'ready', item, series, tracks })
     })().catch((e: unknown) => {
       if (ac.signal.aborted) return
-      setState({ status: 'error', message: e instanceof ApiError ? e.message : t('player.page.openFailedDot') })
+      setState({ status: 'error', message: errorText(e, t('player.page.openFailedDot')) })
     })
     return () => ac.abort()
   }, [id, navigate, location.search, location.state])
@@ -103,9 +104,9 @@ export function Player() {
         <Icon name="warning" size={40} strokeWidth={1.6} />
         <h1>{t('player.page.openFailed')}</h1>
         <p>{state.message}</p>
-        <button type="button" className={styles.button} onClick={close}>
+        <Button className={styles.button} onClick={close}>
           {t('common.close')}
-        </button>
+        </Button>
       </div>
     )
   }

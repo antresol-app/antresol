@@ -33,7 +33,7 @@
   height: var(--control-h-sm);
   padding: 0 var(--s-3);
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: var(--fill-1);
   color: var(--label);
   font: 500 14px / 1 var(--font-text);
@@ -54,10 +54,6 @@
   flex: 1;
 }
 @media (max-width: 699px) {
-  .row {
-    flex-direction: column;
-    align-items: stretch;
-  }
   .button {
     height: var(--control-h-md);
     font-size: 16px;
@@ -74,11 +70,6 @@
   }
 }
 /* a finger's 44 pt target (HIG): the hit area grows, the look does not */
-@media (pointer: coarse) {
-  .danger {
-    min-height: var(--touch-target);
-  }
-}
 /* a group's title: the profile signed in on its devices */
 .profile {
   display: inline-flex;

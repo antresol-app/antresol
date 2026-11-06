@@ -14,7 +14,7 @@
   border-radius: var(--r-playerbar);
   overflow: hidden;
   transform: translateX(-50%);
-  box-shadow: var(--shadow-pop);
+  --glass-lift: var(--shadow-pop);
 }
 
 .info {

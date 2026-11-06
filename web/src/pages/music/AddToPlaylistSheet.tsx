@@ -1,7 +1,7 @@
 // «Добавить в плейлист»: the user's playlists (a tap appends the songs) and
 // «Новый плейлист…», which turns the sheet into a name field.
 import { useEffect, useState } from 'react'
-import { ApiError, createPlaylist, getPlaylists, updatePlaylist } from '../../api/client'
+import { createPlaylist, getPlaylists, updatePlaylist, errorText } from '../../api/client'
 import type { Playlist } from '../../api/types'
 import { Icon } from '../../components/Icon'
 import { Sheet } from '../../ui/Sheet'
@@ -19,7 +19,7 @@ export interface AddToPlaylistSheetProps {
 
 type List = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Playlist[] }
 
-const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
+const errText = (e: unknown, fallback: string) => errorText(e, fallback)
 
 export function AddToPlaylistSheet({ trackIds, onClose, onDone }: AddToPlaylistSheetProps) {
   const t = useT()

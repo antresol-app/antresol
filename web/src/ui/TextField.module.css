@@ -72,3 +72,76 @@
   padding: 0 var(--s-3);
   font: var(--t-callout);
 }
+
+/* A search field (Apple's): the magnifier before the text, the clear
+   button after it; focused, a little lighter, with the focus ring. */
+.glass {
+  position: absolute;
+  top: 50%;
+  left: var(--s-3h);
+  transform: translateY(-50%);
+  color: var(--label-3);
+  pointer-events: none;
+  transition: color var(--d-fast) var(--ease-out);
+}
+.control:focus-within .glass {
+  color: var(--label-2);
+}
+.search .input {
+  padding-left: calc(var(--s-3h) + var(--icon-md) + var(--s-2));
+  padding-right: calc(var(--s-3) * 2 + var(--icon-md));
+  background: var(--fill-3);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search .input:hover {
+  background: var(--fill-2);
+}
+.search .input:focus {
+  background: var(--fill-2);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+/* where focus is to be seen (a text field: always when focused), the ring as every field */
+.search .input:focus-visible {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+.search .input::-webkit-search-cancel-button {
+  display: none;
+}
+.clear {
+  position: absolute;
+  top: 50%;
+  right: var(--s-3);
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--label-3);
+  color: var(--label-inverse);
+  transform: translateY(-50%);
+}
+.clear:hover {
+  background: var(--label-2);
+}
+/* a finger's 44 pt target */
+.clear::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--s-3));
+}
+/* small: a toolbar's or a menu's search field */
+.small.search .glass {
+  left: var(--s-2h);
+}
+.small.search .input {
+  padding-left: calc(var(--s-2h) + var(--icon-xs) + var(--s-1h));
+  padding-right: calc(var(--s-2) * 2 + var(--icon-xs));
+}
+.small .clear {
+  right: var(--s-2);
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
