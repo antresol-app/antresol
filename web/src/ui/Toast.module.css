@@ -40,6 +40,9 @@
 }
 .action {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: var(--control-h-sm);
   padding: 0 var(--s-3h);
   border: 0;
@@ -48,6 +51,10 @@
   color: var(--accent);
   font: var(--t-control-sm);
   cursor: pointer;
+}
+/* the label centres on its capitals, like every control label */
+.actionLabel {
+  text-box: var(--control-text-box);
 }
 .action:focus-visible {
   box-shadow: var(--focus-ring-inset);

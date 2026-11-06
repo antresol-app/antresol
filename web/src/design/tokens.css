@@ -36,6 +36,26 @@
   --identity-tile-top: #3a1c8c;
   --identity-tile-bottom: #9b2fc9;
 
+  /* Art: the file browser's icons (pages/files/FileIcon), as in Finder — a
+     white paper document with a coloured kind glyph and its extension, and a
+     two-tone blue folder. Deeper hues than the dark palette: they sit on
+     white paper. A kind without its own colour is --gray. */
+  --file-paper: #f5f5f7;
+  --file-fold: #d9d9de;
+  --file-edge: rgba(0, 0, 0, 0.22);
+  --file-fold-edge: rgba(0, 0, 0, 0.18);
+  --file-video: #7d5cf0;
+  --file-audio: #f2385a;
+  --file-image: #2fb35a;
+  --file-text: #6e6e76;
+  --file-book: #e5484d;
+  --file-comic: #ff8a00;
+  --file-download: #28a745;
+  --folder-back: #1f86e0;
+  --folder-front: #48a9f6;
+  --folder-sheen: rgba(255, 255, 255, 0.35);
+  --folder-emblem: #1d74c4;
+
   /* ---------- Backgrounds ----------
      bg: the window. raised: a page's own opaque panels. elevated: opaque
      surfaces over content (a dragged row, glass without transparency).
@@ -138,6 +158,14 @@
   --t-control-sm: 600 15px / 1 var(--font-text);
   --t-control: 600 17px / 1 var(--font-text);
   --t-field: 500 15px / 1 var(--font-text);
+  /* A control's label box is trimmed to its capitals (cap height to the
+     baseline), so centring it in the control centres the letters the way a
+     glyph beside them is centred. Centring the line box instead leaves the
+     text where the font's ascent and descent put it: lower than the middle,
+     on a half pixel in Chromium, and by a different amount in WebKit.
+     Use: `text-box: var(--control-text-box)` on the element that holds the
+     label's text, a flex item of the control (display other than inline). */
+  --control-text-box: trim-both cap alphabetic;
   /* a tab's label under its glyph (the phone's tab bar) */
   --t-tab: 600 10px / 1.1 var(--font-text);
   /* an action tile's label under its glyph (title pages on phones) */

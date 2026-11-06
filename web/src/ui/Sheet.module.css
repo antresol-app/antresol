@@ -78,6 +78,9 @@
 .button {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: var(--alert-button-h);
   padding: 0 var(--s-2h);
   border: 0;
@@ -86,8 +89,17 @@
   color: var(--label);
   font: var(--t-alert-button);
   white-space: nowrap;
+}
+/* The label centres on its capitals. Its box is cut to the capitals but
+   clips (for the ellipsis), so its padding holds the descenders and accents
+   and an equal negative margin takes it back out of the layout. */
+.label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-box: var(--control-text-box);
+  padding-block: var(--s-1);
+  margin-block: calc(-1 * var(--s-1));
 }
 .button:hover:not(:disabled) {
   filter: brightness(1.12);

@@ -20,6 +20,9 @@
 .segment {
   position: relative;
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: var(--control-h-sm);
   padding: 0 var(--s-4);
   border: 0;
@@ -55,8 +58,10 @@
   background: var(--label);
   box-shadow: var(--shadow-card);
 }
+/* the label centres on its capitals (over the thumb) */
 .label {
   position: relative;
+  text-box: var(--control-text-box);
 }
 .short {
   display: none;
@@ -70,7 +75,7 @@
     clip: rect(0 0 0 0);
   }
   .short {
-    display: inline;
+    display: block;
   }
 }
 

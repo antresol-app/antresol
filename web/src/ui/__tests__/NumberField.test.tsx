@@ -72,6 +72,31 @@ describe('NumberField', () => {
     expect(screen.getByRole('textbox')).toHaveValue('20')
   })
 
+  it('is as wide as what it shows, in digits, never narrower than `chars`', async () => {
+    const width = () => (screen.getByRole('textbox').closest('[style]') as HTMLElement).style.getPropertyValue('--nf-chars')
+    const { unmount } = render(<Field initial={2} decimals={2} />)
+    expect(width()).toBe('1')
+    const input = screen.getByRole('textbox')
+    await userEvent.clear(input)
+    expect(width()).toBe('1')
+    await userEvent.type(input, '12,75')
+    expect(width()).toBe('5')
+    unmount()
+    render(<Field initial={10} chars={3} />)
+    expect(width()).toBe('3')
+    expect((screen.getByRole('textbox').closest('[style]') as HTMLElement).style.getPropertyValue('--nf-min')).toBe('3')
+  })
+
+  it('keeps the number and its unit in one line of text, so they share a baseline', () => {
+    render(<NumberField label="Cache" unit="GB" value={10} onChange={() => {}} />)
+    const input = screen.getByRole('textbox')
+    // one inline run of text inside the field (not two flex items centred apart)
+    const line = input.parentElement!
+    expect(screen.getByText('GB').parentElement).toBe(line)
+    expect(line).not.toBe(input.closest('[style]'))
+    expect(line.tagName).toBe('SPAN')
+  })
+
   it('a press anywhere on the field (its unit, the finger’s margin around it) puts the caret in the number', () => {
     render(<NumberField label="Скорость" unit="МБ/с" value={2} onChange={() => {}} />)
     const input = screen.getByRole('textbox', { name: 'Скорость' })

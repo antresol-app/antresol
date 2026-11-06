@@ -9,13 +9,13 @@ import styles from './StorageBar.module.css'
 import { useT, type Key } from '../../i18n'
 
 export const CATEGORIES: Record<string, { label: Key; color: string }> = {
-  movies: { label: 'common.movies', color: '#0a84ff' },
-  series: { label: 'common.series', color: '#bf5af2' },
-  music: { label: 'common.music', color: '#ff375f' },
-  books: { label: 'common.books', color: '#ff9f0a' },
-  downloads: { label: 'files.storage.downloads', color: '#30d158' },
-  'stream-cache': { label: 'files.storage.streamCache', color: '#64d2ff' },
-  other: { label: 'files.storage.other', color: '#8e8e93' },
+  movies: { label: 'common.movies', color: 'var(--blue)' },
+  series: { label: 'common.series', color: 'var(--purple)' },
+  music: { label: 'common.music', color: 'var(--pink)' },
+  books: { label: 'common.books', color: 'var(--orange)' },
+  downloads: { label: 'files.storage.downloads', color: 'var(--green)' },
+  'stream-cache': { label: 'files.storage.streamCache', color: 'var(--teal)' },
+  other: { label: 'files.storage.other', color: 'var(--gray)' },
 }
 
 let cached: { at: number; usage: FileUsage } | null = null
@@ -63,7 +63,7 @@ export function StorageBar({ refresh = 0, large }: { refresh?: number; large?: b
   const bar = (
     <span className={styles.bar} role="img" aria-label={t('files.storage.usedOf', { used: formatSize(u.used), total: formatSize(u.total) })}>
       {parts.map((c) => (
-        <span key={c.id} className={styles.seg} style={{ width: pct(c.bytes), background: CATEGORIES[c.id]?.color ?? '#8e8e93' }} />
+        <span key={c.id} className={styles.seg} style={{ width: pct(c.bytes), background: CATEGORIES[c.id]?.color ?? 'var(--gray)' }} />
       ))}
     </span>
   )
@@ -77,7 +77,7 @@ export function StorageBar({ refresh = 0, large }: { refresh?: number; large?: b
     <ul className={styles.legend}>
       {parts.map((c) => (
         <li key={c.id}>
-          <span className={styles.dot} style={{ background: CATEGORIES[c.id]?.color ?? '#8e8e93' }} />
+          <span className={styles.dot} style={{ background: CATEGORIES[c.id]?.color ?? 'var(--gray)' }} />
           <span className={styles.lname}>{CATEGORIES[c.id] ? t(CATEGORIES[c.id]!.label) : c.id}</span>
           <span className={styles.lsize}>{formatSize(c.bytes)}</span>
         </li>

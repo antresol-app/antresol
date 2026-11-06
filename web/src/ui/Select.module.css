@@ -30,6 +30,10 @@
   opacity: 0.45;
   cursor: default;
 }
+/* The choice and its label centre on their capitals. The choice's box is
+   cut to the capitals but clips (for the ellipsis), so its padding holds the
+   descenders and accents and an equal negative margin takes it back out of
+   the layout. */
 .value {
   min-width: 0;
   overflow: hidden;
@@ -37,9 +41,13 @@
   white-space: nowrap;
   font-weight: 600;
   color: var(--label);
+  text-box: var(--control-text-box);
+  padding-block: var(--s-1);
+  margin-block: calc(-1 * var(--s-1));
 }
 .label {
   flex: none;
+  text-box: var(--control-text-box);
 }
 .chevron {
   flex: none;

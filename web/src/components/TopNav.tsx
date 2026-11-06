@@ -71,7 +71,7 @@ export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
                           />
                         )}
                         <span className={styles.itemLabel}>
-                          {s.iconOnly ? <Icon name={s.icon} size={18} strokeWidth={2.2} /> : s.label}
+                          {s.iconOnly ? <Icon name={s.icon} size={18} strokeWidth={2.2} /> : <span className={styles.itemText}>{s.label}</span>}
                         </span>
                       </>
                     )}

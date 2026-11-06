@@ -272,7 +272,11 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
               // Cancel slides the sheet away first, as the ✕ does
               onClick={a.kind === 'cancel' ? () => dismiss(a.run) : a.run}
             >
-              {busy && (a.kind === 'primary' || a.kind === 'destructive') ? <span className={styles.spinner} aria-label={t('comp.sheet.wait')} /> : a.label}
+              {busy && (a.kind === 'primary' || a.kind === 'destructive') ? (
+                <span className={styles.spinner} aria-label={t('comp.sheet.wait')} />
+              ) : (
+                <span className={styles.label}>{a.label}</span>
+              )}
             </button>
           ))}
         </div>}

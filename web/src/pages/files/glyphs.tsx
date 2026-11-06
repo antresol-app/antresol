@@ -117,7 +117,7 @@ export const glyphPaths = {
   xmarkCircle: (
     <>
       <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" />
-      <path d="m9 9 6 6M15 9l-6 6" stroke="var(--files-xmark, #1c1c1e)" strokeWidth="2" />
+      <path d="m9 9 6 6M15 9l-6 6" stroke="var(--files-xmark, var(--gray-6))" strokeWidth="2" />
     </>
   ),
   close: <path d="m6.5 6.5 11 11M17.5 6.5l-11 11" />,

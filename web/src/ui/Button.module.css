@@ -101,14 +101,15 @@
   transform: none;
   opacity: 0.6;
 }
-.link .label {
-  display: inline;
-  transform: none;
-}
-
+/* the label centres on its capitals, like the glyph before it */
 .label {
   display: inline-block;
-  transform: translateY(0.5px);
+  text-box: var(--control-text-box);
+}
+/* inside a sentence: the sentence's line, untrimmed */
+.link .label {
+  display: inline;
+  text-box: none;
 }
 /* A finger's 44 pt target around a small button: taller hit area, same look */
 @media (pointer: coarse) {

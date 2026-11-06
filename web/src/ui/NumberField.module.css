@@ -1,9 +1,8 @@
-/* One filled box: the number right-aligned against its unit, both on the
-   field's baseline. The width is the number's (in digits) plus the unit. */
+/* One filled box: the number right-aligned against its unit. The width is
+   the number's (in digits, --nf-chars) plus the unit. */
 .field {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-1);
   height: var(--control-h-sm);
   padding: 0 var(--s-3);
   border-radius: var(--r-field);
@@ -22,11 +21,18 @@
   background: var(--fill-1);
   box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring);
 }
+/* The number and the unit are one line of text, so they share its
+   baseline; the line centres on its capitals like every control label. */
+.text {
+  white-space: nowrap;
+  text-box: var(--control-text-box);
+}
 .input {
-  width: calc(var(--nf-chars, 4) * 1ch + 2px);
+  /* as wide as its text: a digit is 1ch (tabular), and a pixel for the caret */
+  width: calc(var(--nf-chars, 1) * 1ch + var(--hairline-w));
   min-width: 0;
-  height: 100%;
   padding: 0;
+  vertical-align: baseline;
   border: 0;
   background: transparent;
   color: var(--label);
@@ -36,13 +42,21 @@
   text-align: right;
   caret-color: var(--accent);
 }
+/* exactly its text (a comma is narrower than a digit), never narrower than
+   `chars` digits */
+@supports (field-sizing: content) {
+  .input {
+    field-sizing: content;
+    width: auto;
+    min-width: calc(var(--nf-min, 1) * 1ch);
+  }
+}
 .input:focus,
 .input:focus-visible {
   outline: none;
 }
 .unit {
-  flex: none;
-  white-space: nowrap;
+  margin-left: var(--s-1);
 }
 .disabled {
   opacity: 0.45;

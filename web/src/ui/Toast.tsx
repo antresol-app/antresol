@@ -39,7 +39,7 @@ export function Toast({ children, action, messageKey, live = true, tone = 'defau
           <span className={styles.text}>{children}</span>
           {action && (
             <button type="button" className={styles.action} onClick={action.onClick}>
-              {action.label}
+              <span className={styles.actionLabel}>{action.label}</span>
             </button>
           )}
         </div>

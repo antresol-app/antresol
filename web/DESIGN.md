@@ -53,7 +53,8 @@ build).
 | Separators | `--separator`, `--hairline` | lines between rows; outlines (badges, rings' tracks) |
 | Tints | `--accent`, `--destructive`, `--success`, `--warning`, `--destructive-text` | meaning, never decoration: links, plain buttons, progress; delete and errors; done, on, seeding; problems that need attention; error text in small type |
 | Tinted grounds | `--accent-fill`, `--destructive-fill`, `--success-fill`, `--warning-fill` | a notice or a status badge |
-| Palette | `--blue`, `--green`, `--indigo`, `--orange`, `--pink`, `--purple`, `--red`, `--teal`, `--cyan`, `--yellow`, `--gray`… | data (the disk meter's categories) and art (avatar gradients) only |
+| Art | `--identity-*`, `--grad-1..8`, `--file-*`, `--folder-*` | the identity tile; avatar gradients; the file browser's Finder-like icons (a white paper document with a kind colour, a two-tone folder: deeper hues than the palette, for white paper) |
+| Palette | `--blue`, `--green`, `--indigo`, `--orange`, `--pink`, `--purple`, `--red`, `--teal`, `--cyan`, `--yellow`, `--gray`… | data (the disk meter's categories) and art (avatar gradients, the coloured icon tiles of the Manage sidebar and the import services) only |
 
 ### Type
 
@@ -63,7 +64,11 @@ build).
 over its group; `--t-footnote` for hints and meta, `--t-footnote-em` for a
 status word; `--t-caption`, `--t-caption-2` for tiny labels;
 `--t-control`, `--t-control-sm` for button labels and `--t-field` for
-pop-up buttons, segments and number fields. Numbers that change
+pop-up buttons, segments and number fields. A control centres its
+label on the capitals: the element holding the text takes
+`text-box: var(--control-text-box)`, never a `translateY` nudge — every
+button, pop-up, segment, field, the toast's and the sheet's buttons, the top
+bar's sections and the library menu. Numbers that change
 (sizes, speeds, percents) add `font-variant-numeric: tabular-nums`.
 
 ### Space, shape, size
@@ -117,7 +122,7 @@ pop-up buttons, segments and number fields. Numbers that change
 | `Card` | a block of a page on a surface (a chart, a figure, an empty state) | paddings `sm`/`md`/`lg`. A list of rows is a `GroupedSection`, not a Card. (`components/Card` is the library's poster tile, a different thing.) |
 | `GroupedSection`, `ListRow` | settings and every list of things with actions (downloads, profiles, statistics) | the System Settings list: a title over a glass group, a footnote under it; a row has optional `leading` media, `label`, `hint`, `status`, and the control/actions on the trailing edge. `stack`: the control goes under the text on phones (segmented controls); `wide`: always under (ordered lists, forms). Pages that build rows by hand compose the same classes (`Manage.module.css`). |
 | `TextField` | a labelled text input in a form or sheet | the field height; `hint`, `error`, `revealable` passwords; `size="small"` for a search field at the top of a menu. |
-| `NumberField` | a number with a unit in a row («2 МБ/с», «10 ГБ») | the small height, the number right-aligned against its unit inside the field, tabular digits; keeps what is typed, reports valid values (`min`, `max`, `decimals`), restores the saved value when left invalid; `chars` sets the width. |
+| `NumberField` | a number with a unit in a row («2 МБ/с», «10 ГБ») | the small height, the number and its unit on one line (one baseline), tabular digits; as wide as the number it shows, `chars` the narrowest (in digits); a press anywhere on it types into it; keeps what is typed, reports valid values (`min`, `max`, `decimals`), restores the saved value when left invalid. |
 | `Select`, `MultiSelect` | choosing one / several of a fixed list | a glass pop-up button with ⌃⌄; the menu is a `Menu`. Put `placement="bottom-end"` on a trigger at a row's trailing edge. |
 | `Menu`, `MenuItem`, `MenuHeading`, `MenuSeparator` | actions behind a button («⋯»), sort and filter | floating (rule 3); arrow keys, Home/End, Escape returns focus; radio and checkbox items, a `detail` line, `destructive`, `icon`, a `badge`. `maxHeight` for a deliberately tall menu. A Sheet opened from an item gives focus back to the trigger (`menuTrigger`). |
 | `floating.ts` | the positioning primitive | `placeFloating` (pure, tested), `positionFloating`, `portalHost` (the full-screen element in the player), `revealChosen`. Use it for any new floating thing. |

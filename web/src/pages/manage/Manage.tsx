@@ -13,23 +13,24 @@ import styles from './Manage.module.css'
 // fullOnly: a library-only server (VAULT_LIBRARY_ONLY) has no such section;
 // the core build does not even have them in its bundle. ifRequests:
 // shown when kids' requests are open on this server (user.requests).
+// tint: the icon tile's colour, a palette token (DESIGN.md: palette).
 export const MANAGE_SECTIONS: { to: string; label: Key; icon: IconName; tint: string; fullOnly?: boolean; ifRequests?: boolean }[] = [
   ...(__LIBRARY_EDITION__
     ? []
-    : [{ to: 'downloads', label: 'common.downloads' as Key, icon: 'download' as IconName, tint: '#30d158', fullOnly: true }]),
-  { to: 'requests', label: 'manage.section.requests', icon: 'send', tint: '#ff9f0a', ifRequests: true },
+    : [{ to: 'downloads', label: 'common.downloads' as Key, icon: 'download' as IconName, tint: 'var(--green)', fullOnly: true }]),
+  { to: 'requests', label: 'manage.section.requests', icon: 'send', tint: 'var(--orange)', ifRequests: true },
   ...(__LIBRARY_EDITION__
     ? []
-    : [{ to: 'follows', label: 'manage.section.follows' as Key, icon: 'eye' as IconName, tint: '#ff375f', fullOnly: true }]),
-  { to: 'migrate', label: 'manage.section.migrate', icon: 'arrowRight', tint: '#5e5ce6' },
-  { to: 'import', label: 'manage.section.import', icon: 'music', tint: '#ff375f' },
+    : [{ to: 'follows', label: 'manage.section.follows' as Key, icon: 'eye' as IconName, tint: 'var(--pink)', fullOnly: true }]),
+  { to: 'migrate', label: 'manage.section.migrate', icon: 'arrowRight', tint: 'var(--indigo)' },
+  { to: 'import', label: 'manage.section.import', icon: 'music', tint: 'var(--pink)' },
   ...(__LIBRARY_EDITION__
     ? []
-    : [{ to: 'sources', label: 'manage.section.sources' as Key, icon: 'plug' as IconName, tint: '#0a84ff', fullOnly: true }]),
-  { to: 'files', label: 'common.files', icon: 'folder', tint: '#64d2ff' },
-  { to: 'stats', label: 'manage.section.stats', icon: 'chart', tint: '#ff9f0a' },
-  { to: 'profiles', label: 'manage.section.profiles', icon: 'people', tint: '#bf5af2' },
-  { to: 'settings', label: 'common.settings', icon: 'gear', tint: '#8e8e93' },
+    : [{ to: 'sources', label: 'manage.section.sources' as Key, icon: 'plug' as IconName, tint: 'var(--blue)', fullOnly: true }]),
+  { to: 'files', label: 'common.files', icon: 'folder', tint: 'var(--teal)' },
+  { to: 'stats', label: 'manage.section.stats', icon: 'chart', tint: 'var(--orange)' },
+  { to: 'profiles', label: 'manage.section.profiles', icon: 'people', tint: 'var(--purple)' },
+  { to: 'settings', label: 'common.settings', icon: 'gear', tint: 'var(--gray)' },
 ]
 
 /** The sections this server has. */

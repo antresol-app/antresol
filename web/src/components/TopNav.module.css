@@ -111,6 +111,10 @@
   position: relative;
   display: inline-flex;
 }
+/* a section's name centres on its capitals, like every control label */
+.itemText {
+  text-box: var(--control-text-box);
+}
 
 .trailing {
   justify-self: end;

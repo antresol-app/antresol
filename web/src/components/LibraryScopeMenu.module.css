@@ -30,6 +30,11 @@
   color: var(--label-2);
   margin-left: 1px;
 }
+/* the scope's name centres on its capitals, like every control label */
+.long,
+.short {
+  text-box: var(--control-text-box);
+}
 .short {
   display: none;
 }
