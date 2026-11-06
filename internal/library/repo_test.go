@@ -2,6 +2,8 @@ package library
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -28,6 +30,11 @@ func TestListMaxRating(t *testing.T) {
 	items, total, _ = r.List(ctx, ListQuery{Kind: "movie", Sort: "title", Limit: 3, Offset: 3})
 	if len(items) != 3 || total != 7 {
 		t.Fatalf("page: %v %d", titles(items), total)
+	}
+	// NoTotal: the same page, no count
+	same, total, _ := r.List(ctx, ListQuery{Kind: "movie", Sort: "title", Limit: 3, Offset: 3, NoTotal: true})
+	if !reflect.DeepEqual(same, items) || total != 0 {
+		t.Fatalf("no total: %v %d", titles(same), total)
 	}
 }
 
@@ -144,5 +151,74 @@ func TestVideoFilesNewestFirst(t *testing.T) {
 	got, err = r.VideoFiles(ctx, got[1].ID, 2)
 	if err != nil || len(got) != 1 || got[0].ID != ids[0] {
 		t.Fatalf("page 2: %+v %v", got, err)
+	}
+}
+
+// A page of films and series together is the same slice of the whole
+// list, whatever the sort, rating limit and owner.
+func TestListBothKindsPage(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	ratings := []string{"0+", "12+", "16+", "18+", ""}
+	for i := range 40 {
+		var err error
+		if i%3 == 0 {
+			_, err = r.UpsertEpisode(ctx, EpisodeInput{SeriesTitle: fmt.Sprintf("Сериал %02d", i), SeriesRating: ratings[i%5], SeriesYear: 1990 + i%7,
+				Season: 1, Episode: 1, File: FileInput{Path: fmt.Sprintf("/tv/%d.mkv", i)}})
+		} else {
+			_, err = r.UpsertMovie(ctx, MovieInput{Title: fmt.Sprintf("Фильм %02d", i), Rating: ratings[i%5], Year: 1990 + i%7,
+				File: FileInput{Path: fmt.Sprintf("/m/%d.mkv", i)}})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ties on added_at (whole hours), one missing
+	if _, err := r.db.Exec(`UPDATE items SET added_at=strftime('%Y-%m-%dT%H:%M:%SZ','2026-01-01','+'||(id%9)||' hours')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.Exec(`UPDATE items SET missing_since='2026-02-01T00:00:00Z' WHERE title='Фильм 05'`); err != nil {
+		t.Fatal(err)
+	}
+	// RecentSeriesOf answers as its query did before it grouped ids only
+	for _, rating := range []string{"", "12+"} {
+		for _, limit := range []int{0, 3, 20} {
+			got, err := r.RecentSeriesOf(ctx, limit, rating, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rate, args := "1", []any(nil)
+			if rating != "" {
+				rate, args = allowedRatings(rating)
+			}
+			l := limit
+			if l <= 0 {
+				l = -1
+			}
+			want, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i JOIN items s ON s.parent_id=i.id JOIN items e ON e.parent_id=s.id
+			  WHERE i.kind='series' AND i.missing_since IS NULL AND s.missing_since IS NULL AND e.missing_since IS NULL AND `+rate+
+				` GROUP BY i.id ORDER BY MAX(e.added_at) DESC, i.id DESC LIMIT ?`, append(args, l)...)
+			if err != nil || len(want) == 0 || !reflect.DeepEqual(got, want) {
+				t.Fatalf("recent series %q %d:\n got %v\nwant %v %v", rating, limit, titles(got), titles(want), err)
+			}
+		}
+	}
+	for _, sort := range []string{"", "added", "title", "year"} {
+		for _, rating := range []string{"", "12+"} {
+			all, total, err := r.List(ctx, ListQuery{Sort: sort, MaxRating: rating})
+			if err != nil || len(all) != total {
+				t.Fatalf("all: %d of %d %v", len(all), total, err)
+			}
+			for _, pg := range []struct{ limit, offset int }{{5, 0}, {7, 3}, {50, 0}, {10, 25}, {3, 100}} {
+				got, n, err := r.List(ctx, ListQuery{Sort: sort, MaxRating: rating, Limit: pg.limit, Offset: pg.offset})
+				if err != nil || n != total {
+					t.Fatal(err, n, total)
+				}
+				want := all[min(pg.offset, len(all)):min(pg.offset+pg.limit, len(all))]
+				if !reflect.DeepEqual(titles(got), titles(want)) {
+					t.Fatalf("sort %q rating %q page %+v:\n got %v\nwant %v", sort, rating, pg, titles(got), titles(want))
+				}
+			}
+		}
 	}
 }

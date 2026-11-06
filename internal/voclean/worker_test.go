@@ -641,3 +641,21 @@ func TestWorkerRemakesTracksWithoutFrontGain(t *testing.T) {
 		t.Fatalf("state %q", st)
 	}
 }
+
+// Files listed but not on disk (an unmounted drive) are walked past
+// without reading the queue again for each of them.
+func TestWorkerMissingFilesFewQueues(t *testing.T) {
+	fx := newWFix(t)
+	for i := range 20 {
+		id := fx.file(fmt.Sprintf("m%d", i), fx.item("movie", 0, fmt.Sprintf("M%d", i), 1+i%9, 0, 0), probeOf(lfEng, "eng:"))
+		fx.exec(`UPDATE files SET path=? WHERE id=?`, filepath.Join(t.TempDir(), "gone.mkv"), id)
+	}
+	fx.file("here", fx.item("movie", 0, "Here", 1, 0, 0), probeOf(lfEng, "eng:"))
+	fx.pass()
+	if c := fx.takeCalls(); !reflect.DeepEqual(c, []string{"measure here/1", "clean here/1"}) {
+		t.Fatalf("calls %v", c)
+	}
+	if fx.w.queues > 3 {
+		t.Fatalf("%d queue reads for 20 missing files", fx.w.queues)
+	}
+}

@@ -321,9 +321,6 @@ func (c *call) getCoverArt() *response {
 // lrcTag is one [mm:ss(.xx)] time tag of an LRC line.
 var lrcTag = regexp.MustCompile(`^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]`)
 
-// lrcMeta is an LRC header line ([ar:…], [ti:…], [offset:…]).
-var lrcMeta = regexp.MustCompile(`^\[[a-zA-Z]+:.*\]\s*$`)
-
 // parseLyrics splits lyrics into lines; synced when any line has an LRC
 // time tag (then untagged lines and headers are dropped, and a line with
 // several tags repeats at each time).

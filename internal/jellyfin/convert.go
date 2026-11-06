@@ -101,11 +101,6 @@ func (s *Server) conv(ctx context.Context, u auth.User, fields fieldSet) *conv {
 		items: map[int64]library.Item{}, vis: map[int64]bool{}, prog: map[int64]*progress.Entry{}, counts: map[int64]epCounts{}}
 }
 
-// dto converts one item (movie, series, season, episode; others: errKind).
-func (s *Server) dto(ctx context.Context, u auth.User, it library.Item, fields fieldSet) (BaseItemDto, error) {
-	return s.conv(ctx, u, fields).dto(it)
-}
-
 // item loads an item (cached); library.ErrNotFound when missing.
 func (c *conv) item(id int64) (library.Item, error) {
 	if it, ok := c.items[id]; ok {

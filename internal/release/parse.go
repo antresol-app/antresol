@@ -179,14 +179,6 @@ func find(re *regexp.Regexp, s string) (int, int) {
 	return m[2], m[3]
 }
 
-func sub(re *regexp.Regexp, s string, n int) string {
-	m := re.FindStringSubmatch(s)
-	if len(m) <= n {
-		return ""
-	}
-	return m[n]
-}
-
 // num безопасно разбирает число; при переполнении или мусоре — 0.
 func num(s string) int {
 	v, err := strconv.Atoi(s)

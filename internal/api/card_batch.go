@@ -22,6 +22,7 @@ type cardBatch struct {
 	askedF   map[int64]bool
 	items    map[int64]library.Item // parents; an asked id missing is not shown
 	askedI   map[int64]bool
+	showKeys map[int64]string // series and seasons: Library.ShowFilesKey
 }
 
 type cardBatchKey struct{}
@@ -43,8 +44,13 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 	if old := batchOf(ctx); old != nil && old.uid == uid {
 		b = old // a second page of cards adds to the first
 	}
-	var withProgress, withFiles, parents []int64
+	var withProgress, withFiles, parents, shows []int64
 	for _, it := range items {
+		if it.Kind == library.KindSeries || it.Kind == library.KindSeason {
+			if _, ok := b.showKeys[it.ID]; !ok {
+				shows = append(shows, it.ID)
+			}
+		}
 		b.items[it.ID], b.askedI[it.ID] = it, true
 		switch it.Kind {
 		case library.KindMovie, library.KindEpisode, library.KindBook, library.KindAudiobook, library.KindComicVolume:
@@ -88,6 +94,19 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 			}
 		}
 	}
+	if len(shows) > 0 {
+		keys, err := h.Library.ShowFilesKeys(ctx, shows)
+		if err != nil {
+			log.Printf("api: cards: show keys: %v", err)
+		} else {
+			if b.showKeys == nil {
+				b.showKeys = map[int64]string{}
+			}
+			for _, id := range shows {
+				b.showKeys[id] = keys[id]
+			}
+		}
+	}
 	// the parents, and theirs (an episode's season, then its series)
 	for depth := 0; depth < 3 && len(parents) > 0; depth++ {
 		got, err := h.Library.ItemsByID(ctx, parents)
@@ -110,6 +129,32 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 	return context.WithValue(ctx, cardBatchKey{}, b)
 }
 
+// withItems is withCards of the items ids (one Library.ItemsByID); an id
+// it did not return then reads as not found, as Library.Item says.
+func (h *lib) withItems(ctx context.Context, uid int64, ids []int64) context.Context {
+	if len(ids) == 0 || h.Library == nil {
+		return ctx
+	}
+	got, err := h.Library.ItemsByID(ctx, ids)
+	if err != nil {
+		log.Printf("api: cards: items: %v", err)
+		return ctx
+	}
+	items := make([]library.Item, 0, len(got))
+	for _, id := range ids {
+		if it, ok := got[id]; ok {
+			items = append(items, it)
+		}
+	}
+	ctx = h.withCards(ctx, uid, items)
+	if b := batchOf(ctx); b != nil {
+		for _, id := range ids {
+			b.askedI[id] = true
+		}
+	}
+	return ctx
+}
+
 // itemByID is Library.Item, from the batch when it has the id.
 func (h *lib) itemByID(ctx context.Context, id int64) (library.Item, error) {
 	if b := batchOf(ctx); b != nil && b.askedI[id] {
@@ -127,6 +172,17 @@ func (h *lib) filesOf(ctx context.Context, id int64) ([]library.File, error) {
 		return b.files[id], nil
 	}
 	return h.Library.FilesOf(ctx, id)
+}
+
+// showFilesKey is Library.ShowFilesKey, from the batch when it has the
+// series or season.
+func (h *lib) showFilesKey(ctx context.Context, id int64) (string, error) {
+	if b := batchOf(ctx); b != nil {
+		if k, ok := b.showKeys[id]; ok {
+			return k, nil
+		}
+	}
+	return h.Library.ShowFilesKey(ctx, id)
 }
 
 // progressEntry is Progress.Get, from the batch when it has the item.

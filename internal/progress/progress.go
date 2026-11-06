@@ -574,6 +574,9 @@ func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) (
 	var out []Entry
 	seen := map[int64]bool{}
 	for _, e := range all { // newest first
+		if limit > 0 && len(out) >= limit {
+			break // out is newest first too: the rest would be cut
+		}
 		if e.SeriesID == 0 {
 			if !e.Finished {
 				out = append(out, e)

@@ -378,6 +378,27 @@ func (h *lib) familyShelf(ctx context.Context, r *http.Request, u auth.User, ski
 	if err != nil {
 		return nil, err
 	}
+	// the titles the shelf can show and the episodes watched, read at once
+	var ids []int64
+	tops := map[int64]bool{}
+	for _, e := range entries {
+		top := e.ItemID
+		if e.SeriesID != 0 {
+			top = e.SeriesID
+		}
+		if skip[top] || tops[top] {
+			continue
+		}
+		if len(tops) >= 2*shelfSize {
+			break
+		}
+		tops[top] = true
+		ids = append(ids, top)
+		if e.SeriesID != 0 {
+			ids = append(ids, e.ItemID)
+		}
+	}
+	ctx = h.withItems(ctx, u.ID, ids)
 	type title struct {
 		card  Card
 		names []string
@@ -414,7 +435,7 @@ func (h *lib) familyShelf(ctx context.Context, r *http.Request, u auth.User, ski
 		c.Progress = ratio(e)
 		code := ""
 		if e.SeriesID != 0 {
-			if ep, err := h.Library.Item(ctx, e.ItemID); err == nil {
+			if ep, err := h.itemByID(ctx, e.ItemID); err == nil {
 				code = i18n.T(ctx, "С%d Э%d", ep.SeasonNo, ep.EpisodeNo)
 			}
 		}

@@ -103,6 +103,7 @@ type Worker struct {
 	kick chan struct{}
 	// heldForPlayback: the last pass left backlog files until playback ends
 	heldForPlayback bool
+	queues          int // queue reads (tests)
 }
 
 func (w *Worker) init() { w.once.Do(func() { w.kick = make(chan struct{}, 1) }) }
@@ -236,6 +237,10 @@ func (w *Worker) Pass(ctx context.Context) error {
 			w.log().Info("voclean: voice-overs cleaned", "tracks", done)
 		}
 	}()
+	// the queue is walked from pos; files not on disk move pos on without
+	// reading it again (only a file run can change it)
+	var jobs []job
+	pos, held, stale := 0, false, true
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -243,22 +248,22 @@ func (w *Worker) Pass(ctx context.Context) error {
 		if !w.diskOK() {
 			return nil
 		}
-		jobs, err := w.queue(ctx)
-		if err != nil {
-			return err
+		if stale {
+			var err error
+			if jobs, err = w.queue(ctx); err != nil {
+				return err
+			}
+			pos, held, stale = 0, false, false
 		}
 		var next *job
-		held := false
-		for i := range jobs {
-			j := &jobs[i]
+		for ; pos < len(jobs) && next == nil; pos++ {
+			j := &jobs[pos]
 			switch {
 			case tried[j.fileID]:
 			case !j.fresh && w.busy():
 				held = true
 			default:
-				if next == nil {
-					next = j
-				}
+				next = j
 			}
 		}
 		if next == nil {
@@ -269,6 +274,7 @@ func (w *Worker) Pass(ctx context.Context) error {
 		if _, err := os.Stat(next.path); err != nil {
 			continue // not on disk (an unmounted drive): left for later
 		}
+		stale = true
 		n, err := w.runFile(ctx, *next)
 		done += n
 		if errors.Is(err, errDiskFull) {
@@ -577,6 +583,7 @@ func (w *Worker) collect(ctx context.Context) error {
 
 // queue lists the files with tracks due, in the order they are cleaned.
 func (w *Worker) queue(ctx context.Context) ([]job, error) {
+	w.queues++
 	var studios []string
 	if w.Studios != nil {
 		s, err := w.Studios(ctx)

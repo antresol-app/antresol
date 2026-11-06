@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -136,6 +137,48 @@ func TestShowEpisodesByParentIndex(t *testing.T) {
 			if !strings.Contains(d, "items_parent") {
 				t.Fatalf("items read past the parent index: %q", plan)
 			}
+		}
+	}
+}
+
+// ShowFilesKeys gives every series or season the key ShowFilesKey gives it
+// alone, in one query; an id without episodes has the empty show's key.
+func TestShowFilesKeys(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	var shows []int64
+	for _, title := range []string{"Сёгун", "Тьма"} {
+		for _, e := range []struct{ s, n int }{{1, 1}, {1, 2}, {2, 1}, {0, 3}} {
+			id, err := r.UpsertEpisode(ctx, EpisodeInput{SeriesTitle: title, Season: e.s, Episode: e.n,
+				File: FileInput{Path: "/tv/" + title + "/s" + string(rune('0'+e.s)) + "e" + string(rune('0'+e.n)) + ".mkv", Size: 1}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ep, _ := r.Item(ctx, id)
+			season, _ := r.Item(ctx, ep.ParentID)
+			shows = append(shows, season.ID, season.ParentID)
+			if e.n == 2 {
+				fs, _ := r.FilesOf(ctx, id)
+				r.SetProbe(ctx, fs[0].ID, `{"Container":"mkv"}`, 1)
+			}
+		}
+	}
+	if _, err := r.db.Exec(`UPDATE files SET missing_since='2026-01-01T00:00:00Z' WHERE path LIKE '%Тьма/s2e1%'`); err != nil {
+		t.Fatal(err)
+	}
+	shows = append(shows, 999999)
+	got, err := r.ShowFilesKeys(ctx, shows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range shows {
+		var n, ids, revs int64
+		if err := r.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(id),0), COALESCE(SUM(probe_rev),0)
+		  FROM files WHERE missing_since IS NULL AND item_id IN (`+showEpisodes+`)`, id).Scan(&n, &ids, &revs); err != nil {
+			t.Fatal(err)
+		}
+		if want := fmt.Sprintf("%d/%d/%d", n, ids, revs); got[id] != want {
+			t.Errorf("show %d: key %q, want %q", id, got[id], want)
 		}
 	}
 }

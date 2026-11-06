@@ -151,6 +151,11 @@ func (h *lib) progressCards(ctx context.Context, r *http.Request, finished bool)
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]int64, len(entries))
+	for i, e := range entries {
+		ids[i] = e.ItemID
+	}
+	ctx = h.withItems(ctx, uid, ids)
 	out := []Card{}
 	for _, e := range entries {
 		if len(out) >= shelfSize {
@@ -176,6 +181,7 @@ func (h *lib) watchlistCards(ctx context.Context, r *http.Request, keep func(kin
 	if err != nil {
 		return nil, err
 	}
+	ctx = h.withItems(ctx, uid, ids[:min(len(ids), 5*shelfSize)])
 	out := []Card{}
 	for _, id := range ids {
 		if len(out) >= shelfSize {

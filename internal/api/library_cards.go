@@ -141,7 +141,15 @@ func (h *lib) root(ctx context.Context, it library.Item) (library.Item, error) {
 // allowed reports whether the user may see it: library.Repo.Visible, the
 // rule shared with Subsonic.
 func (h *lib) allowed(ctx context.Context, u auth.User, it library.Item) (bool, error) {
-	return h.Library.Visible(ctx, ratingLimit(u), it)
+	limit := ratingLimit(u)
+	if limit == "" || batchOf(ctx) == nil {
+		return h.Library.Visible(ctx, limit, it)
+	}
+	root, err := h.root(ctx, it) // the parents from the batch
+	if err != nil {
+		return false, err
+	}
+	return library.RatingAllowed(limit, root), nil
 }
 
 // item loads an item visible to the user, or writes 404/500 and returns false.

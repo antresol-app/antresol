@@ -3,6 +3,7 @@ package progress
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -134,8 +135,31 @@ func TestContinueWatchingOnePerSeries(t *testing.T) {
 	if got[0].ItemID != m || got[1].ItemID != e2 || got[1].SeriesID != e.seriesOf(e2) || got[1].PositionMs != 20 {
 		t.Fatalf("%+v", got)
 	}
-	if lim, _ := e.s.ContinueWatching(ctx, u, 1); len(lim) != 1 {
+	if lim, _ := e.s.ContinueWatching(ctx, u, 1); len(lim) != 1 || lim[0] != got[0] {
 		t.Fatal("limit")
+	}
+}
+
+// A limit keeps the first entries of the whole list (it stops early: the
+// next episode of an older series is not worked out).
+func TestContinueWatchingLimitIsPrefix(t *testing.T) {
+	e := newEnv(t)
+	u := e.user("a")
+	for i, title := range []string{"A", "B", "C", "D", "E"} {
+		e1 := e.ep(title, 1, 1)
+		e.ep(title, 1, 2)
+		e.must(e.s.Save(ctx, u, e1, int64(50+i*10), 100)) // A..C finished: next episode
+		e.must(e.s.Save(ctx, u, e.movie("Film "+title), 30, 100))
+	}
+	all, err := e.s.ContinueWatching(ctx, u, 0)
+	if err != nil || len(all) != 10 {
+		t.Fatalf("%d %v", len(all), err)
+	}
+	for n := 1; n <= 10; n++ {
+		got, err := e.s.ContinueWatching(ctx, u, n)
+		if err != nil || !reflect.DeepEqual(got, all[:n]) {
+			t.Fatalf("limit %d: %+v %v", n, got, err)
+		}
 	}
 }
 

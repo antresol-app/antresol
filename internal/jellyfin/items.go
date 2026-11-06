@@ -534,7 +534,7 @@ func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
 	case library.KindSeries:
 		items, err = s.Library.RecentSeries(r.Context(), limit, c.limit)
 	case "": // movies and series
-		items, _, err = s.Library.List(r.Context(), library.ListQuery{Sort: "added", Limit: limit, MaxRating: c.limit})
+		items, _, err = s.Library.List(r.Context(), library.ListQuery{Sort: "added", Limit: limit, MaxRating: c.limit, NoTotal: true})
 	default:
 		items, err = c.listKind(kind, "added", limit)
 	}

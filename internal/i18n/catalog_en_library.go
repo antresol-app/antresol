@@ -20,19 +20,6 @@ func init() {
 		"на японском":      "in Japanese",
 		"на китайском":     "in Chinese",
 		"на корейском":     "in Korean",
-		// internal/lang: language names
-		"Русский":       "Russian",
-		"Английский":    "English",
-		"Украинский":    "Ukrainian",
-		"Немецкий":      "German",
-		"Французский":   "French",
-		"Испанский":     "Spanish",
-		"Итальянский":   "Italian",
-		"Португальский": "Portuguese",
-		"Польский":      "Polish",
-		"Японский":      "Japanese",
-		"Китайский":     "Chinese",
-		"Корейский":     "Korean",
 
 		// internal/library: titles the scanner makes (stored in Russian,
 		// localized where served)

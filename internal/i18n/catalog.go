@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"unicode"
-
-	"github.com/antresol-app/antresol/internal/ru"
 )
 
 // ctxSep joins a context to a key (as gettext's msgctxt): "shelf\x04Продолжить".
@@ -119,22 +117,34 @@ func Plural(ctx context.Context, n int, one, few, many string) string {
 // PluralL is Plural for a language code.
 func PluralL(lang string, n int, one, few, many string) string {
 	if lang == RU {
-		return ru.Plural(n, one, few, many)
+		return ruPlural(n, one, few, many)
 	}
 	mu.RLock()
 	forms := plurals[lang][one+"|"+few+"|"+many]
 	mu.RUnlock()
 	if len(forms) == 0 {
-		return ru.Plural(n, one, few, many)
+		return ruPlural(n, one, few, many)
 	}
 	return strconv.Itoa(n) + " " + pluralForm(lang, n, forms)
 }
 
-// PluralWord is only the noun's form for n (no number): "volumes".
-func PluralWord(ctx context.Context, n int, one, few, many string) string {
-	s := PluralL(FromContext(ctx), n, one, few, many)
-	_, w, _ := strings.Cut(s, " ")
-	return w
+// ruPlural picks the Russian form for n: one (1, 21, 101…), few (2–4,
+// 22–24…) or many (0, 5–20, 25…) and returns "n <form>": «1 том», «2 тома»,
+// «5 томов».
+func ruPlural(n int, one, few, many string) string {
+	m := n
+	if m < 0 {
+		m = -m
+	}
+	form := many
+	switch m10, m100 := m%10, m%100; {
+	case m100 >= 11 && m100 <= 14:
+	case m10 == 1:
+		form = one
+	case m10 >= 2 && m10 <= 4:
+		form = few
+	}
+	return strconv.Itoa(n) + " " + form
 }
 
 func pluralForm(lang string, n int, forms []string) string {

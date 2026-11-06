@@ -185,6 +185,9 @@ type ListQuery struct {
 	Offset    int
 	MaxRating string
 	Owner     int64
+	// NoTotal: List skips the count (its total is 0), for a shelf that
+	// shows no total.
+	NoTotal bool
 }
 
 // ScanStats summarises one ScanVideo / ScanAll run.

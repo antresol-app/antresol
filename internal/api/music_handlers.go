@@ -275,13 +275,14 @@ func (h *lib) trackDTOs(ctx context.Context, u auth.User, tracks []library.Track
 // visibleAlbums keeps the albums the user may see (in order).
 func (h *lib) visibleAlbums(ctx context.Context, r *http.Request, ids []int64) ([]Card, error) {
 	out := []Card{}
+	albums, err := h.Library.AlbumsByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for _, id := range ids {
-		a, err := h.Library.AlbumByID(ctx, id)
-		if errors.Is(err, library.ErrNotFound) {
+		a, found := albums[id]
+		if !found {
 			continue
-		}
-		if err != nil {
-			return nil, err
 		}
 		ok, err := h.allowed(ctx, userOf(r), a.Item)
 		if err != nil {

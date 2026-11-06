@@ -305,6 +305,12 @@ func run() error {
 	keyIndexes := media.KeyIndexCache{Dir: filepath.Join(cfg.TranscodeDir, "keyindex")}
 	trickWorker = &trickplay.Worker{DB: database, Dir: filepath.Join(cfg.DataDir, "trickplay"), FFmpeg: cfg.FFmpeg,
 		Log: slog.Default(), Busy: segWorker.Busy,
+		Offline: func() string {
+			if f := jobs.Scanner.StorageOffline; f != nil {
+				return f()
+			}
+			return ""
+		},
 		KeyIndex: func(path string) error { _, _, err := keyIndexes.Get(path); return err },
 		Settings: func(ctx context.Context) (bool, int64) {
 			s, err := api.LoadAppSettings(ctx, database, api.AppSettings{})

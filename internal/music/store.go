@@ -3,10 +3,13 @@
 package music
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
@@ -360,14 +363,87 @@ func (s *Store) PlayedAt(ctx context.Context, userID, trackID int64, at time.Tim
 }
 
 // RecentAlbums returns the albums of the user's plays, each once, by its
-// latest play (newest first).
+// latest play (newest first; albums whose latest plays share a time, by
+// their latest stored play).
+//
+// It walks the user's plays newest first (plays_user_time) and stops once
+// it has limit albums, instead of grouping the whole play history.
 func (s *Store) RecentAlbums(ctx context.Context, userID int64, limit int) ([]int64, error) {
-	if limit <= 0 {
-		limit = -1
-	}
-	return s.ids(ctx, `SELECT t.parent_id FROM plays p JOIN items t ON t.id=p.item_id
+	rows, err := s.db.QueryContext(ctx, `SELECT t.parent_id, p.played_at FROM plays p JOIN items t ON t.id=p.item_id
 	  JOIN items al ON al.id=t.parent_id AND al.kind='album' AND al.missing_since IS NULL
-	  WHERE p.user_id=? GROUP BY t.parent_id ORDER BY MAX(p.played_at) DESC, MAX(p.rowid) DESC LIMIT ?`, userID, limit)
+	  WHERE p.user_id=? ORDER BY p.played_at DESC, p.rowid DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	// blocks: the albums first met at one time, in the order met
+	var blocks [][]int64
+	seen := map[int64]bool{}
+	n, last := 0, ""
+	for rows.Next() {
+		var album int64
+		var at string
+		if err := rows.Scan(&album, &at); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if at != last || len(blocks) == 0 {
+			if limit > 0 && n >= limit {
+				break // the blocks so far are complete
+			}
+			last = at
+			blocks = append(blocks, nil)
+		}
+		if !seen[album] {
+			seen[album] = true
+			blocks[len(blocks)-1] = append(blocks[len(blocks)-1], album)
+			n++
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := []int64{}
+	for _, b := range blocks {
+		if len(b) > 1 {
+			if err := s.byLatestPlay(ctx, userID, b); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, b...)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// byLatestPlay orders albums whose latest plays share a time by the
+// latest play stored (rowid), latest first.
+func (s *Store) byLatestPlay(ctx context.Context, userID int64, albums []int64) error {
+	args := []any{userID}
+	for _, a := range albums {
+		args = append(args, a)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT t.parent_id, MAX(p.rowid) FROM plays p JOIN items t ON t.id=p.item_id
+	  WHERE p.user_id=? AND t.parent_id IN (?`+strings.Repeat(",?", len(albums)-1)+`) GROUP BY t.parent_id`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	latest := map[int64]int64{}
+	for rows.Next() {
+		var a, r int64
+		if err := rows.Scan(&a, &r); err != nil {
+			return err
+		}
+		latest[a] = r
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	slices.SortStableFunc(albums, func(a, b int64) int { return cmp.Compare(latest[b], latest[a]) })
+	return nil
 }
 
 // TopTracks returns an artist's most played tracks (all users), then the

@@ -18,12 +18,6 @@ import (
 // The repository's Go sources: ../../internal and ../../cmd.
 var sourceRoots = []string{"../../internal", "../../cmd"}
 
-type literal struct {
-	pos  string
-	file string // slash path relative to the repo root
-	text string
-}
-
 // goSources parses every non-test Go file under the roots that this build
 // compiles: the core build (built without -tags sources) leaves out the full
 // build's files, and their catalog keys with them.
@@ -71,7 +65,7 @@ func goSources(t *testing.T) (map[string]*ast.File, *token.FileSet) {
 var keyFuncs = map[string]int{"T": 1, "TL": 1, "Errorf": 0, "TC": 2}
 
 // pluralFuncs: i18n functions taking the Russian forms at 2, 3, 4.
-var pluralFuncs = map[string]int{"Plural": 2, "PluralL": 2, "PluralWord": 2}
+var pluralFuncs = map[string]int{"Plural": 2, "PluralL": 2}
 
 func strLit(e ast.Expr) (string, bool) {
 	bl, ok := e.(*ast.BasicLit)

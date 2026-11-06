@@ -113,9 +113,6 @@ const (
 	maxKeep = 4096
 )
 
-// New returns a client for the public LRCLIB.
-func New(ua string) *Client { return NewAt("https://lrclib.net", ua) }
-
 // NewAt returns a client for the LRCLIB at base (an own instance or the
 // public one).
 func NewAt(base, ua string) *Client {

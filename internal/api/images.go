@@ -69,11 +69,18 @@ func serveTMDBImage(w http.ResponseWriter, r *http.Request, p *tmdb.Photos, name
 			return
 		}
 	}
-	serveImage(w, r, filepath.Join(p.Images.Dir, file), p.Images.Dir)
+	serveImage(w, r, filepath.Join(p.Images.Dir, file), p.Images.Dir, false)
 }
 
-func imageHeaders(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "private, max-age=604800")
+// imageHeaders: a week in the client's cache; a TMDB cache file (long:
+// named by the sha1 of its URL, which rarely gets other content) 30 days,
+// then revalidated (If-Modified-Since).
+func imageHeaders(w http.ResponseWriter, long bool) {
+	cc := "private, max-age=604800"
+	if long {
+		cc = "private, max-age=2592000"
+	}
+	w.Header().Set("Cache-Control", cc)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// SVG logos must not run scripts in our origin.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
@@ -113,8 +120,8 @@ func sized(r *http.Request, p, cacheDir string) string {
 }
 
 // serveImage serves the image at p, shrunk to ?w= (copies kept in
-// cacheDir).
-func serveImage(w http.ResponseWriter, r *http.Request, p, cacheDir string) {
+// cacheDir); long: a TMDB cache file (imageHeaders).
+func serveImage(w http.ResponseWriter, r *http.Request, p, cacheDir string, long bool) {
 	fh, err := os.Open(sized(r, p, cacheDir))
 	if err != nil {
 		writeErr(w, r, http.StatusNotFound, "Картинка не найдена")
@@ -126,19 +133,23 @@ func serveImage(w http.ResponseWriter, r *http.Request, p, cacheDir string) {
 		writeErr(w, r, http.StatusNotFound, "Картинка не найдена")
 		return
 	}
-	imageHeaders(w)
+	imageHeaders(w, long)
 	http.ServeContent(w, r, filepath.Base(fh.Name()), st.ModTime(), fh)
 }
 
 // cachedImage serves a TMDB cache file (<sha1>.<ext>) from DataDir/images.
 func (h *lib) cachedImage(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	p, err := imgcache.Resolve(filepath.Join(h.DataDir, "images"), name)
-	if err != nil || !cacheName.MatchString(name) { // a URL names cache files only, never a path
+	if !cacheName.MatchString(name) { // a URL names cache files only, never a path
 		writeErr(w, r, http.StatusNotFound, "Картинка не найдена")
 		return
 	}
-	serveImage(w, r, p, filepath.Join(h.DataDir, "images"))
+	p, err := imgcache.Resolve(filepath.Join(h.DataDir, "images"), name)
+	if err != nil {
+		writeErr(w, r, http.StatusNotFound, "Картинка не найдена")
+		return
+	}
+	serveImage(w, r, p, filepath.Join(h.DataDir, "images"), true)
 }
 
 // localImage serves artwork found next to the media ("file:" values) by item id.
@@ -161,5 +172,5 @@ func (h *lib) localImage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusNotFound, "Картинка не найдена")
 		return
 	}
-	serveImage(w, r, p, filepath.Join(h.DataDir, "images"))
+	serveImage(w, r, p, filepath.Join(h.DataDir, "images"), false)
 }

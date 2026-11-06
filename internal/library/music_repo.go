@@ -769,15 +769,33 @@ func (r *Repo) Albums(ctx context.Context, q AlbumQuery) ([]Album, int, error) {
 
 // AlbumByID returns one visible album with its summary.
 func (r *Repo) AlbumByID(ctx context.Context, id int64) (Album, error) {
-	out, err := r.queryAlbums(ctx, `SELECT `+albumCols+` FROM items i LEFT JOIN items ar ON ar.id=i.parent_id
-	  WHERE i.id=? AND i.kind='album' AND i.missing_since IS NULL`, id)
+	out, err := r.AlbumsByID(ctx, []int64{id})
 	if err != nil {
 		return Album{}, err
 	}
-	if len(out) == 0 {
+	a, ok := out[id]
+	if !ok {
 		return Album{}, ErrNotFound
 	}
-	return out[0], nil
+	return a, nil
+}
+
+// AlbumsByID is AlbumByID of many ids by id (unknown and missing ones are
+// left out).
+func (r *Repo) AlbumsByID(ctx context.Context, ids []int64) (map[int64]Album, error) {
+	out := make(map[int64]Album, len(ids))
+	for part := range chunks(ids, 500) {
+		in, args := inArgs(part)
+		as, err := r.queryAlbums(ctx, `SELECT `+albumCols+` FROM items i LEFT JOIN items ar ON ar.id=i.parent_id
+		  WHERE i.id IN `+in+` AND i.kind='album' AND i.missing_since IS NULL`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range as {
+			out[a.ID] = a
+		}
+	}
+	return out, nil
 }
 
 // AlbumDir is the album's folder (from its match_key), "" when unknown.
@@ -971,12 +989,16 @@ func (r *Repo) AppearsOn(ctx context.Context, artistName string) ([]Album, error
 	if name == "" {
 		return []Album{}, nil
 	}
-	return r.queryAlbums(ctx, `SELECT `+albumCols+` FROM items i LEFT JOIN items ar ON ar.id=i.parent_id
-	  WHERE i.kind='album' AND i.missing_since IS NULL AND COALESCE(ar.title,'') <> ?1 COLLATE NOCASE
-	    AND EXISTS (SELECT 1 FROM items ti JOIN tracks t ON t.item_id=ti.id WHERE ti.parent_id=i.id AND ti.kind='track'
-	      AND ti.missing_since IS NULL AND t.artist = ?1 COLLATE NOCASE)
-	  ORDER BY i.year DESC, i.sort_title, i.id`, name)
+	return r.queryAlbums(ctx, appearsOnSQL, name)
 }
+
+// appearsOnSQL starts from the artist's tracks (tracks_artist_nocase) and
+// reads only their albums, not every album with a probe of its tracks.
+const appearsOnSQL = `SELECT ` + albumCols + ` FROM items i LEFT JOIN items ar ON ar.id=i.parent_id
+  WHERE i.id IN (SELECT ti.parent_id FROM tracks t JOIN items ti ON ti.id=t.item_id
+      WHERE t.artist = ?1 COLLATE NOCASE AND ti.kind='track' AND ti.missing_since IS NULL)
+    AND i.kind='album' AND i.missing_since IS NULL AND COALESCE(ar.title,'') <> ?1 COLLATE NOCASE
+  ORDER BY i.year DESC, i.sort_title, i.id`
 
 // genreForms returns g and every stored album genre equal to it ignoring
 // case (Unicode).

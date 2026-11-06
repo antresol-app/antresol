@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // showEpisodes selects the ids of the present episodes of a series or a
@@ -40,11 +41,40 @@ func (r *Repo) ShowFiles(ctx context.Context, id int64) ([]File, error) {
 // cache of what the files say is rebuilt only then. It reads only the
 // covering index files_item_probe_rev, never the probe_json blobs.
 func (r *Repo) ShowFilesKey(ctx context.Context, id int64) (string, error) {
-	var n, ids, revs int64
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(id),0), COALESCE(SUM(probe_rev),0)
-	  FROM files WHERE missing_since IS NULL AND item_id IN (`+showEpisodes+`)`, id).Scan(&n, &ids, &revs)
-	if err != nil {
-		return "", err
+	keys, err := r.ShowFilesKeys(ctx, []int64{id})
+	return keys[id], err
+}
+
+// ShowFilesKeys is ShowFilesKey of many series or seasons in one query (a
+// grid of them).
+func (r *Repo) ShowFilesKeys(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
 	}
-	return fmt.Sprintf("%d/%d/%d", n, ids, revs), nil
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+		out[id] = "0/0/0"
+	}
+	in := "?" + strings.Repeat(",?", len(ids)-1)
+	// showEpisodes for many shows: each branch keeps its show's id
+	rows, err := r.db.QueryContext(ctx, `SELECT k.show, COUNT(*), SUM(f.id), SUM(f.probe_rev) FROM (
+	    SELECT e.parent_id AS show, e.id AS ep FROM items e WHERE e.parent_id IN (`+in+`) AND +e.kind='episode' AND e.missing_since IS NULL
+	    UNION ALL
+	    SELECT s.parent_id, e.id FROM items s CROSS JOIN items e ON e.parent_id=s.id WHERE s.parent_id IN (`+in+`) AND +s.kind='season'
+	      AND s.missing_since IS NULL AND +e.kind='episode' AND e.missing_since IS NULL
+	  ) k JOIN files f ON f.item_id=k.ep AND f.missing_since IS NULL GROUP BY k.show`, append(args, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, n, sum, revs int64
+		if err := rows.Scan(&id, &n, &sum, &revs); err != nil {
+			return nil, err
+		}
+		out[id] = fmt.Sprintf("%d/%d/%d", n, sum, revs)
+	}
+	return out, rows.Err()
 }

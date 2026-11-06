@@ -117,9 +117,6 @@ func TestPlural(t *testing.T) {
 			t.Errorf("en %d = %q, want %q", n, got, want)
 		}
 	}
-	if got := PluralWord(en, 2, "тестовый том", "тестовых тома", "тестовых томов"); got != "test volumes" {
-		t.Errorf("en word = %q", got)
-	}
 }
 
 func TestErrorf(t *testing.T) {

@@ -284,21 +284,6 @@ func (c *call) visibleAlbums(as []library.Album) ([]library.Album, error) {
 	return out, nil
 }
 
-// visibleArtists keeps the artists the profile may see.
-func (c *call) visibleArtists(rows []library.ArtistRow) ([]artistID3, error) {
-	out := make([]artistID3, 0, len(rows))
-	for _, a := range rows {
-		ok, err := c.allowed(a.Item)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, c.artistID3(a))
-		}
-	}
-	return out, nil
-}
-
 // item loads a visible item of one of kinds; nil when absent or hidden.
 func (c *call) item(id int64, kinds ...string) (*library.Item, error) {
 	it, err := c.s.Library.Item(c.ctx, id)

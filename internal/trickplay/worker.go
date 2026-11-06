@@ -70,6 +70,9 @@ type Worker struct {
 	Now      func() time.Time
 	// Idle: how often a pass runs unprompted (6 h when 0).
 	Idle time.Duration
+	// Offline reports why the media disk is unavailable ("" while it is
+	// there; nil: always there). A pass while it is away does nothing.
+	Offline func() string
 	// Frame overrides the ffmpeg read of one frame and Linear the one-pass
 	// read (tests).
 	Frame  func(ctx context.Context, path string, atSec float64, w, h int) ([]byte, error)
@@ -81,6 +84,8 @@ type Worker struct {
 	want     map[int64]time.Time // files asked for (a play, a scrub), by when
 	prunedAt time.Time
 	usage    map[string]used // the previews on disk, by key (Pass)
+	wantGen  uint64          // bumped by Want: the list is read again
+	queries  int             // candidate queries run (tests)
 }
 
 // used is one file's previews on disk.
@@ -108,6 +113,14 @@ func (w *Worker) log() *slog.Logger {
 		return w.Log
 	}
 	return slog.Default()
+}
+
+func (w *Worker) offline() bool { return w.Offline != nil && w.Offline() != "" }
+
+func (w *Worker) gen() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.wantGen
 }
 
 func (w *Worker) busy() bool { return w.Busy != nil && w.Busy() }
@@ -173,6 +186,7 @@ func (w *Worker) Want(fileID int64) {
 	w.init()
 	w.mu.Lock()
 	w.want[fileID] = w.now()
+	w.wantGen++
 	w.mu.Unlock()
 	w.Kick()
 }
@@ -209,7 +223,6 @@ type candidate struct {
 	Path        string
 	Size, Mtime int64
 	DurationMs  int64
-	Probe       string
 	// Shared: its title has other files (parts, versions): only when asked for
 	Shared bool
 	wanted bool
@@ -223,7 +236,8 @@ func (c candidate) key() string { return Key(c.Path, c.Size, c.Mtime) }
 // its title with others only when asked for. Requests older than wantTTL
 // or for files not listed are forgotten.
 func (w *Worker) candidates(ctx context.Context) ([]candidate, error) {
-	rows, err := w.DB.QueryContext(ctx, `SELECT f.id, f.path, f.size, f.mtime, f.duration_ms, COALESCE(f.probe_json,''),
+	w.queries++
+	rows, err := w.DB.QueryContext(ctx, `SELECT f.id, f.path, f.size, f.mtime, f.duration_ms,
 		  (SELECT COUNT(*) FROM files o WHERE o.item_id=f.item_id AND o.missing_since IS NULL) > 1,
 		  (SELECT MAX(p.updated_at) FROM progress p WHERE p.item_id=f.item_id AND p.position_ms>0 AND p.finished=0) AS watching
 		FROM files f JOIN items e ON e.id=f.item_id
@@ -238,7 +252,7 @@ func (w *Worker) candidates(ctx context.Context) ([]candidate, error) {
 	for rows.Next() {
 		var c candidate
 		var watching sql.NullString
-		if err := rows.Scan(&c.ID, &c.Path, &c.Size, &c.Mtime, &c.DurationMs, &c.Probe, &c.Shared, &watching); err != nil {
+		if err := rows.Scan(&c.ID, &c.Path, &c.Size, &c.Mtime, &c.DurationMs, &c.Shared, &watching); err != nil {
 			return nil, err
 		}
 		all = append(all, c)
@@ -328,12 +342,13 @@ func (w *Worker) due(c candidate) bool {
 }
 
 // Pass makes the previews of every file still without them, one at a
-// time, the list read again after each file (a request meanwhile goes
-// next), within the budget; and deletes those of files gone from the
-// library (between files too). Turned off, it deletes them all.
+// time, the list read again after each file made or tried and after a
+// Want (a request meanwhile goes next), within the budget; and deletes
+// those of files gone from the library (between files too). Turned off, it
+// deletes them all; while the media disk is offline it does nothing.
 func (w *Worker) Pass(ctx context.Context) error {
 	w.init()
-	if w.Dir == "" || w.DB == nil {
+	if w.Dir == "" || w.DB == nil || w.offline() {
 		return nil
 	}
 	if on, _ := w.settings(ctx); !on {
@@ -347,6 +362,10 @@ func (w *Worker) Pass(ctx context.Context) error {
 	w.scanUsage()
 	tried := map[int64]bool{}
 	full := false // the background stopped at the budget
+	// list is walked from pos; files not on disk move pos on without a
+	// new query (9000 missing files would otherwise read the list 9000 times)
+	var list []candidate
+	pos, gen, stale := 0, uint64(0), true
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -361,14 +380,18 @@ func (w *Worker) Pass(ctx context.Context) error {
 				return err
 			}
 			w.prunedAt = w.now()
+			stale = true // room freed: what the budget skipped is looked at again
 		}
-		list, err := w.candidates(ctx)
-		if err != nil {
-			return err
+		if g := w.gen(); stale || g != gen {
+			var err error
+			if list, err = w.candidates(ctx); err != nil {
+				return err
+			}
+			pos, gen, stale = 0, g, false
 		}
 		var next *candidate
-		for i := range list {
-			c := &list[i]
+		for ; pos < len(list); pos++ {
+			c := &list[pos]
 			if tried[c.ID] {
 				continue
 			}
@@ -393,10 +416,15 @@ func (w *Worker) Pass(ctx context.Context) error {
 			return nil
 		}
 		tried[next.ID] = true
+		pos++
 		if _, err := os.Stat(next.Path); err != nil {
-			continue // not on disk (an unmounted drive): left for later
+			if w.offline() {
+				return nil // the disk went away mid-pass
+			}
+			continue // not on disk: left for later
 		}
-		err = w.file(ctx, *next)
+		stale = true
+		err := w.file(ctx, *next)
 		w.forget(next.ID)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -468,8 +496,12 @@ func (w *Worker) seekable(path string) bool {
 func (w *Worker) file(ctx context.Context, c candidate) error {
 	key := c.key()
 	var p media.ProbeResult
-	if c.Probe != "" {
-		json.Unmarshal([]byte(c.Probe), &p)
+	var probe string
+	if err := w.DB.QueryRowContext(ctx, `SELECT COALESCE(probe_json,'') FROM files WHERE id=?`, c.ID).Scan(&probe); err != nil {
+		return err
+	}
+	if probe != "" {
+		json.Unmarshal([]byte(probe), &p)
 		if p.Video == nil {
 			w.failed(key, true) // no picture: nothing to show
 			return nil

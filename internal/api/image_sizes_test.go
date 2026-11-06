@@ -54,4 +54,10 @@ func TestImageShrunkToRequestedWidth(t *testing.T) {
 	if len(copies) != 1 {
 		t.Fatalf("copies %v", copies)
 	}
+	// a TMDB cache file: 30 days, then revalidated
+	for _, q := range []string{"", "?w=320"} {
+		if cc := e.do("GET", "/api/images/"+name+q, "", e.admin).Header().Get("Cache-Control"); cc != "private, max-age=2592000" {
+			t.Fatalf("%q: Cache-Control %q", q, cc)
+		}
+	}
 }

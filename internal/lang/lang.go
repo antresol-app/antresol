@@ -1,5 +1,5 @@
 // Package lang is the catalog of languages the viewer can prefer
-// («Настройки» → «Языки»): ISO 639-1 codes, their Russian names, and the
+// («Настройки» → «Языки»): ISO 639-1 codes, their phrases, and the
 // checks the settings share.
 package lang
 
@@ -16,14 +16,6 @@ var phrases = map[string]string{
 	"pl": "на польском", "ja": "на японском", "zh": "на китайском", "ko": "на корейском",
 }
 
-// names are the languages' names (nominative, capitalized); catalog keys
-// (English: "Russian").
-var names = map[string]string{
-	"ru": "Русский", "en": "Английский", "uk": "Украинский", "de": "Немецкий",
-	"fr": "Французский", "es": "Испанский", "it": "Итальянский", "pt": "Португальский",
-	"pl": "Польский", "ja": "Японский", "zh": "Китайский", "ko": "Корейский",
-}
-
 // Known reports whether code is in the catalog.
 func Known(code string) bool { _, ok := phrases[code]; return ok }
 
@@ -34,17 +26,6 @@ func In(code string) string { return InL(i18n.RU, code) }
 func InL(ui, code string) string {
 	if p := phrases[code]; p != "" {
 		return i18n.TL(ui, p)
-	}
-	return ""
-}
-
-// Name is «Русский» for "ru"; "" for an unknown code.
-func Name(code string) string { return NameL(i18n.RU, code) }
-
-// NameL is Name in the interface language ui: "Russian" for ("en", "ru").
-func NameL(ui, code string) string {
-	if n := names[code]; n != "" {
-		return i18n.TL(ui, n)
 	}
 	return ""
 }

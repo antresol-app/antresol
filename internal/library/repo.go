@@ -524,8 +524,10 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 	}
 	w := " WHERE " + strings.Join(where, " AND ")
 	var total int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items i`+w, args...).Scan(&total); err != nil {
-		return nil, 0, err
+	if !q.NoTotal {
+		if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items i`+w, args...).Scan(&total); err != nil {
+			return nil, 0, err
+		}
 	}
 	order := "i.added_at DESC, i.id DESC"
 	switch q.Sort {
@@ -538,7 +540,21 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 	if limit <= 0 {
 		limit = -1
 	}
-	args = append(args, limit, max(q.Offset, 0))
+	offset := max(q.Offset, 0)
+	if q.Kind == "" && limit > 0 {
+		// films and series: each kind's first limit+offset through its own
+		// index, then merged; not every film and series read and sorted
+		inner := strings.Replace(w, "i.kind IN ('movie','series')", "i.kind=?", 1)
+		page := `SELECT id FROM (SELECT i.id FROM items i` + inner + ` ORDER BY ` + order + ` LIMIT ?)`
+		var a []any
+		for _, k := range []string{KindMovie, KindSeries} {
+			a = append(append(append(a, k), args...), limit+offset)
+		}
+		items, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i WHERE i.id IN (`+page+` UNION ALL `+page+`)
+		  ORDER BY `+order+` LIMIT ? OFFSET ?`, append(a, limit, offset)...)
+		return items, total, err
+	}
+	args = append(args, limit, offset)
 	items, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i`+w+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
 	return items, total, err
 }
@@ -566,54 +582,123 @@ func (r *Repo) SearchKinds(ctx context.Context, text string, kinds []string, lim
 	return r.searchWith(ctx, text, kinds, limit, "", rate, rateArgs)
 }
 
+// SearchSection is one list of a search: the items of Kinds, at most
+// Limit (50 when 0). A kind belongs to one section.
+type SearchSection struct {
+	Kinds []string
+	Limit int
+}
+
+// SearchSections is SearchKinds of each section, restricted to maxRating:
+// one pass over the titles for all of them (and the full-text fallback for
+// the sections it left short).
+func (r *Repo) SearchSections(ctx context.Context, text string, secs []SearchSection, maxRating string) ([][]Item, error) {
+	rate, rateArgs := "1", []any(nil)
+	if maxRating != "" {
+		rate, rateArgs = allowedRatings(maxRating)
+	}
+	return r.searchSections(ctx, text, secs, "", rate, rateArgs)
+}
+
 // searchWith is SearchKinds with a custom rating condition rate (on "i",
 // after the extra joins).
 func (r *Repo) searchWith(ctx context.Context, text string, kinds []string, limit int, joins, rate string, rateArgs []any) ([]Item, error) {
-	norm := release.Normalize(text)
-	if norm == "" || len(kinds) == 0 {
-		return nil, nil
-	}
-	kindIn := "i.kind IN (?" + strings.Repeat(",?", len(kinds)-1) + ")"
-	kindArgs := make([]any, len(kinds))
-	for i, k := range kinds {
-		kindArgs[i] = k
-	}
-	if limit <= 0 {
-		limit = 50
-	}
-	args := append([]any{}, kindArgs...)
-	args = append(args, "%"+norm+"%")
-	args = append(args, rateArgs...)
-	args = append(args, norm, norm+"%", limit)
-	out, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i JOIN item_titles t ON t.item_id=i.id`+joins+`
-	  WHERE `+kindIn+` AND i.missing_since IS NULL AND t.norm LIKE ? AND `+rate+`
-	  GROUP BY i.id ORDER BY MAX(t.norm=?) DESC, MAX(t.norm LIKE ?) DESC, i.sort_title, i.id LIMIT ?`, args...)
+	out, err := r.searchSections(ctx, text, []SearchSection{{kinds, limit}}, joins, rate, rateArgs)
 	if err != nil {
 		return nil, err
 	}
-	if len(out) >= limit {
+	return out[0], nil
+}
+
+// searchSections: titles (item_titles, substring) first, an exact title,
+// then a prefix, then by sort title; a section left short is filled from
+// the full text (FTS5, prefix tokens) by rank.
+func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSection, joins, rate string, rateArgs []any) ([][]Item, error) {
+	out := make([][]Item, len(secs))
+	norm := release.Normalize(text)
+	if norm == "" {
 		return out, nil
 	}
-	seen := map[int64]bool{}
-	for _, it := range out {
-		seen[it.ID] = true
+	secOf := map[string]int{}
+	limits := make([]int, len(secs))
+	var kindArgs []any
+	limitCase := "CASE g.sec"
+	secCase := "CASE i.kind"
+	for s, sec := range secs {
+		limits[s] = sec.Limit
+		if limits[s] <= 0 {
+			limits[s] = 50
+		}
+		limitCase += fmt.Sprintf(" WHEN %d THEN %d", s, limits[s])
+		for _, k := range sec.Kinds {
+			secOf[k] = s
+			kindArgs = append(kindArgs, k)
+			secCase += fmt.Sprintf(" WHEN '%s' THEN %d", strings.ReplaceAll(k, "'", "''"), s)
+		}
+	}
+	if len(kindArgs) == 0 {
+		return out, nil
+	}
+	limitCase += " END"
+	secCase += " END"
+	kindIn := "i.kind IN (?" + strings.Repeat(",?", len(kindArgs)-1) + ")"
+	args := append([]any{norm, norm + "%"}, kindArgs...)
+	args = append(args, "%"+norm+"%")
+	args = append(args, rateArgs...)
+	// each item once (its best title), numbered within its section
+	found, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM (
+	    SELECT iid, sec, ROW_NUMBER() OVER (PARTITION BY sec ORDER BY ex DESC, pre DESC, st, iid) AS rn FROM (
+	      SELECT i.id AS iid, `+secCase+` AS sec, MAX(t.norm=?) AS ex, MAX(t.norm LIKE ?) AS pre, i.sort_title AS st
+	      FROM items i JOIN item_titles t ON t.item_id=i.id`+joins+`
+	      WHERE `+kindIn+` AND i.missing_since IS NULL AND t.norm LIKE ? AND `+rate+` GROUP BY i.id)) g
+	  JOIN items i ON i.id=g.iid WHERE g.rn <= `+limitCase+` ORDER BY g.sec, g.rn`, args...)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range found {
+		s := secOf[it.Kind]
+		out[s] = append(out[s], it)
+	}
+	// the full text for the sections left short, ranked once for all of
+	// them: by rank, then (ties) as the index lists them
+	var fillKinds []any
+	fillCase, fillLimit := "CASE i.kind", "CASE g.sec"
+	for s, sec := range secs {
+		if len(out[s]) >= limits[s] {
+			continue
+		}
+		fillLimit += fmt.Sprintf(" WHEN %d THEN %d", s, limits[s])
+		for _, k := range sec.Kinds {
+			fillKinds = append(fillKinds, k)
+			fillCase += fmt.Sprintf(" WHEN '%s' THEN %d", strings.ReplaceAll(k, "'", "''"), s)
+		}
+	}
+	if len(fillKinds) == 0 {
+		return out, nil
 	}
 	var toks []string
 	for _, f := range strings.FieldsFunc(norm, func(c rune) bool { return !unicode.IsLetter(c) && !unicode.IsDigit(c) }) {
 		toks = append(toks, `"`+f+`"*`)
 	}
-	fargs := []any{strings.Join(toks, " ")}
-	fargs = append(fargs, kindArgs...)
+	fargs := append([]any{strings.Join(toks, " ")}, fillKinds...)
 	fargs = append(fargs, rateArgs...)
-	fargs = append(fargs, limit)
-	ftsRows, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items_fts f JOIN items i ON i.id=f.rowid`+joins+`
-	  WHERE items_fts MATCH ? AND `+kindIn+` AND i.missing_since IS NULL AND `+rate+` ORDER BY f.rank LIMIT ?`, fargs...)
+	fill, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM (
+	    SELECT iid, sec, ROW_NUMBER() OVER (PARTITION BY sec ORDER BY rk, iid) AS rn FROM (
+	      SELECT f.rowid AS iid, `+fillCase+` END AS sec, f.rank AS rk FROM items_fts f JOIN items i ON i.id=f.rowid`+joins+`
+	      WHERE items_fts MATCH ? AND i.kind IN (?`+strings.Repeat(",?", len(fillKinds)-1)+`) AND i.missing_since IS NULL AND `+rate+`)) g
+	  JOIN items i ON i.id=g.iid WHERE g.rn <= `+fillLimit+` END ORDER BY g.sec, g.rn`, fargs...)
 	if err != nil {
 		return nil, err
 	}
-	for _, it := range ftsRows {
-		if !seen[it.ID] && len(out) < limit {
-			out = append(out, it)
+	seen := map[int64]bool{}
+	for _, l := range out {
+		for _, it := range l {
+			seen[it.ID] = true
+		}
+	}
+	for _, it := range fill {
+		if s := secOf[it.Kind]; !seen[it.ID] && len(out[s]) < limits[s] {
+			out[s] = append(out[s], it)
 		}
 	}
 	return out, nil
@@ -833,8 +918,11 @@ func (r *Repo) RecentSeriesOf(ctx context.Context, limit int, maxRating string, 
 		limit = -1
 	}
 	args = append(args, limit)
-	return r.queryItems(ctx, `SELECT `+itemCols+` FROM items i JOIN items s ON s.parent_id=i.id JOIN items e ON e.parent_id=s.id
-	  WHERE i.kind='series' AND i.missing_since IS NULL AND s.missing_since IS NULL AND e.missing_since IS NULL AND `+rate+` GROUP BY i.id ORDER BY MAX(e.added_at) DESC, i.id DESC LIMIT ?`, args...)
+	// the series' ids grouped first, their columns read for the page only
+	return r.queryItems(ctx, `SELECT `+itemCols+` FROM (SELECT i.id AS sid, MAX(e.added_at) AS latest
+	    FROM items i JOIN items s ON s.parent_id=i.id JOIN items e ON e.parent_id=s.id
+	    WHERE i.kind='series' AND i.missing_since IS NULL AND s.missing_since IS NULL AND e.missing_since IS NULL AND `+rate+`
+	    GROUP BY i.id ORDER BY latest DESC, i.id DESC LIMIT ?) x JOIN items i ON i.id=x.sid ORDER BY x.latest DESC, i.id DESC`, args...)
 }
 
 // SetProbe caches the ffprobe result (JSON) and duration of a file, and

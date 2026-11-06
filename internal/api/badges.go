@@ -275,7 +275,7 @@ func (c *showCache) put(id int64, e showEntry) {
 
 // showBadges are the badges of a series or a season, from its episodes.
 func (h *lib) showBadges(ctx context.Context, id int64) []string {
-	key, err := h.Library.ShowFilesKey(ctx, id)
+	key, err := h.showFilesKey(ctx, id)
 	if err != nil {
 		log.Printf("api: badges %d: %v", id, err)
 		return nil

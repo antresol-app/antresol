@@ -121,16 +121,8 @@ func (s *stats) fallbackDisk(d *statsDisk) {
 func (s *stats) overview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	out := statsOverview{Disk: s.disk(ctx), WatchedByUser: []userHours{}, TopItems30d: []topItem{}}
-	if err := s.db.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM items WHERE kind='movie' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='series' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='episode' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='album' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='track' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='book' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='audiobook' AND missing_since IS NULL),
-		(SELECT COUNT(*) FROM items WHERE kind='comic' AND missing_since IS NULL)`).Scan(&out.Counts.Movies, &out.Counts.Series, &out.Counts.Episodes,
-		&out.Counts.Albums, &out.Counts.Tracks, &out.Counts.Books, &out.Counts.Audiobooks, &out.Counts.Comics); err != nil {
+	var err error
+	if out.Counts, err = libraryCounts(ctx, s.db); err != nil {
 		internalErr(w, r, "stats counts", err)
 		return
 	}
@@ -190,6 +182,23 @@ func (s *stats) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	s.fillOverview(&out.statsOverviewFull)
 	writeJSON(w, http.StatusOK, out)
+}
+
+// libraryCounts counts the present items of each kind as all of them
+// less the missing ones: the first count reads only the kind index, the
+// second only the missing rows (items_missing), not every row of the kind.
+func libraryCounts(ctx context.Context, db *sql.DB) (statsCounts, error) {
+	var c statsCounts
+	dst := []*int{&c.Movies, &c.Series, &c.Episodes, &c.Albums, &c.Tracks, &c.Books, &c.Audiobooks, &c.Comics}
+	cols := make([]string, 0, len(dst))
+	for _, k := range []string{"movie", "series", "episode", "album", "track", "book", "audiobook", "comic"} {
+		cols = append(cols, `(SELECT COUNT(*) FROM items WHERE kind='`+k+`') - (SELECT COUNT(*) FROM items WHERE kind='`+k+`' AND missing_since IS NOT NULL)`)
+	}
+	args := make([]any, len(dst))
+	for i, p := range dst {
+		args[i] = p
+	}
+	return c, db.QueryRowContext(ctx, `SELECT `+strings.Join(cols, ", ")).Scan(args...)
 }
 
 // trashTarget is what POST /api/files/trash takes to delete an item.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -197,12 +198,12 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 	// played/reading shelves are the profile's already
 	owner := scopeOwner(r, u)
 
-	recent, _, err := h.Library.List(ctx, library.ListQuery{Sort: "added", Limit: 50, MaxRating: limit, Owner: owner})
+	recent, _, err := h.Library.List(ctx, library.ListQuery{Sort: "added", Limit: 50, MaxRating: limit, Owner: owner, NoTotal: true})
 	if err != nil {
 		internalErr(w, r, "home recent", err)
 		return
 	}
-	movies, _, err := h.Library.List(ctx, library.ListQuery{Kind: library.KindMovie, Sort: "added", Limit: shelfSize, MaxRating: limit, Owner: owner})
+	movies, _, err := h.Library.List(ctx, library.ListQuery{Kind: library.KindMovie, Sort: "added", Limit: shelfSize, MaxRating: limit, Owner: owner, NoTotal: true})
 	if err != nil {
 		internalErr(w, r, "home movies", err)
 		return
@@ -372,29 +373,25 @@ const (
 func (h *lib) search(w http.ResponseWriter, r *http.Request) {
 	ctx, u := r.Context(), userOf(r)
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	limit := ratingLimit(u)
-	items, err := h.Library.SearchRated(ctx, q, 50, limit)
+	// the library (films and series), then the other sections, then songs:
+	// one pass over the titles for all of them
+	keys := []string{"library", "artists", "albums", "books", "audiobooks", "comics"}
+	found, err := h.Library.SearchSections(ctx, q, []library.SearchSection{
+		{Kinds: []string{library.KindMovie, library.KindSeries}, Limit: 50},
+		{Kinds: []string{library.KindArtist}, Limit: searchSize}, {Kinds: []string{library.KindAlbum}, Limit: searchSize},
+		{Kinds: []string{library.KindBook}, Limit: searchSize}, {Kinds: []string{library.KindAudiobook}, Limit: searchSize},
+		{Kinds: []string{library.KindComic}, Limit: searchSize}, {Kinds: []string{library.KindTrack}, Limit: songsSize},
+	}, ratingLimit(u))
 	if err != nil {
 		internalErr(w, r, "search", err)
 		return
 	}
-	out := map[string]any{"library": h.cards(ctx, u.ID, items)}
-	for _, s := range []struct{ key, kind string }{
-		{"artists", library.KindArtist}, {"albums", library.KindAlbum}, {"books", library.KindBook},
-		{"audiobooks", library.KindAudiobook}, {"comics", library.KindComic},
-	} {
-		found, err := h.Library.SearchKinds(ctx, q, []string{s.kind}, searchSize, limit)
-		if err != nil {
-			internalErr(w, r, "search "+s.key, err)
-			return
-		}
-		out[s.key] = h.cards(ctx, u.ID, found)
+	ctx = h.withCards(ctx, u.ID, slices.Concat(found[:len(keys)]...)) // every section's cards at once
+	out := map[string]any{}
+	for i, key := range keys {
+		out[key] = h.cards(ctx, u.ID, found[i])
 	}
-	songs, err := h.Library.SearchKinds(ctx, q, []string{library.KindTrack}, songsSize, limit)
-	if err != nil {
-		internalErr(w, r, "search songs", err)
-		return
-	}
+	songs := found[len(keys)]
 	ids := make([]int64, 0, len(songs))
 	for _, it := range songs {
 		ids = append(ids, it.ID)
@@ -473,7 +470,7 @@ func (h *lib) episodeCard(ctx context.Context, uid int64, ep library.Item, tr *t
 		_, ec.Overview = translatedEpisode(tr, ep) // the title is the card's
 	}
 	ec.Watched = ec.Progress >= 1
-	fs, err := h.Library.FilesOf(ctx, ep.ID)
+	fs, err := h.filesOf(ctx, ep.ID)
 	if err != nil {
 		log.Printf("api: episode %d files: %v", ep.ID, err) // degrade: no duration
 	} else if len(fs) > 0 {
@@ -547,18 +544,29 @@ func (h *lib) detail(w http.ResponseWriter, r *http.Request) {
 			d.Files = append(d.Files, h.fileInfo(ctx, f))
 		}
 	}
-	episodes := 0
-	for _, s := range seasons {
+	// every season's episodes first: their cards' progress, files and
+	// parents are then read in a few queries, not a few per episode
+	seasonEps := make([][]library.Item, len(seasons))
+	var allEps []library.Item
+	for i, s := range seasons {
 		eps, err := h.Library.Children(ctx, s.ID)
 		if err != nil {
 			internalErr(w, r, "detail episodes", err)
 			return
 		}
-		si := SeasonInfo{ID: s.ID, Number: s.SeasonNo, Title: scanLabel(ctx, s.Title), Episodes: []EpisodeCard{}}
 		for _, ep := range eps {
 			if ep.Kind == library.KindEpisode {
-				si.Episodes = append(si.Episodes, h.episodeCard(ctx, u.ID, ep, tr))
+				seasonEps[i] = append(seasonEps[i], ep)
 			}
+		}
+		allEps = append(allEps, seasonEps[i]...)
+	}
+	ctx = h.withCards(ctx, u.ID, allEps)
+	episodes := 0
+	for i, s := range seasons {
+		si := SeasonInfo{ID: s.ID, Number: s.SeasonNo, Title: scanLabel(ctx, s.Title), Episodes: []EpisodeCard{}}
+		for _, ep := range seasonEps[i] {
+			si.Episodes = append(si.Episodes, h.episodeCard(ctx, u.ID, ep, tr))
 		}
 		episodes += len(si.Episodes)
 		d.Seasons = append(d.Seasons, si)
@@ -571,7 +579,7 @@ func (h *lib) detail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
-			ep, err := h.Library.Item(ctx, next)
+			ep, err := h.itemByID(ctx, next)
 			if err != nil {
 				log.Printf("api: series %d next episode %d: %v", it.ID, next, err) // degrade: no "next"
 			} else {
