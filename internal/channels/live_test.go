@@ -422,7 +422,44 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 		}
 	}
 	os.WriteFile(filepath.Join(runDirs[0], "master.m3u8"), master, 0o644)
-	for _, m := range []string{"0:v:0", "0:a:0", "0:a:1", "0:a:2", "0:a:3", "0:s:0", "0:s:1"} {
+	// the variant names the subtitle group (what a player follows to the
+	// renditions)
+	if !strings.Contains(string(master), `AUDIO="aud",SUBTITLES="sub",`) {
+		t.Fatalf("the variant does not name the subtitle group:\n%s", master)
+	}
+	// each subtitle rendition, opened as a media playlist: every WebVTT
+	// segment through both boundaries parses, and each cue the segments
+	// carry comes out as a packet (none lost at a discontinuity)
+	for j := range 2 {
+		n := "subs-" + strconv.Itoa(j) + ".m3u8"
+		var cues int
+		for _, line := range strings.Split(lists[n], "\n") {
+			if line != "" && !strings.HasPrefix(line, "#") {
+				b, _ := os.ReadFile(filepath.Join(runDirs[0], line))
+				cues += strings.Count(string(b), " --> ")
+			}
+		}
+		if out, err := exec.Command("ffmpeg", "-v", "error", "-xerror", "-allowed_extensions", "ALL", "-i", filepath.Join(runDirs[0], n),
+			"-map", "0:s:0", "-c:s", "copy", "-f", "null", "-").CombinedOutput(); err != nil {
+			t.Fatalf("decode %s across the boundaries: %v %s", n, err, out)
+		}
+		pk := ffprobeJSON(t, "-allowed_extensions", "ALL", "-show_packets", filepath.Join(runDirs[0], n))
+		if got, _ := pk["packets"].([]any); cues == 0 || len(got) != cues {
+			t.Fatalf("%s: %d cue packets, the segments carry %d", n, len(got), cues)
+		}
+	}
+	// through the master too, where the client's HLS demuxer reads
+	// subtitle renditions: ffmpeg before 8 refuses every one ("Can't
+	// support the subtitle"), a limit of that client, not of the playlist
+	maps := []string{"0:v:0", "0:a:0", "0:a:1", "0:a:2", "0:a:3"}
+	probe, _ := exec.Command("ffprobe", "-v", "warning", "-allowed_extensions", "ALL", "-show_entries", "stream=codec_type", "-of", "csv",
+		filepath.Join(runDirs[0], "master.m3u8")).CombinedOutput()
+	if strings.Contains(string(probe), "Can't support the subtitle") {
+		t.Log("this ffmpeg's HLS demuxer reads no subtitle renditions; they were checked as media playlists")
+	} else {
+		maps = append(maps, "0:s:0", "0:s:1")
+	}
+	for _, m := range maps {
 		outArgs := []string{"-f", "null", "-"}
 		if strings.HasPrefix(m, "0:s:") {
 			outArgs = []string{"-c:s", "copy", "-f", "null", "-"} // every WebVTT segment parses (a webvtt muxer refuses the timeline restarting at a discontinuity)
