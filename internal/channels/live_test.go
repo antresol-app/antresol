@@ -311,8 +311,10 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 			if s.prog.outs != 3 || (s.at < 5.9 || s.at > 12.1) || strings.Contains(string(ru), "Раз") {
 				t.Fatalf("«Два» in the segment at %.3f of a programme with %d outputs", s.at, s.prog.outs)
 			}
-			// played from 3 s the first time round, from the start after
-			if !strings.Contains(string(ru), "00:00:07.000 --> 00:00:13.000") && !strings.Contains(string(ru), "00:00:10.000 --> 00:00:16.000") {
+			// played from 3 s the first time round, from the start after;
+			// ffmpeg 7.1 (Debian, the image's) starts the cue one AAC frame
+			// (~23 ms) late, ffmpeg 9 on time: within 0.1 s either way
+			if !cueNear(string(ru), 7, 13) && !cueNear(string(ru), 10, 16) {
 				t.Fatalf("cue time %q", ru)
 			}
 		}
@@ -396,4 +398,20 @@ func TestLiveLimitAndIdle(t *testing.T) {
 	if r := live.Running(); len(r) != 0 {
 		t.Fatalf("still running: %v", r)
 	}
+}
+
+// cueNear: vtt has a cue from about from to about to seconds (0.1 s).
+func cueNear(vtt string, from, to float64) bool {
+	for _, line := range strings.Split(vtt, "\n") {
+		a, b, ok := strings.Cut(line, " --> ")
+		if !ok {
+			continue
+		}
+		x, ok1 := vttSeconds(strings.TrimSpace(a))
+		y, ok2 := vttSeconds(strings.TrimSpace(b))
+		if ok1 && ok2 && x-from < 0.1 && from-x < 0.1 && y-to < 0.1 && to-y < 0.1 {
+			return true
+		}
+	}
+	return false
 }
