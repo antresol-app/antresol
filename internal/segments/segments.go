@@ -53,9 +53,13 @@ const MinPlayMs = 3000
 // credits only, clipped to the file (durationMs 0: unknown, not clipped),
 // in time order. Never nil.
 func Pick(stored []Segment, durationMs int64, movie bool) []Play {
+	distrusted := otherCut(stored)
 	best := map[string]Segment{}
 	for _, s := range stored {
 		if movie && s.Kind != Credits {
+			continue
+		}
+		if distrusted[s.Source] {
 			continue
 		}
 		if durationMs > 0 && s.EndMs > durationMs {
@@ -77,6 +81,48 @@ func Pick(stored []Segment, durationMs int64, movie bool) []Play {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartSec < out[j].StartSec })
 	return out
+}
+
+// otherCutMs: an online segment this far from the analysis of the same kind
+// on the same file disagrees with it (a cut moves things by whole scenes;
+// nearer, the online answer keeps its rank).
+const otherCutMs = 60_000
+
+// otherCut lists the online sources (theintrodb, introdb) whose answer for
+// this file disagrees with its own analysis in two kinds or more: they were
+// measured on another cut (Suits S2E1: intro 6:27 and credits 42:31 online,
+// 8:43 and 46:29 in the file), so none of their segments is used. One kind
+// alone is not enough: the analysis can be the one that is off (a recurring
+// sting taken for the theme), and a database's credits may end the story
+// before a making-of.
+func otherCut(stored []Segment) map[string]bool {
+	analysis := map[string]Segment{}
+	for _, s := range stored {
+		if s.Source == SourceAnalysis {
+			analysis[s.Kind] = s
+		}
+	}
+	off := map[string]int{}
+	for _, s := range stored {
+		if s.Source != SourceTheIntroDB && s.Source != SourceIntroDB {
+			continue
+		}
+		if a, ok := analysis[s.Kind]; ok && abs64(a.StartMs-s.StartMs) > otherCutMs {
+			off[s.Source]++
+		}
+	}
+	out := map[string]bool{}
+	for src, n := range off {
+		out[src] = n >= 2
+	}
+	return out
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // covered reports whether segs (of sources better than the analysis) already

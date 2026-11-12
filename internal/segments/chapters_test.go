@@ -76,3 +76,34 @@ func TestPick(t *testing.T) {
 		t.Fatalf("empty: %#v", got)
 	}
 }
+
+// An online answer measured on another cut of the episode (Suits S2E1) is
+// dropped whole: its intro and its credits are both off; the file's own
+// analysis plays. One that agrees within a few seconds keeps its rank.
+func TestPickDropsAnotherCut(t *testing.T) {
+	stored := []Segment{
+		{Kind: Intro, Source: SourceIntroDB, StartMs: 387500, EndMs: 417900},
+		{Kind: Credits, Source: SourceIntroDB, StartMs: 2551000, EndMs: 2587000},
+		{Kind: Intro, Source: SourceAnalysis, StartMs: 523594, EndMs: 554059},
+		{Kind: Credits, Source: SourceAnalysis, StartMs: 2789373, EndMs: 2822720},
+	}
+	got := Pick(stored, 2822720, false)
+	if len(got) != 2 || got[0].StartSec != 523.594 || got[1].StartSec != 2789.373 {
+		t.Fatalf("another cut: %+v", got)
+	}
+	// one kind off (Drain the Oceans: a sting taken for the theme) keeps the online answer
+	one := []Segment{
+		{Kind: Intro, Source: SourceTheIntroDB, StartMs: 46000, EndMs: 71000},
+		{Kind: Intro, Source: SourceAnalysis, StartMs: 106500, EndMs: 116000},
+	}
+	if got := Pick(one, 2834000, false); len(got) != 1 || got[0].StartSec != 46 {
+		t.Fatalf("one kind off: %+v", got)
+	}
+	agree := []Segment{
+		{Kind: Intro, Source: SourceTheIntroDB, StartMs: 241032, EndMs: 269018},
+		{Kind: Intro, Source: SourceAnalysis, StartMs: 238887, EndMs: 269351},
+	}
+	if got := Pick(agree, 2568832, false); len(got) != 1 || got[0].StartSec != 241.032 {
+		t.Fatalf("agreeing online intro lost its rank: %+v", got)
+	}
+}
