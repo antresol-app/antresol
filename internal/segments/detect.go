@@ -6,8 +6,9 @@ import (
 )
 
 // AnalysisVersion is the version of the analysis below; files analysed by
-// an older one are analysed again.
-const AnalysisVersion = 2
+// an older one are analysed again (3: a recap may end in the black run
+// the intro starts in).
+const AnalysisVersion = 3
 
 // The analysis' limits (from the skip-segments design).
 const (
@@ -376,8 +377,10 @@ func FindStings(eps []Episode, intros map[int64]Span) map[int64]float64 {
 
 // RecapAfter is an episode's recap from its sting's end, its intro and the
 // black runs between them: 0:00 to the end of the first black run of at
-// least recapBlackSec after the sting, 15 s – 2 min, not past the intro's
-// start. False: no recap (when in doubt, none).
+// least recapBlackSec after the sting, 15 s – 2 min. A black run the intro's
+// music starts in (the titles fade in from it) ends the recap at the
+// intro's start; one that starts after the intro is no recap's end. False:
+// no recap (when in doubt, none).
 func RecapAfter(stingEnd float64, intro Span, black []Span) (Span, bool) {
 	bs := append([]Span(nil), black...)
 	sort.Slice(bs, func(i, j int) bool { return bs[i].Start < bs[j].Start })
@@ -385,8 +388,8 @@ func RecapAfter(stingEnd float64, intro Span, black []Span) (Span, bool) {
 		if b.Start < stingEnd || b.Len() < recapBlackSec {
 			continue
 		}
-		r := Span{0, b.End}
-		if r.End > intro.Start+0.5 || r.Len() < recapMinSec || r.Len() > recapMaxSec {
+		r := Span{0, math.Min(b.End, intro.Start)}
+		if b.Start > intro.Start+0.5 || r.Len() < recapMinSec || r.Len() > recapMaxSec {
 			return Span{}, false
 		}
 		return r, true

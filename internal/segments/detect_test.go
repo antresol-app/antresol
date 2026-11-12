@@ -198,6 +198,11 @@ func TestStingsAndRecap(t *testing.T) {
 	if _, ok := RecapAfter(st[100], Span{30, 70}, []Span{{40, 42.5}}); ok {
 		t.Fatal("recap past the intro")
 	}
+	// the intro's music starts inside the black run: the recap ends there
+	// (Billions S3E2: black 63.1–70.4 s, intro from 65.8 s)
+	if rc, ok := RecapAfter(5, Span{65.8, 80.6}, []Span{{63.1, 70.4}}); !ok || rc.End != 65.8 {
+		t.Fatalf("recap into the intro's black run %+v %v", rc, ok)
+	}
 	// too short
 	if _, ok := RecapAfter(4, Span{60, 100}, []Span{{8, 11}}); ok {
 		t.Fatal("recap under 15 s")
