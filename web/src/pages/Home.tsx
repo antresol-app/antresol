@@ -5,7 +5,7 @@
 // added» shelves keep the profile's own titles (the others are its own
 // anyway); the picker is in the profile menu and on the section pages.
 import { APP_NAME } from '../brand'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { getHome, useEvents, errorText } from '../api/client'
 import type { CardKind, Home as HomeData, Shelf as ShelfData } from '../api/types'
 import { isSquareKind } from '../components/Card'
@@ -16,6 +16,7 @@ import { Icon } from '../components/Icon'
 import { MineEmpty } from '../components/LibraryScopeMenu'
 import { ScreenTimeChip } from '../components/ScreenTimeChip'
 import { Shelf } from '../components/Shelf'
+import { OnAirShelf } from './tv/OnAirShelf'
 import { answerSlot, forgetAnswer, lastAnswer, rememberAnswer } from '../state/lastAnswer'
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingCards, withPending } from '../state/pendingCards'
@@ -162,14 +163,11 @@ export function Home() {
       <div className={[styles.shelves, hero.length > 0 ? styles.overlap : '', revisit ? '' : 'enter-fade'].join(' ')}>
         <ScreenTimeChip />
         {filled.map((s, i) => (
-          <Shelf
-            key={s.id}
-            title={s.title}
-            cards={s.cards}
-            variant={shelfVariant(s)}
-            seeAllTo={SEE_ALL[s.id]}
-            priority={i === 0}
-          />
+          <Fragment key={s.id}>
+            <Shelf title={s.title} cards={s.cards} variant={shelfVariant(s)} seeAllTo={SEE_ALL[s.id]} priority={i === 0} />
+            {/* the channels on air after the first shelf («Продолжить» when there is one) */}
+            {i === 0 && <OnAirShelf />}
+          </Fragment>
         ))}
       </div>
     </div>

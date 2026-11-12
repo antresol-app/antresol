@@ -19,7 +19,8 @@ import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { NumberField } from '../../ui/NumberField'
-import { getLanguagePref, setLanguagePref, t, useT, type LangPref } from '../../i18n'
+import { getLanguagePref, t, useT, type LangPref } from '../../i18n'
+import { chooseInterfaceLanguage } from '../../state/uiLanguage'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
@@ -671,8 +672,9 @@ function Rescan() {
 }
 
 /**
- * «Язык интерфейса»: per browser (localStorage), not a server setting —
- * «Как в системе» follows the browser's preferred languages.
+ * «Язык интерфейса»: applies in this browser at once and is saved for the
+ * profile, so its other apps follow (state/uiLanguage.ts); «Как в системе»
+ * follows the profile's own language, else the browser's.
  */
 function InterfaceLanguage() {
   const t = useT()
@@ -689,7 +691,7 @@ function InterfaceLanguage() {
         value={pref}
         onChange={(v: LangPref) => {
           setPref(v)
-          setLanguagePref(v)
+          chooseInterfaceLanguage(v)
         }}
       />
     </ListRow>

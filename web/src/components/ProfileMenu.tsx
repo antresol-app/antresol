@@ -12,7 +12,8 @@ import { offlineSupported } from '../offline/store'
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingRequests } from '../state/kidRequests'
 import { session } from '../state/session'
-import { getLanguagePref, setLanguagePref, useLang, useT, type LangPref } from '../i18n'
+import { getLanguagePref, useLang, useT, type LangPref } from '../i18n'
+import { chooseInterfaceLanguage } from '../state/uiLanguage'
 import { AboutSheet } from './AboutSheet'
 import { AppPasswordSheet } from './AppPasswordSheet'
 import { Avatar } from './Avatar'
@@ -271,7 +272,7 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
             <div role="group" aria-label={t('common.uiLanguage')}>
               <MenuHeading>{t('common.uiLanguage')}</MenuHeading>
               {LANG_PREFS.map((o) => (
-                <MenuItem key={o.value} label={t(o.label)} lang={o.value === 'system' ? undefined : o.value} checked={pref === o.value} onSelect={() => setLanguagePref(o.value)} />
+                <MenuItem key={o.value} label={t(o.label)} lang={o.value === 'system' ? undefined : o.value} checked={pref === o.value} onSelect={() => chooseInterfaceLanguage(o.value)} />
               ))}
             </div>
           </>

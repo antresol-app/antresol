@@ -15,6 +15,7 @@ import manageLibrary from './en/manageLibrary'
 import requests from './en/requests'
 import migrate from './en/migrate'
 import playlistImport from './en/playlistImport'
+import channels from './en/channels'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -31,5 +32,6 @@ export const en: EnOf<typeof ru> = {
   ...requests,
   ...migrate,
   ...playlistImport,
+  ...channels,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

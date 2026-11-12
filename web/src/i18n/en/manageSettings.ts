@@ -8,7 +8,7 @@ export default {
   'settings.saving': 'Saving…',
   'settings.saved': 'Changes saved',
   'settings.autosave': 'Changes are saved automatically.',
-  'settings.uiLanguage.hint': 'This browser only',
+  'settings.uiLanguage.hint': 'For this profile in every app',
   'settings.metadataLanguage': 'Library metadata language',
   'settings.metadataLanguage.hint': 'Applies to new scans: titles and descriptions from TMDB',
   'settings.languages': 'Languages',

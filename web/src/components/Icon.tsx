@@ -22,6 +22,12 @@ const paths = {
       <path d="M8.5 20.5h7" />
     </>
   ),
+  broadcast: (
+    <>
+      <rect x="3" y="8.5" width="18" height="12" rx="2.5" />
+      <path d="m8 3.5 4 5 4-5" />
+    </>
+  ),
   music: (
     <>
       <path d="M9 18V6.5l11-2.5V16" />
@@ -303,6 +309,15 @@ const paths = {
   heart: <path d="M12 19.5s-7.5-4.4-7.5-10A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.5c0 5.6-7.5 10-7.5 10z" />,
   heartFill: (
     <path d="M12 19.5s-7.5-4.4-7.5-10A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.5c0 5.6-7.5 10-7.5 10z" fill="currentColor" />
+  ),
+  star: <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />,
+  starFill: <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="currentColor" />,
+  /** The programme guide: channels × time. */
+  guide: (
+    <>
+      <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+      <path d="M3 9.5h18M8 9.5v10M8 14.5h6.5M14.5 9.5v10" />
+    </>
   ),
   moon: <path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" />,
   speed: (

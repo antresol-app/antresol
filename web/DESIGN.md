@@ -132,10 +132,10 @@ bar's sections and the library menu. Numbers that change
 | `StatusRing`, `ProgressRing` | circular progress | `StatusRing`: a ring with its percent (a check when done, «!» on an error). `ProgressRing`: the ring alone over a round button (`DownloadButton`, pending cards). |
 | `ProgressBar` | linear progress (a download, the watch progress) | tones `accent`, `paused`, `warning`, `label`; with `label` it is a progressbar for assistive tech. |
 | `Badge`, `Badges` | a small fact or status capsule | tones `default`, `strong`, `outline` (over artwork), `warning`, `accent`, `success`, `destructive`; `round` for a status. Other modules `composes: badge … from '../ui/Badge.module.css'`. |
-| `SegmentedControl` | 2–5 mutually exclusive options shown at once | the toolbar height (`size="small"`: the small height, in a toolbar); a segment may be an `icon` (its label is the name and tooltip); arrow keys move; scrolls sideways on phones. `row`: a page's filter under its title (Поиск, up to 7 segments) — centred in its column; when it does not fit, the whole pill scrolls out to the window's edges (`--segmented-bleed`, the page's gutter) and the edge with more segments past it fades. |
+| `SegmentedControl` | 2–5 mutually exclusive options shown at once | the toolbar height (`size="small"`: the small height, in a toolbar); a segment may be an `icon` (its label is the name and tooltip); arrow keys move; scrolls sideways on phones. `row`: a page's filter under its title (Поиск, up to 7 segments) — centred in its column; when it does not fit, the whole pill scrolls out to the window's edges (`--segmented-bleed`, the page's gutter) and the edge with more segments past it fades. `align="start"`: the row starts at its column's edge instead of centring (a filter over a list that starts there — «ТВ»). |
 | `Toggle` | on/off that applies at once | the iOS switch, green when on; the row's label names it. |
 | `Sheet` | confirmations, forms, read-only panels | `alert` (default), `wide`, `large`. Wide screens: centred. Phones: a bottom sheet that slides up and slides away when closed, inset 8 pt from the edges with 28 pt corners; the page behind it is locked (`scrollLock.ts`); the keyboard lifts it (`--keyboard-inset`, `--vv-top`); the message and the form scroll between the pinned title and buttons (`[data-sheet-body]`), so «Сохранить» stays on screen; its buttons are capsules at the thumb, three or more stacked with Cancel at the bottom. A read-only picker (`dismissOnOutside`) has the grabber: drag or flick it down to close. A dialog without Cancel gets the round ✕. |
-| `TabBar` | the phone's navigation (TopNav renders it below 700 px) | a glass capsule of tabs (glyph over label) and a round `accessory` (search) beside it; the router marks the current tab. It is the layout's bottom bar (`data-bottom-bar`). |
+| `TabBar` | the phone's navigation (TopNav renders it below 700 px) | a glass capsule of tabs (glyph over label) and a round `accessory` (search) beside it; the router marks the current tab. It is the layout's bottom bar (`data-bottom-bar`). Six tabs (Главная, Фильмы, Сериалы, ТВ, Музыка, Книги) fit a 375 pt phone: past five the tabs keep equal widths but never get narrower than their label (the others share the rest, 44 pt at least), labels lose their side padding and tracking, and the bar's insets tighten below 400 pt. Checked at 375/390/430 in both languages — no label is cut. |
 | `PlayerBar`, `PlayerBarButton` | what plays, on every page | the Music app's mini player: artwork, title, subtitle (open the full player), three 44 pt controls, a progress hairline; at `--playerbar-bottom`. `MiniPlayer` feeds it. |
 | `Toast` | every short confirmation at the bottom | one glass capsule at `--toast-bottom`, an optional `action` («Отменить»), `tone="error"` (an alert in the warning colour); its live region is always mounted (`live={false}` when another region reads the words). No page draws its own capsule. |
 | `ActionTiles` | a title page's secondary actions | round `IconButton`s (`tile`) in the action row on a wide screen; equal icon-over-label tiles on a phone. Four fit a 375 pt phone: a destructive action goes into «Ещё» there. |
@@ -184,6 +184,20 @@ bar's sections and the library menu. Numbers that change
   layout viewport to fit (up to 4x the screen). The fixed bars (`TabBar`,
   the header) are `max-width: 100vw`, so they stay the screen wide
   whatever widens the page (e2e/phone-width.spec.ts).
+- **Live TV** (`pages/tv`): a channel is its **number** (tabular, tertiary
+  label) and its **name**; its picture is the programme on air
+  (`ChannelArt`: backdrop 16:9, else the poster whole on `--fill-3`, else
+  `--fill-3` with the `tv` glyph) — never a coloured tile with the name on
+  it. The list is one numbered list on a grouped surface (`ChannelRow`: the
+  number, the still, name / now / a `ProgressBar` with the minutes left /
+  «Далее»; the star at the trailing edge on hover and focus, always on touch
+  and when starred; the last channel's number in the accent), filtered by a
+  `SegmentedControl row align="start"` (Все · Избранное · темы); a wide
+  window adds the details pane. «Телегид» is a grid in its own scroller:
+  the channel column and the time ruler stick, blocks are `--fill-3` (on
+  air `--fill-1`, past `--fill-4` with tertiary text), the now line and its
+  time pill in the accent. The live player is the film player's chrome
+  (`VideoPlayer.module.css`) with the programme's info in the bottom bar.
 - **A phone on its side** (`SHORT_QUERY`, height ≤ 500): wide-screen layout,
   but the first screen must still hold the title and the main action —
   smaller titles, two lines of overview, tighter gaps; sign-in scrolls from

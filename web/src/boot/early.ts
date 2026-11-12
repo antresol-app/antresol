@@ -20,12 +20,16 @@ declare global {
 
 /** i18n/core.ts STORAGE_KEY. */
 const LANGUAGE_KEY = 'vault.uiLanguage'
+/** i18n/core.ts PROFILE_KEY: the signed-in profile's language as the server last said it. */
+const PROFILE_LANGUAGE_KEY = 'vault.profileUiLanguage'
 
-/** The interface language as i18n/core.ts resolves it: the stored pick, else the first ru-… or en-… browser language, else en. */
+/** The interface language as i18n/core.ts resolves it: the stored pick, else the profile's, else the first ru-… or en-… browser language, else en. */
 function bootLanguage(): 'ru' | 'en' {
   try {
     const v = localStorage.getItem(LANGUAGE_KEY)
     if (v === 'ru' || v === 'en') return v
+    const p = localStorage.getItem(PROFILE_LANGUAGE_KEY)
+    if (p === 'ru' || p === 'en') return p
   } catch {
     /* storage blocked: follow the system */
   }

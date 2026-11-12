@@ -72,3 +72,14 @@ func Genres(ctx context.Context, names []string) []string {
 	}
 	return out
 }
+
+// GenreKey is the one spelling of a genre whichever language it is stored
+// in (TMDB's Russian name, lower case): «Comedy», «комедия» and «Комедия»
+// are one key. Any other name is its lower case.
+func GenreKey(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if g, ok := genreIndex[n]; ok {
+		return strings.ToLower(g[0])
+	}
+	return n
+}

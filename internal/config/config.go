@@ -66,6 +66,13 @@ type Config struct {
 	// recently downloaded ones are deleted.
 	DeviceCopyDir      string
 	DeviceCopyMaxBytes int64
+	// ChannelsMax is how many «ТВ-каналы» may stream at once, one live
+	// encoder each, in TranscodeDir/live (VAULT_CHANNELS_MAX, default 3;
+	// 0 turns channel streaming off).
+	ChannelsMax int
+	// IPTV opens the channels to IPTV players: M3U and XMLTV on token URLs
+	// (VAULT_IPTV=on; default off — channels are watched in the apps).
+	IPTV bool
 
 	// TrustedNets (VAULT_TRUSTED_NETS) are extra home networks on top of
 	// loopback, RFC1918 and IPv6 ULA/link-local; TrustedProxies
@@ -254,6 +261,21 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("VAULT_DEVICE_COPY_MAX_BYTES: %w", err)
 		}
 		c.DeviceCopyMaxBytes = n
+	}
+	c.ChannelsMax = 3
+	switch strings.ToLower(os.Getenv("VAULT_IPTV")) {
+	case "", "off", "0", "false", "no":
+	case "on", "1", "true", "yes":
+		c.IPTV = true
+	default:
+		return c, fmt.Errorf("VAULT_IPTV: %q is not on or off", os.Getenv("VAULT_IPTV"))
+	}
+	if v := os.Getenv("VAULT_CHANNELS_MAX"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return c, fmt.Errorf("VAULT_CHANNELS_MAX: %q is not a count", v)
+		}
+		c.ChannelsMax = n
 	}
 	var err error
 	if c.TrustedNets, err = ParsePrefixes(os.Getenv("VAULT_TRUSTED_NETS")); err != nil {

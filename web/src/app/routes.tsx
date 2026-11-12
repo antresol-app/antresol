@@ -12,7 +12,7 @@ import { OfflineHome } from '../pages/OfflineHome'
 import { offlineAvailable } from '../offline/store'
 import { session, useSession } from '../state/session'
 import { ChunkBoundary } from './ChunkBoundary'
-import { auth, books, browse, music, search } from './chunks'
+import { auth, books, browse, music, search, tv } from './chunks'
 import { chunk, lazyFrom, type Chunk } from './lazyChunk'
 import { FullSectionPrefetch, fullManageRoutes, fullNoKidsRoutes, fullPlayerRoutes, fullShellRoutes } from './routesFull'
 import { Shell } from './Shell'
@@ -166,6 +166,8 @@ export const routes: RouteObject[] = [
       { path: '/profiles', element: page(auth, (m) => m.ProfilePicker) },
       // The player covers the whole window: no navigation around it.
       { path: '/watch/:id', element: <PlayerRoute /> },
+      // A live channel too («ТВ»).
+      { path: '/tv/:id', element: page(tv, (m) => m.LivePlayer) },
       // The reader too; the music engine keeps playing.
       { path: '/read/:id', element: <ReaderRoute /> },
       // the sources build's full-window players (none in the core build)
@@ -180,6 +182,7 @@ export const routes: RouteObject[] = [
           { path: 'offline', element: <OfflineHome /> },
           { path: 'movies', element: page(browse, (m) => m.Movies) },
           { path: 'series', element: page(browse, (m) => m.Series) },
+          { path: 'tv', element: page(tv, (m) => m.Tv) },
           {
             path: 'music',
             children: [
@@ -226,6 +229,7 @@ export const routes: RouteObject[] = [
             element: <NoKids />,
             children: [
               { path: 'files/*', element: <FilesRoute /> },
+              { path: 'tv/manage', element: page(tv, (m) => m.TvManage) },
               ...(__LIBRARY_EDITION__ ? [] : fullNoKidsRoutes()),
             ],
           },

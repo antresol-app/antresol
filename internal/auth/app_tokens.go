@@ -125,3 +125,31 @@ func revokeAppTokens(ctx context.Context, ex execer, userID int64) error {
 	_, err := ex.ExecContext(ctx, `DELETE FROM app_tokens WHERE user_id=?`, userID)
 	return err
 }
+
+// Current returns the profile's token of proto and device id (the newest),
+// "" when it has none. Tokens a profile shows itself again (its IPTV link)
+// are read back with it.
+func (t *AppTokens) Current(ctx context.Context, userID int64, proto, deviceID string) (string, error) {
+	var tok string
+	err := t.db.QueryRowContext(ctx, `SELECT token FROM app_tokens WHERE user_id=? AND proto=? AND device_id=? ORDER BY created_at DESC LIMIT 1`,
+		userID, proto, deviceID).Scan(&tok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return tok, err
+}
+
+// LookupProto is Lookup for a token of proto only: a token of another
+// protocol is ErrNotFound.
+func (t *AppTokens) LookupProto(ctx context.Context, token, proto string) (User, error) {
+	var p string
+	err := t.db.QueryRowContext(ctx, `SELECT proto FROM app_tokens WHERE token=?`, token).Scan(&p)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && p != proto) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	u, _, err := t.Lookup(ctx, token)
+	return u, err
+}

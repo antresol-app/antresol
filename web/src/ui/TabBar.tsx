@@ -4,6 +4,9 @@
 // layout: `data-bottom-bar` keeps menus off it (floating.ts) and the
 // --tabbar-* tokens tell pages, toasts and the player bar how much room it
 // takes. The router marks the current tab (aria-current="page").
+// Six tabs (Главная … ТВ … Книги) still fit a 375 pt phone: past five the
+// tabs share the capsule by their labels' widths instead of equally (each
+// at least 44 pt), and the bar's side insets tighten on narrow phones.
 import { NavLink } from 'react-router'
 import { Icon, type IconName } from '../components/Icon'
 import styles from './TabBar.module.css'
@@ -29,7 +32,7 @@ const cls = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' '
 
 export function TabBar({ label, items, accessory, className }: TabBarProps) {
   return (
-    <nav aria-label={label} className={cls(styles.bar, className)} data-testid="tabbar" data-bottom-bar>
+    <nav aria-label={label} className={cls(styles.bar, className)} data-testid="tabbar" data-bottom-bar data-dense={items.length > 5 || undefined}>
       <ul className={`${styles.tabs} glass`}>
         {items.map((s) => (
           <li key={s.to}>

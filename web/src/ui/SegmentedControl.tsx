@@ -24,6 +24,8 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (v: T) => void
   /** A centred filter row that scrolls with edge fades when it does not fit. */
   row?: boolean
+  /** `row` that starts at its container's leading edge instead of centring (a filter over a list that starts there: «ТВ»). */
+  align?: 'center' | 'start'
   /** small: the small control height (a toolbar's view switch beside 36 pt buttons). */
   size?: 'regular' | 'small'
   /** Show every segment's `short` label at every width (a narrow place: a sheet); the full label is its name and tooltip. */
@@ -54,7 +56,7 @@ function useEdgeFades(ref: RefObject<HTMLDivElement | null>, on: boolean) {
   return { fade, measure }
 }
 
-export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false, size = 'regular', shortLabels = false }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false, align = 'center', size = 'regular', shortLabels = false }: SegmentedControlProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const trackRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -138,6 +140,7 @@ export function SegmentedControl<T extends string>({ label, segments, value, onC
     <div
       ref={rowRef}
       className={styles.row}
+      data-align={align === 'start' ? 'start' : undefined}
       data-fade-start={fade.start || undefined}
       data-fade-end={fade.end || undefined}
       onScroll={measure}

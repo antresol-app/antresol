@@ -20,6 +20,7 @@ import (
 	"github.com/antresol-app/antresol/internal/api"
 	"github.com/antresol-app/antresol/internal/audioserve"
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/config"
 	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/disk"
@@ -342,6 +343,20 @@ func run() error {
 	fitWorker := &vofit.Worker{DB: database, FFmpeg: cfg.FFmpeg, Log: slog.Default(), Busy: segWorker.Busy,
 		Fitted: vocWorker.Kick} // a fitted voice-over is cleaned like the file's own
 	runFit := ext.voiceOverFit(fitWorker) // the sources build only (stage B)
+	// «ТВ-каналы»: one live encoder per watched channel, beside the HLS
+	// sessions on the media disk; schedules kept 48 h ahead
+	var live *channels.Live
+	if cfg.ChannelsMax > 0 {
+		live = &channels.Live{FFmpeg: cfg.FFmpeg, HW: hw, Dir: filepath.Join(cfg.TranscodeDir, "live"), Max: cfg.ChannelsMax}
+		defer live.Close()
+	}
+	chans := channels.New(database, live)
+	chans.Probe = func(ctx context.Context, path string) (media.ProbeResult, error) {
+		return media.Probe(ctx, cfg.FFprobe, path)
+	}
+	// generated channels follow the library (new files need their
+	// durations), vanished files leave the schedules
+	jobs.AfterProbe = func(context.Context) { chans.Kick() }
 	jobs.AfterScan = func(ctx context.Context) {
 		ext.afterScan(ctx)
 		// new episodes and titles for the letters (enriched by now)
@@ -396,6 +411,8 @@ func run() error {
 		Segments:     segWorker,
 		Notify:       notifier,
 		Trickplay:    trickWorker,
+		Channels:     chans,
+		IPTV:         cfg.IPTV,
 	}
 	// kids' requests: titles from TMDB, answered by the library (the full
 	// build's own catalog replaces this in ext.apiDeps)
@@ -490,6 +507,8 @@ func run() error {
 	go func() { defer wg.Done(); db.OptimizeEvery(ctx, database, 6*time.Hour) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); jobs.Run(ctx) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); chans.Run(ctx, 10*time.Minute) }()
 	if !cfg.LibraryOnly {
 		wg.Add(1)
 		go func() { defer wg.Done(); mon.Run(ctx, 30*time.Second) }()

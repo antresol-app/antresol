@@ -1,0 +1,310 @@
+/* «Телегид»: the guide grid. One scroller both ways, filling the window
+   down to the tab bar; the channel column sticks to its left edge, the time
+   ruler to its top. Sizes come from the component: --chan-w (the channel
+   column), --track-w (the time's width), --guide-top (where it starts). */
+.wrap {
+  --row-h: var(--s-16);
+  --ruler-h: var(--s-12);
+  margin-inline: calc(-1 * var(--gutter));
+}
+.guide {
+  position: relative;
+  height: calc(100dvh - var(--guide-top) - var(--bottom-bar-space) - var(--s-4));
+  min-height: calc(6 * var(--row-h));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding: var(--ruler-h) 0 0 var(--chan-w);
+  border-top: 0.5px solid var(--separator);
+}
+.inner {
+  position: relative;
+  width: calc(var(--chan-w) + var(--track-w));
+  min-height: 100%;
+}
+
+/* the ruler: the corner with «Сейчас», then the half hours */
+.ruler {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  height: var(--ruler-h);
+  background: var(--bg);
+  border-bottom: 0.5px solid var(--separator);
+}
+.corner {
+  position: sticky;
+  left: 0;
+  z-index: var(--z-above);
+  flex: none;
+  display: flex;
+  align-items: center;
+  width: var(--chan-w);
+  padding-inline: var(--gutter) var(--s-3);
+  background: var(--bg);
+  border-right: 0.5px solid var(--separator);
+}
+.ticks {
+  position: relative;
+  flex: none;
+  width: var(--track-w);
+}
+.tick {
+  position: absolute;
+  bottom: 0;
+  height: var(--s-1h);
+  border-left: 1px solid var(--separator);
+}
+.tick[data-hour] {
+  height: var(--s-2h);
+  border-left-color: var(--label-3);
+}
+.tickLabel {
+  position: absolute;
+  bottom: calc(100% + var(--s-1h));
+  left: var(--s-1h);
+  font: var(--t-footnote);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tick[data-hour] .tickLabel {
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+/* now on the ruler: the time in the accent, over the line */
+.nowPill {
+  position: absolute;
+  bottom: var(--s-1);
+  z-index: var(--z-above);
+  padding: var(--s-0) var(--s-1h);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--label-on-tint);
+  font: var(--t-caption-2);
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.nowLine {
+  position: absolute;
+  top: var(--ruler-h);
+  bottom: 0;
+  z-index: var(--z-above);
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.loading {
+  padding: var(--s-6) var(--gutter);
+  color: var(--label-2);
+  font: var(--t-subhead);
+}
+
+.row {
+  display: flex;
+  height: var(--row-h);
+  border-bottom: 0.5px solid var(--separator);
+}
+.chan {
+  position: sticky;
+  left: 0;
+  z-index: calc(var(--z-above) + 1);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  width: var(--chan-w);
+  padding-inline: var(--gutter) var(--s-1);
+  background: var(--bg);
+  border-right: 0.5px solid var(--separator);
+}
+.chanNum {
+  flex: none;
+  min-width: 2ch;
+  font: var(--t-title-3);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.chanName {
+  flex: 1;
+  min-width: 0;
+  hyphens: manual;
+  overflow-wrap: normal;
+  word-break: normal;
+  font: var(--t-subhead-em);
+  color: var(--label);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* the star: on hover and focus with a mouse, always on touch and when starred */
+.chanStar {
+  flex: none;
+}
+.chanStar[data-fav],
+.chanStar[data-fav]:hover {
+  color: var(--label);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chanStar:not([data-fav]) {
+    opacity: 0;
+  }
+  .row:hover .chanStar,
+  .chan:focus-within .chanStar {
+    opacity: 1;
+  }
+}
+
+.track {
+  position: relative;
+  flex: none;
+  width: var(--track-w);
+}
+.block {
+  position: absolute;
+  top: var(--s-1h);
+  bottom: var(--s-1h);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s-0);
+  min-width: 0;
+  padding: 0 var(--s-2h);
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--fill-3);
+  color: var(--label);
+  text-align: left;
+  overflow: hidden;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.block:hover {
+  background: var(--fill-2);
+}
+.block[data-live] {
+  background: var(--fill-1);
+}
+.block[data-live]:hover {
+  background: var(--fill-hover);
+}
+.block[data-past] {
+  background: var(--fill-4);
+  color: var(--label-3);
+}
+.block:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.blockTitle,
+.blockTime {
+  /* moved to the visible left edge when the block began before it (labelInset) */
+  max-width: calc(100% - var(--inset, 0px));
+  transform: translateX(var(--inset, 0px));
+}
+.blockTitle {
+  font: var(--t-subhead-em);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.blockTime {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.block[data-past] .blockTime {
+  color: var(--label-3);
+}
+.block[data-narrow] > * {
+  visibility: hidden;
+}
+
+.empty {
+  composes: empty from '../Browse.module.css';
+}
+
+/* the details sheet */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  text-align: left;
+}
+.sheetArt {
+  margin: var(--s-2) 0;
+  border-radius: var(--r-control);
+}
+.sheetHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.sheetTitle {
+  flex: 1;
+  min-width: 0;
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.sheetSub {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.sheetWhen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--t-subhead);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+.sheetFacts {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.sheetOverview {
+  margin-top: var(--s-1);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+
+@media (max-width: 699px) {
+  .wrap {
+    --row-h: calc(var(--s-12) + var(--s-2));
+  }
+  /* number and name on one line; a long name wraps by words to a second
+     line (never hyphenated, never broken inside a word), then ends in «…» */
+  .chan {
+    align-items: center;
+    gap: var(--s-1h);
+    padding-inline: var(--gutter) var(--s-2);
+  }
+  .chanNum {
+    min-width: 0;
+    font: var(--t-footnote-em);
+    color: var(--label-2);
+    text-align: left;
+  }
+  .chanName {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font: var(--t-footnote-em);
+    white-space: normal;
+  }
+  /* the star on a phone: in the details sheet (and the list) */
+  .chanStar {
+    display: none;
+  }
+  .corner {
+    padding-inline: var(--gutter) var(--s-2);
+  }
+}

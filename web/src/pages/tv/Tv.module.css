@@ -1,0 +1,403 @@
+/* «ТВ»: the channel list (one numbered list on a grouped surface, the
+   wide screen's details pane beside it), the programme still, the home
+   shelf's cards, and «Управление каналами». */
+.page {
+  composes: page from '../Browse.module.css';
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4) var(--s-6);
+  margin-bottom: var(--s-5);
+}
+.title {
+  composes: title from '../Browse.module.css';
+}
+.viewSwitch {
+  flex: none;
+}
+.headerEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+  min-width: 0;
+}
+.filters {
+  --segmented-bleed: var(--gutter);
+  margin-bottom: var(--s-6);
+}
+.lastPhone {
+  max-width: 100%;
+  margin-bottom: var(--s-4);
+}
+.empty {
+  composes: empty from '../Browse.module.css';
+}
+
+/* the list and, on a wide window, the details pane */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 34%);
+  }
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
+  overflow: hidden;
+}
+
+/* ---------- a channel row ---------- */
+.row {
+  position: relative;
+}
+/* the separator, from the still on */
+.row + .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--s-4) + var(--num-w) + var(--s-3));
+  right: 0;
+  border-top: 0.5px solid var(--separator);
+}
+.list {
+  --num-w: 2.2em;
+  --art-w: 112px;
+}
+.rowLink {
+  display: grid;
+  grid-template-columns: var(--num-w) var(--art-w) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3) var(--s-4);
+  /* room at the end for the star */
+  padding: var(--s-2h) calc(var(--control-h-sm) + var(--s-3)) var(--s-2h) var(--s-4);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.rowLink:hover,
+.row[data-selected] .rowLink {
+  background: var(--surface-grouped-hover);
+}
+.rowLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.rowLink:active {
+  background: var(--fill-1);
+}
+.rowNum {
+  font: var(--t-title-3);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.row[data-last] .rowNum {
+  color: var(--accent);
+}
+.rowArt {
+  width: var(--art-w);
+  border-radius: var(--r-md);
+}
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+}
+.rowChannel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+  font: var(--t-headline);
+  color: var(--label);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rowLastTag {
+  flex: none;
+  font: var(--t-footnote-em);
+  color: var(--accent);
+}
+.rowTitle {
+  font: var(--t-subhead);
+  color: var(--label);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rowBar {
+  margin-top: var(--s-1h);
+  max-width: 240px;
+}
+/* the star: shown on hover and focus with a mouse, always on touch and when starred */
+.rowStar {
+  position: absolute;
+  top: 50%;
+  right: var(--s-2);
+  transform: translateY(-50%);
+  color: var(--label-3);
+}
+.row[data-fav] .starButton {
+  color: var(--label);
+}
+@media (hover: hover) and (pointer: fine) {
+  .row:not([data-fav]) .rowStar {
+    opacity: 0;
+    transition: opacity var(--d-fast) var(--ease-out);
+  }
+  .row:hover .rowStar,
+  .row:focus-within .rowStar {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 699px) {
+  .header {
+    flex-wrap: wrap;
+    margin-bottom: var(--s-4);
+  }
+  /* the view switch takes its own line under the title */
+  .viewSwitch {
+    order: 3;
+    flex: 1 0 100%;
+  }
+  .viewSwitch > * {
+    width: 100%;
+  }
+  .filters {
+    margin-bottom: var(--s-4);
+  }
+  .list {
+    --num-w: 1.6em;
+    --art-w: 80px;
+    margin-inline: calc(-1 * var(--s-1));
+  }
+  .rowLink {
+    gap: var(--s-2h);
+    padding: var(--s-2h) calc(var(--control-h-sm) + var(--s-1)) var(--s-2h) var(--s-2h);
+  }
+  .row + .row::before {
+    left: calc(var(--s-2h) + var(--num-w) + var(--s-2h));
+  }
+  .rowNum {
+    font: var(--t-headline);
+  }
+  .rowChannel {
+    font: var(--t-subhead-em);
+  }
+  .rowStar {
+    right: 0;
+  }
+}
+
+/* ---------- the details pane (wide windows) ---------- */
+.previewCol {
+  position: sticky;
+  top: calc(var(--nav-height) + var(--s-4));
+}
+.preview {
+  /* the pane stays whole in the window; its own text scrolls when long */
+  max-height: calc(100dvh - var(--nav-height) - var(--s-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
+}
+.previewArt {
+  width: 100%;
+}
+.previewBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+.previewChannel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font: var(--t-subhead-em);
+  color: var(--label-2);
+}
+.previewNum {
+  font-variant-numeric: tabular-nums;
+  color: var(--label-3);
+}
+.previewTitle {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+}
+.previewSub {
+  font: var(--t-subhead);
+  color: var(--label);
+}
+.previewFacts {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.previewTime {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+  margin-top: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.previewBar {
+  flex: 1;
+}
+.previewLeft {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.previewActions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: var(--s-3) 0 var(--s-1);
+}
+.previewOverview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  margin-top: var(--s-2);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.previewNext {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 0.5px solid var(--separator);
+}
+.previewNextTitle {
+  margin-bottom: var(--s-1h);
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+.previewNext ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.previewNext li {
+  display: flex;
+  gap: var(--s-3);
+  min-width: 0;
+  font: var(--t-subhead);
+}
+.previewNextTime {
+  flex: none;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.previewNextName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- the programme's still (ChannelArt) ---------- */
+.art {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--fill-3);
+  box-shadow: var(--artwork-outline);
+}
+.artImg,
+.artPoster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* a poster in a wide frame: whole, on the neutral fill */
+.artPoster {
+  object-fit: contain;
+}
+.artPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--label-3);
+}
+
+/* ---------- «Сейчас в эфире» on Главная: a card ---------- */
+.cardArt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+/* ---------- «Управление каналами» ---------- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.columnHeader {
+  composes: header from '../Browse.module.css';
+}
+.column {
+  max-width: var(--column-narrow);
+  margin: 0 auto;
+}
+.rowName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1h);
+}
+.rowNumber {
+  display: inline-block;
+  min-width: 2ch;
+  font: var(--t-headline);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.titleCount {
+  font-variant-numeric: tabular-nums;
+}
+.formError {
+  margin-top: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--destructive-text);
+}

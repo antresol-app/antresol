@@ -22,6 +22,9 @@ func playbackRequest(r *http.Request) bool {
 		rest := strings.TrimPrefix(p, "/api/hls/")
 		_, name, ok := strings.Cut(rest, "/")
 		return r.Method == http.MethodGet && ok && name != "" && !strings.HasSuffix(name, ".m3u8")
+	case strings.HasPrefix(p, "/api/channels/live/"), strings.HasPrefix(p, "/iptv/") && strings.Contains(p, "/live/"):
+		// a live channel's segment (its encoder reads the disk all along)
+		return r.Method == http.MethodGet && strings.HasSuffix(p, ".ts")
 	case strings.HasPrefix(p, "/api/device-copies/"):
 		return strings.HasSuffix(p, "/file")
 	case strings.HasPrefix(p, "/api/tracks/"):

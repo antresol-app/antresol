@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import * as api from '../api/client'
 import type { User } from '../api/types'
-import { t } from '../i18n'
+import { setProfileLanguage, t } from '../i18n'
 
 export type SessionStatus = 'loading' | 'setup' | 'signed-out' | 'signed-in' | 'offline'
 
@@ -54,7 +54,16 @@ function set(next: SessionState) {
 
 function signedIn(user: User) {
   set({ status: 'signed-in', user, remote: user.remote ?? false })
+  syncProfileLanguage()
   return user
+}
+
+/** The profile's interface language (it follows the profile to every app); an older server has none. */
+export function syncProfileLanguage() {
+  api.getUILanguage().then(
+    (l) => setProfileLanguage(l?.effective),
+    () => undefined,
+  )
 }
 
 export const session = {

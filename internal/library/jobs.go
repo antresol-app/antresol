@@ -52,6 +52,9 @@ type Jobs struct {
 	// AfterScan (optional) runs after each scan and its fast enrichers,
 	// when new items have their TMDB ids.
 	AfterScan func(context.Context)
+	// AfterProbe (optional) runs after each run's probe pass: the new
+	// files' durations are known by then.
+	AfterProbe func(context.Context)
 
 	once      sync.Once
 	trigger   chan struct{}
@@ -147,6 +150,9 @@ func (j *Jobs) RunOnce(ctx context.Context) {
 	}
 	if j.Probe != nil && ctx.Err() == nil {
 		j.probePending(ctx)
+	}
+	if j.AfterProbe != nil && ctx.Err() == nil {
+		j.AfterProbe(ctx)
 	}
 
 	j.mu.Lock()

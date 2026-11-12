@@ -234,6 +234,7 @@ func TestGuardMediaKeyRoutes(t *testing.T) {
 	}{
 		{"GET", "/api/stream/1", 204}, {"HEAD", "/api/stream/1", 204}, {"GET", "/api/hls/s/index.m3u8", 204},
 		{"GET", "/api/hls/s/seg00001.m4s", 204}, {"GET", "/api/tracks/5/stream", 204}, {"GET", "/api/audio/7", 204},
+		{"GET", "/api/channels/live/3/index.m3u8", 204}, {"GET", "/api/channels/live/3/seg9.ts", 204}, {"GET", "/api/channels/3/guide", 401},
 		{"POST", "/api/stream/1", 401}, {"PUT", "/api/hls/s", 401}, {"DELETE", "/api/hls/s", 401},
 		{"GET", "/api/tracks/5/lyrics", 401}, {"GET", "/api/download/1", 401}, {"GET", "/api/subs/1/0.vtt", 401},
 		{"GET", "/api/images/x", 401}, {"GET", "/api/torrent-stream/ih/0", 204}, {"POST", "/api/torrent-stream/ih/0", 401},

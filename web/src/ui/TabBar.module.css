@@ -73,6 +73,27 @@
   color: var(--accent);
   background: var(--fill-hover);
 }
+/* six tabs: equal widths, but a tab never narrower than its label (the
+   others share what is left; at least a finger each); the labels lose their
+   side padding and tracking */
+.bar[data-dense] .tabs li {
+  flex: 1 1 0;
+  min-width: max-content;
+}
+.bar[data-dense] .tab {
+  min-width: var(--control-h-md);
+}
+.bar[data-dense] .label {
+  padding: 0;
+  letter-spacing: 0;
+}
+@media (max-width: 400px) {
+  .bar[data-dense] {
+    gap: var(--s-2);
+    padding-left: max(var(--s-2h), env(safe-area-inset-left));
+    padding-right: max(var(--s-2h), env(safe-area-inset-right));
+  }
+}
 .accessory {
   flex: none;
   display: grid;

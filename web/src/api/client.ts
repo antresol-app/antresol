@@ -361,6 +361,15 @@ export const resetAppPassword = (id: number) => request<void>('DELETE', `/api/us
 // «Звук и субтитры»: a profile's defaults; a kid's are changed by an administrator (userId).
 const prefsPath = (userId?: number) => (userId === undefined ? '/api/me/playback-prefs' : `/api/users/${userId}/playback-prefs`)
 export type PlaybackPrefsInput = Omit<PlaybackPrefs, 'custom' | 'preferCleaned'>
+/** The profile's interface language: its own choice ('' none) and what the apps show (`effective`, '' unknown). */
+export interface UILanguage {
+  language: '' | 'ru' | 'en'
+  effective: '' | 'ru' | 'en'
+}
+export const getUILanguage = (signal?: AbortSignal) => request<UILanguage>('GET', '/api/me/ui-language', undefined, signal)
+/** Sets the profile's interface language for every app ('' : back to the profile's own). */
+export const putUILanguage = (language: '' | 'ru' | 'en') => request<void>('PUT', '/api/me/ui-language', { language })
+
 export const getPlaybackPrefs = (userId?: number, signal?: AbortSignal) => request<PlaybackPrefs>('GET', prefsPath(userId), undefined, signal)
 export const savePlaybackPrefs = (p: PlaybackPrefsInput, userId?: number) => request<PlaybackPrefs>('PUT', prefsPath(userId), p)
 /** «Выбирать очищенную озвучку»: kept apart from the defaults (the household's stay followed). */

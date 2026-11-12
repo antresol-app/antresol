@@ -129,6 +129,10 @@
   margin-inline: auto;
   overflow: visible;
 }
+/* align="start": at the leading edge, as the list under it */
+.row[data-align='start'] > .inRow {
+  margin-inline: 0;
+}
 
 /* Phones: the filter is a row of separate capsules, as Apple Music's search
    has it — a segmented track is for at most five segments on an iPhone

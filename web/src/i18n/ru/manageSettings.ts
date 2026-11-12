@@ -6,7 +6,7 @@ export default {
   'settings.saving': 'Сохраняем…',
   'settings.saved': 'Изменения сохранены',
   'settings.autosave': 'Изменения сохраняются сами.',
-  'settings.uiLanguage.hint': 'Только в этом браузере',
+  'settings.uiLanguage.hint': 'Для этого профиля во всех приложениях',
   'settings.metadataLanguage': 'Язык описаний медиатеки',
   'settings.metadataLanguage.hint': 'Для новых сканирований: названия и описания из TMDB',
   'settings.languages': 'Языки',

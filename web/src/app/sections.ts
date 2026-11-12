@@ -28,6 +28,7 @@ export const SECTIONS: Section[] = [
   section('/', 'common.home', 'home'),
   section('/movies', 'common.movies', 'film'),
   section('/series', 'common.series', 'tv'),
+  section('/tv', 'common.tv', 'broadcast'),
   section('/music', 'common.music', 'music'),
   section('/books', 'common.books', 'book'),
 ]

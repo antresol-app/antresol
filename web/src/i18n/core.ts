@@ -1,6 +1,9 @@
-// The interface language: what the person picked in Settings («Язык
-// интерфейса», per browser), else the browser's preferred languages by the
-// shared rule (the first ru*/en* wins; none → en). One store for the tab;
+// The interface language: what the person picked («Язык интерфейса», per
+// browser), else the profile's language from the server
+// (GET /api/me/ui-language `effective`: its own choice, its audio
+// languages, the household's — so a Russian profile on an English phone
+// sees Russian), else the browser's preferred languages by the shared rule
+// (the first ru*/en* wins; none → en). One store for the tab;
 // components re-render through useT()/useLang().
 //
 // A catalog is a chunk of its own, loaded on demand (loadCatalog): a page
@@ -17,6 +20,8 @@ export type TFunction = (key: Key, params?: Params) => string
 
 export const LANGS: readonly Lang[] = ['ru', 'en']
 export const STORAGE_KEY = 'vault.uiLanguage'
+/** The signed-in profile's language as the server last said it (boot/early.ts reads it too). */
+export const PROFILE_KEY = 'vault.profileUiLanguage'
 
 type Catalog = Partial<Record<Key, Entry>>
 const catalogs: Partial<Record<Lang, Catalog>> = {}
@@ -80,6 +85,22 @@ function browserLanguages(): readonly string[] {
   return navigator.language ? [navigator.language] : []
 }
 
+/** The language to show: the person's pick, else the profile's, else the browser's. */
+export function resolveInterfaceLanguage(pick: LangPref, profile: Lang | null, preferred: readonly string[] | undefined | null): Lang {
+  if (pick !== 'system') return pick
+  return profile ?? resolveLanguage(preferred)
+}
+
+const asLang = (v: unknown): Lang | null => (v === 'ru' || v === 'en' ? v : null)
+
+function readProfile(): Lang | null {
+  try {
+    return asLang(localStorage.getItem(PROFILE_KEY))
+  } catch {
+    return null
+  }
+}
+
 function readPref(): LangPref {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
@@ -91,7 +112,8 @@ function readPref(): LangPref {
 }
 
 let pref: LangPref = readPref()
-let lang: Lang = pref === 'system' ? resolveLanguage(browserLanguages()) : pref
+let profile: Lang | null = readProfile()
+let lang: Lang = resolveInterfaceLanguage(pref, profile, browserLanguages())
 const listeners = new Set<() => void>()
 
 function applyDocumentLang() {
@@ -104,7 +126,7 @@ const notify = () => {
 }
 
 function recompute() {
-  const next = pref === 'system' ? resolveLanguage(browserLanguages()) : pref
+  const next = resolveInterfaceLanguage(pref, profile, browserLanguages())
   if (next === lang) return
   lang = next
   applyDocumentLang()
@@ -118,8 +140,9 @@ if (typeof window !== 'undefined') {
   // the system language changed (browser settings) or another tab picked one
   window.addEventListener('languagechange', recompute)
   window.addEventListener('storage', (e) => {
-    if (e.key !== STORAGE_KEY) return
+    if (e.key !== STORAGE_KEY && e.key !== PROFILE_KEY) return
     pref = readPref()
+    profile = readProfile()
     recompute()
   })
 }
@@ -138,6 +161,21 @@ export function setLanguagePref(next: LangPref) {
   }
   recompute()
 }
+
+/** The signed-in profile's interface language from the server (`effective`; '' or null: none — follow the browser). */
+export function setProfileLanguage(next: string | null | undefined) {
+  profile = asLang(next)
+  try {
+    if (profile) localStorage.setItem(PROFILE_KEY, profile)
+    else localStorage.removeItem(PROFILE_KEY)
+  } catch {
+    /* not remembered: still applies for this tab */
+  }
+  recompute()
+}
+
+/** The profile's language as known (null: none). */
+export const getProfileLanguage = (): Lang | null => profile
 
 export function subscribeLanguage(fn: () => void): () => void {
   listeners.add(fn)

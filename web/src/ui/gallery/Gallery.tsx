@@ -440,6 +440,7 @@ export function Gallery() {
               { to: '/dev/gallery', label: 'Главная', icon: 'home', end: true },
               { to: '/movies', label: 'Фильмы', icon: 'film' },
               { to: '/series', label: 'Сериалы', icon: 'tv' },
+              { to: '/tv', label: 'ТВ', icon: 'broadcast' },
               { to: '/music', label: 'Музыка', icon: 'music' },
               { to: '/books', label: 'Книги', icon: 'book' },
             ]}
@@ -562,6 +563,8 @@ export function Gallery() {
         <div className={styles.phoneColumn}>
           <SegmentedControl label="Что искать" value={scope} onChange={setScope} segments={SCOPES} row />
         </div>
+        <p className={styles.note}>align="start": a filter over a list that starts at the column's edge («ТВ»: Все · Избранное · темы).</p>
+        <SegmentedControl label="Что искать" value={scope} onChange={setScope} segments={SCOPES} row align="start" />
       </Section>
 
       <Section

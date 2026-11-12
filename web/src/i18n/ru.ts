@@ -17,6 +17,7 @@ import manageLibrary from './ru/manageLibrary'
 import requests from './ru/requests'
 import migrate from './ru/migrate'
 import playlistImport from './ru/playlistImport'
+import channels from './ru/channels'
 import full from './ru/full'
 
 export const ru = {
@@ -33,5 +34,6 @@ export const ru = {
   ...requests,
   ...migrate,
   ...playlistImport,
+  ...channels,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

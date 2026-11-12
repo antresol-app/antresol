@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/disk"
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/files"
@@ -180,6 +181,15 @@ type Deps struct {
 	// whose features that bring titles from outside are then nil).
 	LibraryOnly bool
 
+	// Channels are «ТВ-каналы» (/api/channels…); nil disables them. Needs
+	// DB and Library.
+	Channels *channels.Service
+	// IPTV opens the channels to IPTV players (VAULT_IPTV=on): an M3U
+	// playlist and an XMLTV guide on per-profile token URLs
+	// (/iptv/{token}/…, /api/channels/iptv). Off by default: channels are
+	// watched in Antresol's own apps.
+	IPTV bool
+
 	// fullDeps are the sources build's own dependencies (deps_full.go); an
 	// empty struct in the core build. Set them by name: deps.Acquire.
 	fullDeps
@@ -260,6 +270,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			mountRelated(r, h)
 			mountPlay(r, h)
 			mountTrackPrefs(r, h)
+			mountUILanguage(r, h)
 			mountAudio(r, h)
 			mountBooks(r, h)
 			mountAnnotations(r, h)
@@ -278,7 +289,17 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			if requests != nil {
 				mountKidRequests(r, requests)
 			}
+			if deps.Channels != nil && deps.DB != nil {
+				ca := newChannelsAPI(deps, h)
+				mountChannels(r, ca)
+				if deps.IPTV {
+					mountIPTVLinks(r, ca)
+				}
+			}
 		})
+		if deps.Channels != nil && deps.DB != nil && deps.IPTV {
+			mountIPTV(r, newChannelsAPI(deps, nil)) // a token in the path, no session
+		}
 	}
 	if deps.Notify != nil {
 		mountNotifyLinks(r, deps.Notify) // the letters' links: a token, no session
@@ -332,7 +353,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 // and the web app's text files. Never media, images, archives or
 // text/event-stream (its events must reach the tab at once).
 var compressTypes = []string{"application/json", "text/html", "text/css", "text/javascript", "application/javascript",
-	"application/manifest+json", "image/svg+xml", "text/plain"}
+	"application/manifest+json", "image/svg+xml", "text/plain", "application/xml", "audio/x-mpegurl"}
 
 // compressText gzips the GET responses of compressTypes. Media routes and
 // range requests are passed straight through, unwrapped: a wrapped writer
@@ -398,10 +419,14 @@ func (v *varyWriter) Unwrap() http.ResponseWriter { return v.ResponseWriter }
 func mediaRoute(p string) bool {
 	for _, pre := range []string{"/api/stream/", "/api/hls/", "/api/audio/", "/api/download/", "/api/torrent-stream/",
 		"/api/images/", "/api/comics/", "/api/device-copies/", "/api/events", "/api/online/s/", "/api/files/content",
-		"/api/files/thumb", "/api/subs/"} {
+		"/api/files/thumb", "/api/subs/", "/api/channels/live/"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
+	}
+	if strings.HasPrefix(p, "/iptv/") {
+		// the IPTV players' streams and pictures (their playlist and guide are text)
+		return strings.Contains(p, "/live/") || strings.Contains(p, "/logo/") || strings.Contains(p, "/art/")
 	}
 	return strings.HasPrefix(p, "/api/") && (strings.HasSuffix(p, "/stream") || strings.HasSuffix(p, "/zip") ||
 		strings.Contains(p, "/trickplay"))

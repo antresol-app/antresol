@@ -1,0 +1,25 @@
+# group "channels": Russian kept on purpose
+internal/channels/generate.go  # names and groups of generated channels, stored in the database like library metadata (data, the library's language)
+internal/channels/iptv.go: Каналы  # the IPTV group of a channel without one, stored-data default (the library's language)
+internal/channels/tracks.go: Русский 2  # the HLS NAME of a live stream's slot: fixed per server (clients match it), the API's label is the translated text
+internal/channels/tracks.go: іїєґІЇЄҐ  # Ukrainian letters that tell a track's language
+internal/channels/tracks.go: оригинал  # a word in track titles that says «the original»
+internal/channels/tracks.go: дубляж  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: дублированный  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: многоголосый  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: многоголосая  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: двухголосый  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: двухголосая  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: одноголосый  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: одноголосая  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: авторский  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: авторская  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: профессиональный  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: любительский  # a word in track titles that names a kind of voice-over (matched, then shown translated)
+internal/channels/tracks.go: Дубляж  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Многоголосый  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Двухголосый  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Одноголосый  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Авторский  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Профессиональный  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/tracks.go: Любительский  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
