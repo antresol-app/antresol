@@ -32,8 +32,8 @@ func WriteM3U(w io.Writer, base string, chans []Channel) error {
 			cat = DefaultCategory
 		}
 		name := strings.ReplaceAll(attr(c.Name), ",", " ")
-		fmt.Fprintf(bw, "#EXTINF:-1 tvg-id=\"%s\" tvg-chno=\"%d\" tvg-name=\"%s\" tvg-logo=\"%s/logo/%d.png\" group-title=\"%s\",%s\n",
-			TvgID(c), c.Number, attr(c.Name), base, c.ID, attr(cat), name)
+		fmt.Fprintf(bw, "#EXTINF:-1 tvg-id=\"%s\" tvg-chno=\"%d\" tvg-name=\"%s\" tvg-logo=\"%s/logo/%d.png%s\" group-title=\"%s\",%s\n",
+			TvgID(c), c.Number, attr(c.Name), base, c.ID, LogoQuery(c), attr(cat), name)
 		fmt.Fprintf(bw, "%s/live/%d/index.m3u8\n", base, c.ID)
 	}
 	return bw.Flush()
@@ -107,7 +107,7 @@ func WriteXMLTV(w io.Writer, g Guide) error {
 	doc := xmltvDoc{Generator: "Antresol"}
 	for _, c := range g.Channels {
 		doc.Channels = append(doc.Channels, xmltvChannel{ID: TvgID(c), Names: []xmltvText{{Lang: lang, Text: c.Name}},
-			Icon: &xmltvIcon{Src: fmt.Sprintf("%s/logo/%d.png", g.Base, c.ID)}})
+			Icon: &xmltvIcon{Src: fmt.Sprintf("%s/logo/%d.png%s", g.Base, c.ID, LogoQuery(c))}})
 	}
 	for _, c := range g.Channels {
 		es := g.Entries[c.ID]
@@ -115,7 +115,7 @@ func WriteXMLTV(w io.Writer, g Guide) error {
 			e := es[i]
 			// the parts of one programme (cd1, cd2) are one guide entry
 			end := e.End
-			for i+1 < len(es) && es[i+1].ItemID == e.ItemID && es[i+1].Start.Equal(end) {
+			for i+1 < len(es) && es[i+1].ItemID == e.ItemID && (e.FileID == 0 || es[i+1].FileID != e.FileID) && es[i+1].Start.Equal(end) { // its first file again: a repeat
 				i++
 				end = es[i].End
 			}

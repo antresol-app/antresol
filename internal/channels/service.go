@@ -31,8 +31,11 @@ type Service struct {
 
 	tmu    sync.Mutex
 	tracks map[int64]tracksEntry
+	sets   map[int64]setEntry
+	probes map[int64]probeEntry
 	opts   PlanOptions
 	optsAt time.Time
+	lang   string // the metadata language (SetLanguage)
 
 	// Extras finds and plays titles outside the library (nil: none; set
 	// with SetExtras).
@@ -56,6 +59,13 @@ func New(db *sql.DB, live *Live) *Service {
 		live.Source = s
 	}
 	return s
+}
+
+// SetRoots sets the library folders picks and the editor's folder browse
+// see (LibraryRoots).
+func (s *Service) SetRoots(roots []Root) {
+	s.Builder.Catalog.Roots = roots
+	s.Generator.Catalog.Roots = roots
 }
 
 func (s *Service) init() { s.once.Do(func() { s.kick = make(chan struct{}, 1) }) }
@@ -174,6 +184,7 @@ func (s *Service) Program(ctx context.Context, ch int64, t time.Time) (Program, 
 				p.Probe = pr
 			}
 		}
+		p.Probe = s.encoderProbe(ctx, e.FileID, path, p.Probe)
 		t := s.plan(ctx, e.FileID, path, p.Probe, true)
 		p.Tracks = &t
 		return p, nil

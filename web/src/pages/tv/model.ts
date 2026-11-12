@@ -187,86 +187,125 @@ export function gridMove(rows: { start: string; end: string }[][], row: number, 
 }
 
 // ---------- audio and subtitles ----------
+//
+// The live stream is an HLS master with up to 8 audio and 6 subtitle
+// renditions whose NAMEs and order come from what the channel will air (the
+// server's per-run track set). Nothing here assumes a name, a count or an
+// order: a rendition is found by its NAME, a fallback by its language.
 
-/** What the viewer picked in this session (never saved on the server): a slot, or null for subtitles off. */
+/** What the viewer picked in this session (never saved on the server). */
 export interface TrackSession {
-  audio?: string
-  subs?: string | null
-  /** The chosen renditions' HLS NAMEs: a programme without the slot keeps playing it (the server fills it). */
+  /** The audio rendition chosen (its NAME) and its language (the fallback on a channel without that name). */
   audioName?: string
-  subsName?: string
+  audioLang?: string
+  /** The subtitle rendition chosen; null: turned off; absent: no choice (the profile decides). */
+  subsName?: string | null
+  subsLang?: string
+}
+
+/** A rendition of the master as the player lists it. */
+export interface Rendition {
+  name: string
+  lang: string
+}
+
+/** A session read back from storage: only the fields this version knows (round 3's slots are dropped). */
+export function cleanSession(v: unknown): TrackSession {
+  if (!v || typeof v !== 'object') return {}
+  const o = v as Record<string, unknown>
+  const out: TrackSession = {}
+  if (typeof o.audioName === 'string' && o.audioName) out.audioName = o.audioName
+  if (typeof o.audioLang === 'string') out.audioLang = o.audioLang
+  if (o.subsName === null || (typeof o.subsName === 'string' && o.subsName)) out.subsName = o.subsName as string | null
+  if (typeof o.subsLang === 'string') out.subsLang = o.subsLang
+  return out
+}
+
+const sameLang = (a: string | undefined, b: string | undefined) => !!a && !!b && (a === b || a.split('-')[0] === b.split('-')[0])
+
+/**
+ * The audio entry the programme plays for the viewer: the one they chose (by
+ * name); else one in the chosen one's language; else the first of the
+ * profile's audio languages present; else Russian (the server's default);
+ * else the first entry.
+ */
+export function pickAudio(entries: ChannelTrack[] | undefined, prefs: Pick<PlaybackPrefs, 'audioLangs'> | null, session: TrackSession): ChannelTrack | undefined {
+  if (!entries?.length) return undefined
+  if (session.audioName) {
+    const hit = entries.find((x) => x.name === session.audioName) ?? entries.find((x) => sameLang(x.lang, session.audioLang))
+    if (hit) return hit
+  }
+  for (const lang of prefs?.audioLangs ?? []) {
+    const e = entries.find((x) => sameLang(x.lang, lang))
+    if (e) return e
+  }
+  return entries.find((x) => sameLang(x.lang, 'ru')) ?? entries[0]
 }
 
 /**
- * The renditions to play. The viewer stays on the slot they chose even when
- * a programme lacks it (its audio is the programme's fallback, its
- * subtitles are empty), so nothing switches at a programme boundary.
+ * The subtitle entry shown (null: none): the viewer's choice by name, else in
+ * its language, else none; with no choice, the profile's subtitle mode.
  */
-export function renditionsToPlay(
-  audio: ChannelTrack[] | undefined,
-  subs: ChannelTrack[] | undefined,
-  audioSlot: string | undefined,
-  subSlot: string | null,
-  session: TrackSession,
-): { audio: string | undefined; subs: string | null | undefined } {
-  const own = (list: ChannelTrack[] | undefined, slot: string | null | undefined) => (slot ? list?.find((x) => x.slot === slot)?.name : undefined)
-  const a = own(audio, audioSlot) ?? (session.audio && session.audio === audioSlot ? session.audioName : undefined) ?? playingAudio(audio, audioSlot)?.name
-  let s: string | null | undefined
-  if (subs === undefined && session.subs === undefined) s = undefined
-  else if (subSlot === null) s = null
-  else s = own(subs, subSlot) ?? (session.subs === subSlot ? session.subsName : undefined) ?? null
-  return { audio: a, subs: s }
-}
-
-/** The audio slot to play: the viewer's slot; else the profile's first language present; else «ru»; else the first. */
-export function pickAudioSlot(entries: ChannelTrack[] | undefined, prefs: Pick<PlaybackPrefs, 'audioLangs'> | null, session: TrackSession): string | undefined {
-  if (session.audio) return session.audio
-  if (!entries?.length) return undefined
-  for (const lang of prefs?.audioLangs ?? []) {
-    const e = entries.find((x) => x.lang === lang)
-    if (e) return e.slot
-  }
-  return (entries.find((x) => x.slot === 'ru') ?? entries[0])?.slot
-}
-
-/** The audio entry that really plays: the chosen slot, else the programme's fallback («ru»). */
-export function playingAudio(entries: ChannelTrack[] | undefined, slot: string | undefined): ChannelTrack | undefined {
-  if (!entries?.length) return undefined
-  return entries.find((x) => x.slot === slot) ?? entries.find((x) => x.slot === 'ru') ?? entries[0]
-}
-
-/** The subtitle slot (null: off) — the viewer's choice; else by the profile's subtitle mode. */
-export function pickSubSlot(
+export function pickSubs(
   entries: ChannelTrack[] | undefined,
   prefs: Pick<PlaybackPrefs, 'audioLangs' | 'subMode' | 'subLangs'> | null,
   audio: ChannelTrack | undefined,
   session: TrackSession,
-): string | null {
-  if (session.subs !== undefined) return session.subs
+): ChannelTrack | null {
+  if (session.subsName === null) return null
+  if (session.subsName !== undefined) return entries?.find((x) => x.name === session.subsName) ?? entries?.find((x) => sameLang(x.lang, session.subsLang)) ?? null
   if (!entries?.length || !prefs || prefs.subMode === 'off') return null
   const langs: string[] = prefs.subLangs.length ? prefs.subLangs : prefs.audioLangs
   const first = () => {
     for (const lang of langs) {
-      const e = entries.find((x) => x.lang === lang)
-      if (e) return e.slot
+      const e = entries.find((x) => sameLang(x.lang, lang))
+      if (e) return e
     }
     return null
   }
   if (prefs.subMode === 'always') return first()
   // foreign: only when the voice is not one of the profile's languages
-  if (audio && !(prefs.audioLangs as string[]).includes(audio.lang)) return first()
+  if (audio && !(prefs.audioLangs as string[]).some((l) => sameLang(l, audio.lang))) return first()
   return null
 }
 
-/** The index of the rendition whose HLS NAME is the entry's name (−1: none). */
+/**
+ * The renditions to select in the master (undefined: leave the player's own;
+ * null subtitles: off). The chosen audio NAME sticks while the master has it,
+ * even through a programme that lacks it (the server plays the programme's
+ * track in that language there: nothing switches at the boundary); a channel
+ * without that name plays the programme's entry (picked by language).
+ * Subtitles: the programme's entry; else the chosen rendition while the master
+ * has it (empty there, and back on its own when the next programme has it).
+ * `renditions` empty: the player has not listed them yet.
+ */
+export function renditionsToPlay(
+  audio: ChannelTrack | undefined,
+  subs: ChannelTrack | null,
+  subsKnown: boolean,
+  renditions: { audio: Rendition[]; subs: Rendition[] },
+  session: TrackSession,
+): { audio: string | undefined; subs: string | null | undefined } {
+  const has = (list: Rendition[], name: string | null | undefined) => !!name && (list.length === 0 || list.some((r) => r.name === name))
+  const a = session.audioName && has(renditions.audio, session.audioName) ? session.audioName : audio?.name
+  let s: string | null | undefined
+  if (!subsKnown && session.subsName === undefined) s = undefined
+  else if (session.subsName === null) s = null
+  else s = subs?.name ?? (has(renditions.subs, session.subsName) ? session.subsName : null) ?? null
+  return { audio: a, subs: s }
+}
+
+/** The viewer chose an audio entry: it sticks by name, with its language as the fallback. */
+export const chooseAudioIn = (session: TrackSession, e: ChannelTrack): TrackSession => ({ ...session, audioName: e.name, audioLang: e.lang || undefined })
+
+/** The viewer chose subtitles (null: off). */
+export const chooseSubsIn = (session: TrackSession, e: ChannelTrack | null): TrackSession =>
+  e ? { ...session, subsName: e.name, subsLang: e.lang || undefined } : { ...session, subsName: null, subsLang: undefined }
+
+/** The index of the rendition whose HLS NAME is `name` (−1: none). */
 export function renditionIndex(names: (string | undefined)[], name: string | undefined): number {
   if (!name) return -1
   return names.findIndex((n) => n === name)
-}
-
-/** The other way round: the slot of the rendition a player switched to by itself. */
-export function slotOfName(entries: ChannelTrack[] | undefined, name: string | undefined): string | undefined {
-  return entries?.find((x) => x.name === name)?.slot
 }
 
 /** The channels as the guide/list keeps them: a Channel or a ChannelEPG. */

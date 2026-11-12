@@ -84,6 +84,9 @@
   text-decoration: none;
   transition: background-color var(--d-fast) var(--ease-out);
 }
+.rowLink[data-logos] {
+  grid-template-columns: var(--num-w) var(--art-w) auto minmax(0, 1fr);
+}
 .rowLink:hover,
 .row[data-selected] .rowLink {
   background: var(--surface-grouped-hover);
@@ -116,13 +119,18 @@
 }
 .rowChannel {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s-2);
   min-width: 0;
   font: var(--t-headline);
   color: var(--label);
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rowChannelName {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 .rowLastTag {
@@ -194,6 +202,11 @@
   .rowNum {
     font: var(--t-headline);
   }
+  /* a phone: the logo column at the small size, the name keeps the room */
+  .rowLink[data-logos] [data-channel-logo],
+  .rowLink[data-logos] [data-logo-slot] {
+    --logo-h: var(--icon-md);
+  }
   .rowChannel {
     font: var(--t-subhead-em);
   }
@@ -226,7 +239,7 @@
 }
 .previewChannel {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s-2);
   font: var(--t-subhead-em);
   color: var(--label-2);
@@ -374,6 +387,11 @@
   align-items: center;
   gap: var(--s-1h);
 }
+.rowLead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
 .rowNumber {
   display: inline-block;
   min-width: 2ch;
@@ -400,4 +418,57 @@
   margin-top: var(--s-2);
   font: var(--t-footnote);
   color: var(--destructive-text);
+}
+
+/* ---------- the editor's «Состав канала» and «Логотип» ---------- */
+.picksEmpty {
+  margin: 0;
+  padding: var(--s-3) 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+/* a search hit's or a folder's kind, on the list's glyph tile */
+.pickGlyph {
+  composes: glyph from '../../ui/SortableList.module.css';
+}
+.pickName,
+.pickPath {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pickPath {
+  font: var(--t-subhead-em);
+  color: var(--label-2);
+}
+.pickNote {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.pickAdd {
+  color: var(--accent);
+}
+.pickAdded,
+.pickAdded:disabled {
+  color: var(--success);
+  opacity: 1;
+}
+.formErrorInline {
+  color: var(--destructive-text);
+}
+/* «Логотип» without one: an empty well as large as the preview */
+.logoWell {
+  display: grid;
+  place-items: center;
+  width: calc(var(--control-h-md) * 1.6);
+  height: var(--control-h-md);
+  border-radius: var(--r-md);
+  border: var(--hairline-w) dashed var(--separator);
+  color: var(--label-3);
+}
+/* the lineup's search field: the row's whole width */
+.pickField {
+  width: 100%;
+  min-width: 0;
 }

@@ -1,6 +1,6 @@
 // /tv/:id — a channel live, full window, in the film player's chrome. The
 // stream is the channel's live HLS master (one encoder on the server shared
-// by everyone watching; audio and subtitle renditions by slot): Safari
+// by everyone watching; up to 8 audio and 6 subtitle renditions, chosen by NAME): Safari
 // plays it itself, other browsers through hls.js. The picture is full
 // bleed; a tap, the pointer moving or a key brings the info bar over it —
 // the channel's number and name, the programme on air with its progress
@@ -22,7 +22,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type Hls from 'hls.js'
 import { APP_NAME } from '../../brand'
 import { getPlaybackPrefs, imageUrl } from '../../api/client'
-import { getChannelGuide, getChannels, liveUrl, setChannelFavorite, setLastChannel, type Channel, type ChannelProgram } from '../../api/channels'
+import { getChannelGuide, getChannels, liveUrl, setChannelFavorite, setLastChannel, type Channel, type ChannelProgram, type ChannelTrack } from '../../api/channels'
 import type { PlaybackPrefs } from '../../api/types'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
@@ -32,9 +32,10 @@ import { Button } from '../../ui/Button'
 import { Menu, MenuItem } from '../../ui/Menu'
 import { useMediaQuery } from '../../state/useMediaQuery'
 import { ChannelArt } from './ChannelArt'
+import { ChannelLogo } from './ChannelLogo'
 import { activeCueText, applyRenditions, entriesFromNames, renditionNames, setTrackSession, trackSession, type NativeVideo } from './liveTracks'
 import { LiveTrackMenu } from './LiveTrackMenu'
-import { applyFilter, isOnAir, minutesLeft, parseFilter, pickAudioSlot, pickSubSlot, playingAudio, progressOf, renditionsToPlay, withFavorite, zapTarget } from './model'
+import { applyFilter, chooseAudioIn, chooseSubsIn, isOnAir, minutesLeft, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, withFavorite, zapTarget, type Rendition } from './model'
 import { clock, useNow } from './useChannels'
 import look from '../../player/SubtitleLook.module.css'
 import styles from './LivePlayer.module.css'
@@ -80,7 +81,7 @@ export function LivePlayer() {
   const [prefs, setPrefs] = useState<PlaybackPrefs | null>(null)
   const [session, setSession] = useState(trackSession)
   // the renditions the stream has, read again when the player lists them
-  const [renditions, setRenditions] = useState<{ audio: string[]; subs: string[] }>({ audio: [], subs: [] })
+  const [renditions, setRenditions] = useState<{ audio: Rendition[]; subs: Rendition[] }>({ audio: [], subs: [] })
   const now = useNow(5000)
   // a phone held upright: the picture at the top, the info and the controls
   // under it (always shown), then the channels to switch to
@@ -254,10 +255,9 @@ export function LivePlayer() {
   // the programme's entries (or, from an older server, the renditions by name)
   const audioEntries = onAir?.audio ?? (renditions.audio.length > 1 ? entriesFromNames(renditions.audio) : undefined)
   const subEntries = onAir?.subtitles ?? (renditions.subs.length ? entriesFromNames(renditions.subs) : onAir?.audio ? [] : undefined)
-  const audioSlot = pickAudioSlot(audioEntries, prefs, session)
-  const audioNow = playingAudio(audioEntries, audioSlot)
-  const subSlot = pickSubSlot(subEntries, prefs, audioNow, session)
-  const play = renditionsToPlay(audioEntries, subEntries, audioSlot, subSlot, session)
+  const audioNow = pickAudio(audioEntries, prefs, session)
+  const subsNow = pickSubs(subEntries, prefs, audioNow, session)
+  const play = renditionsToPlay(audioNow, subsNow, subEntries !== undefined, renditions, session)
   // switch the renditions when the choice, the programme or the renditions change
   useEffect(() => {
     applyRenditions(hlsRef.current, videoRef.current as NativeVideo | null, play.audio, play.subs)
@@ -273,13 +273,14 @@ export function LivePlayer() {
     const id = window.setInterval(read, 200)
     return () => window.clearInterval(id)
   }, [play.subs, channelId])
-  const chooseAudio = (slot: string) => {
-    const s = { ...trackSession(), audio: slot, audioName: audioEntries?.find((x) => x.slot === slot)?.name }
+  // the choice sticks by name for the session (across programmes and zaps)
+  const chooseAudio = (e: ChannelTrack) => {
+    const s = chooseAudioIn(trackSession(), e)
     setTrackSession(s)
     setSession(s)
   }
-  const chooseSubs = (slot: string | null) => {
-    const s = { ...trackSession(), subs: slot, subsName: slot ? subEntries?.find((x) => x.slot === slot)?.name : undefined }
+  const chooseSubs = (e: ChannelTrack | null) => {
+    const s = chooseSubsIn(trackSession(), e)
     setTrackSession(s)
     setSession(s)
   }
@@ -473,6 +474,7 @@ export function LivePlayer() {
           {channel && (
             <h1 className={styles.channel}>
               <span className={styles.channelNum}>{channel.number}</span>
+              <ChannelLogo url={channel.logoUrl} size="md" />
               <span className={styles.channelName}>{channel.name}</span>
             </h1>
           )}
@@ -564,8 +566,8 @@ export function LivePlayer() {
             <LiveTrackMenu
               audio={audioEntries}
               subtitles={subEntries}
-              audioSlot={audioNow?.slot}
-              subSlot={subSlot}
+              audioName={audioNow?.name}
+              subsName={subsNow ? subsNow.name : null}
               onAudio={chooseAudio}
               onSubtitles={chooseSubs}
               onOpenChange={setMenuOpen}
@@ -631,6 +633,7 @@ export function LivePlayer() {
           </header>
           <ul className={styles.panelList}>
             {zapList.map((c) => {
+              const stripLogos = zapList.some((x) => x.logoUrl)
               const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
               const current = c.id === channelId
               return (
@@ -638,6 +641,7 @@ export function LivePlayer() {
                   <button
                     type="button"
                     className={styles.panelRow}
+                    data-logos={stripLogos || undefined}
                     aria-current={current || undefined}
                     ref={current ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
                     onClick={() => tune(c)}
@@ -651,9 +655,10 @@ export function LivePlayer() {
                   >
                     <span className={styles.panelNum}>{c.number}</span>
                     <ChannelArt program={p} width={96} className={styles.panelArt} />
+                    {stripLogos && <ChannelLogo url={c.logoUrl} size="xs" reserve />}
                     <span className={styles.panelText}>
                       <span className={styles.panelName}>
-                        {c.name}
+                        <span className={styles.panelNameText}>{c.name}</span>
                         {c.favorite && <Icon name="starFill" size={12} />}
                       </span>
                       <span className={styles.panelTitle}>{p ? p.title : t('tv.nothing')}</span>

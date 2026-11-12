@@ -28,8 +28,8 @@ type Program struct {
 	Entry
 	Path  string
 	Probe media.ProbeResult
-	// Tracks fill the stream's audio and subtitle slots (nil: Plan of the
-	// probe alone).
+	// Tracks are its audio and subtitle tracks under their keys (nil: Plan
+	// of the probe alone).
 	Tracks *Tracks
 	// URL and Headers: a title outside the library plays this stream
 	// (a loopback URL, media.LiveInput.Check) instead of Path; Release
@@ -51,6 +51,17 @@ type Source interface {
 	Program(ctx context.Context, channel int64, t time.Time) (Program, error)
 }
 
+// SetSource is a Source that makes a run's track set itself (Service:
+// from the schedule's next 48 h, cheaply). Live walks a plain Source's
+// programmes instead.
+type SetSource interface {
+	TrackSet(ctx context.Context, channel int64, from time.Time) TrackSet
+}
+
+// SetHorizon: a run's track set covers the programmes that can air in
+// it — the schedule's next 48 h (its whole length ahead).
+const SetHorizon = 48 * time.Hour
+
 var (
 	// ErrBusy: Max channels are encoding already.
 	ErrBusy = errors.New("channels: too many live channels")
@@ -66,10 +77,11 @@ var (
 var liveDir = regexp.MustCompile(`^\d+-\d+$`)
 
 var (
-	segName   = regexp.MustCompile(`^seg(\d{1,12})\.ts$`)
-	audioName = regexp.MustCompile(`^a(\d)-(\d{1,12})\.ts$`)
-	runSeg    = regexp.MustCompile(`^(?:seg|a\d-)(\d{1,12})\.ts$`)
-	vttName   = regexp.MustCompile(`^s-([a-z0-9]+)-(\d{1,12})\.vtt$`)
+	segName       = regexp.MustCompile(`^seg(\d{1,12})\.ts$`)
+	audioName     = regexp.MustCompile(`^a(\d{1,2})-(\d{1,12})\.ts$`)
+	runSeg        = regexp.MustCompile(`^(?:seg|a\d{1,2}-)(\d{1,12})\.ts$`)
+	vttName       = regexp.MustCompile(`^s-(\d{1,2})-(\d{1,12})\.vtt$`)
+	renditionName = regexp.MustCompile(`^(audio|subs)-(\d{1,2})\.m3u8$`)
 )
 
 // Live runs one HLS encoder per watched channel, shared by all its
@@ -127,12 +139,13 @@ type liveSeg struct {
 	at   float64
 }
 
-// liveProg is one programme's encode: its audio outputs (slots[i] is the
-// output slot i plays) and its subtitle tracks.
+// liveProg is one programme's encode: its audio outputs (audio[n] is the
+// output audio rendition n plays) and its subtitle tracks (subs[n] the
+// one of subtitle rendition n; nil: none, empty WebVTT).
 type liveProg struct {
 	outs  int
-	slots [4]int
-	subs  [2]*liveSubs
+	audio []int
+	subs  []*liveSubs
 	p0    int64 // the PTS of its first segment
 	hasP0 bool
 }
@@ -158,6 +171,8 @@ type liveChan struct {
 	last     time.Time // last request
 	err      error     // why the encoder stopped (nil: still running)
 	program  int64     // item on air (for the status)
+	set      TrackSet  // the run's renditions (made before its first segment)
+	hasSet   bool
 }
 
 func (l *Live) init() {
@@ -295,8 +310,8 @@ func (c *liveChan) touch(now time.Time) {
 }
 
 // Playlist returns a playlist of channel id: "index.m3u8" the master,
-// "video.m3u8", "audio-<slot>.m3u8" and "subs-<slot>.m3u8" the media
-// playlists. The channel starts when it is not running; the answer waits
+// "video.m3u8", "audio-<n>.m3u8" and "subs-<n>.m3u8" (renditions of the
+// run's track set) the media playlists. The channel starts when it is not running; the answer waits
 // (up to ReadyWait) for its first ReadySegments segments, video and every
 // audio output.
 func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, error) {
@@ -323,7 +338,7 @@ func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, err
 		default:
 		}
 		if n >= l.ReadySegments {
-			return render(c), nil
+			return render(c)
 		}
 		select {
 		case <-ch:
@@ -331,53 +346,98 @@ func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, err
 			return nil, ctx.Err()
 		case <-deadline.C:
 			if n > 0 {
-				return render(c), nil
+				return render(c)
 			}
 			return nil, ErrNotReady
 		}
 	}
 }
 
-// renderer is the playlist of name.
-func (l *Live) renderer(name string) (func(*liveChan) []byte, bool) {
-	media := func(k mediaKind) func(*liveChan) []byte {
-		return func(c *liveChan) []byte {
+// renderer is the playlist of name (ErrNoSegment: a rendition the
+// run's set does not have).
+func (l *Live) renderer(name string) (func(*liveChan) ([]byte, error), bool) {
+	media := func(k mediaKind) func(*liveChan) ([]byte, error) {
+		return func(c *liveChan) ([]byte, error) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			return renderMedia(c.segs, c.discGone, l.Window, k)
+			if k.audio > len(c.set.Audio) || k.sub > len(c.set.Subs) {
+				return nil, ErrNoSegment
+			}
+			return renderMedia(c.segs, c.discGone, l.Window, k), nil
 		}
 	}
 	switch name {
 	case "index.m3u8":
-		return func(*liveChan) []byte { return l.master() }, true
+		return func(c *liveChan) ([]byte, error) {
+			c.mu.Lock()
+			set := c.set
+			c.mu.Unlock()
+			return l.master(set), nil
+		}, true
 	case "video.m3u8":
 		return media(mediaKind{}), true
 	}
-	if slot, ok := strings.CutPrefix(name, "audio-"); ok {
-		if i := slotIndex(AudioSlots, strings.TrimSuffix(slot, ".m3u8")); i >= 0 && strings.HasSuffix(slot, ".m3u8") {
-			return media(mediaKind{audio: i + 1}), true
+	if m := renditionName.FindStringSubmatch(name); m != nil {
+		n, _ := strconv.Atoi(m[2])
+		if m[1] == "audio" && n < AudioCap {
+			return media(mediaKind{audio: n + 1}), true
 		}
-	}
-	if slot, ok := strings.CutPrefix(name, "subs-"); ok {
-		if i := slotIndex(SubSlots, strings.TrimSuffix(slot, ".m3u8")); i >= 0 && strings.HasSuffix(slot, ".m3u8") {
-			return media(mediaKind{sub: i + 1}), true
+		if m[1] == "subs" && n < SubCap {
+			return media(mediaKind{sub: n + 1}), true
 		}
 	}
 	return nil, false
 }
 
-func slotIndex(slots []Slot, id string) int {
-	for i, s := range slots {
-		if s.ID == id {
-			return i
-		}
+// RunSet is the track set of channel id's run (false: not running, or
+// its set not made yet).
+func (l *Live) RunSet(id int64) (TrackSet, bool) {
+	l.init()
+	l.mu.Lock()
+	c := l.chans[id]
+	l.mu.Unlock()
+	if c == nil {
+		return TrackSet{}, false
 	}
-	return -1
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.set, c.hasSet
 }
 
-// master is the channel's master playlist (the same for every channel and
-// all the time: the slots are fixed).
-func (l *Live) master() []byte {
+// trackSet makes a run's set: the Source's own (SetSource), else from
+// the Source's programmes of the next SetHorizon (at most maxSetProgs).
+func (l *Live) trackSet(ctx context.Context, id int64, from time.Time) TrackSet {
+	if ss, ok := l.Source.(SetSource); ok {
+		return ss.TrackSet(ctx, id, from)
+	}
+	var progs []Tracks
+	t := from
+	for range maxSetProgs {
+		p, err := l.Source.Program(ctx, id, t)
+		if err != nil || !p.End.After(t) {
+			break
+		}
+		if !p.Skip {
+			tr := Plan(p.Probe, nil, nil, PlanOptions{})
+			if p.Tracks != nil {
+				tr = *p.Tracks
+			}
+			progs = append(progs, tr)
+		}
+		t = p.End
+		if t.Sub(from) >= SetHorizon {
+			break
+		}
+	}
+	return BuildSet(progs, PlanOptions{})
+}
+
+// maxSetProgs bounds the programmes a plain Source's set is made from.
+const maxSetProgs = 200
+
+// master is the channel run's master playlist (fixed for the run: its
+// track set is).
+func (l *Live) master(set TrackSet) []byte {
 	br := l.Bitrate
 	if br <= 0 {
 		br = 6_000_000
@@ -386,7 +446,7 @@ func (l *Live) master() []byte {
 	if w <= 0 || h <= 0 {
 		w, h = 1920, 1080
 	}
-	return renderMaster(br*4/3+audioBitrate, br+audioBitrate, w, h)
+	return renderMaster(set, br*4/3+audioBitrate, br+audioBitrate, w, h)
 }
 
 // Segment returns the path and length of a segment of a running channel
@@ -422,29 +482,30 @@ func (l *Live) Segment(id int64, name string) (string, float64, error) {
 	return "", 0, ErrNoSegment
 }
 
-// VTT returns a subtitle segment of a running channel (s-<slot>-<N>.vtt):
-// the cues of the programme's track in that slot within video segment N,
-// empty when the programme has none.
+// VTT returns a subtitle segment of a running channel (s-<n>-<N>.vtt):
+// the cues of the programme's track of subtitle rendition n within video
+// segment N, empty when the programme has none.
 func (l *Live) VTT(id int64, name string) ([]byte, error) {
 	m := vttName.FindStringSubmatch(name)
 	if m == nil {
 		return nil, ErrNoSegment
 	}
-	slot := slotIndex(SubSlots, m[1])
+	slot, _ := strconv.Atoi(m[1])
 	seq, _ := strconv.ParseInt(m[2], 10, 64)
-	if slot < 0 {
-		return nil, ErrNoSegment
-	}
 	c, err := l.channel(id, false)
 	if err != nil {
 		return nil, ErrNoSegment
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if slot >= len(c.set.Subs) {
+		return nil, ErrNoSegment
+	}
 	for _, s := range c.segs {
 		if s.seq == seq {
 			var cues []cue
-			if sub := s.prog.subs[slot]; sub != nil {
+			if s.prog != nil && slot < len(s.prog.subs) && s.prog.subs[slot] != nil {
+				sub := s.prog.subs[slot]
 				cues = sub.cues
 			}
 			return vttSegment(cues, s.at, s.dur, s.pts), nil
@@ -549,6 +610,11 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 	var tsOffset float64
 	first := true
 	fails := 0
+	// the run's renditions, from what can air while somebody watches
+	set := l.trackSet(ctx, c.id, now)
+	c.mu.Lock()
+	c.set, c.hasSet = set, true
+	c.mu.Unlock()
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil
@@ -586,7 +652,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 		c.mu.Lock()
 		c.program = p.ItemID
 		c.mu.Unlock()
-		segs, clean, err := l.encode(ctx, c, p, pos.Sub(p.Start).Seconds(), rem.Seconds(), seq, tsOffset, burst, !first)
+		segs, clean, err := l.encode(ctx, c, p, set, pos.Sub(p.Start).Seconds(), rem.Seconds(), seq, tsOffset, burst, !first)
 		if p.Release != nil {
 			p.Release()
 		}
@@ -630,7 +696,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 
 // encode runs one programme's ffmpeg, adding its segments to c as they
 // appear. clean: ffmpeg finished the stretch.
-func (l *Live) encode(ctx context.Context, c *liveChan, p Program, startSec, durSec float64, seq int64, tsOffset, burst float64, disc bool) ([]liveSeg, bool, error) {
+func (l *Live) encode(ctx context.Context, c *liveChan, p Program, set TrackSet, startSec, durSec float64, seq int64, tsOffset, burst float64, disc bool) ([]liveSeg, bool, error) {
 	tr := Plan(p.Probe, nil, nil, PlanOptions{})
 	if p.Tracks != nil {
 		tr = *p.Tracks
@@ -653,11 +719,11 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, startSec, dur
 	} else if p.ExtraID != 0 {
 		return nil, false, errors.New("channels: a title outside the library without a stream")
 	}
-	segs, clean, err := l.encodeTracks(ctx, c, in, tr, seq, disc, l.HW)
+	segs, clean, err := l.encodeTracks(ctx, c, in, tr, set, seq, disc, l.HW)
 	if len(segs) == 0 && l.HW == "qsv" && ctx.Err() == nil {
 		// the iGPU refused (a codec it does not take): the CPU then
 		log.Printf("channels: channel %d: qsv failed (%v), retrying in software", c.id, err)
-		segs, clean, err = l.encodeTracks(ctx, c, in, tr, seq, disc, "none")
+		segs, clean, err = l.encodeTracks(ctx, c, in, tr, set, seq, disc, "none")
 	}
 	if len(segs) == 0 && ctx.Err() == nil {
 		if own, changed := tr.ownOnly(p.Probe); changed {
@@ -668,7 +734,7 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, startSec, dur
 			if hw == "qsv" {
 				hw = "none"
 			}
-			segs, clean, err = l.encodeTracks(ctx, c, in, own, seq, disc, hw)
+			segs, clean, err = l.encodeTracks(ctx, c, in, own, set, seq, disc, hw)
 		}
 	}
 	return segs, clean, err
@@ -678,46 +744,52 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, startSec, dur
 // had some).
 func (t Tracks) ownOnly(p media.ProbeResult) (Tracks, bool) {
 	changed := false
-	for i, a := range t.Audio {
-		if a != nil && a.Source.External != "" {
-			t.Audio[i], changed = nil, true
+	audio := make([]AudioTrack, 0, len(t.Audio))
+	for _, a := range t.Audio {
+		if a.Source.External != "" {
+			changed = true
+			continue
 		}
+		audio = append(audio, a)
 	}
-	for i, s := range t.Subs {
-		if s != nil && s.External != "" {
-			t.Subs[i], changed = nil, true
+	subs := make([]SubTrack, 0, len(t.Subs))
+	for _, s := range t.Subs {
+		if s.Pick.External != "" {
+			changed = true
+			continue
 		}
+		subs = append(subs, s)
 	}
-	if t.Fallback.External != "" {
+	t.Audio, t.Subs = audio, subs
+	if t.Default.External != "" {
 		changed = true
-		t.Fallback = silence
-		if a := t.Audio[slotRU]; a != nil {
-			t.Fallback = a.Source
-		} else if len(p.Audio) > 0 {
-			t.Fallback = AudioSource{Index: p.Audio[0].Index}
+		t.Default = silence
+		if len(p.Audio) > 0 {
+			t.Default = AudioSource{Index: p.Audio[0].Index}
 		}
 	}
 	return t, changed
 }
 
-// encodeTracks runs the programme's ffmpeg with the tracks tr: one audio
-// output per distinct source of the slots.
-func (l *Live) encodeTracks(ctx context.Context, c *liveChan, in media.LiveInput, tr Tracks, seq int64, disc bool, hw string) ([]liveSeg, bool, error) {
-	prog := &liveProg{}
+// encodeTracks runs the programme's ffmpeg with the tracks tr in the
+// renditions of set: one audio output per distinct source the renditions
+// play (a file with one Russian track costs one audio output).
+func (l *Live) encodeTracks(ctx context.Context, c *liveChan, in media.LiveInput, tr Tracks, set TrackSet, seq int64, disc bool, hw string) ([]liveSeg, bool, error) {
+	srcs, picks := tr.Renditions(set)
+	prog := &liveProg{audio: make([]int, len(srcs)), subs: make([]*liveSubs, len(picks))}
 	var outs []AudioSource
-	for i := range AudioSlots {
-		src := tr.source(i)
+	for i, src := range srcs {
 		k := slices.Index(outs, src)
 		if k < 0 {
 			k = len(outs)
 			outs = append(outs, src)
 		}
-		prog.slots[i] = k
+		prog.audio[i] = k
 	}
 	prog.outs = len(outs)
 	in.Audio = nil
 	for _, o := range outs {
-		in.Audio = append(in.Audio, media.LiveAudio{Input: o.External, Index: o.Index, OffsetMs: o.OffsetMs, Tempo: o.Tempo})
+		in.Audio = append(in.Audio, media.LiveAudio{Input: o.External, Index: o.Index, OffsetMs: o.OffsetMs, Tempo: o.Tempo, Copy: o.Copy})
 	}
 	if in.URL != "" {
 		// a stream nobody probed: its first audio stream instead of silence
@@ -728,11 +800,11 @@ func (l *Live) encodeTracks(ctx context.Context, c *liveChan, in media.LiveInput
 		}
 	}
 	in.Subs = nil
-	for j, sp := range tr.Subs {
+	for j, sp := range picks {
 		if sp == nil {
 			continue
 		}
-		out := "sub" + strconv.FormatInt(seq, 10) + "-" + SubSlots[j].ID + ".vtt"
+		out := "sub" + strconv.FormatInt(seq, 10) + "-" + strconv.Itoa(j) + ".vtt"
 		ls := media.LiveSub{Index: sp.Index, Codec: sp.Codec, Out: out}
 		if sp.External != "" {
 			// read here and handed to ffmpeg as UTF-8 (old .srt files are
@@ -742,7 +814,7 @@ func (l *Live) encodeTracks(ctx context.Context, c *liveChan, in media.LiveInput
 				log.Printf("channels: channel %d: subtitles %s left out: %v", c.id, filepath.Base(sp.External), err)
 				continue
 			}
-			src := filepath.Join(c.dir, "subsrc"+strconv.FormatInt(seq, 10)+"-"+SubSlots[j].ID+filepath.Ext(sp.External))
+			src := filepath.Join(c.dir, "subsrc"+strconv.FormatInt(seq, 10)+"-"+strconv.Itoa(j)+filepath.Ext(sp.External))
 			if err := os.WriteFile(src, []byte(subtitles.Decode(b)), 0o644); err != nil {
 				continue
 			}

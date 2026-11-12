@@ -1,7 +1,8 @@
-// The channel editor: name, group and number, who sees the channel (an
-// admin's shared or personal), whose library it plays, what it shows (a
-// selection by kind, genre and decade, or chosen titles), the order, the
-// age limit and whether it is on.
+// The channel editor: name, group and number, its logo, who sees the
+// channel (an admin's shared or personal), whose library it plays, what it
+// shows (a selection by kind, genre and decade, or its own ordered list —
+// «Состав канала»: movies, series, episodes, folders), the order, the age
+// limit and whether it is on.
 import { useEffect, useMemo, useState } from 'react'
 import { errorText } from '../../api/client'
 import {
@@ -12,7 +13,9 @@ import {
   type ChannelInput,
   type ChannelOptions,
   type ChannelOrder,
+  type ChannelPick,
   type ChannelRules,
+  uploadChannelLogo,
 } from '../../api/channels'
 import { useT } from '../../i18n'
 import { GroupedSection, ListRow } from '../../ui/List'
@@ -23,21 +26,26 @@ import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
 import { ChannelExtrasRow } from './ChannelExtrasRow'
+import { ChannelLogoRow } from './ChannelLogoRow'
+import { ChannelPicks, picksOf } from './ChannelPicks'
 import styles from './Tv.module.css'
 
 const RATINGS = ['0+', '6+', '12+', '16+', '18+']
 type Kind = 'movie' | 'series'
-type Content = 'rules' | 'titles'
+type Content = 'rules' | 'picks'
 
 export interface ChannelEditorProps {
   /** null: a new channel. */
   channel: Channel | null
   me: { id: number; isAdmin: boolean }
   onClose: () => void
-  onSaved: (c: Channel) => void
+  /** Saved; `warning`: the channel is saved but its new logo was not taken. */
+  onSaved: (c: Channel, warning?: string) => void
+  /** A saved channel's logo was uploaded or removed (the list shows it). */
+  onLogoChanged?: () => void
 }
 
-export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorProps) {
+export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: ChannelEditorProps) {
   const t = useT()
   const r: ChannelRules = channel?.rules ?? {}
   const [name, setName] = useState(channel?.name ?? '')
@@ -45,16 +53,17 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
   const [number, setNumber] = useState(channel?.number ?? 0)
   const [personal, setPersonal] = useState(channel ? channel.personal : !me.isAdmin)
   const [enabled, setEnabled] = useState(channel?.enabled ?? true)
-  const [content, setContent] = useState<Content>(r.titles?.length ? 'titles' : 'rules')
+  const [picks, setPicks] = useState<ChannelPick[]>(() => picksOf(r))
+  const [content, setContent] = useState<Content>(picks.length ? 'picks' : 'rules')
   const [kinds, setKinds] = useState<Kind[]>(r.kinds?.length ? r.kinds : ['movie', 'series'])
   const [genres, setGenres] = useState<string[]>(r.genres ?? [])
   const [decade, setDecade] = useState(r.yearFrom ? String(r.yearFrom) : '')
-  const [titles, setTitles] = useState<number[]>(r.titles ?? [])
   const [library, setLibrary] = useState(String(r.libraryUser ?? 0))
   const [order, setOrder] = useState<ChannelOrder>(r.order ?? 'shuffle')
   const [rating, setRating] = useState(r.maxRating ?? '')
   const [extras, setExtras] = useState(!!r.extras)
-  const [query, setQuery] = useState('')
+  const [logoUrl, setLogoUrl] = useState(channel?.logoUrl)
+  const [pendingLogo, setPendingLogo] = useState<File | null>(null)
   const [options, setOptions] = useState<ChannelOptions | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -83,20 +92,11 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
   }, [options, me, personal, t])
   const libraryValue = libraryOptions.some((o) => o.value === library) ? library : '0'
 
-  const chosen = useMemo(() => new Set(titles), [titles])
-  const shown = useMemo(() => {
-    const all = options?.titles ?? []
-    const q = query.trim().toLowerCase()
-    const hit = q ? all.filter((x) => x.title.toLowerCase().includes(q)) : all
-    // the chosen ones first, in the order they were chosen (the order they play in)
-    const picked = titles.map((id) => all.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x && (!q || hit.includes(x)))
-    return [...picked, ...hit.filter((x) => !chosen.has(x.id))].slice(0, 200)
-  }, [options, query, titles, chosen])
-
-  const needTitles = content === 'titles' && titles.length === 0
+  const needPicks = content === 'picks' && picks.length === 0
   const save = async () => {
     const rules: ChannelRules = { order, maxRating: rating || undefined, libraryUser: Number(libraryValue) || undefined }
-    if (content === 'titles') rules.titles = titles
+    // round 1's titles are rewritten as picks of kind «title»
+    if (content === 'picks') rules.picks = picks
     else {
       rules.kinds = kinds.length === 2 ? undefined : kinds
       rules.genres = genres.length ? genres : undefined
@@ -110,7 +110,17 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
     setBusy(true)
     setError('')
     try {
-      onSaved(channel ? await updateChannel(channel.id, body) : await createChannel(body))
+      const saved = channel ? await updateChannel(channel.id, body) : await createChannel(body)
+      // a new channel's logo goes up once the channel exists
+      let warning: string | undefined
+      if (!channel && pendingLogo) {
+        try {
+          await uploadChannelLogo(saved.id, pendingLogo)
+        } catch (e) {
+          warning = t('tv.logo.notSaved', { error: errorText(e, t('tv.logo.failed')) })
+        }
+      }
+      onSaved(saved, warning)
     } catch (e) {
       setError(errorText(e, t('common.genericError')))
     } finally {
@@ -127,7 +137,7 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
       onCancel={onClose}
       actions={[
         { label: t('common.cancel'), kind: 'cancel', run: onClose },
-        { label: channel ? t('tv.editor.save') : t('tv.editor.create'), kind: 'primary', disabled: !name.trim() || needTitles || busy, run: () => void save() },
+        { label: channel ? t('tv.editor.save') : t('tv.editor.create'), kind: 'primary', disabled: !name.trim() || needPicks || busy, run: () => void save() },
       ]}
     >
       <div className={styles.form}>
@@ -154,6 +164,16 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
             />
           </ListRow>
         )}
+        <ChannelLogoRow
+          channelId={channel?.id ?? null}
+          url={logoUrl}
+          onChanged={(u) => {
+            setLogoUrl(u)
+            onLogoChanged?.()
+          }}
+          pending={pendingLogo}
+          onPending={setPendingLogo}
+        />
         <ListRow label={t('tv.enabled')}>
           <Toggle label={t('tv.enabled')} checked={enabled} onChange={setEnabled} />
         </ListRow>
@@ -171,7 +191,7 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
             onChange={setContent}
             segments={[
               { value: 'rules', label: t('tv.editor.byRules') },
-              { value: 'titles', label: t('tv.editor.byTitles') },
+              { value: 'picks', label: t('tv.editor.byTitles') },
             ]}
           />
         </ListRow>
@@ -212,7 +232,11 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
             {options?.extrasAvailable && <ChannelExtrasRow checked={extras} onChange={setExtras} />}
           </>
         )}
-        <ListRow label={t('tv.editor.order')} hint={t('tv.editor.orderHint')} stack>
+        <ListRow
+          label={t('tv.editor.order')}
+          hint={content === 'picks' ? (order === 'ordered' ? t('tv.picks.orderedHint') : t('tv.picks.shuffleHint')) : t('tv.editor.orderHint')}
+          stack
+        >
           <SegmentedControl
             label={t('tv.editor.order')}
             size="small"
@@ -235,34 +259,7 @@ export function ChannelEditor({ channel, me, onClose, onSaved }: ChannelEditorPr
         </ListRow>
       </GroupedSection>
 
-      {content === 'titles' && (
-        <GroupedSection
-          title={
-            <>
-              {t('tv.editor.byTitles')} · <span className={styles.titleCount}>{t('tv.rules.titlesCount', { count: titles.length })}</span>
-            </>
-          }
-          footer={needTitles ? t('tv.editor.needTitles') : undefined}
-        >
-          <ListRow label={t('tv.editor.search')} wide>
-            <TextField type="search" size="small" label={t('tv.editor.search')} hideLabel placeholder={t('tv.editor.search')} value={query} onChange={(e) => setQuery(e.target.value)} onClear={() => setQuery('')} />
-          </ListRow>
-          {options && shown.length === 0 && <ListRow label={t('tv.editor.noTitles')} />}
-          {shown.map((x) => (
-            <ListRow
-              key={x.id}
-              label={x.title}
-              hint={[x.kind === 'series' ? t('tv.rules.series') : t('tv.rules.movies'), x.year, x.episodes ? t('tv.editor.episodes', { count: x.episodes }) : ''].filter(Boolean).join(' · ')}
-            >
-              <Toggle
-                label={x.title}
-                checked={chosen.has(x.id)}
-                onChange={(on) => setTitles((cur) => (on ? [...cur, x.id] : cur.filter((id) => id !== x.id)))}
-              />
-            </ListRow>
-          ))}
-        </GroupedSection>
-      )}
+      {content === 'picks' && <ChannelPicks picks={picks} onChange={setPicks} options={options} info={channel?.pickInfo} need={needPicks} />}
       {error && (
         <p className={styles.formError} role="alert">
           {error}

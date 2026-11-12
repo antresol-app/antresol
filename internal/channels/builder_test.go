@@ -46,7 +46,7 @@ func TestPoolFilters(t *testing.T) {
 	eq(ids(Rules{Genres: []string{"Comedy"}, Kinds: []string{"movie"}}), []int64{com, en})
 	eq(ids(Rules{YearFrom: 1990, YearTo: 1999}), []int64{com, com + 1})
 	eq(ids(Rules{MaxRating: "12+", Kinds: []string{"movie"}}), []int64{com, en})
-	eq(ids(Rules{Titles: []int64{s, en}}), []int64{en, s})
+	eq(ids(Rules{Titles: []int64{s, en}}), []int64{s, en}) // titles are picks: in their order
 
 	owner := f.user("ann")
 	f.exec(`INSERT INTO item_owners (item_id, user_id) VALUES (?,?)`, s, owner)

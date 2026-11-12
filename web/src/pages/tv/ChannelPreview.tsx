@@ -8,6 +8,7 @@ import { ButtonLink } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { ProgressBar } from '../../ui/ProgressBar'
 import { ChannelArt } from './ChannelArt'
+import { ChannelLogo } from './ChannelLogo'
 import { isOnAir, minutesLeft, progressOf } from './model'
 import { clock } from './useChannels'
 import styles from './Tv.module.css'
@@ -37,6 +38,7 @@ export function ChannelPreview({ channel: c, now, to, onFavorite }: { channel: C
       <div className={styles.previewBody}>
         <p className={styles.previewChannel}>
           <span className={styles.previewNum}>{c.number}</span>
+          <ChannelLogo url={c.logoUrl} size="sm" />
           {c.name}
         </p>
         <h2 className={styles.previewTitle}>{p ? p.title : t('tv.nothing')}</h2>

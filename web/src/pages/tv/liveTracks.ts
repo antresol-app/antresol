@@ -1,12 +1,13 @@
 // The live player's audio and subtitles. The stream is a master playlist
-// with renditions named per slot (HLS NAME); the programme's `audio` /
-// `subtitles` entries say which slots it really has and how to label them.
+// with up to 8 audio and 6 subtitle renditions, each found by its HLS NAME
+// (any names, any order); the programme's `audio` / `subtitles` entries say
+// which of them it really has and how to label them.
 // The viewer's pick lives in this tab for the session (sessionStorage, here
 // only as a convenience): it sticks across programmes and zaps, and it is
 // never sent to the server — a channel remembers nothing (TV is TV).
 import type Hls from 'hls.js'
 import type { ChannelTrack } from '../../api/channels'
-import { renditionIndex, type TrackSession } from './model'
+import { cleanSession, renditionIndex, type Rendition, type TrackSession } from './model'
 
 const KEY = 'antresol.tv.tracks'
 
@@ -14,8 +15,7 @@ let session: TrackSession = read()
 
 function read(): TrackSession {
   try {
-    const v = JSON.parse(sessionStorage.getItem(KEY) ?? '{}') as TrackSession
-    return v && typeof v === 'object' ? v : {}
+    return cleanSession(JSON.parse(sessionStorage.getItem(KEY) ?? '{}'))
   } catch {
     return {}
   }
@@ -48,14 +48,14 @@ type NativeAudioTrack = { label: string; enabled: boolean; language?: string }
 type NativeAudioList = { length: number; [i: number]: NativeAudioTrack; addEventListener?: (t: string, f: () => void) => void; removeEventListener?: (t: string, f: () => void) => void }
 export type NativeVideo = HTMLVideoElement & { audioTracks?: NativeAudioList }
 
-/** The renditions the player has: names of the audio and the subtitle tracks. */
-export function renditionNames(hls: Hls | null, video: NativeVideo | null): { audio: string[]; subs: string[] } {
-  if (hls) return { audio: hls.audioTracks.map((t) => t.name), subs: hls.subtitleTracks.map((t) => t.name) }
-  const audio: string[] = []
+/** The renditions the player has: the audio and the subtitle tracks' names and languages, in the master's order. */
+export function renditionNames(hls: Hls | null, video: NativeVideo | null): { audio: Rendition[]; subs: Rendition[] } {
+  if (hls) return { audio: hls.audioTracks.map((t) => ({ name: t.name, lang: t.lang ?? '' })), subs: hls.subtitleTracks.map((t) => ({ name: t.name, lang: t.lang ?? '' })) }
+  const audio: Rendition[] = []
   const list = video?.audioTracks
-  if (list) for (let i = 0; i < list.length; i++) audio.push(list[i]?.label ?? '')
-  const subs: string[] = []
-  if (video) for (const t of Array.from(video.textTracks)) if (t.kind === 'subtitles' || t.kind === 'captions') subs.push(t.label)
+  if (list) for (let i = 0; i < list.length; i++) audio.push({ name: list[i]?.label ?? '', lang: list[i]?.language ?? '' })
+  const subs: Rendition[] = []
+  if (video) for (const t of Array.from(video.textTracks ?? [])) if (t.kind === 'subtitles' || t.kind === 'captions') subs.push({ name: t.label, lang: t.language ?? '' })
   return { audio, subs }
 }
 
@@ -79,7 +79,7 @@ export function applyRenditions(hls: Hls | null, video: NativeVideo | null, audi
   const list = video.audioTracks
   if (audioName !== undefined && list) {
     let hit = -1
-    for (let i = 0; i < list.length; i++) if (list[i]?.label === audioName) hit = i
+    for (let i = 0; i < list.length && hit < 0; i++) if (list[i]?.label === audioName) hit = i
     if (hit >= 0)
       for (let i = 0; i < list.length; i++) {
         const tr = list[i]
@@ -87,7 +87,7 @@ export function applyRenditions(hls: Hls | null, video: NativeVideo | null, audi
       }
   }
   if (subName !== undefined) {
-    for (const t of Array.from(video.textTracks)) {
+    for (const t of Array.from(video.textTracks ?? [])) {
       if (t.kind !== 'subtitles' && t.kind !== 'captions') continue
       t.mode = subName !== null && t.label === subName ? 'hidden' : 'disabled'
     }
@@ -95,14 +95,14 @@ export function applyRenditions(hls: Hls | null, video: NativeVideo | null, audi
 }
 
 /** Entries for the picker when the programme does not list them (an older server): the renditions themselves. */
-export function entriesFromNames(names: string[]): ChannelTrack[] {
-  return names.filter(Boolean).map((n) => ({ slot: n, name: n, label: n, lang: '' }))
+export function entriesFromNames(list: Rendition[]): ChannelTrack[] {
+  return list.filter((r) => r.name).map((r) => ({ name: r.name, label: r.name, lang: r.lang }))
 }
 
 /** The lines of the subtitle track named on screen now (the track is hidden: the player draws them). */
 export function activeCueText(video: HTMLVideoElement | null, subName: string | null | undefined): string[] {
   if (!video || !subName) return []
-  for (const t of Array.from(video.textTracks)) {
+  for (const t of Array.from(video.textTracks ?? [])) {
     if (t.label !== subName || t.mode === 'disabled' || !t.activeCues) continue
     const out: string[] = []
     for (const c of Array.from(t.activeCues)) {

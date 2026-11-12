@@ -60,10 +60,13 @@ type LiveInput struct {
 // LiveAudio is an audio output of a live programme: the file's stream
 // Index (Input ""), an external audio file (Input, its first stream,
 // shifted by OffsetMs and played at Tempo), or silence (Input "", Index -1).
+// Copy: the source already is AAC-LC, ≤ 2 channels, 48 kHz and goes out
+// as it is (no encode, no padding; never with a Tempo).
 type LiveAudio struct {
 	Input           string
 	Index           int
 	OffsetMs, Tempo float64
+	Copy            bool
 }
 
 // LiveSub is a text subtitle output: the file's stream Index (Input "")
@@ -139,8 +142,8 @@ func liveInputArgs(in LiveInput) []string {
 
 // LiveArgs is the ffmpeg command line (without the binary) of one live
 // programme with the hardware mode hw ("qsv", "videotoolbox", "none"):
-// the video encoded once, each audio output its own AAC encode, each
-// subtitle output a WebVTT file.
+// the video encoded once, each audio output its own AAC encode (or a
+// copy), each subtitle output a WebVTT file.
 func LiveArgs(hw string, in LiveInput) []string {
 	w, h := in.Width, in.Height
 	if w <= 0 || h <= 0 {
@@ -262,9 +265,16 @@ func LiveArgs(hw string, in LiveInput) []string {
 	a = append(a, liveHLS(in, "seg%d.ts", in.Playlist)...)
 
 	// the audio outputs: padded with silence a second past the video, so
-	// every video segment has its audio (the extra is never listed)
+	// every video segment has its audio (the extra is never listed); an
+	// AAC-LC stereo 48 kHz source is copied (its packets end with the
+	// input's -t)
 	for k, x := range in.Audio {
 		a = append(a, "-map", audioIn[k], "-vn", "-sn", "-dn")
+		if x.Copy && !tempoOn(x.Tempo) && (x.Input != "" || x.Index >= 0) {
+			a = append(a, "-c:a", "copy")
+			a = append(a, liveHLS(in, "a"+strconv.Itoa(k)+"-%d.ts", LiveAudioPlaylist(k))...)
+			continue
+		}
 		af := "apad"
 		if x.Input != "" && tempoOn(x.Tempo) {
 			af = "atempo=" + strconv.FormatFloat(x.Tempo, 'f', -1, 64) + ",apad"

@@ -37,6 +37,9 @@ type Prog struct {
 	// ExtraID: a title outside the library (channel_extras; ItemID is
 	// then -ExtraID); 0 for the library's.
 	ExtraID int64
+	// TitleID: the movie or series the programme is of (0: UnitID), what
+	// must not be on two channels at once.
+	TitleID int64
 }
 
 // Pool is what a channel's rules take: the units (by id) and each unit's
@@ -51,7 +54,11 @@ type Pool struct {
 func (p Pool) Empty() bool { return len(p.Units) == 0 }
 
 // Catalog reads the library's movies and series for channels.
-type Catalog struct{ DB *sql.DB }
+type Catalog struct {
+	DB *sql.DB
+	// Roots: the library folders picks of kind PickFolder and Browse see.
+	Roots []Root
+}
 
 // Units returns every movie and series in the library (not missing), by id.
 func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
@@ -123,7 +130,7 @@ func (c Catalog) Progs(ctx context.Context, units []Unit) (map[int64][]Prog, err
 				return err
 			}
 			if last == nil || last.ItemID != item || last.UnitID != unit {
-				out[unit] = append(out[unit], Prog{ItemID: item, UnitID: unit})
+				out[unit] = append(out[unit], Prog{ItemID: item, UnitID: unit, TitleID: unit})
 				ps := out[unit]
 				last = &ps[len(ps)-1]
 			}
@@ -241,6 +248,10 @@ func (c Catalog) Pool(ctx context.Context, r Rules) (Pool, error) {
 
 // PoolOf is Pool over units already read (the generator reads them once).
 func (c Catalog) PoolOf(ctx context.Context, units []Unit, r Rules) (Pool, error) {
+	liftTitles(&r)
+	if len(r.Picks) > 0 {
+		return c.picksPool(ctx, units, r)
+	}
 	m := Match(units, r)
 	if r.LibraryUser != 0 {
 		owned, err := c.Owned(ctx, r.LibraryUser)

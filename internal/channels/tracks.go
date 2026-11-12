@@ -2,6 +2,7 @@ package channels
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -11,88 +12,101 @@ import (
 	"github.com/antresol-app/antresol/internal/subtitles"
 )
 
-// Slot is a rendition of the live stream. The slots are fixed, so a
-// channel's master playlist never changes while it runs; what fills a slot
-// changes from programme to programme (Tracks).
-type Slot struct {
-	ID   string // ru, ru2, en, orig (audio); ru, en (subtitles)
-	Name string // the HLS NAME (the API's trackJSON.Name)
-	Lang string // the HLS LANGUAGE
-}
-
-// AudioSlots and SubSlots in the master playlist's order.
-var (
-	AudioSlots = []Slot{{"ru", "Русский", "ru"}, {"ru2", "Русский 2", "ru"}, {"en", "English", "en"}, {"orig", "Оригинал", "mul"}}
-	SubSlots   = []Slot{{"ru", "Русские", "ru"}, {"en", "English", "en"}}
-)
-
-// Slot positions in AudioSlots / SubSlots.
+// The caps of a run's track set (BuildSet).
 const (
-	slotRU, slotRU2, slotEN, slotOrig = 0, 1, 2, 3
-	subRU, subEN                      = 0, 1
+	// AudioCap: at most 8 audio renditions. Each costs one AAC encode
+	// (~2 % of a core, round 3's measure) unless its source is copied,
+	// plus ~200 kbit/s of segments on disk; files on the owner's server
+	// carry 2–6 tracks plus 0–2 voice-overs beside them, so 8 covers
+	// practically every programme, and a TV's picker stays readable.
+	AudioCap = 8
+	// SubCap: at most 6 subtitle renditions. Subtitles cost nothing to
+	// encode (the server writes WebVTT), so the cap is the picker's: a
+	// TV list of six fits a screen, and files rarely carry more than
+	// two or three text languages.
+	SubCap = 6
 )
 
 // AudioSource is what an audio output reads: the file's stream Index
 // (External ""), an external audio file (its first stream, shifted by
-// OffsetMs, at Tempo), or silence (External "", Index -1).
+// OffsetMs, at Tempo), or silence (External "", Index -1). Copy: the
+// source is AAC-LC, ≤ 2 channels, 48 kHz, played as it is (no encode).
 type AudioSource struct {
 	External        string
 	Index           int
 	OffsetMs, Tempo float64
+	Copy            bool
 }
 
 var silence = AudioSource{Index: -1}
 
-// AudioPick is the track a slot plays in a programme.
-type AudioPick struct {
-	Source AudioSource
-	// Lang: ISO 639-1 ("" unknown); Studio: the voice-over studio ("" none
-	// known); Title: the track's own title.
-	Lang, Studio, Title string
-	External, Cleaned   bool
+// AudioTrack is one audio track of a programme under its key.
+type AudioTrack struct {
+	// Key identifies the rendition the track plays in: "<lang>:<voice>"
+	// for a Russian voice or another language's track, "<lang>:<voice>+clean"
+	// for a cleaned voice-over, "orig:<lang>" for the programme's
+	// original-language track ("#2" marks a second untitled track of
+	// one language in a programme).
+	Key string
+	// Lang: ISO 639-1 ("" unknown); Voice: whose voice, as shown (the
+	// studio, else the title without codec words; "" none).
+	Lang, Voice string
+	Original    bool
+	Source      AudioSource
+	// Studio: the voice-over studio ("" none known); Title the track's own.
+	Studio, Title     string
+	External, Cleaned bool
+	// fav: its place in «Любимые озвучки» (len(Studios): none).
+	fav int
 }
 
-// SubPick is the subtitle track a slot shows in a programme: the file's
-// stream Index (External "") or a subtitle file (External, Codec its
-// codec).
+// SubPick is a subtitle track: the file's stream Index (External "") or
+// a subtitle file (External, Codec its codec).
 type SubPick struct {
 	External, Codec string
 	Index           int
 	Lang, Title     string
 }
 
-// Tracks are the renditions of one programme: Audio[i] fills AudioSlots[i]
-// (nil: the programme has no such track, the slot plays Fallback, the
-// programme's «Русский» choice, else its default track, else silence);
-// Subs[i] fills SubSlots[i] (nil: empty WebVTT segments).
+// SubTrack is one text subtitle track of a programme under its key
+// ("<lang>", "<lang>#2" for the language's second track).
+type SubTrack struct {
+	Key  string
+	Pick SubPick
+}
+
+// Tracks are a programme's audio and text subtitle tracks, each under its
+// key, in the programme's own order (Russian voices first: favourite
+// studios, the file's own before a file beside it, the default; then the
+// original; then the others). Default is what plays when nothing else
+// fits: the file's default track, else its first, else an external one,
+// else silence.
 type Tracks struct {
-	Audio    [4]*AudioPick
-	Fallback AudioSource
-	Subs     [2]*SubPick
+	Audio   []AudioTrack
+	Subs    []SubTrack
+	Default AudioSource
 }
 
-// Source of slot i: its own track, else the fallback.
-func (t Tracks) source(i int) AudioSource {
-	if p := t.Audio[i]; p != nil {
-		return p.Source
-	}
-	return t.Fallback
-}
-
-// PlanOptions are the household's settings the slots follow (one encoder
-// serves every profile of a channel).
+// PlanOptions are the household's settings the tracks follow (one
+// encoder serves every profile of a channel).
 type PlanOptions struct {
 	// Studios: «Любимые озвучки», best first.
 	Studios []string
-	// PreferCleaned: a voice-over's cleaned version («Очищено») plays in
-	// its slot instead of the studio's track.
+	// PreferCleaned: a voice-over's cleaned version («Очищено») ranks
+	// before the studio's own track.
 	PreferCleaned bool
+	// Lang: the server's metadata language, the language of the
+	// renditions' names ("" Russian).
+	Lang string
 }
 
 // externalBase is the index the API gives the external audio tracks of a
 // file (track i of the list is externalBase+i); media.ExternalAudio's
 // CleanedOf counts that way.
 const externalBase = 2000
+
+// cleanSuffix marks the key of a cleaned voice-over.
+const cleanSuffix = "+clean"
 
 // candidate is one audio track of a programme.
 type candidate struct {
@@ -105,51 +119,45 @@ type candidate struct {
 	cleanedOf, position int
 }
 
-func (c candidate) pick() *AudioPick {
-	return &AudioPick{Source: c.src, Lang: c.lang, Studio: c.studio, Title: c.title, External: c.external, Cleaned: c.cleaned}
+// copyable: an AAC-LC source of ≤ 2 channels at 48 kHz plays as it is (an
+// unknown profile — a probe stored before it was kept — is encoded).
+func copyable(a media.AudioStream) bool {
+	return strings.EqualFold(a.Codec, "aac") && a.Profile == "LC" && a.Channels >= 1 && a.Channels <= 2 && a.SampleRate == 48000
 }
 
-// voice identifies whose voice a track is (its studio, else its title).
-func (c candidate) voice() string {
-	if c.studio != "" {
-		return release.StudioKey(c.studio)
-	}
-	if genericTitle(c.title) {
-		return ""
-	}
-	return strings.ToLower(strings.TrimSpace(c.title))
-}
-
-// Plan fills the slots of a programme from its file's probe, its external
+// Plan lists a programme's tracks from its file's probe, its external
 // audio tracks (as the API lists them: the files beside it, then the
-// cleaned voice-overs) and its subtitle files:
+// cleaned voice-overs) and its subtitle files, each under its key.
 //
-//   - ru: the best Russian voice: the household's favourite studios in
-//     their order, else the file's default Russian track, else its first
-//     Russian one, else an external Russian voice-over; ru2 the next
-//     Russian track of another voice. With PreferCleaned a chosen voice's
-//     cleaned version plays instead.
-//   - en: the default English track, else the first.
-//   - orig: a non-Russian track whose title says it is the original, else
-//     the file's first track neither Russian nor English (a release of a
+//   - A Russian track's key is its voice: a favourite studio its title
+//     names, else the studio of its title or file, else its title without
+//     codec and channel words; a studio's 5.1 and 2.0 are one voice (the
+//     programme's first of them plays). A cleaned voice-over is its own
+//     key («LostFilm (очищено)»).
+//   - The original: a non-Russian track whose title says it is, else the
+//     file's first track neither Russian nor English (a release of a
 //     French film adds Russian and English voices to the French; the
 //     title's original language is not kept in the library), else its
-//     first English one, else an external one.
-//   - subtitles ru / en: the first full (not forced) text track of the
-//     language, the file's own before the subtitle files.
+//     first English one, else an external one. Its key is its language.
+//   - Every other track: its language and voice.
+//   - Subtitles: the full (not forced) text tracks, the file's own before
+//     the subtitle files, keyed by language and their place in it.
 func Plan(p media.ProbeResult, ext []media.ExternalAudio, subs []subtitles.External, o PlanOptions) Tracks {
 	var all []candidate
 	for i, a := range p.Audio {
-		all = append(all, candidate{id: a.Index, src: AudioSource{Index: a.Index}, lang: audioLang(a.Lang, a.Title), title: a.Title,
-			studio: firstStudio(a.Title), def: a.Default, position: i})
+		all = append(all, candidate{id: a.Index, src: AudioSource{Index: a.Index, Copy: copyable(a)}, lang: audioLang(a.Lang, a.Title),
+			title: a.Title, studio: studioOf(a.Title, o.Studios), def: a.Default, position: i})
 	}
 	var cleaned []candidate
 	for i, e := range ext {
 		c := candidate{id: externalBase + i, src: AudioSource{External: e.Path, OffsetMs: e.OffsetMs, Tempo: e.Tempo},
 			lang: audioLang(e.Stream.Lang, e.Stream.Title), title: e.Stream.Title, studio: e.Studio, external: true,
 			position: len(p.Audio) + i}
+		// a file beside the video plays as it is only unshifted: an offset
+		// or a tempo needs the filters
+		c.src.Copy = copyable(e.Stream) && e.OffsetMs == 0 && !tempoOn(e.Tempo)
 		if c.studio == "" {
-			c.studio = firstStudio(e.Stream.Title)
+			c.studio = studioOf(e.Stream.Title, o.Studios)
 		}
 		if c.lang == "" && c.studio != "" {
 			c.lang = "ru" // a voice-over studio's file that names no language
@@ -161,14 +169,6 @@ func Plan(p media.ProbeResult, ext []media.ExternalAudio, subs []subtitles.Exter
 		}
 		all = append(all, c)
 	}
-	var t Tracks
-	// Russian
-	var ru []candidate
-	for _, c := range all {
-		if c.lang == "ru" {
-			ru = append(ru, c)
-		}
-	}
 	rank := func(c candidate) int {
 		for i, s := range o.Studios {
 			if c.studio != "" && release.StudioKey(c.studio) == release.StudioKey(s) || release.NamesStudio(c.title, s) {
@@ -176,6 +176,14 @@ func Plan(p media.ProbeResult, ext []media.ExternalAudio, subs []subtitles.Exter
 			}
 		}
 		return len(o.Studios)
+	}
+	var t Tracks
+	// Russian voices, best first, each cleaned version beside its voice
+	var ru []candidate
+	for _, c := range all {
+		if c.lang == "ru" {
+			ru = append(ru, c)
+		}
 	}
 	slices.SortStableFunc(ru, func(a, b candidate) int {
 		if ra, rb := rank(a), rank(b); ra != rb {
@@ -195,40 +203,62 @@ func Plan(p media.ProbeResult, ext []media.ExternalAudio, subs []subtitles.Exter
 		}
 		return a.position - b.position
 	})
-	withCleaned := func(c candidate) *AudioPick {
-		if o.PreferCleaned {
-			for _, x := range cleaned {
-				if x.cleanedOf == c.id {
-					x.studio, x.lang = c.studio, c.lang
-					if x.title == "" {
-						x.title = c.title
-					}
-					return x.pick()
+	keys := map[string]bool{}
+	add := func(tr AudioTrack, generic bool) {
+		if keys[tr.Key] {
+			if !generic {
+				return // the same voice again (its 5.1 and its 2.0)
+			}
+			base := tr.Key
+			for n := 2; keys[tr.Key]; n++ {
+				tr.Key = base + "#" + strconv.Itoa(n)
+			}
+		}
+		keys[tr.Key] = true
+		t.Audio = append(t.Audio, tr)
+	}
+	track := func(c candidate) AudioTrack {
+		return AudioTrack{Lang: c.lang, Source: c.src, Studio: c.studio, Title: c.title, External: c.external, fav: rank(c)}
+	}
+	used := map[int]bool{}
+	for _, c := range ru {
+		vk, vshow := voiceOf(c)
+		tr := track(c)
+		tr.Key, tr.Voice = "ru:"+vk, vshow
+		var cl []AudioTrack
+		for _, x := range cleaned {
+			if x.cleanedOf == c.id && !used[x.id] {
+				used[x.id] = true
+				ct := track(x)
+				ct.Key, ct.Voice, ct.Lang, ct.Studio, ct.Cleaned, ct.fav = tr.Key+cleanSuffix, vshow, "ru", c.studio, true, tr.fav
+				if ct.Title == "" {
+					ct.Title = c.title
 				}
+				cl = append(cl, ct)
 			}
 		}
-		return c.pick()
-	}
-	if len(ru) > 0 {
-		t.Audio[slotRU] = withCleaned(ru[0])
-		for _, c := range ru[1:] {
-			if v := c.voice(); v == "" || v != ru[0].voice() {
-				t.Audio[slotRU2] = withCleaned(c)
-				break
+		if o.PreferCleaned {
+			for _, x := range cl {
+				add(x, false)
+			}
+		}
+		add(tr, vk == "")
+		if !o.PreferCleaned {
+			for _, x := range cl {
+				add(x, false)
 			}
 		}
 	}
-	// English
-	var en []candidate
-	for _, c := range all {
-		if c.lang == "en" {
-			en = append(en, c)
+	// cleaned versions of a track that is not a Russian one (or unknown)
+	for _, x := range cleaned {
+		if used[x.id] {
+			continue
 		}
-	}
-	if k := slices.IndexFunc(en, func(c candidate) bool { return c.def && !c.external }); k >= 0 {
-		t.Audio[slotEN] = en[k].pick()
-	} else if len(en) > 0 {
-		t.Audio[slotEN] = en[0].pick()
+		vk, vshow := voiceOf(x)
+		ct := track(x)
+		ct.Lang = "ru"
+		ct.Key, ct.Voice, ct.Cleaned = "ru:"+vk+cleanSuffix, vshow, true
+		add(ct, false)
 	}
 	// the original
 	var foreign []candidate
@@ -237,61 +267,132 @@ func Plan(p media.ProbeResult, ext []media.ExternalAudio, subs []subtitles.Exter
 			foreign = append(foreign, c)
 		}
 	}
+	orig := -1
 	if k := slices.IndexFunc(foreign, func(c candidate) bool { return saysOriginal(c.title) }); k >= 0 {
-		t.Audio[slotOrig] = foreign[k].pick()
+		orig = k
 	} else if k := slices.IndexFunc(foreign, func(c candidate) bool { return !c.external && c.lang != "en" }); k >= 0 {
-		t.Audio[slotOrig] = foreign[k].pick()
+		orig = k
 	} else if k := slices.IndexFunc(foreign, func(c candidate) bool { return !c.external }); k >= 0 {
-		t.Audio[slotOrig] = foreign[k].pick()
+		orig = k
 	} else if len(foreign) > 0 {
-		t.Audio[slotOrig] = foreign[0].pick()
+		orig = 0
 	}
-	// what an empty slot plays
+	if orig >= 0 {
+		c := foreign[orig]
+		tr := track(c)
+		tr.Key, tr.Original = "orig:"+c.lang, true
+		_, tr.Voice = voiceOf(c)
+		add(tr, false)
+	}
+	// the other languages
+	for i, c := range foreign {
+		if i == orig {
+			continue
+		}
+		vk, vshow := voiceOf(c)
+		tr := track(c)
+		tr.Key, tr.Voice = c.lang+":"+vk, vshow
+		add(tr, vk == "")
+	}
+	// what plays when nothing fits
 	switch {
-	case t.Audio[slotRU] != nil:
-		t.Fallback = t.Audio[slotRU].Source
 	case len(p.Audio) > 0:
-		t.Fallback = AudioSource{Index: p.Audio[0].Index}
-		for _, a := range p.Audio {
+		t.Default = all[0].src
+		for i, a := range p.Audio {
 			if a.Default {
-				t.Fallback = AudioSource{Index: a.Index}
+				t.Default = all[i].src
 				break
 			}
 		}
 	case len(all) > 0:
-		t.Fallback = all[0].src
+		t.Default = all[0].src
 	default:
-		t.Fallback = silence
+		t.Default = silence
 	}
 	// subtitles
-	for i, slot := range SubSlots {
-		for _, s := range p.Subs {
-			if !s.Forced && media.TextSubCodecs[strings.ToLower(s.Codec)] && subtitles.NormLang(s.Lang) == slot.Lang {
-				t.Subs[i] = &SubPick{Index: s.Index, Codec: s.Codec, Lang: slot.Lang, Title: s.Title}
-				break
-			}
+	n := map[string]int{}
+	addSub := func(s SubPick) {
+		lang := s.Lang
+		n[lang]++
+		key := bcp47(lang)
+		if n[lang] > 1 {
+			key += "#" + strconv.Itoa(n[lang])
 		}
-		if t.Subs[i] != nil {
-			continue
+		t.Subs = append(t.Subs, SubTrack{Key: key, Pick: s})
+	}
+	for _, s := range p.Subs {
+		if !s.Forced && media.TextSubCodecs[strings.ToLower(s.Codec)] {
+			addSub(SubPick{Index: s.Index, Codec: s.Codec, Lang: langTag(s.Lang), Title: s.Title})
 		}
-		for _, s := range subs {
-			if !s.Forced && media.SubDemuxer[s.Codec] != "" && subtitles.NormLang(s.Lang) == slot.Lang {
-				t.Subs[i] = &SubPick{External: s.Path, Codec: s.Codec, Lang: slot.Lang, Title: s.Title}
-				break
-			}
+	}
+	for _, s := range subs {
+		if !s.Forced && media.SubDemuxer[s.Codec] != "" {
+			addSub(SubPick{External: s.Path, Codec: s.Codec, Lang: langTag(s.Lang), Title: s.Title})
 		}
 	}
 	return t
 }
 
+func tempoOn(t float64) bool { return t > 0 && t != 1 }
+
+// studioOf is the studio a track title names: a favourite one first (the
+// household may type studios outside the table), else the table's first.
+func studioOf(title string, favourites []string) string {
+	for _, s := range favourites {
+		if release.NamesStudio(title, s) {
+			return s
+		}
+	}
+	return firstStudio(title)
+}
+
+// voiceOf is a track's voice: its key part and how it is shown (the
+// studio, else the title without its language and codec words).
+func voiceOf(c candidate) (key, show string) {
+	if c.studio != "" {
+		return release.StudioKey(c.studio), c.studio
+	}
+	show = voiceTitle(c.title)
+	return strings.ToLower(show), show
+}
+
+// voiceTitle is a track title without the language it begins with and
+// without codec and channel words («Русский — Дубляж AC3 5.1» → «Дубляж»);
+// a kind-of-voice abbreviation is dropped beside a name («AVO - Дмитрий
+// Пучков» → «Дмитрий Пучков») and is the kind alone («MVO» →
+// «Многоголосый»); "" when nothing is left.
+func voiceTitle(title string) string {
+	var kept []string
+	kind := ""
+	for _, w := range strings.Fields(withoutLanguage(title)) {
+		bare := strings.ToLower(strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }))
+		if bare == "" || genericWords[bare] || strings.Trim(bare, "0123456789.") == "" || genericTitle(bare) {
+			continue
+		}
+		if k, ok := voiceAbbrevs[bare]; ok {
+			if kind == "" {
+				kind = k
+			}
+			continue
+		}
+		kept = append(kept, strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }))
+	}
+	if len(kept) == 0 {
+		return kind
+	}
+	return strings.Join(kept, " ")
+}
+
+// voiceAbbrevs are the release abbreviations of a kind of voice-over (the
+// voiceKinds word they stand for).
+var voiceAbbrevs = map[string]string{"dub": "Дубляж", "mvo": "Многоголосый", "dvo": "Двухголосый",
+	"avo": "Авторский", "vo": "Одноголосый", "svo": "Одноголосый", "pmvo": "Многоголосый", "lmvo": "Многоголосый"}
+
 // audioLang is a track's ISO 639-1 language: its tag, else a Cyrillic
 // title's (Russian unless Ukrainian letters say otherwise); "" unknown.
 func audioLang(tag, title string) string {
-	if c := subtitles.NormLang(tag); c != "" {
+	if c := langTag(tag); c != "" {
 		return c
-	}
-	if t := strings.ToLower(strings.TrimSpace(tag)); t != "" && t != "und" && len(t) <= 3 {
-		return t // a code NormLang does not list ("tr", "hun")
 	}
 	cyr := false
 	for _, r := range title {
@@ -330,16 +431,27 @@ func saysOriginal(title string) bool {
 var genericWords = map[string]bool{"ac3": true, "eac3": true, "dts": true, "hd": true, "ma": true, "truehd": true, "atmos": true,
 	"aac": true, "flac": true, "mp3": true, "opus": true, "pcm": true, "lpcm": true, "dd": true, "ddp": true, "dolby": true,
 	"digital": true, "plus": true, "stereo": true, "mono": true, "surround": true, "ch": true, "x": true, "kbps": true,
-	"audio": true, "track": true, "default": true, "original": true, "orig": true}
+	"audio": true, "track": true, "default": true, "original": true, "orig": true, "оригинал": true, "оригинальная": true,
+	"оригинальный": true, "дорожка": true, "стерео": true, "моно": true}
 
 // genericTitle: a title of codec and channel words only («AC3 5.1»).
 func genericTitle(title string) bool {
 	for _, w := range strings.FieldsFunc(strings.ToLower(title), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		if !genericWords[w] && strings.Trim(w, "0123456789") != "" {
+		if !genericWords[w] && strings.Trim(w, "0123456789") != "" && !isChannelWord(w) {
 			return false
 		}
 	}
 	return true
+}
+
+// isChannelWord: «2ch», «6ch», «5.1ch» parts, «kbps» rates («192kbps»).
+func isChannelWord(w string) bool {
+	for _, suf := range []string{"ch", "kbps", "k"} {
+		if d, ok := strings.CutSuffix(w, suf); ok && d != "" && strings.Trim(d, "0123456789") == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // withoutLanguage is a track title without the language it begins with
@@ -372,65 +484,4 @@ func voiceKind(lang, voice string) string {
 		return i18n.TL(lang, k)
 	}
 	return voice
-}
-
-// TrackLabel is a slot as a programme fills it, for the API.
-type TrackLabel struct {
-	Slot, Name, Label, Lang string
-}
-
-// Labels are the slots present in the programme with descriptive labels
-// in lang («Русский — LostFilm», «Русский — Кураж-Бамбей (внешняя)»,
-// «English», «Оригинал (fr)»). Never nil.
-func (t Tracks) Labels(lang string) (audio, subs []TrackLabel) {
-	audio, subs = []TrackLabel{}, []TrackLabel{}
-	for i, p := range t.Audio {
-		if p == nil {
-			continue
-		}
-		s := AudioSlots[i]
-		l := TrackLabel{Slot: s.ID, Name: s.Name, Lang: p.Lang}
-		switch i {
-		case slotRU, slotRU2:
-			l.Lang = "ru"
-			voice := p.Studio
-			if voice == "" && !genericTitle(p.Title) && !saysOriginal(p.Title) {
-				voice = withoutLanguage(p.Title)
-			}
-			voice = voiceKind(lang, voice)
-			switch {
-			case voice == "":
-				l.Label = i18n.TL(lang, "Русский")
-			case p.Cleaned:
-				l.Label = i18n.TL(lang, "Русский — %s (очищено)", voice)
-			case p.External:
-				l.Label = i18n.TL(lang, "Русский — %s (внешняя)", voice)
-			default:
-				l.Label = i18n.TL(lang, "Русский — %s", voice)
-			}
-		case slotEN:
-			l.Lang, l.Label = "en", "English"
-		case slotOrig:
-			if p.Lang == "" {
-				l.Lang, l.Label = "und", i18n.TL(lang, "Оригинал")
-			} else {
-				l.Label = i18n.TL(lang, "Оригинал (%s)", p.Lang)
-			}
-		}
-		audio = append(audio, l)
-	}
-	for i, p := range t.Subs {
-		if p == nil {
-			continue
-		}
-		s := SubSlots[i]
-		l := TrackLabel{Slot: s.ID, Name: s.Name, Lang: s.Lang}
-		if i == subRU {
-			l.Label = i18n.TL(lang, "Русские")
-		} else {
-			l.Label = "English"
-		}
-		subs = append(subs, l)
-	}
-	return audio, subs
 }

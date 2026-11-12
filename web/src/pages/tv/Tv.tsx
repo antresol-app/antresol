@@ -69,6 +69,7 @@ export function Tv() {
   const [previewId, setPreviewId] = useState<number | null>(null)
   const preview = shown.find((c) => c.id === previewId) ?? shown.find((c) => c.id === lastId) ?? shown[0]
   const favorites = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, Boolean(c.favorite)])), [channels])
+  const logos = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, c.logoUrl])), [channels])
 
   const filterKey = filterParam(filter) || 'all'
   const filters = [
@@ -177,6 +178,7 @@ export function Tv() {
                 last={c.id === lastId}
                 selected={wide && preview?.id === c.id}
                 eager={i < 8}
+                logoSlot={shown.some((x) => x.logoUrl)}
                 onFavorite={(on) => toggleFavorite(c.id, on)}
                 onPreview={wide ? () => setPreviewId(c.id) : undefined}
               />
@@ -190,7 +192,7 @@ export function Tv() {
         </div>
       )}
       {view === 'guide' && channels.length > 0 && (shown.length > 0 || filter.kind !== 'fav') && (
-        <Guide filter={filter} favorites={favorites} onFavorite={toggleFavorite} playerTo={(id) => playerPath(id, filter)} />
+        <Guide filter={filter} favorites={favorites} onFavorite={toggleFavorite} playerTo={(id) => playerPath(id, filter)} logos={logos} />
       )}
       {favError && <Toast tone="error">{favError}</Toast>}
     </div>

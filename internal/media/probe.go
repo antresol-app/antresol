@@ -30,11 +30,14 @@ type VideoStream struct {
 type AudioStream struct {
 	Index              int
 	Codec, Lang, Title string
-	Channels           int
-	Default            bool
-	SampleRate         int   // Hz, 0 when unknown
-	BitDepth           int   // bits per sample of lossless audio, 0 when unknown
-	BitRate            int64 // bit/s; the container's for an audio-only file without one
+	// Profile is ffprobe's ("LC", "HE-AAC"…); "" in probe-cache rows made
+	// before it was recorded.
+	Profile    string `json:",omitempty"`
+	Channels   int
+	Default    bool
+	SampleRate int   // Hz, 0 when unknown
+	BitDepth   int   // bits per sample of lossless audio, 0 when unknown
+	BitRate    int64 // bit/s; the container's for an audio-only file without one
 }
 
 type SubStream struct {
@@ -154,7 +157,7 @@ func parseProbe(js []byte, path string) (ProbeResult, error) {
 			}
 		case "audio":
 			a := AudioStream{Index: s.Index, Codec: s.CodecName, Lang: lang,
-				Title: title, Channels: s.Channels, Default: s.Disposition["default"] == 1}
+				Title: title, Profile: s.Profile, Channels: s.Channels, Default: s.Disposition["default"] == 1}
 			a.SampleRate, _ = strconv.Atoi(s.SampleRate)
 			a.BitRate, _ = strconv.ParseInt(s.BitRate, 10, 64)
 			if n, err := strconv.Atoi(s.RawBits); err == nil && n > 0 {

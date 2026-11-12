@@ -1,7 +1,6 @@
 # group "channels": Russian kept on purpose
 internal/channels/generate.go  # names and groups of generated channels, stored in the database like library metadata (data, the library's language)
 internal/channels/iptv.go: Каналы  # the IPTV group of a channel without one, stored-data default (the library's language)
-internal/channels/tracks.go: Русский 2  # the HLS NAME of a live stream's slot: fixed per server (clients match it), the API's label is the translated text
 internal/channels/tracks.go: іїєґІЇЄҐ  # Ukrainian letters that tell a track's language
 internal/channels/tracks.go: оригинал  # a word in track titles that says «the original»
 internal/channels/tracks.go: дубляж  # a word in track titles that names a kind of voice-over (matched, then shown translated)
@@ -23,3 +22,13 @@ internal/channels/tracks.go: Одноголосый  # catalog key of a voice-ov
 internal/channels/tracks.go: Авторский  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
 internal/channels/tracks.go: Профессиональный  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
 internal/channels/tracks.go: Любительский  # catalog key of a voice-over kind, translated through i18n.TL in voiceKind
+internal/channels/langnames.go  # the languages' own names (endonyms): a rendition of another language is named in that language, whatever the server's
+internal/channels/tracks.go: оригинальная  # a word in track titles that says «the original» (dropped from a voice's name)
+internal/channels/tracks.go: оригинальный  # a word in track titles that says «the original» (dropped from a voice's name)
+internal/channels/tracks.go: дорожка  # a word in track titles that names no voice (dropped from a voice's name)
+internal/channels/tracks.go: стерео  # a channel word in track titles (dropped from a voice's name)
+internal/channels/tracks.go: моно  # a channel word in track titles (dropped from a voice's name)
+internal/channels/trackset.go: полные  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
+internal/channels/trackset.go: полный  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
+internal/channels/trackset.go: субтитры  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
+internal/channels/trackset.go: текст  # a word in subtitle titles that names no kind of subtitles (matched, never shown)

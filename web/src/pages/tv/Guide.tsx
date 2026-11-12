@@ -16,6 +16,7 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { applyFilter, blockOf, gridMove, guideOrigin, labelInset, mergePrograms, MIN, ticksOf, type ChannelFilter } from './model'
+import { ChannelLogo } from './ChannelLogo'
 import { ProgramSheet } from './ProgramSheet'
 import { clock, useNow } from './useChannels'
 import styles from './Guide.module.css'
@@ -34,9 +35,11 @@ export interface GuideProps {
   onFavorite: (id: number, on: boolean) => void
   /** The player's address for a channel (keeps the filter). */
   playerTo: (id: number) => string
+  /** The channels' logos as the list knows them (an EPG window may leave them out). */
+  logos?: Record<number, string | undefined>
 }
 
-export function Guide({ filter, favorites, onFavorite, playerTo }: GuideProps) {
+export function Guide({ filter, favorites, onFavorite, playerTo, logos }: GuideProps) {
   const t = useT()
   const compact = useIsCompact()
   const navigate = useNavigate()
@@ -86,6 +89,8 @@ export function Guide({ filter, favorites, onFavorite, playerTo }: GuideProps) {
       programs: c.programs.filter((p) => Date.parse(p.end) > origin && Date.parse(p.start) < end),
     }))
   }, [data, favorites, filter, origin, end])
+  // a logo in any row: the rows without one keep its slot (the names line up)
+  const anyLogo = rows.some((r) => r.channel.logoUrl ?? logos?.[r.channel.id])
 
   // the visible time's left edge (track px): the labels of blocks begun before it stay in sight
   const [viewLeft, setViewLeft] = useState(0)
@@ -102,7 +107,8 @@ export function Guide({ filter, favorites, onFavorite, playerTo }: GuideProps) {
     if (el.scrollLeft + el.clientWidth > el.scrollWidth - 480 && data.end < Date.now() + AHEAD_MS) loadMore(data.end, false)
   }
 
-  const chanW = compact ? 144 : 264
+  // a logo column widens it by the logo and its gap (ChannelLogo xs 24×1.6 / sm 30×1.6 + 10)
+  const chanW = (compact ? 144 : 264) + (anyLogo ? (compact ? 48 : 58) : 0)
   const toNow = useCallback(
     (smooth: boolean) => {
       const el = scroller.current
@@ -212,6 +218,7 @@ export function Guide({ filter, favorites, onFavorite, playerTo }: GuideProps) {
               <div key={c.id} className={styles.row} role="row">
                 <div className={styles.chan} role="rowheader">
                   <span className={styles.chanNum}>{c.number}</span>
+                  {anyLogo && <ChannelLogo url={c.logoUrl ?? logos?.[c.id]} size={compact ? 'xs' : 'sm'} reserve />}
                   <span className={styles.chanName} title={c.name}>
                     {c.name}
                   </span>

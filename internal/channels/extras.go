@@ -81,7 +81,7 @@ const (
 // the channel is not a hand-picked list or an ordered one (an extra would
 // break its order), and it shows movies.
 func ExtrasOn(r Rules) bool {
-	return r.Extras && len(r.Titles) == 0 && r.Order != OrderOrdered && (len(r.Kinds) == 0 || contains(r.Kinds, library.KindMovie))
+	return r.Extras && len(r.Titles) == 0 && len(r.Picks) == 0 && r.Order != OrderOrdered && (len(r.Kinds) == 0 || contains(r.Kinds, library.KindMovie))
 }
 
 // SetExtras sets the implementation of titles outside the library (nil:

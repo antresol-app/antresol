@@ -187,6 +187,8 @@ func run() error {
 	// Saved settings apply live: «Язык метаданных» (and the sources build's own).
 	settingsDefaults := ext.settingsDefaults()
 	var trickWorker *trickplay.Worker // set below; Kick is nil-safe
+	var chans *channels.Service       // set below
+	metaLang := ""
 	applySettings := func(s api.AppSettings) {
 		ext.applySettings(s)
 		// «Превью при перемотке» turned on: the queue starts now
@@ -196,6 +198,11 @@ func run() error {
 		// «Язык метаданных»: the language of future scans and enrichment
 		if metaSrc.TMDB != nil {
 			metaSrc.TMDB.SetLanguage(i18n.TMDB(s.MetadataLanguageOrDefault()))
+		}
+		// and of the live channels' audio and subtitle names
+		metaLang = s.MetadataLanguageOrDefault()
+		if chans != nil {
+			chans.SetLanguage(metaLang)
 		}
 	}
 	if saved, err := api.LoadAppSettings(ctx, database, settingsDefaults); err != nil {
@@ -350,7 +357,10 @@ func run() error {
 		live = &channels.Live{FFmpeg: cfg.FFmpeg, HW: hw, Dir: filepath.Join(cfg.TranscodeDir, "live"), Max: cfg.ChannelsMax}
 		defer live.Close()
 	}
-	chans := channels.New(database, live)
+	chans = channels.New(database, live)
+	chans.SetLanguage(metaLang)
+	// channels of picked folders and the editor's folder browse
+	chans.SetRoots(channels.LibraryRoots(jobs.Scanner.Movies, jobs.Scanner.Series))
 	chans.Probe = func(ctx context.Context, path string) (media.ProbeResult, error) {
 		return media.Probe(ctx, cfg.FFprobe, path)
 	}

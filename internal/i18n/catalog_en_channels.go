@@ -21,6 +21,14 @@ func init() {
 		"На канале сейчас нечего показывать":                   "Nothing to show on this channel right now",
 		"Неверное время начала":                                "Invalid start time",
 		"Неизвестный язык интерфейса":                          "Unknown interface language",
+		// picks and uploaded logos (round 5)
+		"Неизвестный фильм или серия в составе канала": "An unknown movie or episode in the channel’s lineup",
+		"Недопустимая папка в составе канала":          "An invalid folder in the channel’s lineup",
+		"Неизвестный вид элемента в составе канала":    "An unknown kind of entry in the channel’s lineup",
+		"Слишком много элементов в составе канала":     "Too many entries in the channel’s lineup",
+		"Папка не найдена":                             "Folder not found",
+		"Загрузите картинку PNG, JPEG или WebP":        "Upload a PNG, JPEG or WebP image",
+		"Картинка больше 2 МБ":                         "The image is larger than 2 MB",
 		// kinds of voice-over in track titles (channels.voiceKind)
 		"Дубляж":           "Dubbed",
 		"Многоголосый":     "Multi-voice",
@@ -36,6 +44,10 @@ func init() {
 		"Русский — %s (очищено)": "Russian — %s (cleaned)",
 		"Оригинал (%s)":          "Original (%s)",
 		"Русские":                "Russian",
+		"Русский (очищено)":      "Russian (cleaned)",
+		"Звук":                   "Sound",
+		"Другой язык":            "Other language",
+		"Субтитры":               "Subtitles",
 		// generated channels and their categories (channels.Display)
 		"Каналы":               "Channels",
 		"Кино и сериалы":       "Movies & Series",

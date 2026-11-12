@@ -51,12 +51,30 @@ func csrfGuarded(next http.Handler, cop *http.CrossOriginProtection) http.Handle
 	}))
 }
 
-// fileUpload: the «Файл» import (POST /api/import/files) and «Добавить книги»
-// (POST /api/books/upload) are multipart, a type a cross-origin form may send
-// without a preflight, so they must also carry X-Vault-Upload, a header only a
-// same-origin script can set.
+// fileUpload: the «Файл» import (POST /api/import/files), «Добавить книги»
+// (POST /api/books/upload) and a channel's logo (POST /api/channels/{id}/logo)
+// are multipart, a type a cross-origin form may send without a preflight, so
+// they must also carry X-Vault-Upload, a header only a same-origin script can
+// set.
 func fileUpload(r *http.Request, mt string) bool {
 	return mt == "multipart/form-data" && r.Method == http.MethodPost &&
-		(r.URL.Path == "/api/import/files" || r.URL.Path == "/api/books/upload") &&
+		(r.URL.Path == "/api/import/files" || r.URL.Path == "/api/books/upload" || channelLogoPath(r.URL.Path)) &&
 		r.Header.Get("X-Vault-Upload") != ""
+}
+
+// channelLogoPath: /api/channels/{id}/logo.
+func channelLogoPath(p string) bool {
+	id, ok := strings.CutPrefix(p, "/api/channels/")
+	if !ok {
+		return false
+	}
+	if id, ok = strings.CutSuffix(id, "/logo"); !ok || id == "" {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

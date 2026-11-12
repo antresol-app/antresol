@@ -30,34 +30,68 @@ func TestRenderPlaylistWindowAndDiscontinuitySequence(t *testing.T) {
 }
 
 func TestRenderMasterAndRenditions(t *testing.T) {
-	m := string(renderMaster(8_192_000, 6_192_000, 1920, 1080))
+	o := PlanOptions{Studios: []string{"Кубик в Кубе"}}
+	set := BuildSet(setProgs(o), o)
+	m := string(renderMaster(set, 8_192_000, 6_192_000, 1920, 1080))
 	want := "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-INDEPENDENT-SEGMENTS\n" +
-		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Русский",LANGUAGE="ru",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-ru.m3u8"` + "\n" +
-		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Русский 2",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-ru2.m3u8"` + "\n" +
-		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-en.m3u8"` + "\n" +
-		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Оригинал",LANGUAGE="mul",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-orig.m3u8"` + "\n" +
-		`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="Русские",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-ru.m3u8"` + "\n" +
-		`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-en.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Кубик в Кубе",LANGUAGE="ru",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-0.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="LostFilm",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-1.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Дубляж",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-2.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Русский",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-3.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Русский 2",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-4.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Оригинал (English)",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-5.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Оригинал (Français)",LANGUAGE="fr",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-6.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-7.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="Русские",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-0.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-1.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="English 2",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=NO,FORCED=NO,URI="subs-2.m3u8"` + "\n" +
 		`#EXT-X-STREAM-INF:BANDWIDTH=8192000,AVERAGE-BANDWIDTH=6192000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="aud",SUBTITLES="sub",CLOSED-CAPTIONS=NONE` + "\nvideo.m3u8\n"
 	if m != want {
 		t.Fatalf("got\n%s\nwant\n%s", m, want)
 	}
-	// programme A has two audio outputs (ru, en), B one (everything plays it)
-	pa := &liveProg{outs: 2, slots: [4]int{0, 0, 1, 1}}
-	pb := &liveProg{outs: 1}
+	// no subtitles anywhere: no subtitle group
+	m = string(renderMaster(BuildSet(nil, PlanOptions{}), 1, 1, 640, 360))
+	if strings.Contains(m, "SUBTITLES") || !strings.Contains(m, `NAME="Звук",LANGUAGE="und",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-0.m3u8"`) {
+		t.Fatalf("empty set %s", m)
+	}
+	// programme A has two audio outputs (rendition 0, 1 → 0; 2 → 1), B one
+	pa := &liveProg{outs: 2, audio: []int{0, 0, 1}, subs: make([]*liveSubs, 2)}
+	pb := &liveProg{outs: 1, audio: []int{0, 0, 0}}
 	segs := []liveSeg{{seq: 10, dur: 6, prog: pa, adur: []float64{6.016, 6.01}}, {seq: 11, dur: 4, prog: pa, adur: []float64{4.1, 4}},
 		{seq: 12, dur: 6, disc: true, prog: pb, adur: []float64{5.99}}}
-	got := string(renderMedia(segs, 1, 10, mediaKind{audio: slotEN + 1}))
+	got := string(renderMedia(segs, 1, 10, mediaKind{audio: 3}))
 	want = "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:7\n#EXT-X-MEDIA-SEQUENCE:10\n#EXT-X-DISCONTINUITY-SEQUENCE:1\n#EXT-X-INDEPENDENT-SEGMENTS\n" +
 		"#EXTINF:6.010,\na1-10.ts\n#EXTINF:4.000,\na1-11.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:5.990,\na0-12.ts\n"
 	if got != want {
-		t.Fatalf("audio en\n%s", got)
+		t.Fatalf("audio 2\n%s", got)
 	}
-	got = string(renderMedia(segs, 1, 2, mediaKind{sub: subEN + 1}))
+	got = string(renderMedia(segs, 1, 2, mediaKind{sub: 2}))
 	want = "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:11\n#EXT-X-DISCONTINUITY-SEQUENCE:1\n#EXT-X-INDEPENDENT-SEGMENTS\n" +
-		"#EXTINF:4.000,\ns-en-11.vtt\n#EXT-X-DISCONTINUITY\n#EXTINF:6.000,\ns-en-12.vtt\n"
+		"#EXTINF:4.000,\ns-1-11.vtt\n#EXT-X-DISCONTINUITY\n#EXTINF:6.000,\ns-1-12.vtt\n"
 	if got != want {
-		t.Fatalf("subs en\n%s", got)
+		t.Fatalf("subs 1\n%s", got)
+	}
+}
+
+// An AAC-LC stereo 48 kHz source goes out as it is: no encode, no apad;
+// the others are encoded as before.
+func TestLiveArgsCopiesAAC(t *testing.T) {
+	in := media.LiveInput{Input: "/m/a.mkv", Audio: []media.LiveAudio{{Index: 1, Copy: true}, {Index: 2}, {Input: "/m/b.mka", Copy: true}, {Index: -1, Copy: true}},
+		DurationSec: 100, OutDir: "/o", Playlist: "run.m3u8"}
+	a := strings.Join(media.LiveArgs("none", in), " ")
+	for _, want := range []string{
+		"-map 0:1 -vn -sn -dn -c:a copy -f hls", "/o/a0-%d.ts /o/run-a0.m3u8",
+		"-map 0:2 -vn -sn -dn -af apad -t 101.000 -c:a aac -b:a 192k -ac 2 -ar 48000", "/o/a1-%d.ts",
+		"-map 1:a:0 -vn -sn -dn -c:a copy -f hls", "/o/a2-%d.ts",
+		// silence is never "copied"
+		"-map 2:a:0 -vn -sn -dn -af apad -t 101.000 -c:a aac", "/o/a3-%d.ts",
+	} {
+		if !strings.Contains(a, want) {
+			t.Errorf("missing %q in %s", want, a)
+		}
+	}
+	if strings.Count(a, "-c:a copy") != 2 || strings.Count(a, "apad") != 2 {
+		t.Errorf("copies %s", a)
 	}
 }
 
@@ -137,14 +171,16 @@ func ffprobeJSON(t *testing.T, args ...string) map[string]any {
 }
 
 // TestLiveCrossesProgrammeBoundaries runs real ffmpeg: programme A (a
-// Matroska file with Russian, English and French audio and Russian
-// subtitles) and B (video only, with a Russian voice-over and English
-// subtitles beside it) play round. Every rendition lists the same
-// segments with the same discontinuities; the video is 640×360 H.264
-// alone, each audio segment AAC stereo; a slot B has no track for plays
-// B's Russian voice; the subtitle segments carry the cues of their
-// stretch, placed at their video segment's PTS; and ffmpeg plays every
-// rendition of the master through both boundaries.
+// Matroska file with Russian AAC-LC 48 kHz audio — copied —, English
+// 44.1 kHz — encoded — and French, and Russian subtitles) and B (video
+// only, with a LostFilm voice-over and English subtitles beside it) play
+// round. The run's set has both programmes' keys (Русский, LostFilm,
+// Оригинал (Français), English; Русские, English); every rendition
+// lists the same segments with the same discontinuities; the video is
+// 640×360 H.264 alone, each audio segment AAC stereo 48 kHz; a key a
+// programme lacks plays its Russian voice; subtitles it lacks are empty
+// WebVTT; and ffmpeg plays every rendition of the master through both
+// boundaries.
 func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	if testing.Short() {
 		t.Skip("ffmpeg integration")
@@ -169,20 +205,28 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	}
 	ruSrt := write("a.ru.srt", "1\n00:00:02,000 --> 00:00:04,000\nРаз\n\n2\n00:00:10,000 --> 00:00:16,000\nДва\n")
 	a := mk("a.mkv", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:duration=20",
-		"-f", "lavfi", "-i", "sine=f=440:duration=20", "-f", "lavfi", "-i", "sine=f=880:duration=20", "-f", "lavfi", "-i", "sine=f=660:duration=20",
+		"-f", "lavfi", "-i", "sine=f=440:duration=20:sample_rate=48000", "-f", "lavfi", "-i", "sine=f=880:duration=20:sample_rate=44100",
+		"-f", "lavfi", "-i", "sine=f=660:duration=20:sample_rate=48000",
 		"-i", ruSrt, "-map", "0", "-map", "1", "-map", "2", "-map", "3", "-map", "4",
 		"-metadata:s:a:0", "language=rus", "-metadata:s:a:1", "language=eng", "-metadata:s:a:2", "language=fre", "-metadata:s:s:0", "language=rus",
-		"-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-c:s", "srt")
+		"-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-ac", "2", "-b:a:0", "48k", "-c:s", "srt")
 	b := mk("b.mp4", "-f", "lavfi", "-i", "testsrc=size=640x480:rate=25:duration=8", "-c:v", "libx264", "-preset", "ultrafast")
-	bru := mk("b.LostFilm.mka", "-f", "lavfi", "-i", "sine=f=330:duration=8", "-c:a", "aac")
+	bru := mk("b.LostFilm.mka", "-f", "lavfi", "-i", "sine=f=330:duration=8:sample_rate=48000", "-c:a", "aac", "-ac", "2")
 	ben := write("b.en.srt", "1\n00:00:01,000 --> 00:00:02,500\nHello\n")
-	probeA := media.ProbeResult{Video: &media.VideoStream{Codec: "h264", Width: 320, Height: 240},
-		Audio: []media.AudioStream{{Index: 1, Codec: "aac", Lang: "rus", Default: true}, {Index: 2, Codec: "aac", Lang: "eng"}, {Index: 3, Codec: "aac", Lang: "fre"}},
-		Subs:  []media.SubStream{{Index: 4, Codec: "subrip", Lang: "rus"}}}
+	probeA, err := media.Probe(context.Background(), "ffprobe", a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probeA.Audio[0].Profile != "LC" || probeA.Audio[0].SampleRate != 48000 || probeA.Audio[1].SampleRate != 44100 {
+		t.Fatalf("probe %+v", probeA.Audio)
+	}
 	probeB := media.ProbeResult{Video: &media.VideoStream{Codec: "h264", Width: 640, Height: 480}}
 	trA := Plan(probeA, nil, nil, PlanOptions{})
 	trB := Plan(probeB, []media.ExternalAudio{{Path: bru, Studio: "LostFilm", Stream: media.AudioStream{Lang: "ru", Title: "LostFilm"}}},
 		[]subtitles.External{{Path: ben, Lang: "en", Codec: "subrip"}}, PlanOptions{})
+	if !trA.Audio[0].Source.Copy || trA.Audio[2].Source.Copy || !trA.Audio[1].Source.Copy {
+		t.Fatalf("copy: %+v", trA.Audio)
+	}
 	base := time.Now().Add(-3 * time.Second)
 	src := cycle{base: base, progs: []Program{
 		{Entry: Entry{ItemID: 1, Start: base, End: base.Add(20 * time.Second)}, Path: a, Probe: probeA, Tracks: &trA},
@@ -196,8 +240,21 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(master), `URI="audio-orig.m3u8"`) || !strings.Contains(string(master), "\nvideo.m3u8\n") {
+	for _, want := range []string{`NAME="Русский",LANGUAGE="ru",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-0.m3u8"`,
+		`NAME="LostFilm",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="audio-1.m3u8"`,
+		`NAME="Оригинал (Français)",LANGUAGE="fr",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-2.m3u8"`,
+		`NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-3.m3u8"`,
+		`NAME="Русские",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-0.m3u8"`,
+		`NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-1.m3u8"`, "\nvideo.m3u8\n"} {
+		if !strings.Contains(string(master), want) {
+			t.Fatalf("master lacks %s:\n%s", want, master)
+		}
+	}
+	if strings.Count(string(master), "TYPE=AUDIO") != 4 || strings.Count(string(master), "TYPE=SUBTITLES") != 2 {
 		t.Fatalf("master %s", master)
+	}
+	if _, err := live.Playlist(ctx, 5, "audio-4.m3u8"); err != ErrNoSegment {
+		t.Fatalf("a rendition past the set: %v", err)
 	}
 	var pl string
 	deadline := time.Now().Add(60 * time.Second)
@@ -228,7 +285,8 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 		}
 		return strings.Join(out, ",")
 	}
-	for _, n := range []string{"audio-ru.m3u8", "audio-ru2.m3u8", "audio-en.m3u8", "audio-orig.m3u8", "subs-ru.m3u8", "subs-en.m3u8"} {
+	audioLists := []string{"audio-0.m3u8", "audio-1.m3u8", "audio-2.m3u8", "audio-3.m3u8"}
+	for _, n := range append(append([]string(nil), audioLists...), "subs-0.m3u8", "subs-1.m3u8") {
 		b, err := live.Playlist(ctx, 5, n)
 		if err != nil {
 			t.Fatal(n, err)
@@ -257,54 +315,69 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 		}
 		lastStart = start
 	}
-	// audio: each listed segment is AAC stereo 48 kHz and starts with its video segment
+	// audio: each listed segment is AAC stereo 48 kHz
 	c, _ := live.channel(5, false)
 	c.mu.Lock()
 	published := append([]liveSeg(nil), c.segs...)
 	c.mu.Unlock()
-	for _, slot := range AudioSlots {
-		for i, n := range strings.Split(lists["audio-"+slot.ID+".m3u8"], "\n") {
-			if n == "" || strings.HasPrefix(n, "#") {
+	for _, n := range audioLists {
+		for i, line := range strings.Split(lists[n], "\n") {
+			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
-			p, _, err := live.Segment(5, n)
+			p, _, err := live.Segment(5, line)
 			if err != nil {
-				t.Fatalf("%s line %d %s: %v", slot.ID, i, n, err)
+				t.Fatalf("%s line %d %s: %v", n, i, line, err)
 			}
 			m := ffprobeJSON(t, "-show_streams", "-show_format", p)
 			au := m["streams"].([]any)[0].(map[string]any)
 			if au["codec_name"] != "aac" || au["channels"].(float64) != 2 || au["sample_rate"] != "48000" {
-				t.Fatalf("%s %s: %v", slot.ID, n, au)
+				t.Fatalf("%s %s: %v", n, line, au)
 			}
 		}
 	}
-	// programme B: en and orig and ru2 play its Russian voice (the same files as ru), A has them all apart
+	// A: Русский (copied, 48 kbit/s) and LostFilm (its fallback) are one
+	// output, French (copied) and English (encoded) their own; B: one
+	// output (LostFilm) for all four
 	for _, s := range published {
-		names := map[string]string{}
-		for i, slot := range AudioSlots {
-			names[slot.ID] = media.LiveAudioSegment(s.prog.slots[i], s.seq)
-		}
-		if s.prog.outs == 1 && (names["en"] != names["ru"] || names["orig"] != names["ru"]) {
-			t.Fatalf("B's slots %v", names)
-		}
-		if s.prog.outs == 3 && (names["en"] == names["ru"] || names["orig"] == names["en"] || names["ru2"] != names["ru"]) {
-			t.Fatalf("A's slots %v", names)
-		}
-		if s.prog.outs != 1 && s.prog.outs != 3 {
+		out := s.prog.audio
+		switch s.prog.outs {
+		case 3:
+			if out[0] != out[1] || out[2] == out[0] || out[3] == out[0] || out[3] == out[2] {
+				t.Fatalf("A's renditions %v", out)
+			}
+			if s.dur < 5 {
+				continue
+			}
+			ru, _ := os.Stat(filepath.Join(c.dir, media.LiveAudioSegment(out[0], s.seq)))
+			en, _ := os.Stat(filepath.Join(c.dir, media.LiveAudioSegment(out[3], s.seq)))
+			if ru == nil || en == nil || ru.Size()*2 > en.Size() {
+				t.Fatalf("the copied 48 kbit/s track is not smaller than the 192 kbit/s encode: %v %v", ru, en)
+			}
+		case 1:
+			if out[0] != 0 || out[1] != 0 || out[2] != 0 || out[3] != 0 {
+				t.Fatalf("B's renditions %v", out)
+			}
+		default:
 			t.Fatalf("outputs %d", s.prog.outs)
 		}
 	}
 	// subtitles: «Два» (10–16 s of A, played from 3 s: 7–13 s) is in A's
-	// second and third segment, at the right PTS; B's English cue in its first
+	// second and third segment, at the right PTS; B's English cue in its
+	// first; B has no Russian ones and A no English ones: empty WebVTT
 	var sawRu, sawEn int
 	for _, s := range published {
-		ru, err := live.VTT(5, "s-ru-"+itoa(s.seq)+".vtt")
+		ru, err := live.VTT(5, "s-0-"+itoa(s.seq)+".vtt")
 		if err != nil {
 			t.Fatal(err)
 		}
-		en, _ := live.VTT(5, "s-en-"+itoa(s.seq)+".vtt")
-		if !strings.HasPrefix(string(ru), "WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:"+strconv.FormatInt(s.pts, 10)+",LOCAL:"+vttTime(s.at)+"\n") {
-			t.Fatalf("map %q at %+v", ru, s)
+		en, _ := live.VTT(5, "s-1-"+itoa(s.seq)+".vtt")
+		head := "WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:" + strconv.FormatInt(s.pts, 10) + ",LOCAL:" + vttTime(s.at) + "\n"
+		if !strings.HasPrefix(string(ru), head) || !strings.HasPrefix(string(en), head) {
+			t.Fatalf("map %q %q at %+v", ru, en, s)
+		}
+		if s.prog.outs == 1 && string(ru) != head || s.prog.outs == 3 && string(en) != head {
+			t.Fatalf("not empty where the programme has none: %q %q", ru, en)
 		}
 		if strings.Contains(string(ru), "Два") {
 			sawRu++
@@ -328,6 +401,9 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	if sawRu < 2 || sawEn < 1 {
 		t.Fatalf("cues seen ru %d en %d", sawRu, sawEn)
 	}
+	if _, err := live.VTT(5, "s-2-"+itoa(published[0].seq)+".vtt"); err != ErrNoSegment {
+		t.Fatalf("a subtitle rendition past the set: %v", err)
+	}
 	// ffmpeg as an HLS client plays every rendition through both boundaries
 	runDirs, _ := filepath.Glob(filepath.Join(live.Dir, "5-*"))
 	if len(runDirs) != 1 {
@@ -339,15 +415,20 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 		}
 	}
 	for _, s := range published {
-		for _, slot := range SubSlots {
-			b, _ := live.VTT(5, "s-"+slot.ID+"-"+itoa(s.seq)+".vtt")
-			os.WriteFile(filepath.Join(runDirs[0], "s-"+slot.ID+"-"+itoa(s.seq)+".vtt"), b, 0o644)
+		for j := range 2 {
+			n := "s-" + strconv.Itoa(j) + "-" + itoa(s.seq) + ".vtt"
+			b, _ := live.VTT(5, n)
+			os.WriteFile(filepath.Join(runDirs[0], n), b, 0o644)
 		}
 	}
 	os.WriteFile(filepath.Join(runDirs[0], "master.m3u8"), master, 0o644)
-	for _, m := range []string{"0:v:0", "0:a:0", "0:a:1", "0:a:2", "0:a:3"} {
-		if out, err := exec.Command("ffmpeg", "-v", "error", "-xerror", "-allowed_extensions", "ALL", "-i", filepath.Join(runDirs[0], "master.m3u8"),
-			"-map", m, "-f", "null", "-").CombinedOutput(); err != nil {
+	for _, m := range []string{"0:v:0", "0:a:0", "0:a:1", "0:a:2", "0:a:3", "0:s:0", "0:s:1"} {
+		outArgs := []string{"-f", "null", "-"}
+		if strings.HasPrefix(m, "0:s:") {
+			outArgs = []string{"-c:s", "copy", "-f", "null", "-"} // every WebVTT segment parses (a webvtt muxer refuses the timeline restarting at a discontinuity)
+		}
+		if out, err := exec.Command("ffmpeg", append([]string{"-v", "error", "-xerror", "-allowed_extensions", "ALL", "-i", filepath.Join(runDirs[0], "master.m3u8"),
+			"-map", m}, outArgs...)...).CombinedOutput(); err != nil {
 			t.Fatalf("decode %s across the boundaries: %v %s", m, err, out)
 		}
 	}

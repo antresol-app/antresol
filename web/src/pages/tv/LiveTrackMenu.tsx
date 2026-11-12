@@ -1,6 +1,8 @@
 // «Звук и субтитры» in the live player: the film player's two-column menu
 // (TrackMenu's look) with the programme's own voices and subtitle
-// languages, labelled by the server («Русский — LostFilm», «Оригинал (fr)»).
+// languages, labelled by the server («Русский — LostFilm», «Оригинал (English)»).
+// Any number of entries with any names (up to 8 voices and 6 subtitle
+// languages): an entry is chosen by its rendition NAME; a long menu scrolls.
 import type { ChannelTrack } from '../../api/channels'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
@@ -10,16 +12,16 @@ import styles from './LivePlayer.module.css'
 export interface LiveTrackMenuProps {
   audio: ChannelTrack[] | undefined
   subtitles: ChannelTrack[] | undefined
-  /** The audio entry playing. */
-  audioSlot: string | undefined
-  /** The subtitle slot shown; null: off. */
-  subSlot: string | null
-  onAudio: (slot: string) => void
-  onSubtitles: (slot: string | null) => void
+  /** The audio entry playing (its NAME). */
+  audioName: string | undefined
+  /** The subtitle entry shown (its NAME); null: off. */
+  subsName: string | null
+  onAudio: (entry: ChannelTrack) => void
+  onSubtitles: (entry: ChannelTrack | null) => void
   onOpenChange?: (open: boolean) => void
 }
 
-export function LiveTrackMenu({ audio, subtitles, audioSlot, subSlot, onAudio, onSubtitles, onOpenChange }: LiveTrackMenuProps) {
+export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, onSubtitles, onOpenChange }: LiveTrackMenuProps) {
   const t = useT()
   const unknown = audio === undefined && subtitles === undefined
   return (
@@ -46,12 +48,12 @@ export function LiveTrackMenu({ audio, subtitles, audioSlot, subSlot, onAudio, o
                 {audio.length > 1 &&
                   audio.map((a) => (
                     <MenuItem
-                      key={a.slot}
+                      key={a.name}
                       label={a.label}
-                      checked={a.slot === audioSlot}
+                      checked={a.name === audioName}
                       onSelect={() => {
                         close()
-                        onAudio(a.slot)
+                        onAudio(a)
                       }}
                     />
                   ))}
@@ -61,7 +63,7 @@ export function LiveTrackMenu({ audio, subtitles, audioSlot, subSlot, onAudio, o
               <MenuHeading>{t('common.subtitles')}</MenuHeading>
               <MenuItem
                 label={t('player.tracks.subtitlesOff')}
-                checked={subSlot === null}
+                checked={subsName === null}
                 onSelect={() => {
                   close()
                   onSubtitles(null)
@@ -69,12 +71,12 @@ export function LiveTrackMenu({ audio, subtitles, audioSlot, subSlot, onAudio, o
               />
               {(subtitles ?? []).map((s) => (
                 <MenuItem
-                  key={s.slot}
+                  key={s.name}
                   label={s.label}
-                  checked={s.slot === subSlot}
+                  checked={s.name === subsName}
                   onSelect={() => {
                     close()
-                    onSubtitles(s.slot)
+                    onSubtitles(s)
                   }}
                 />
               ))}

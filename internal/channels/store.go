@@ -38,8 +38,13 @@ type Rules struct {
 	// YearFrom, YearTo bound the title's year (0: open).
 	YearFrom int `json:"yearFrom,omitempty"`
 	YearTo   int `json:"yearTo,omitempty"`
-	// Titles: movies and series by item id; when set they are the whole
+	// Picks: what the channel plays, in this order (titles, single
+	// movies or episodes, library folders); when set they are the whole
 	// pool and the filters above are ignored.
+	Picks []Pick `json:"picks,omitempty"`
+	// Titles: movies and series by item id (round 1). Still read: a
+	// channel's titles become picks of kind PickTitle when it is read or
+	// written, so nothing below the store sees them.
 	Titles []int64 `json:"titles,omitempty"`
 	// LibraryUser: only the titles that profile brought (item_owners);
 	// 0: the whole library.
@@ -71,6 +76,9 @@ type Channel struct {
 	Enabled bool   `json:"enabled"`
 	Edited  bool   `json:"edited"`
 	Seed    int64  `json:"-"`
+	// LogoVersion: the uploaded logo's version (0: none, the generated
+	// tile stands for the channel).
+	LogoVersion int64 `json:"-"`
 }
 
 var (
@@ -101,14 +109,14 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed`
+const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed, logo_version`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanChannel(r rowScanner) (Channel, error) {
 	var c Channel
 	var rules string
-	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed)
+	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed, &c.LogoVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -118,6 +126,7 @@ func scanChannel(r rowScanner) (Channel, error) {
 	if err := json.Unmarshal([]byte(rules), &c.Rules); err != nil {
 		return c, fmt.Errorf("channels: rules of %d: %w", c.ID, err)
 	}
+	liftTitles(&c.Rules)
 	return c, nil
 }
 
@@ -243,6 +252,9 @@ func normalize(c *Channel) error {
 		}
 	}
 	r.Genres = genres
+	if err := normalizePicks(r); err != nil {
+		return err
+	}
 	if c.UserID != 0 {
 		// a personal channel plays its profile's library or the whole one
 		if r.LibraryUser != 0 && r.LibraryUser != c.UserID {
@@ -383,6 +395,18 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	}
 	_, err = s.DB.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id)
 	return err
+}
+
+// SetLogo records channel id's uploaded logo version (0: none).
+func (s *Store) SetLogo(ctx context.Context, id, version int64) error {
+	res, err := s.DB.ExecContext(ctx, `UPDATE channels SET logo_version=? WHERE id=?`, version, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // CutAfterCurrent drops the schedule after the programme on air.

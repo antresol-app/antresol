@@ -19,6 +19,7 @@ import { PlayerBar, PlayerBarButton } from '../PlayerBar'
 import { ProgressBar } from '../ProgressBar'
 import { SegmentedControl } from '../SegmentedControl'
 import { Sheet } from '../Sheet'
+import { SortableList, SortableRowText } from '../SortableList'
 import { SwipeRow } from '../SwipeRow'
 import { TabBar } from '../TabBar'
 import { MultiSelect, Select } from '../Select'
@@ -53,6 +54,14 @@ const SCOPES = [
   { value: 'books', label: 'Книги' },
   { value: 'audiobooks', label: 'Аудиокниги', short: 'Аудио' },
   { value: 'comics', label: 'Манга' },
+]
+
+const SORTABLE: { key: string; icon: 'tv' | 'film' | 'folder'; title: string; detail: string }[] = [
+  { key: 'title:1', icon: 'tv', title: 'Друзья', detail: 'Сериал · 1994 · 236 серий' },
+  { key: 'item:2', icon: 'film', title: 'Матрица', detail: 'Фильм · 1999' },
+  { key: 'item:3', icon: 'tv', title: 'Друзья · S1 E7', detail: 'Серия · Отключение электричества' },
+  { key: 'folder:a', icon: 'folder', title: 'Season 02', detail: 'Папка · series/Друзья/Season 02' },
+  { key: 'item:4', icon: 'film', title: 'Очень длинное название фильма, которое не помещается в одну строку', detail: 'Фильм · 2015' },
 ]
 
 const GB = 1024 ** 3
@@ -108,6 +117,7 @@ function Swatch({ name }: { name: string }) {
 
 export function Gallery() {
   const [seg, setSeg] = useState('1080')
+  const [sorted, setSorted] = useState(SORTABLE)
   const [scope, setScope] = useState('all')
   const [on, setOn] = useState(true)
   const [size, setSize] = useState('0')
@@ -332,6 +342,27 @@ export function Gallery() {
             }
           >
             <IconButton size="sm" icon="ellipsis" label="Ещё" />
+          </ListRow>
+        </GroupedSection>
+      </Section>
+
+      <Section
+        title="SortableList"
+        note="An ordered list to edit: the caller's content (SortableRowText: a glyph tile, the name, a detail line), then «Выше» / «Ниже», remove and the drag handle. Drag the handle with a mouse or a finger (the list scrolls at the edge, Escape puts it back), or ↑/↓/Home/End on it, or the buttons. Below 700 px the buttons go into the row's «⋯». RankedList is built on it."
+      >
+        <GroupedSection title="Состав канала">
+          <ListRow label="Inset in a wide row" wide>
+            <SortableList
+              label="Состав канала"
+              items={sorted}
+              getKey={(x) => x.key}
+              itemLabel={(x) => x.title}
+              renderItem={(x) => <SortableRowText leading={<Icon name={x.icon} size={16} />} title={x.title} detail={x.detail} />}
+              onChange={setSorted}
+              removable
+              moveButtons
+              empty="Пусто — добавьте что-нибудь"
+            />
           </ListRow>
         </GroupedSection>
       </Section>

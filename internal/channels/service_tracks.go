@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/extaudio"
@@ -16,7 +17,7 @@ import (
 	"github.com/antresol-app/antresol/internal/voclean"
 )
 
-// tracksEntry is a file's planned slots; full: planned for the encoder
+// tracksEntry is a file's planned tracks; full: planned for the encoder
 // (external tracks probed), else from their names.
 type tracksEntry struct {
 	t    Tracks
@@ -24,14 +25,22 @@ type tracksEntry struct {
 	full bool
 }
 
-// How long a file's plan and the household's options are kept.
+// How long a file's plan, a channel's track set (when it is not running)
+// and the household's options are kept.
 const (
 	tracksTTL  = 10 * time.Minute
+	setTTL     = 5 * time.Minute
 	optionsTTL = time.Minute
 	maxTracks  = 2048
 )
 
-// plan fills the slots of a file's programme. full (the encoder): the
+// setEntry is a channel's track set as it would be made now.
+type setEntry struct {
+	set TrackSet
+	at  time.Time
+}
+
+// plan lists the tracks of a file's programme. full (the encoder): the
 // external tracks as the players get them (ExternalAudio); else (the
 // guide) a plan kept from before, or one from the tracks' names.
 func (s *Service) plan(ctx context.Context, fileID int64, path string, probe media.ProbeResult, full bool) Tracks {
@@ -95,18 +104,122 @@ func (s *Service) namedAudio(ctx context.Context, fileID int64, path string) []m
 	return out
 }
 
+// SetLanguage sets the server's metadata language («Язык метаданных»):
+// the language of the renditions' names.
+func (s *Service) SetLanguage(lang string) {
+	s.tmu.Lock()
+	s.lang, s.optsAt = lang, time.Time{}
+	s.sets = nil
+	s.tmu.Unlock()
+}
+
+// TrackSet is the track set a run of channel ch starting at from would
+// have (Live's SetSource): the keys of the programmes scheduled from then
+// to SetHorizon ahead, each file's tracks from their names (cheap: no
+// probing); kept setTTL.
+func (s *Service) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
+	s.tmu.Lock()
+	e, ok := s.sets[ch]
+	s.tmu.Unlock()
+	if ok && time.Since(e.at) < setTTL {
+		return e.set
+	}
+	es, err := s.Store.Range(ctx, ch, from, from.Add(SetHorizon))
+	if err != nil && ctx.Err() == nil {
+		log.Printf("channels: track set of channel %d: %v", ch, err)
+	}
+	var progs []Tracks
+	var last int64 = -1
+	for _, en := range es {
+		if en.ExtraID != 0 || en.FileID == 0 || en.FileID == last {
+			continue // a title outside the library (nothing known), a programme in several entries
+		}
+		last = en.FileID
+		t, err := s.FileTracks(ctx, en.FileID)
+		if err != nil && ctx.Err() == nil {
+			log.Printf("channels: tracks of file %d: %v", en.FileID, err)
+		}
+		if t != nil {
+			progs = append(progs, *t)
+		}
+	}
+	set := BuildSet(progs, s.options(ctx))
+	if err == nil && ctx.Err() == nil {
+		s.tmu.Lock()
+		if s.sets == nil || len(s.sets) >= maxTracks {
+			s.sets = map[int64]setEntry{}
+		}
+		s.sets[ch] = setEntry{set: set, at: time.Now()}
+		s.tmu.Unlock()
+	}
+	return set
+}
+
+// ProgrammeTracks are the renditions a file's programme on channel ch
+// really has, labelled in lang: within the running run's set, else the
+// set as it would be made now. ok false: the file's tracks are unknown.
+func (s *Service) ProgrammeTracks(ctx context.Context, ch, fileID int64, lang string) (audio, subs []TrackLabel, ok bool, err error) {
+	t, err := s.FileTracks(ctx, fileID)
+	if err != nil || t == nil {
+		return nil, nil, false, err
+	}
+	set, running := TrackSet{}, false
+	if s.Live != nil {
+		set, running = s.Live.RunSet(ch)
+	}
+	if !running {
+		set = s.TrackSet(ctx, ch, time.Now())
+	}
+	audio, subs = t.Labels(set, lang)
+	return audio, subs, true, nil
+}
+
+// encoderProbe is p with every audio stream's profile known: a probe
+// stored before profiles were kept is read again (kept tracksTTL), so an
+// AAC-LC track can be copied instead of encoded.
+func (s *Service) encoderProbe(ctx context.Context, fileID int64, path string, p media.ProbeResult) media.ProbeResult {
+	if s.Probe == nil || !slices.ContainsFunc(p.Audio, func(a media.AudioStream) bool { return a.Profile == "" && strings.EqualFold(a.Codec, "aac") }) {
+		return p
+	}
+	s.tmu.Lock()
+	e, ok := s.probes[fileID]
+	s.tmu.Unlock()
+	if ok && time.Since(e.at) < tracksTTL {
+		return e.p
+	}
+	fresh, err := s.Probe(ctx, path)
+	if err != nil || len(fresh.Audio) != len(p.Audio) {
+		if err != nil && ctx.Err() == nil {
+			log.Printf("channels: probing file %d again: %v", fileID, err)
+		}
+		fresh = p
+	}
+	s.tmu.Lock()
+	if s.probes == nil || len(s.probes) >= maxTracks {
+		s.probes = map[int64]probeEntry{}
+	}
+	s.probes[fileID] = probeEntry{p: fresh, at: time.Now()}
+	s.tmu.Unlock()
+	return fresh
+}
+
+type probeEntry struct {
+	p  media.ProbeResult
+	at time.Time
+}
+
 // options are the household's: «Любимые озвучки» and whether a cleaned
 // voice-over plays instead of the studio's track — on when an
 // administrator's profile has «Выбирать очищенную озвучку» (the setting
 // is a profile's; a channel's one encoder serves the whole household).
 func (s *Service) options(ctx context.Context) PlanOptions {
 	s.tmu.Lock()
-	o, at := s.opts, s.optsAt
+	o, at, lang := s.opts, s.optsAt, s.lang
 	s.tmu.Unlock()
 	if time.Since(at) < optionsTTL {
 		return o
 	}
-	o = PlanOptions{}
+	o = PlanOptions{Lang: lang}
 	if st, err := (releaseprefs.Store{DB: s.Store.DB}).Studios(ctx); err == nil {
 		o.Studios = st
 	} else if ctx.Err() == nil {
@@ -123,7 +236,7 @@ func (s *Service) options(ctx context.Context) PlanOptions {
 	return o
 }
 
-// FileTracks are the slots a library file fills when it plays on a
+// FileTracks are the tracks a library file has when it plays on a
 // channel (from its stored probe and the tracks beside it; kept a few
 // minutes): nil when the file or its probe is not known.
 func (s *Service) FileTracks(ctx context.Context, fileID int64) (*Tracks, error) {

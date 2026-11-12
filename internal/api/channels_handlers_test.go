@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -336,14 +337,17 @@ func TestChannelsProgrammeTracks(t *testing.T) {
 		t.Fatalf("no Один in now/next: %s", e.do("GET", "/api/channels", "", e.admin).Body)
 	}
 	got := fmt.Sprint(one.Audio, one.Subtitles)
-	want := "[{ru Русский Русский — LostFilm ru} {ru2 Русский 2 Русский — Кураж-Бамбей (внешняя) ru} {en English English en} {orig Оригинал Оригинал (fr) fr}] " +
-		"[{ru Русские Русские ru} {en English English en}]"
+	// the renditions of the set the channel would have now (its next 48 h:
+	// Два has no probe, nothing known), named as the master names them
+	want := "[{a0 LostFilm Русский — LostFilm ru} {a1 Кураж-Бамбей Русский — Кураж-Бамбей (внешняя) ru} {a2 Оригинал (Français) Оригинал (Français) fr} {a3 English English en}] " +
+		"[{s0 Русские Русские ru} {s1 English English en}]"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
 	json.Unmarshal(e.do("GET", "/api/channels", "", e.admin, "Accept-Language", "en").Body.Bytes(), &l)
 	for _, p := range []*programJSON{l.Channels[0].Now, l.Channels[0].Next} {
-		if p != nil && p.ItemID == m1 && (p.Audio[1].Label != "Russian — Кураж-Бамбей (external)" || p.Audio[1].Name != "Русский 2" || p.Subtitles[0].Label != "Russian") {
+		if p != nil && p.ItemID == m1 && (p.Audio[1].Label != "Russian — Кураж-Бамбей (external)" || p.Audio[1].Name != "Кураж-Бамбей" || p.Subtitles[0].Label != "Russian" ||
+			p.Audio[2].Label != "Original (Français)" || p.Audio[2].Name != "Оригинал (Français)") {
 			t.Fatalf("english %+v", p)
 		}
 	}
@@ -455,10 +459,29 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 		}
 	}
 	if stream {
-		// every rendition and one segment of each kind
+		// every rendition of the master and one segment of each
 		base := "/api/channels/live/" + id + "/"
+		master := e.do("GET", base+"index.m3u8", "", e.admin).Body.String()
+		renditions := []string{"video.m3u8"}
+		for _, l := range strings.Split(master, "\n") {
+			if _, uri, ok := strings.Cut(l, `URI="`); ok {
+				renditions = append(renditions, strings.TrimSuffix(uri, `"`))
+			}
+		}
+		// the film's Russian and English audio (its original), its Russian subtitles
+		if !reflect.DeepEqual(renditions, []string{"video.m3u8", "audio-0.m3u8", "audio-1.m3u8", "subs-0.m3u8"}) {
+			t.Fatalf("master %s", master)
+		}
+		// the programme on air names the running run's renditions
+		var l struct{ Channels []channelJSON }
+		json.Unmarshal(e.do("GET", "/api/channels", "", e.admin).Body.Bytes(), &l)
+		if now := l.Channels[0].Now; now == nil || fmt.Sprint(now.Audio, now.Subtitles) !=
+			"[{a0 Русский Русский ru} {a1 Оригинал (English) Оригинал (English) en}] [{s0 Русские Русские ru}]" ||
+			!strings.Contains(master, `NAME="Русский",LANGUAGE="ru",DEFAULT=YES`) || !strings.Contains(master, `NAME="Оригинал (English)",LANGUAGE="en"`) {
+			t.Fatalf("on air %+v\n%s", now, master)
+		}
 		var fetched int
-		for _, n := range []string{"video.m3u8", "audio-ru.m3u8", "audio-en.m3u8", "audio-orig.m3u8", "subs-ru.m3u8", "subs-en.m3u8"} {
+		for _, n := range renditions {
 			w := e.do("GET", base+n, "", e.admin)
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "#EXTINF") {
 				t.Fatalf("%s: %d %s", n, w.Code, w.Body)
@@ -479,7 +502,7 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 			}
 			fetched++
 		}
-		if fetched != 6 {
+		if fetched != 4 {
 			t.Fatal(fetched)
 		}
 		live.Stop(c.ID)

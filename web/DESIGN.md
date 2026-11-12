@@ -139,6 +139,7 @@ bar's sections and the library menu. Numbers that change
 | `PlayerBar`, `PlayerBarButton` | what plays, on every page | the Music app's mini player: artwork, title, subtitle (open the full player), three 44 pt controls, a progress hairline; at `--playerbar-bottom`. `MiniPlayer` feeds it. |
 | `Toast` | every short confirmation at the bottom | one glass capsule at `--toast-bottom`, an optional `action` («Отменить»), `tone="error"` (an alert in the warning colour); its live region is always mounted (`live={false}` when another region reads the words). No page draws its own capsule. |
 | `ActionTiles` | a title page's secondary actions | round `IconButton`s (`tile`) in the action row on a wide screen; equal icon-over-label tiles on a phone. Four fit a 375 pt phone: a destructive action goes into «Ещё» there. |
+| `SortableList`, `SortableRowText` | every ordered list the viewer edits (the channel's «Состав канала»; `RankedList` — languages, studios — is built on it) | an inset group of rows inside a `ListRow wide`: the caller's content (`SortableRowText`: a glyph on a `--fill-3` tile, the name, a detail line, both cut), then `moveButtons` «Выше» / «Ниже» (`IconButton xs plain`), `removable` (−, red under the pointer; `min` rows stay) and the handle ≡ at the trailing edge, as iOS's edit mode. The handle drags with a mouse, a pen or a finger (`touch-action: none`): the row lifts (`--bg-elevated`, `--shadow-lift`) and follows, the others slide by one row, the scroller under it (a sheet's body) scrolls near its edge, the drop commits, Escape or a lost pointer puts it back; the DOM keeps its order until the drop. The keyboard: ↑/↓/Home/End on the handle, or the buttons; the new place is read out (`role="status"`) and the focus stays on the control (the handle when that one turns off at an edge). Below 700 px «Выше», «Ниже» and «Убрать» go into the row's «⋯». |
 | `SwipeRow` | a row with actions on a phone (downloads) | swipe left for the actions (the destructive one last, at the edge); half the way or a quick flick keeps it open; a tap, a touch elsewhere or scrolling the list closes it. A shortcut only — the same actions are always in the row's «⋯» (a mouse never swipes). `className` on the `<li>`, `contentClassName` on the sliding row. |
 | `keyboard.ts` | anything fixed to the bottom with a field in it | `useKeyboardInset()` keeps `--keyboard-inset` and `--vv-top` on `<html>` while mounted (Sheet uses it). |
 | `scrollLock.ts` | anything modal | `useScrollLock()` keeps the page from scrolling while mounted (ref-counted; Sheet uses it). |
@@ -188,7 +189,26 @@ bar's sections and the library menu. Numbers that change
   label) and its **name**; its picture is the programme on air
   (`ChannelArt`: backdrop 16:9, else the poster whole on `--fill-3`, else
   `--fill-3` with the `tv` glyph) — never a coloured tile with the name on
-  it. The list is one numbered list on a grouped surface (`ChannelRow`: the
+  it. An uploaded logo (`logoUrl`) is shown small beside the name
+  (`ChannelLogo`: the picture fitted whole in a neutral `--fill-3` box with
+  a hairline, `--r-sm`, one height per place — xs 24 the list row and the
+  player's channel strip, sm 30 the guide's column and the details pane,
+  md 36 the player's header, lg 44 the editor); without one the number and
+  the name stand alone (no generated tile); in a list where some channel
+  has a logo the logo is a column of its own (the list and the player's
+  strip: after the still; /tv/manage: after the number; the guide: before
+  the name, the column widened by it) and a row without one keeps the
+  empty slot, so names and programme lines start at one place (phones:
+  the list's logo at 20). The editor's «Состав канала»
+  is a `SortableList` of picks (`SortableRowText`: kind glyph, name, kind ·
+  year · path) in a `ListRow wide`, with «Добавить в состав» under it —
+  a `SegmentedControl` (Поиск · Папки), a search field and result rows
+  (`ListRow` with the glyph tile and a trailing ⊕ that turns into a green
+  ✓ once added), or a folder level (the path row with ‹ back and ⊕ for the
+  whole folder, folder rows with ⊕ and ›, file rows with ⊕). «Логотип» is
+  a `ListRow`: the preview (or an empty dashed well) leading, «Убрать» and
+  «Загрузить…» / «Заменить…» trailing, the format hint or the refusal
+  (`--destructive-text`) under the label. The list is one numbered list on a grouped surface (`ChannelRow`: the
   number, the still, name / now / a `ProgressBar` with the minutes left /
   «Далее»; the star at the trailing edge on hover and focus, always on touch
   and when starred; the last channel's number in the accent), filtered by a

@@ -75,12 +75,16 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Put("/api/channels/{id}/favorite", a.favorite(true))
 	r.Delete("/api/channels/{id}/favorite", a.favorite(false))
 	r.Get("/api/channels/options", a.options)
+	r.Get("/api/channels/options/search", a.optionsSearch)
+	r.Get("/api/channels/options/folders", a.optionsFolders)
 	r.With(auth.RequireAdmin).Post("/api/channels/generate", a.generate)
 	r.Post("/api/channels", a.create)
 	r.Put("/api/channels/{id}", a.update)
 	r.Delete("/api/channels/{id}", a.remove)
 	r.Get("/api/channels/{id}/guide", a.guide)
 	r.Get("/api/channels/{id}/logo.png", a.webLogo)
+	r.Post("/api/channels/{id}/logo", a.uploadLogo)
+	r.Delete("/api/channels/{id}/logo", a.deleteLogo)
 	r.Get("/api/channels/live/{id}/{name}", a.webLive)
 }
 
@@ -119,16 +123,17 @@ type programJSON struct {
 	Backdrop string    `json:"backdrop,omitempty"`
 	// External: a programme from an online source (not in the library).
 	External bool `json:"external,omitempty"`
-	// Audio and Subtitles: the live stream's renditions present in this
-	// programme (nil: unknown; filled for the one on air and the next).
+	// Audio and Subtitles: the live stream's renditions this programme
+	// really has (nil: unknown; filled for the one on air and the next).
 	Audio     []trackJSON `json:"audio,omitempty"`
 	Subtitles []trackJSON `json:"subtitles,omitempty"`
 	fileID    int64
 }
 
 // trackJSON is a rendition of the live stream as one programme fills it:
-// Slot is stable, Name is the HLS rendition's NAME, Label describes the
-// programme's own track («Русский — LostFilm»).
+// Slot is its place in the run's set ("a<n>" audio-<n>.m3u8, "s<n>"
+// subs-<n>.m3u8), Name is the HLS rendition's NAME (clients pick by it),
+// Label describes the programme's own track («Русский — LostFilm»).
 type trackJSON struct {
 	Slot  string `json:"slot"`
 	Name  string `json:"name"`
@@ -150,12 +155,17 @@ type channelJSON struct {
 	Rules    *channels.Rules `json:"rules,omitempty"`
 	Now      *programJSON    `json:"now,omitempty"`
 	Next     *programJSON    `json:"next,omitempty"`
+
+	// LogoURL: the uploaded logo (absent: none); PickInfo: the picks
+	// described, for the editor (channels_fine.go)
+	LogoURL  string              `json:"logoUrl,omitempty"`
+	PickInfo []channels.PickInfo `json:"pickInfo,omitempty"`
 }
 
 func (a *channelsAPI) toJSON(ctx context.Context, c channels.Channel, v channels.Viewer, favs map[int64]bool) channelJSON {
 	name, cat := a.display(ctx, c)
 	j := channelJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Personal: c.UserID != 0, Auto: c.AutoKey != "",
-		Enabled: c.Enabled, CanEdit: channels.CanEdit(c, v), Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID]}
+		Enabled: c.Enabled, CanEdit: channels.CanEdit(c, v), Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID], LogoURL: logoURL(c)}
 	if j.CanEdit {
 		r := c.Rules
 		j.Rules = &r
@@ -194,7 +204,7 @@ func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]prog
 	for i := 0; i < len(es); i++ {
 		e := es[i]
 		end := e.End
-		for i+1 < len(es) && es[i+1].ItemID == e.ItemID && es[i+1].Start.Equal(end) {
+		for i+1 < len(es) && es[i+1].ItemID == e.ItemID && (e.FileID == 0 || es[i+1].FileID != e.FileID) && es[i+1].Start.Equal(end) { // its first file again: a repeat
 			i++
 			end = es[i].End
 		}
@@ -234,9 +244,11 @@ func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]prog
 	return out, nil
 }
 
-// withTracks fills the renditions of the programme on air at now and the
-// next one (the first two from now on), labelled in the viewer's language.
-func (a *channelsAPI) withTracks(ctx context.Context, ps []programJSON, now time.Time) {
+// withTracks fills the renditions of channel ch's programme on air at now
+// and the next one (the first two from now on), labelled in the viewer's
+// language: those of the run's track set (or the set it would have now)
+// the programme really has.
+func (a *channelsAPI) withTracks(ctx context.Context, ch int64, ps []programJSON, now time.Time) {
 	lang := i18n.FromContext(ctx)
 	n := 0
 	for i := range ps {
@@ -247,17 +259,16 @@ func (a *channelsAPI) withTracks(ctx context.Context, ps []programJSON, now time
 		if n++; n > 2 {
 			return
 		}
-		t, err := a.svc.FileTracks(ctx, p.fileID)
+		audio, subs, ok, err := a.svc.ProgrammeTracks(ctx, ch, p.fileID, lang)
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Printf("channels: tracks of file %d: %v", p.fileID, err)
 			}
 			continue
 		}
-		if t == nil {
+		if !ok {
 			continue // unknown: absent
 		}
-		audio, subs := t.Labels(lang)
 		p.Audio, p.Subtitles = make([]trackJSON, 0, len(audio)), make([]trackJSON, 0, len(subs))
 		for _, l := range audio {
 			p.Audio = append(p.Audio, trackJSON{Slot: l.Slot, Name: l.Name, Label: l.Label, Lang: l.Lang})
@@ -320,13 +331,15 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 				internalErr(w, r, "channels", err)
 				return
 			}
-			a.withTracks(ctx, ps, now)
+			a.withTracks(ctx, c.ID, ps, now)
 			if len(ps) > 0 {
 				j.Now = &ps[0]
 			}
 			if len(ps) > 1 {
 				j.Next = &ps[1]
 			}
+		} else {
+			j = a.withPicks(ctx, j, c)
 		}
 		out = append(out, j)
 	}
@@ -377,7 +390,7 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "guide", err)
 		return
 	}
-	a.withTracks(r.Context(), ps, now)
+	a.withTracks(r.Context(), c.ID, ps, now)
 	if ps == nil {
 		ps = []programJSON{}
 	}
@@ -534,7 +547,7 @@ func (a *channelsAPI) create(w http.ResponseWriter, r *http.Request) {
 	if err := a.svc.BuildChannel(r.Context(), c); err != nil {
 		log.Printf("channels: build %d: %v", c.ID, err)
 	}
-	writeJSON(w, http.StatusCreated, a.toJSON(r.Context(), c, viewerOf(u), nil))
+	writeJSON(w, http.StatusCreated, a.withPicks(r.Context(), a.toJSON(r.Context(), c, viewerOf(u), nil), c))
 }
 
 // PUT /api/channels/{id}
@@ -573,7 +586,7 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 			log.Printf("channels: build %d: %v", c.ID, err)
 		}
 	}
-	writeJSON(w, http.StatusOK, a.toJSON(r.Context(), c, viewerOf(u), nil))
+	writeJSON(w, http.StatusOK, a.withPicks(r.Context(), a.toJSON(r.Context(), c, viewerOf(u), nil), c))
 }
 
 // DELETE /api/channels/{id} (a generated channel is disabled)
@@ -589,6 +602,9 @@ func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 	if err := a.svc.Store.Delete(r.Context(), c.ID); err != nil {
 		internalErr(w, r, "channel delete", err)
 		return
+	}
+	if err := a.svc.RemoveLogo(r.Context(), c.ID); err != nil { // its uploaded logo goes with it
+		log.Printf("channels: logo of %d: %v", c.ID, err)
 	}
 	if a.svc.Live != nil {
 		a.svc.Live.Stop(c.ID)
@@ -655,17 +671,6 @@ func (a *channelsAPI) webLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.serveLogo(w, r, c)
-}
-
-func (a *channelsAPI) serveLogo(w http.ResponseWriter, r *http.Request, c channels.Channel) {
-	b, err := channels.Logo(c)
-	if err != nil {
-		internalErr(w, r, "channel logo", err)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(b)
 }
 
 // GET /api/channels/live/{id}/{name}: the web player's stream.
@@ -851,6 +856,8 @@ type channelEPGJSON struct {
 	Category string        `json:"category"`
 	Favorite bool          `json:"favorite"`
 	Programs []programJSON `json:"programs"`
+
+	LogoURL string `json:"logoUrl,omitempty"` // the uploaded logo (absent: none)
 }
 
 // GET /api/channels/epg?from=<RFC3339>&hours=<1…24>: the guide grid —
@@ -903,12 +910,12 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			internalErr(w, r, "epg", err)
 			return
 		}
-		a.withTracks(ctx, ps, now)
+		a.withTracks(ctx, c.ID, ps, now)
 		if ps == nil {
 			ps = []programJSON{}
 		}
 		name, cat := a.display(ctx, c)
-		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps})
+		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"from": from.UTC(), "to": to.UTC(), "channels": out})
 }

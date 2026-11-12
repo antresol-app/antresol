@@ -98,7 +98,7 @@
 /* the channel: its number and name; «Прямой эфир» under it */
 .channel {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   min-width: 0;
   font: 600 19px / 1.25 var(--font-display);
@@ -207,6 +207,13 @@
 .trackMenuTwo {
   composes: two from '../../player/TrackMenu.module.css';
 }
+/* a channel carries up to 8 voices with long studio names: wider columns
+   than the film player's, so «Русский — LostFilm (очищено)» reads whole */
+@media (min-width: 600px) {
+  .trackMenuTwo {
+    width: min(680px, calc(100vw - 32px));
+  }
+}
 .trackGroup {
   composes: group from '../../player/TrackMenu.module.css';
 }
@@ -265,6 +272,10 @@
   color: inherit;
   text-align: left;
 }
+/* a list with logos: the logo is a column of its own (empty where a channel has none) */
+.panelRow[data-logos] {
+  grid-template-columns: 2.2em 96px auto minmax(0, 1fr);
+}
 .panelRow:hover {
   background: var(--fill-hover);
 }
@@ -301,6 +312,11 @@
   font: var(--t-subhead-em);
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.panelNameText {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 .panelName svg {
@@ -358,6 +374,9 @@
   .panelRow {
     grid-template-columns: 1.8em 80px minmax(0, 1fr);
     gap: 10px;
+  }
+  .panelRow[data-logos] {
+    grid-template-columns: 1.8em 80px auto minmax(0, 1fr);
   }
   .panelArt {
     width: 80px;

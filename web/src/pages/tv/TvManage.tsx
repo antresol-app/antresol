@@ -21,6 +21,7 @@ import { Sheet } from '../../ui/Sheet'
 import { Toast } from '../../ui/Toast'
 import { Toggle } from '../../ui/Toggle'
 import { ChannelEditor } from './ChannelEditor'
+import { ChannelLogo } from './ChannelLogo'
 import { byNumber } from './model'
 import styles from './Tv.module.css'
 
@@ -28,7 +29,8 @@ import styles from './Tv.module.css'
 export function rulesSummary(r: ChannelRules | undefined, genreName: (key: string) => string = (k) => k): string {
   if (!r) return ''
   const parts: string[] = []
-  if (r.titles?.length) parts.push(tr('tv.rules.titlesCount', { count: r.titles.length }))
+  if (r.picks?.length) parts.push(tr('tv.rules.picksCount', { count: r.picks.length }))
+  else if (r.titles?.length) parts.push(tr('tv.rules.titlesCount', { count: r.titles.length }))
   else {
     const k = r.kinds ?? []
     parts.push(k.length === 1 ? (k[0] === 'movie' ? tr('tv.rules.movies') : tr('tv.rules.series')) : tr('tv.rules.moviesAndSeries'))
@@ -124,7 +126,12 @@ export function TvManage() {
               {byNumber(data.channels).map((c) => (
                 <ListRow
                   key={c.id}
-                  leading={<span className={styles.rowNumber}>{c.number}</span>}
+                  leading={
+                    <span className={styles.rowLead}>
+                      <span className={styles.rowNumber}>{c.number}</span>
+                      {data.channels.some((x) => x.logoUrl) && <ChannelLogo url={c.logoUrl} size="sm" reserve />}
+                    </span>
+                  }
                   label={
                     <span className={styles.rowName}>
                       <span>{c.name}</span>
@@ -165,8 +172,10 @@ export function TvManage() {
             setEdit(null)
             if (params.get('new')) setParams({}, { replace: true })
           }}
-          onSaved={() => {
+          onLogoChanged={() => load(true)}
+          onSaved={(_c, warning) => {
             setEdit(null)
+            if (warning) setToast(warning)
             if (params.get('new')) setParams({}, { replace: true })
             load(true)
           }}

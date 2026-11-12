@@ -4,13 +4,24 @@ import { qs, request } from './client'
 
 export type ChannelOrder = 'shuffle' | 'ordered'
 
+/**
+ * One entry of a channel's own list (rules.picks): a movie or a series
+ * (`title`, a series plays all its episodes in order), one movie or episode
+ * (`item`), or every video under a library folder (`folder`, the path as the
+ * folder browser returns it).
+ */
+export type ChannelPick = { kind: 'title'; id: number } | { kind: 'item'; id: number } | { kind: 'folder'; path: string }
+
 /** What a channel plays (the server's channels.Rules). */
 export interface ChannelRules {
   kinds?: ('movie' | 'series')[]
   genres?: string[]
   yearFrom?: number
   yearTo?: number
+  /** Round 1's chosen titles (read only: the editor saves them as picks). */
   titles?: number[]
+  /** The channel's own ordered list; when set it is the whole pool (the filters are ignored). */
+  picks?: ChannelPick[]
   libraryUser?: number
   maxRating?: string
   order?: ChannelOrder
@@ -20,11 +31,13 @@ export interface ChannelRules {
 
 /** An audio or subtitle rendition of the live stream present in a programme. */
 export interface ChannelTrack {
-  slot: string
-  /** The HLS rendition's NAME (select the rendition by it). */
+  /** Round 3's fixed slot (older servers; never relied on). */
+  slot?: string
+  /** The HLS rendition's NAME, unique in its group (select the rendition by it). */
   name: string
-  /** What the picker shows («Русский — LostFilm»). */
+  /** What the picker shows («Русский — LostFilm»); may be longer than the name. */
   label: string
+  /** BCP 47 / ISO 639 of the track ("" unknown). */
   lang: string
 }
 
@@ -61,8 +74,12 @@ export interface Channel {
   canEdit: boolean
   /** Starred by this profile. */
   favorite?: boolean
+  /** The uploaded logo ("/api/channels/{id}/logo.png?v=…"); absent: none (show number and name). */
+  logoUrl?: string
   /** Only for a channel the profile may edit. */
   rules?: ChannelRules
+  /** The editor's list: rules.picks described in order (only where the profile may edit). */
+  pickInfo?: ChannelPickInfo[]
   now?: ChannelProgram
   next?: ChannelProgram
 }
@@ -88,6 +105,7 @@ export interface ChannelEPG {
   name: string
   category: string
   favorite?: boolean
+  logoUrl?: string
   programs: ChannelProgram[]
 }
 
@@ -104,6 +122,34 @@ export interface ChannelOptions {
   profiles: { id: number; name: string }[]
   /** The server can mix in films from outside the library (rules.extras). */
   extrasAvailable?: boolean
+}
+
+/** A pick as the server describes it (Channel.pickInfo). */
+export type ChannelPickInfo = ChannelPick & {
+  title: string
+  subtitle?: string
+  year?: number
+  /** Nothing of it plays now (gone, above the age limit…). */
+  missing?: boolean
+}
+
+/** A hit of the editor's search (movies, series, episodes). */
+export interface ChannelSearchHit {
+  kind: 'movie' | 'series' | 'episode'
+  id: number
+  title: string
+  /** An episode's «Series · S1 E2»… */
+  subtitle?: string
+  year?: number
+  /** What to put in rules.picks. */
+  pick?: ChannelPick
+}
+
+/** One level of the library's folders for the editor's browser. */
+export interface ChannelFolderLevel {
+  folders: { path: string; name: string }[]
+  /** Playable files here: their item ids. */
+  files: { id: number; name: string; kind?: 'movie' | 'episode' }[]
 }
 
 export interface ChannelInput {
@@ -132,6 +178,30 @@ export const setChannelFavorite = (id: number, on: boolean) => request<void>(on 
 export const setLastChannel = (id: number) => request<void>('PUT', '/api/channels/last', { channelId: id })
 
 export const getChannelOptions = (signal?: AbortSignal) => request<ChannelOptions>('GET', '/api/channels/options', undefined, signal)
+
+export const searchChannelOptions = (q: string, signal?: AbortSignal) =>
+  request<{ results?: ChannelSearchHit[] } | ChannelSearchHit[]>('GET', `/api/channels/options/search${qs({ q })}`, undefined, signal).then((r) =>
+    Array.isArray(r) ? r : (r?.results ?? []),
+  )
+
+/** The folders and files under `path` ("" : the library roots). */
+export const getChannelFolders = (path: string, signal?: AbortSignal) =>
+  request<ChannelFolderLevel>('GET', `/api/channels/options/folders${qs({ path: path || undefined })}`, undefined, signal).then((r) => ({
+    folders: r?.folders ?? [],
+    files: r?.files ?? [],
+  }))
+
+/** The largest logo the server takes. */
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024
+export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+
+/** Upload a channel's logo (PNG, JPEG or WebP ≤ 2 MB): the channel as it is now, or nothing. */
+export function uploadChannelLogo(id: number, file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return request<Partial<Channel> | undefined>('POST', `/api/channels/${id}/logo`, body)
+}
+export const deleteChannelLogo = (id: number) => request<void>('DELETE', `/api/channels/${id}/logo`)
 
 export const createChannel = (c: ChannelInput) => request<Channel>('POST', '/api/channels', c)
 export const updateChannel = (id: number, c: ChannelInput) => request<Channel>('PUT', `/api/channels/${id}`, c)

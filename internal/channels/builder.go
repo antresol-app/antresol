@@ -185,13 +185,19 @@ func (b *Builder) trim(ctx context.Context, tx *sql.Tx, id int64, now time.Time)
 	return err
 }
 
-// airing is a stretch of a unit on another channel's schedule.
+// airing is a stretch of a title on another channel's schedule.
 type airing struct{ start, end int64 }
 
-// elsewhere is what the other enabled channels air in [from, to), by unit:
+// elsewhere is what the other enabled channels air in [from, to), by title:
 // a title with several genres must not be on two channels at once.
 func (b *Builder) elsewhere(ctx context.Context, tx *sql.Tx, id, from, to int64) (map[int64][]airing, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT p.unit_id, p.start_ms, p.end_ms FROM channel_playout p JOIN channels c ON c.id=p.channel_id
+	// by title (a movie, an episode's series; a title outside the library:
+	// its unit), so a channel of picks and a genre channel see each other
+	rows, err := tx.QueryContext(ctx, `SELECT CASE WHEN p.extra_id IS NOT NULL OR i.id IS NULL THEN p.unit_id ELSE `+titleOf+` END, p.start_ms, p.end_ms
+	  FROM channel_playout p JOIN channels c ON c.id=p.channel_id
+	  LEFT JOIN items i ON i.id=p.item_id
+	  LEFT JOIN items se ON se.id=i.parent_id AND i.kind='episode'
+	  LEFT JOIN items sr ON sr.id=se.parent_id AND se.kind='season'
 	  WHERE p.channel_id<>? AND c.enabled=1 AND p.end_ms > ? AND p.start_ms < ?`, id, from, to)
 	if err != nil {
 		return nil, err
@@ -216,12 +222,15 @@ type picker struct {
 	h      history
 	flat   []Prog // ordered: every programme in order
 	window int
-	busy   map[int64][]airing // units on air elsewhere
+	busy   map[int64][]airing // titles on air elsewhere
 }
 
-// clashes: unit u's programme pr starting at start would overlap the same
-// unit on another channel.
+// clashes: unit u's programme pr starting at start would overlap its
+// title on another channel.
 func (p *picker) clashes(u int64, pr Prog, start int64) bool {
+	if pr.TitleID != 0 {
+		u = pr.TitleID
+	}
 	var dur int64
 	for _, part := range pr.Parts {
 		dur += part.DurationMs
@@ -244,15 +253,9 @@ func newPicker(c Channel, pool Pool, h history) *picker {
 	p := &picker{c: c, pool: pool, h: h}
 	if c.Rules.Order == OrderOrdered {
 		us := append([]Unit(nil), pool.Units...)
-		pos := map[int64]int{}
-		for i, id := range c.Rules.Titles {
-			if _, ok := pos[id]; !ok {
-				pos[id] = i
-			}
-		}
 		sort.SliceStable(us, func(i, j int) bool {
-			if len(pos) > 0 { // hand-picked titles play in the order they were picked
-				return pos[us[i].ID] < pos[us[j].ID]
+			if len(c.Rules.Picks) > 0 { // picks play in the order they were picked (the pool's)
+				return false
 			}
 			if us[i].Year != us[j].Year {
 				return us[i].Year < us[j].Year
@@ -273,7 +276,11 @@ func newPicker(c Channel, pool Pool, h history) *picker {
 
 func (p *picker) next(seq, start int64) Prog {
 	if p.c.Rules.Order == OrderOrdered { // a marathon keeps its order
-		i := indexOf(p.flat, p.h.cursor[0]) + 1
+		var unit int64
+		if n := len(p.h.recent); n > 0 {
+			unit = p.h.recent[n-1]
+		}
+		i := positionOf(p.flat, unit, p.h.cursor[0]) + 1
 		pr := p.flat[i%len(p.flat)]
 		p.played(pr)
 		return pr
@@ -331,6 +338,18 @@ func libraryUnits(us []Unit) []Unit {
 func (p *picker) played(pr Prog) {
 	p.h.cursor[pr.UnitID], p.h.cursor[0] = pr.ItemID, pr.ItemID
 	p.h.recent = append(p.h.recent, pr.UnitID)
+}
+
+// positionOf is where the last programme (item of unit) is in an ordered
+// channel's programmes: the same item may be in two picks (a folder and
+// an episode of it), the unit tells which; -1: not there.
+func positionOf(flat []Prog, unit, item int64) int {
+	for i, pr := range flat {
+		if pr.ItemID == item && pr.UnitID == unit {
+			return i
+		}
+	}
+	return indexOf(flat, item)
 }
 
 func indexOf(progs []Prog, item int64) int {

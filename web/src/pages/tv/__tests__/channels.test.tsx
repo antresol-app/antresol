@@ -15,9 +15,11 @@ import {
   mergePrograms,
   minutesLeft,
   parseFilter,
-  pickAudioSlot,
-  pickSubSlot,
-  playingAudio,
+  chooseAudioIn,
+  chooseSubsIn,
+  cleanSession,
+  pickAudio,
+  pickSubs,
   progressOf,
   renditionIndex,
   renditionsToPlay,
@@ -154,58 +156,88 @@ describe('the guide grid', () => {
 })
 
 describe('audio and subtitles', () => {
+  // «Много голосов»: 8 voices and 6 subtitle languages, names as the server makes them, in no fixed order
+  const tr = (name: string, lang: string, label = name): ChannelTrack => ({ name, label, lang })
   const audio: ChannelTrack[] = [
-    { slot: 'ru', name: 'Русский', label: 'Русский — LostFilm', lang: 'ru' },
-    { slot: 'ru2', name: 'Русский 2', label: 'Русский — Кубик', lang: 'ru' },
-    { slot: 'en', name: 'English', label: 'English', lang: 'en' },
-    { slot: 'orig', name: 'Оригинал', label: 'Оригинал (fr)', lang: 'fr' },
+    tr('Дубляж', 'ru', 'Русский — Дубляж'),
+    tr('LostFilm', 'ru', 'Русский — LostFilm'),
+    tr('Кураж-Бамбей', 'ru'),
+    tr('LostFilm (очищено)', 'ru'),
+    tr('Оригинал (English)', 'en'),
+    tr('Français', 'fr'),
+    tr('Deutsch', 'de'),
+    tr('Комментарий', 'ru'),
   ]
-  const subs: ChannelTrack[] = [
-    { slot: 'ru', name: 'Русские', label: 'Русские', lang: 'ru' },
-    { slot: 'en', name: 'English', label: 'English', lang: 'en' },
-  ]
+  const subs: ChannelTrack[] = [tr('Русские', 'ru'), tr('Русские 2', 'ru'), tr('English', 'en'), tr('Français', 'fr'), tr('Deutsch', 'de'), tr('Español', 'es')]
+  const a = (name: string) => audio.find((x) => x.name === name)!
+  const s = (name: string) => subs.find((x) => x.name === name)!
   const prefs = (audioLangs: string[], subMode: 'off' | 'always' | 'foreign', subLangs: string[] = []) => ({ audioLangs, subMode, subLangs }) as never
+  const master = { audio: audio.map((x) => ({ name: x.name, lang: x.lang })), subs: subs.map((x) => ({ name: x.name, lang: x.lang })) }
 
-  it('picks the first of the profile’s languages the programme has, else «ru», else the first', () => {
-    expect(pickAudioSlot(audio, prefs(['en', 'ru'], 'off'), {})).toBe('en')
-    expect(pickAudioSlot(audio, prefs(['de'], 'off'), {})).toBe('ru')
-    expect(pickAudioSlot([audio[2]!], prefs(['de'], 'off'), {})).toBe('en')
-    expect(pickAudioSlot(audio, prefs(['fr'], 'off'), {})).toBe('orig')
-    expect(pickAudioSlot(undefined, prefs(['en'], 'off'), {})).toBeUndefined()
+  it('defaults to the first of the profile’s languages present, else Russian, else the first entry', () => {
+    expect(pickAudio(audio, prefs(['en', 'ru'], 'off'), {})?.name).toBe('Оригинал (English)')
+    expect(pickAudio(audio, prefs(['ja', 'de'], 'off'), {})?.name).toBe('Deutsch')
+    expect(pickAudio(audio, prefs(['ja'], 'off'), {})?.name).toBe('Дубляж')
+    // the order is the server's: the first Russian is whatever stands first
+    expect(pickAudio([a('Deutsch'), a('LostFilm'), a('Дубляж')], prefs([], 'off'), {})?.name).toBe('LostFilm')
+    expect(pickAudio([a('Français'), a('Deutsch')], null, {})?.name).toBe('Français')
+    expect(pickAudio(undefined, prefs(['en'], 'off'), {})).toBeUndefined()
+    // a region tag matches its language
+    expect(pickAudio([tr('English (US)', 'en-US'), a('Дубляж')], prefs(['en'], 'off'), {})?.name).toBe('English (US)')
   })
 
-  it('subtitles by the profile’s mode', () => {
-    expect(pickSubSlot(subs, prefs(['ru'], 'off'), audio[0], {})).toBeNull()
-    expect(pickSubSlot(subs, prefs(['ru'], 'always', ['en']), audio[0], {})).toBe('en')
-    expect(pickSubSlot(subs, prefs(['ru', 'en'], 'always'), audio[0], {})).toBe('ru')
-    // foreign: only when the voice is not one of the profile's languages
-    expect(pickSubSlot(subs, prefs(['ru'], 'foreign'), audio[0], {})).toBeNull()
-    expect(pickSubSlot(subs, prefs(['ru'], 'foreign'), audio[3], {})).toBe('ru')
+  it('the choice sticks by name; a programme without it falls back to its language', () => {
+    const session = chooseAudioIn({}, a('Кураж-Бамбей'))
+    expect(session).toEqual({ audioName: 'Кураж-Бамбей', audioLang: 'ru' })
+    expect(pickAudio(audio, prefs(['en'], 'off'), session)?.name).toBe('Кураж-Бамбей')
+    // the next film has only «Дубляж» and the original: the Russian one, not the profile's English
+    expect(pickAudio([a('Оригинал (English)'), a('Дубляж')], prefs(['en'], 'off'), session)?.name).toBe('Дубляж')
+    // no track in that language at all: the profile's default
+    expect(pickAudio([a('Оригинал (English)'), a('Français')], prefs(['fr'], 'off'), session)?.name).toBe('Français')
   })
 
-  it('the viewer’s choice wins and sticks; a slot the programme lacks plays its «ru»', () => {
-    expect(pickAudioSlot(audio, prefs(['en'], 'off'), { audio: 'ru2' })).toBe('ru2')
-    expect(pickSubSlot(subs, prefs(['ru'], 'always'), audio[0], { subs: null })).toBeNull()
-    expect(pickSubSlot(subs, prefs(['ru'], 'off'), audio[0], { subs: 'en' })).toBe('en')
-    expect(playingAudio([audio[0]!, audio[2]!], 'ru2')?.slot).toBe('ru')
+  it('subtitles: the profile’s mode, the viewer’s choice by name, then by language', () => {
+    expect(pickSubs(subs, prefs(['ru'], 'off'), a('Дубляж'), {})).toBeNull()
+    expect(pickSubs(subs, prefs(['ru'], 'always', ['es']), a('Дубляж'), {})?.name).toBe('Español')
+    expect(pickSubs(subs, prefs(['ru', 'en'], 'always'), a('Дубляж'), {})?.name).toBe('Русские')
+    expect(pickSubs(subs, prefs(['ru'], 'foreign'), a('Дубляж'), {})).toBeNull()
+    expect(pickSubs(subs, prefs(['ru'], 'foreign'), a('Français'), {})?.name).toBe('Русские')
+    const chosen = chooseSubsIn({}, s('Русские 2'))
+    expect(pickSubs(subs, prefs(['ru'], 'off'), a('Дубляж'), chosen)?.name).toBe('Русские 2')
+    expect(pickSubs([s('English'), s('Русские')], prefs(['ru'], 'off'), a('Дубляж'), chosen)?.name).toBe('Русские')
+    expect(pickSubs([s('English')], prefs(['ru'], 'always'), a('Дубляж'), chosen)).toBeNull()
+    const off = chooseSubsIn(chosen, null)
+    expect(off).toEqual({ subsName: null })
+    expect(pickSubs(subs, prefs(['ru'], 'always'), a('Дубляж'), off)).toBeNull()
   })
 
-  it('stays on the chosen slot when a programme lacks it (no switch at the boundary)', () => {
-    const session = { audio: 'ru2', audioName: 'Русский 2', subs: 'ru', subsName: 'Русские' }
-    // a programme with only English and the original
-    const a = [audio[2]!, audio[3]!]
-    const s = [subs[1]!]
-    expect(renditionsToPlay(a, s, 'ru2', 'ru', session)).toEqual({ audio: 'Русский 2', subs: 'Русские' })
-    expect(renditionsToPlay(audio, subs, 'ru2', 'ru', session)).toEqual({ audio: 'Русский 2', subs: 'Русские' })
-    // no choice: the profile's default, subtitles off
-    expect(renditionsToPlay(audio, subs, 'en', null, {})).toEqual({ audio: 'English', subs: null })
-    // an older server: nothing known, nothing touched
-    expect(renditionsToPlay(undefined, undefined, undefined, null, {})).toEqual({ audio: undefined, subs: undefined })
+  it('plays the chosen rendition while the master has it, even through a programme that lacks it', () => {
+    const session = { ...chooseAudioIn({}, a('Кураж-Бамбей')), ...chooseSubsIn({}, s('Deutsch')) }
+    // the next film has only «Дубляж» and English subtitles: no switch at the boundary
+    const progA = [a('Дубляж')]
+    const progS = [s('English')]
+    const audioNow = pickAudio(progA, prefs(['ru'], 'off'), session)
+    const subsNow = pickSubs(progS, prefs(['ru'], 'off'), audioNow, session)
+    expect(renditionsToPlay(audioNow, subsNow, true, master, session)).toEqual({ audio: 'Кураж-Бамбей', subs: 'Deutsch' })
+    // zapped to a channel whose master has neither name: the programme's entries, by language
+    const other = { audio: [{ name: 'Дубляж', lang: 'ru' }, { name: 'English', lang: 'en' }], subs: [{ name: 'English', lang: 'en' }] }
+    expect(renditionsToPlay(audioNow, subsNow, true, other, session)).toEqual({ audio: 'Дубляж', subs: null })
+    // no choice: the profile's default; subtitles off
+    const def = pickAudio(audio, prefs(['en'], 'off'), {})
+    expect(renditionsToPlay(def, null, true, master, {})).toEqual({ audio: 'Оригинал (English)', subs: null })
+    // an older server before the player listed anything: nothing touched
+    expect(renditionsToPlay(undefined, null, false, { audio: [], subs: [] }, {})).toEqual({ audio: undefined, subs: undefined })
+  })
+
+  it('reads a stored session safely (round 3’s slots are dropped)', () => {
+    expect(cleanSession({ audio: 'ru2', audioName: 'Русский 2', subs: 'en' })).toEqual({ audioName: 'Русский 2' })
+    expect(cleanSession({ subsName: null })).toEqual({ subsName: null })
+    expect(cleanSession('x')).toEqual({})
   })
 
   it('selects the rendition by its HLS NAME', () => {
-    expect(renditionIndex(['Русский', 'Русский 2', 'English'], 'Русский 2')).toBe(1)
-    expect(renditionIndex(['Русский'], 'English')).toBe(-1)
+    expect(renditionIndex(master.audio.map((x) => x.name), 'LostFilm (очищено)')).toBe(3)
+    expect(renditionIndex(['Дубляж'], 'English')).toBe(-1)
   })
 })
 
@@ -241,6 +273,21 @@ describe('the rows', () => {
     expect(document.querySelector('[style*="grad"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'В избранное' }))
     expect(onFavorite).toHaveBeenCalledWith(true)
+  })
+
+  it('a logo beside the name; a row without one keeps the slot when the list has logos', () => {
+    const now = ms('12:35')
+    render(
+      <MemoryRouter>
+        <ul>
+          <ChannelRow channel={ch(1, 1, 'Кино', { logoUrl: '/api/channels/1/logo.png?v=2' })} now={now} to="/tv/1" logoSlot onFavorite={() => {}} />
+          <ChannelRow channel={ch(2, 2, 'Кино')} now={now} to="/tv/2" logoSlot onFavorite={() => {}} />
+          <ChannelRow channel={ch(3, 3, 'Кино')} now={now} to="/tv/3" onFavorite={() => {}} />
+        </ul>
+      </MemoryRouter>,
+    )
+    expect(document.querySelector('[data-channel-logo] img')?.getAttribute('src')).toBe('/api/channels/1/logo.png?v=2')
+    expect(document.querySelectorAll('[data-logo-slot]')).toHaveLength(1)
   })
 
   it('a home card shows the programme still and its progress, never a logo tile', () => {

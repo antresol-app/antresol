@@ -13,6 +13,7 @@ import { IconButton } from '../../ui/IconButton'
 import { MenuItem, PointMenu } from '../../ui/Menu'
 import { ProgressBar } from '../../ui/ProgressBar'
 import { ChannelArt } from './ChannelArt'
+import { ChannelLogo } from './ChannelLogo'
 import { progressOf } from './model'
 import styles from './Tv.module.css'
 
@@ -25,11 +26,13 @@ export interface ChannelRowProps {
   selected?: boolean
   eager?: boolean
   onFavorite: (on: boolean) => void
+  /** Some channel of the list has a logo: keep its slot in this row too. */
+  logoSlot?: boolean
   /** The pointer or the focus is on the row (the wide screen's preview follows it). */
   onPreview?: () => void
 }
 
-export function ChannelRow({ channel: c, now, to, last, selected, eager, onFavorite, onPreview }: ChannelRowProps) {
+export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlot, onFavorite, onPreview }: ChannelRowProps) {
   const t = useT()
   const navigate = useNavigate()
   const onWatch = () => navigate(to)
@@ -44,12 +47,13 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, onFavor
   }
   return (
     <li className={styles.row} data-last={last || undefined} data-selected={selected || undefined} data-fav={fav || undefined} onPointerEnter={onPreview} onFocus={onPreview} onContextMenu={onContext}>
-      <Link to={to} className={styles.rowLink} aria-label={`${t('tv.channelNumber', { number: c.number, name: c.name })}. ${title}`}>
+      <Link to={to} className={styles.rowLink} data-logos={logoSlot || undefined} aria-label={`${t('tv.channelNumber', { number: c.number, name: c.name })}. ${title}`}>
         <span className={styles.rowNum}>{c.number}</span>
         <ChannelArt program={p} width={112} sizes="(max-width: 699px) 80px, 112px" eager={eager} className={styles.rowArt} />
+        {logoSlot && <ChannelLogo url={c.logoUrl} size="sm" reserve />}
         <span className={styles.rowText}>
           <span className={styles.rowChannel}>
-            {c.name}
+            <span className={styles.rowChannelName}>{c.name}</span>
             {last && <span className={styles.rowLastTag}>{t('tv.lastTag')}</span>}
           </span>
           <span className={styles.rowTitle}>{title}</span>
