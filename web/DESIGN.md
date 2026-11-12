@@ -133,7 +133,10 @@ bar's sections and the library menu. Numbers that change
 | `ProgressBar` | linear progress (a download, the watch progress) | tones `accent`, `paused`, `warning`, `label`; with `label` it is a progressbar for assistive tech. |
 | `Badge`, `Badges` | a small fact or status capsule | tones `default`, `strong`, `outline` (over artwork), `warning`, `accent`, `success`, `destructive`; `round` for a status. Other modules `composes: badge … from '../ui/Badge.module.css'`. |
 | `SegmentedControl` | 2–5 mutually exclusive options shown at once | the toolbar height (`size="small"`: the small height, in a toolbar); a segment may be an `icon` (its label is the name and tooltip); arrow keys move; scrolls sideways on phones. `row`: a page's filter under its title (Поиск, up to 7 segments) — centred in its column; when it does not fit, the whole pill scrolls out to the window's edges (`--segmented-bleed`, the page's gutter) and the edge with more segments past it fades. `align="start"`: the row starts at its column's edge instead of centring (a filter over a list that starts there — «ТВ»). |
-| `Toggle` | on/off that applies at once | the iOS switch, green when on; the row's label names it. |
+| `Toggle` | on/off that applies at once | the iOS switch, green when on; the row's label names it. `size="small"` (40×24) for a column of switches in a table (the source's «Показ»); a finger still gets 44. |
+| `FilterChips` | one choice of many, each with a count (a playlist's groups) | capsules of the small control height on `--fill-2`, the chosen one white with the inverse label (as SegmentedControl's thumb), the count tabular in `--label-2`; arrow keys, Home/End move. A wide window wraps them; a phone keeps one line that scrolls sideways out to the window's edges (`--chips-bleed`, the page's gutter). Two to five fixed words are a `SegmentedControl`, not chips. |
+| `Notice` | a state that waits for the viewer, or a problem worth reading (a refresh that lost too many channels) | a tinted ground (`warning` default, `accent`, `destructive`), the glyph in the tint, a `title` and the message in the label colours, the `actions` (small secondary `Button`s) under the words. `as="li"` makes it the first row of a `GroupedSection`. A passing confirmation is a `Toast`, not a notice. |
+| `VirtualList` | a list of thousands of rows of one height (a source's channel table) | renders only the rows near the screen plus `overscan`, keeps its full height so the scroll bar tells the truth, and follows whichever scroller moves (the window or an ancestor). `itemHeight` per layout (a phone's two-line row passes its own); `role`/`itemRole` `list`/`listitem` or `rowgroup`/`row` under a header row the caller draws. Rows are positioned inside it, so a scroller around it keeps them. |
 | `Sheet` | confirmations, forms, read-only panels | `alert` (default), `wide`, `large`. Wide screens: centred. Phones: a bottom sheet that slides up and slides away when closed, inset 8 pt from the edges with 28 pt corners; the page behind it is locked (`scrollLock.ts`); the keyboard lifts it (`--keyboard-inset`, `--vv-top`); the message and the form scroll between the pinned title and buttons (`[data-sheet-body]`), so «Сохранить» stays on screen; its buttons are capsules at the thumb, three or more stacked with Cancel at the bottom. A read-only picker (`dismissOnOutside`) has the grabber: drag or flick it down to close. A dialog without Cancel gets the round ✕. |
 | `TabBar` | the phone's navigation (TopNav renders it below 700 px) | a glass capsule of tabs (glyph over label) and a round `accessory` (search) beside it; the router marks the current tab. It is the layout's bottom bar (`data-bottom-bar`). Six tabs (Главная, Фильмы, Сериалы, ТВ, Музыка, Книги) fit a 375 pt phone: past five the tabs keep equal widths but never get narrower than their label (the others share the rest, 44 pt at least), labels lose their side padding and tracking, and the bar's insets tighten below 400 pt. Checked at 375/390/430 in both languages — no label is cut. |
 | `PlayerBar`, `PlayerBarButton` | what plays, on every page | the Music app's mini player: artwork, title, subtitle (open the full player), three 44 pt controls, a progress hairline; at `--playerbar-bottom`. `MiniPlayer` feeds it. |
@@ -218,6 +221,35 @@ bar's sections and the library menu. Numbers that change
   air `--fill-1`, past `--fill-4` with tertiary text), the now line and its
   time pill in the accent. The live player is the film player's chrome
   (`VideoPlayer.module.css`) with the programme's info in the bottom bar.
+- **External sources** (`pages/tv/sources`, admin): «Внешние источники»
+  is a settings column — the sources as link rows (glyph tile, name with
+  a «N новых» badge, the masked address, counts · when refreshed, the
+  last error in `--destructive-text`, a pending drop as a `Notice` row
+  under the source with «Оставить старый список» (secondary) and
+  «Подтвердить» (destructive)), «Наборы», «Устройства» (a set `Select` at
+  each row's end; an IPTV link's «⋯» copies its addresses or deletes it after a confirmation), «Настройки». A set's sheet lists its sources, then per source its categories with switches and a search to leave single channels out (the left-out ones listed while the search is empty). A source opens
+  its own page: the header (name, masked address, counts, «Обновить»,
+  «⋯»: settings, guides, delete), its notices, then the editor table.
+  Settings, a channel and a guide binding are sheets (`size="large"` /
+  `"wide"`); a stored secret is never shown — its field is empty with the
+  mask as the placeholder and is sent only when typed. An external
+  channel the browser cannot play says «Этот канал открывается в
+  приложении Antresol или в IPTV-плеере» and why, in the player's error
+  card (compact inside the picture on an upright phone).
+- **An editor table** («Внешние источники» → a source's channels): the
+  page's wide column (`--column-max`); a search field (`size="small"`)
+  and a `SegmentedControl size="small"` on one line, `FilterChips` under
+  them, a `GroupedSection` with the chosen group's bulk actions, then one
+  surface (`--surface-grouped`, `--r-group`) holding a header row of
+  column names (`--t-footnote-em`, `--label-2`) that sticks under the top
+  bar — and, once stuck, hides the rows passing behind the bar — and a
+  `VirtualList` of rows at `--control-h-lg`. A cell's default value
+  recedes (`--label-3`), the exceptions read in `--label-2`; a hidden row's
+  name turns `--label-2`. The name edits in place (the text, then a small
+  `TextField`); the rest is in the row's «⋯» and the channel's sheet. A
+  phone folds the columns into the row's second line and keeps the switch;
+  a tap on the row opens the sheet. Without any logo in the list the logo
+  column folds away.
 - **A phone on its side** (`SHORT_QUERY`, height ≤ 500): wide-screen layout,
   but the first screen must still hold the title and the main action —
   smaller titles, two lines of overview, tighter gaps; sign-in scrolls from

@@ -11,9 +11,11 @@ export interface ToggleProps {
   hideLabel?: boolean
   /** id of the help text read after the label. */
   describedBy?: string
+  /** small: a 40 × 24 switch for a column of them (a table's «Показ»). */
+  size?: 'regular' | 'small'
 }
 
-export function Toggle({ label, checked, onChange, disabled, hideLabel = true, describedBy }: ToggleProps) {
+export function Toggle({ label, checked, onChange, disabled, hideLabel = true, describedBy, size = 'regular' }: ToggleProps) {
   return (
     <button
       type="button"
@@ -22,7 +24,7 @@ export function Toggle({ label, checked, onChange, disabled, hideLabel = true, d
       aria-label={hideLabel ? label : undefined}
       aria-describedby={describedBy}
       disabled={disabled}
-      className={styles.toggle}
+      className={size === 'small' ? `${styles.toggle} ${styles.small}` : styles.toggle}
       onClick={() => onChange(!checked)}
     >
       <span className={styles.track} aria-hidden>

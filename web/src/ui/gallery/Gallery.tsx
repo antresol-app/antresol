@@ -27,6 +27,9 @@ import { ProgressRing, StatusRing } from '../StatusRing'
 import { TextField } from '../TextField'
 import { Toast } from '../Toast'
 import { Toggle } from '../Toggle'
+import { FilterChips } from '../FilterChips'
+import { Notice } from '../Notice'
+import { VirtualList } from '../VirtualList'
 import { DownloadTile } from './DownloadTile'
 import styles from './Gallery.module.css'
 
@@ -120,6 +123,7 @@ export function Gallery() {
   const [sorted, setSorted] = useState(SORTABLE)
   const [scope, setScope] = useState('all')
   const [on, setOn] = useState(true)
+  const [chip, setChip] = useState('')
   const [size, setSize] = useState('0')
   const [langs, setLangs] = useState(['ru', 'en'])
   const [mbs, setMbs] = useState(2)
@@ -449,6 +453,50 @@ export function Gallery() {
           <Toggle label="Вкл." checked={on} onChange={setOn} />
           <Toggle label="Выкл." checked={false} onChange={() => {}} />
           <Toggle label="Недоступно" checked disabled onChange={() => {}} />
+          <Toggle label="Маленький" size="small" checked={on} onChange={setOn} />
+          <Toggle label="Маленький выкл." size="small" checked={false} onChange={() => {}} />
+        </div>
+      </Section>
+
+      <Section title="Notice" note="A state that waits for the viewer or a problem worth reading: a tinted ground, the glyph in the tint, the actions under the words. as=&quot;li&quot; makes it a group's first row.">
+        <Notice
+          title="Пропало 412 каналов из 1 300 — подтвердить?"
+          actions={
+            <>
+              <Button variant="secondary" size="small">Оставить старый список</Button>
+              <Button variant="secondary" size="small">Подтвердить</Button>
+            </>
+          }
+        >
+          Провайдер прислал список короче прежнего. Пока вы не решите, остаётся старый.
+        </Notice>
+        <Notice tone="accent">Новые каналы источника скрыты: в плейлисте больше 300 каналов.</Notice>
+        <Notice tone="destructive">Последнее обновление не удалось.</Notice>
+      </Section>
+
+      <Section title="FilterChips" note="One choice of many (a playlist's groups), each with its count; wraps on a wide window, one sideways-scrolling line on a phone (--chips-bleed). 2–5 fixed words: SegmentedControl.">
+        <FilterChips
+          label="Группы"
+          value={chip}
+          onChange={setChip}
+          formatCount={(n) => n.toLocaleString('ru-RU')}
+          chips={[{ value: '', label: 'Все группы', count: 3000 }, ...['Новости', 'Спорт', 'Кино', 'Сериалы', 'Детям', 'Музыка', 'Познавательные', 'Развлекательные', 'Региональные'].map((g, i) => ({ value: g, label: g, count: 120 + i * 37 }))]}
+        />
+      </Section>
+
+      <Section title="VirtualList" note="Thousands of rows of one height; only those near the screen are in the DOM. It follows whichever scroller moves (here a box of its own; on a page, the window).">
+        <div className={styles.virtualBox}>
+          <VirtualList
+            count={5000}
+            itemHeight={44}
+            label="5 000 строк"
+            renderItem={(i) => (
+              <div className={styles.virtualRow}>
+                <span>{i + 1}</span>
+                <span>Строка {i + 1}</span>
+              </div>
+            )}
+          />
         </div>
       </Section>
 

@@ -19,6 +19,7 @@ import (
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/i18n"
+	"github.com/antresol-app/antresol/internal/iptv"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/lyrics"
 	"github.com/antresol-app/antresol/internal/media"
@@ -189,6 +190,10 @@ type Deps struct {
 	// (/iptv/{token}/…, /api/channels/iptv). Off by default: channels are
 	// watched in Antresol's own apps.
 	IPTV bool
+	// ExtIPTV: external IPTV playlists and guides in «ТВ» (admin editor
+	// /api/tv/…, external channels in the lists, guides and IPTV links);
+	// nil: none. Needs Channels.
+	ExtIPTV *iptv.Service
 
 	// fullDeps are the sources build's own dependencies (deps_full.go); an
 	// empty struct in the core build. Set them by name: deps.Acquire.
@@ -291,14 +296,21 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			}
 			if deps.Channels != nil && deps.DB != nil {
 				ca := newChannelsAPI(deps, h)
+				if deps.Translations != nil {
+					// the guide's text in the viewers' languages, fetched ahead
+					deps.Channels.SetWarm((&guideWarmer{h: h, svc: deps.Channels}).warm)
+				}
 				mountChannels(r, ca)
 				if deps.IPTV {
 					mountIPTVLinks(r, ca)
 				}
+				if deps.ExtIPTV != nil {
+					mountIPTVAdmin(r, &iptvAdmin{ca: ca, svc: deps.ExtIPTV, links: deps.IPTV})
+				}
 			}
 		})
 		if deps.Channels != nil && deps.DB != nil && deps.IPTV {
-			mountIPTV(r, newChannelsAPI(deps, nil)) // a token in the path, no session
+			mountIPTV(r, newChannelsAPI(deps, h)) // a token in the path, no session (h: the guide's language)
 		}
 	}
 	if deps.Notify != nil {
@@ -444,8 +456,11 @@ func compressible(ct string) bool {
 // blocked. blob: covers hls.js (MediaSource, its worker), pdf.js's worker
 // and foliate's section documents, styles and fonts; images may come from
 // metadata hosts (TMDB, Cover Art Archive posters in search results).
+// External IPTV channels play the provider's stream directly (hls.js fetches
+// its playlists and segments, Safari loads it as media), so media and
+// connections may go to any http(s) host; scripts stay same-origin only.
 const appCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; " +
-	"img-src * data: blob:; font-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; " +
+	"img-src * data: blob:; font-src 'self' data: blob:; media-src 'self' blob: http: https:; connect-src 'self' blob: http: https:; " +
 	"worker-src 'self' blob:; frame-src 'self' blob:; manifest-src 'self'; object-src 'none'; " +
 	"base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 

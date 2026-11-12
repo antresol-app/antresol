@@ -16,6 +16,7 @@ import requests from './en/requests'
 import migrate from './en/migrate'
 import playlistImport from './en/playlistImport'
 import channels from './en/channels'
+import iptv from './en/iptv'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -33,5 +34,6 @@ export const en: EnOf<typeof ru> = {
   ...migrate,
   ...playlistImport,
   ...channels,
+  ...iptv,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

@@ -79,7 +79,25 @@ type Channel struct {
 	// LogoVersion: the uploaded logo's version (0: none, the generated
 	// tile stands for the channel).
 	LogoVersion int64 `json:"-"`
+	// Kind: KindAntresol (made of the library) or KindExternal (a channel
+	// of an external IPTV playlist, internal/iptv: never scheduled or
+	// encoded here, seen through the viewer's set only).
+	Kind string `json:"-"`
+	// NumberManual: an admin set the number (automatic numbering of
+	// external channels leaves it).
+	NumberManual bool `json:"-"`
+	// Why: what decided an external channel's visibility (an i18n key).
+	Why string `json:"-"`
 }
+
+// Kinds of a channel row.
+const (
+	KindAntresol = "antresol"
+	KindExternal = "external"
+)
+
+// External: c is a channel of an external playlist.
+func (c Channel) External() bool { return c.Kind == KindExternal }
 
 var (
 	// ErrNotFound: no such channel.
@@ -109,14 +127,14 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed, logo_version`
+const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed, logo_version, kind, number_manual, why`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanChannel(r rowScanner) (Channel, error) {
 	var c Channel
 	var rules string
-	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed, &c.LogoVersion)
+	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed, &c.LogoVersion, &c.Kind, &c.NumberManual, &c.Why)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -163,9 +181,10 @@ type Viewer struct {
 
 // VisibleTo reports whether v sees c in its channel list: a shared channel
 // or v's own, enabled, and within v's age limit (a limited profile sees
-// only channels limited to its limit or lower).
+// only channels limited to its limit or lower). An external channel is
+// never visible this way: its viewers come from internal/iptv's sets.
 func VisibleTo(c Channel, v Viewer) bool {
-	if !c.Enabled || (c.UserID != 0 && c.UserID != v.ID) {
+	if c.External() || !c.Enabled || (c.UserID != 0 && c.UserID != v.ID) {
 		return false
 	}
 	return WithinLimit(c.Rules.MaxRating, v.MaxRating)

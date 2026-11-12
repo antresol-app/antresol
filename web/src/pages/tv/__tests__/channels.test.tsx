@@ -174,13 +174,18 @@ describe('audio and subtitles', () => {
   const prefs = (audioLangs: string[], subMode: 'off' | 'always' | 'foreign', subLangs: string[] = []) => ({ audioLangs, subMode, subLangs }) as never
   const master = { audio: audio.map((x) => ({ name: x.name, lang: x.lang })), subs: subs.map((x) => ({ name: x.name, lang: x.lang })) }
 
-  it('defaults to the first of the profile’s languages present, else Russian, else the first entry', () => {
+  it('defaults to the device’s languages, then the profile’s, then the original', () => {
     expect(pickAudio(audio, prefs(['en', 'ru'], 'off'), {})?.name).toBe('Оригинал (English)')
     expect(pickAudio(audio, prefs(['ja', 'de'], 'off'), {})?.name).toBe('Deutsch')
-    expect(pickAudio(audio, prefs(['ja'], 'off'), {})?.name).toBe('Дубляж')
-    // the order is the server's: the first Russian is whatever stands first
-    expect(pickAudio([a('Deutsch'), a('LostFilm'), a('Дубляж')], prefs([], 'off'), {})?.name).toBe('LostFilm')
+    // the device's language comes first; one it lacks falls through to the profile's
+    expect(pickAudio(audio, prefs(['ru'], 'off'), {}, ['fr-FR', 'en'])?.name).toBe('Français')
+    expect(pickAudio(audio, prefs(['de'], 'off'), {}, ['ja-JP'])?.name).toBe('Deutsch')
+    // none of them: the original (named so), else the first the stream lists
+    expect(pickAudio(audio, prefs(['ja'], 'off'), {})?.name).toBe('Оригинал (English)')
+    expect(pickAudio([a('Deutsch'), a('LostFilm'), a('Дубляж')], prefs([], 'off'), {})?.name).toBe('Deutsch')
     expect(pickAudio([a('Français'), a('Deutsch')], null, {})?.name).toBe('Français')
+    // the viewer's choice on the channel beats them all
+    expect(pickAudio(audio, prefs(['en'], 'off'), { audioName: 'LostFilm', audioLang: 'ru' }, ['en'])?.name).toBe('LostFilm')
     expect(pickAudio(undefined, prefs(['en'], 'off'), {})).toBeUndefined()
     // a region tag matches its language
     expect(pickAudio([tr('English (US)', 'en-US'), a('Дубляж')], prefs(['en'], 'off'), {})?.name).toBe('English (US)')
@@ -268,7 +273,9 @@ describe('the rows', () => {
     // a TV row: no «осталось…» and no «Далее…» (they are in the pane, the guide and the player)
     expect(screen.queryByText(/осталось|Далее|до \d/)).toBeNull()
     expect(document.querySelectorAll('[aria-hidden="true"][data-tone]').length).toBe(1)
-    expect(screen.getByText('Последний')).toBeTruthy()
+    // the last channel: the row is marked (its number in the accent), no «Последний» word cutting the name
+    expect(screen.queryByText('Последний')).toBeNull()
+    expect(document.querySelector('li[data-last]')).not.toBeNull()
     // no gradient tile: no channel name drawn on the picture
     expect(document.querySelector('[style*="grad"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'В избранное' }))

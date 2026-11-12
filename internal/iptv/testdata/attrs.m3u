@@ -1,0 +1,14 @@
+﻿#EXTM3U url-tvg="http://epg.example.test/a.xml.gz, http://epg.example.test/b.xml" x-tvg-url="http://epg.example.test/a.xml.gz"
+#EXTINF:-1 tvg-id="news.one" tvg-name="News One" tvg-logo="http://img.example.test/n1.png" group-title="News" catchup="default" catchup-days="3",News One HD
+#EXTVLCOPT:http-user-agent=TestPlayer/1.0
+#EXTVLCOPT:http-referrer=http://ref.example.test/
+http://stream.example.test/live/news1.m3u8
+#EXTINF:-1 group-title='Movies' tvg-id=movie.two,Movie Two, Classic
+http://stream.example.test/live/movie2.ts
+#EXTINF:0 tvg-name="Kids, Fun" group-title="Kids",Kids Fun
+#KODIPROP:inputstream.adaptive.stream_headers=User-Agent=KodiUA%2F2&Referer=http%3A%2F%2Fk.example.test%2F
+http://stream.example.test/live/kids.m3u8
+
+#EXTINF:-1,Plain
+#EXTGRP:Misc
+http://stream.example.test/plain.m3u8|User-Agent=PipeUA&Referer=http://p.example.test/

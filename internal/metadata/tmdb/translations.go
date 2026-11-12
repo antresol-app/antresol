@@ -144,6 +144,13 @@ func (s *Translations) Peek(ctx context.Context, kind string, id int, tag string
 	return c.t, ok
 }
 
+// Has: the cache holds a fresh text of the title in the tag with at least
+// the given seasons (TMDB is not asked, nothing is fetched).
+func (s *Translations) Has(ctx context.Context, kind string, id int, tag string, seasons []int) bool {
+	c, ok := s.cached(ctx, kind, id, tag)
+	return ok && s.fresh(c) && c.t.covers(seasons)
+}
+
 // Get is the text of a title in the tag with at least the given seasons
 // (TV): the cached one while fresh, else fetched from TMDB within Wait.
 // When TMDB fails, the cached one (stale) if any.

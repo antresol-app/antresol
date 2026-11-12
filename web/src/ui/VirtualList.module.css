@@ -1,0 +1,13 @@
+/* A virtual list: as tall as all its rows, the rendered ones placed by
+   their index. Positioned, so its rows never take a block outside a
+   scroller around it (DESIGN.md: anything absolute inside a scroller). */
+.list {
+  position: relative;
+  contain: layout;
+}
+.item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}

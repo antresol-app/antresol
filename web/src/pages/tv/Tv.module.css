@@ -27,10 +27,6 @@
   --segmented-bleed: var(--gutter);
   margin-bottom: var(--s-6);
 }
-.lastPhone {
-  max-width: 100%;
-  margin-bottom: var(--s-4);
-}
 .empty {
   composes: empty from '../Browse.module.css';
 }
@@ -70,7 +66,9 @@
   border-top: 0.5px solid var(--separator);
 }
 .list {
-  --num-w: 2.2em;
+  /* the number column fits the list's longest number (--num-digits, set by
+     the page: an IPTV playlist's run into four digits) */
+  --num-w: max(2.2em, calc(var(--num-digits, 2) * 0.62em));
   --art-w: 112px;
 }
 .rowLink {
@@ -133,11 +131,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rowLastTag {
-  flex: none;
-  font: var(--t-footnote-em);
-  color: var(--accent);
-}
 .rowTitle {
   font: var(--t-subhead);
   color: var(--label);
@@ -188,7 +181,7 @@
     margin-bottom: var(--s-4);
   }
   .list {
-    --num-w: 1.6em;
+    --num-w: max(1.6em, calc(var(--num-digits, 2) * 0.62em));
     --art-w: 80px;
     margin-inline: calc(-1 * var(--s-1));
   }
@@ -376,6 +369,9 @@
 }
 .columnHeader {
   composes: header from '../Browse.module.css';
+}
+.sourcesEntry {
+  margin-bottom: var(--s-8);
 }
 .column {
   max-width: var(--column-narrow);

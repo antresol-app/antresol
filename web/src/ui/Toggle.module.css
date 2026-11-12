@@ -13,6 +13,11 @@
   color: var(--label);
   font: var(--t-callout);
 }
+.small {
+  --track-w: 40px;
+  --track-h: 24px;
+  --knob: 20px;
+}
 .toggle:disabled {
   opacity: 0.45;
   cursor: default;

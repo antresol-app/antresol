@@ -60,6 +60,12 @@ func TestSPAContentSecurityPolicy(t *testing.T) {
 				t.Errorf("%s: CSP %q lacks %q", p, csp, want)
 			}
 		}
+		// external IPTV streams play straight from the provider (any http(s) host)
+		for _, want := range []string{"media-src 'self' blob: http: https:", "connect-src 'self' blob: http: https:"} {
+			if !strings.Contains(csp, want) {
+				t.Errorf("%s: CSP %q lacks %q", p, csp, want)
+			}
+		}
 		if strings.Contains(csp, "unsafe-eval") || strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
 			t.Errorf("%s: CSP too lax: %q", p, csp)
 		}

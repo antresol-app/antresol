@@ -234,7 +234,7 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 	}
 	have := map[string]Channel{}
 	for _, c := range all {
-		if c.AutoKey != "" {
+		if c.AutoKey != "" && !c.External() { // external rows are internal/iptv's
 			have[c.AutoKey] = c
 		}
 	}

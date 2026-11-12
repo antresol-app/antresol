@@ -1,0 +1,419 @@
+/* «Внешние источники»: the sources, sets and devices in the settings column;
+   a source's channel table in the page's wide column. */
+.page {
+  composes: page from '../../Browse.module.css';
+}
+.column {
+  max-width: var(--column-narrow);
+  margin: 0 auto;
+}
+.wideColumn {
+  max-width: var(--column-max);
+  margin: 0 auto;
+}
+.back {
+  margin: 0 0 var(--s-1) calc(-1 * var(--s-3));
+}
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-6);
+  margin-bottom: var(--s-8);
+}
+.headText {
+  min-width: 0;
+}
+.title {
+  composes: title from '../../Browse.module.css';
+}
+.sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-1);
+  font: var(--t-subhead);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.subLine {
+  flex: 1 0 100%;
+}
+.subBadge {
+  flex: none;
+}
+
+/* ---------- the sources ---------- */
+.url {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.line {
+  display: block;
+}
+.nowrap {
+  white-space: nowrap;
+}
+@media (max-width: 699px) {
+  .header.row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+}
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+.error {
+  color: var(--destructive-text);
+}
+/* the «Каналы» row opens the table: the whole row is the link */
+.linkRow {
+  position: relative;
+}
+.linkRow:hover {
+  background: var(--surface-grouped-hover);
+}
+.rowLink {
+  color: inherit;
+  text-decoration: none;
+}
+.rowLink::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.rowLink:focus-visible {
+  outline: none;
+}
+.rowLink:focus-visible::after {
+  box-shadow: var(--focus-ring-inset);
+}
+.chevron {
+  color: var(--label-3);
+}
+.nameLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1h);
+  min-width: 0;
+}
+.meta {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  white-space: nowrap;
+}
+.addRow {
+  display: flex;
+  align-items: center;
+  padding: var(--s-1) var(--s-2);
+  border-top: 1px solid var(--separator);
+}
+.glyph {
+  display: grid;
+  place-items: center;
+  width: var(--control-h-xs);
+  height: var(--control-h-xs);
+  border-radius: var(--r-md);
+  background: var(--fill-3);
+  color: var(--label-2);
+}
+.form > section {
+  margin-top: var(--s-2);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: 100%;
+  text-align: start;
+}
+
+/* ---------- the channel table ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.search {
+  flex: 1 1 var(--column-narrow);
+  max-width: var(--sheet-wide-w);
+}
+.chips {
+  --chips-bleed: var(--gutter);
+  margin-bottom: var(--s-5);
+}
+.groupBar {
+  margin: 0 0 var(--s-4);
+}
+.found {
+  margin: 0 0 var(--s-2);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.empty {
+  composes: empty from '../../Browse.module.css';
+  margin-top: var(--s-12);
+}
+
+.table {
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
+  border: var(--hairline-w) solid var(--surface-grouped-border);
+  --c-num: 5ch;
+  --c-logo: calc(var(--icon-lg) * 1.6);
+}
+.table:not([data-logos]) {
+  --c-logo: 0px;
+}
+.table:not([data-logos]) .cLogo {
+  visibility: hidden;
+  overflow: hidden;
+  margin-left: calc(-1 * var(--s-3));
+}
+.tr {
+  display: grid;
+  grid-template-columns:
+    var(--c-num) var(--c-logo) minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1.8fr) minmax(0, 1.5fr)
+    var(--control-h-md) var(--control-h-xs);
+  align-items: center;
+  gap: var(--s-3);
+  height: 100%;
+  padding: 0 var(--s-3) 0 var(--s-2);
+}
+.thead {
+  position: sticky;
+  top: var(--nav-height);
+  z-index: var(--z-sticky);
+  height: var(--control-h-sm);
+  border-radius: var(--r-group) var(--r-group) 0 0;
+  background: var(--surface-grouped);
+  border-bottom: 1px solid var(--separator);
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+.thead[data-stuck] {
+  border-radius: 0;
+}
+/* stuck under the top bar, the header hides the rows that pass behind the bar */
+.thead[data-stuck]::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--hairline-w));
+  right: calc(-1 * var(--hairline-w));
+  bottom: 100%;
+  height: var(--nav-height);
+  background: var(--bg);
+}
+/* the rows' hover keeps the table's bottom corners */
+.tbody {
+  border-radius: 0 0 var(--r-group) var(--r-group);
+  overflow: clip;
+}
+.vrow + .vrow > .tr,
+.vrow > .tr {
+  border-top: 1px solid var(--separator);
+}
+.vrow[data-index='0'] > .tr {
+  border-top: 0;
+}
+.vrow:hover {
+  background: var(--fill-4);
+}
+.cNum {
+  text-align: right;
+  font: var(--t-subhead);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+.cLogo {
+  display: grid;
+  place-items: center;
+}
+.cName,
+.cText,
+.cEpg,
+.cWhy,
+.cMain {
+  min-width: 0;
+}
+.cName {
+  font: var(--t-callout);
+  color: var(--label);
+}
+.cText,
+.cWhy {
+  font: var(--t-subhead);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cWhy {
+  font: var(--t-footnote);
+}
+/* the default is every row's: it recedes, the exceptions stand out */
+.whyDefault {
+  color: var(--label-3);
+}
+.cEpg {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.cut {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.none {
+  color: var(--label-3);
+}
+.cShown {
+  display: flex;
+  justify-content: center;
+}
+.cMore {
+  display: flex;
+  justify-content: center;
+}
+/* the name: text until pressed, then a field in its place */
+.nameButton {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.nameButton:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--label-3);
+  text-underline-offset: 3px;
+}
+.cName .nameLine,
+.cMain .nameLine {
+  flex-wrap: nowrap;
+}
+.nameField {
+  width: 100%;
+}
+/* a hidden channel: its name and number recede */
+.off .cName,
+.off .cMain .nameButton {
+  color: var(--label-2);
+}
+.off .cLogo {
+  opacity: 0.5;
+}
+
+/* a phone: number, logo, two lines, the switch */
+.phoneRow {
+  grid-template-columns: var(--c-num) var(--c-logo) minmax(0, 1fr) auto;
+  gap: var(--s-2h);
+  padding: 0 var(--s-3h) 0 var(--s-1);
+}
+.cMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  font: var(--t-callout);
+  color: var(--label);
+}
+.line2 {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 699px) {
+  .header {
+    margin-bottom: var(--s-6);
+  }
+  .table {
+    --c-num: 4ch;
+  }
+  .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .toolbar > [role='radiogroup'] {
+    flex: 1 1 100%;
+  }
+  .chips {
+    margin-bottom: var(--s-4);
+  }
+}
+
+/* ---------- the source's page ---------- */
+.headActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.notice {
+  margin-bottom: var(--s-4);
+}
+.loading {
+  padding: var(--s-12) 0;
+  text-align: center;
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+.formError {
+  font: var(--t-footnote);
+  color: var(--destructive-text);
+}
+.ok {
+  color: var(--success);
+}
+/* a phone's row: the name and its line open the channel's sheet */
+.rowButton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.rowButton .nameLine {
+  flex-wrap: nowrap;
+}
+/* the guide cell opens the channel's sheet */
+.cellButton {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.cellButton:hover .cut {
+  color: var(--label);
+}

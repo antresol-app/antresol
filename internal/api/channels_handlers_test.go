@@ -377,17 +377,16 @@ func TestChannelsWriteNoHistory(t *testing.T) {
 }
 
 func channelsWriteNoHistory(t *testing.T, stream bool) {
-	var e *libEnv
 	var live *channels.Live
 	if stream {
 		live = &channels.Live{FFmpeg: "ffmpeg", HW: "none", Dir: t.TempDir(), ReadRate: -1, Width: 320, Height: 180, ReadySegments: 1}
 		t.Cleanup(live.Close)
-		e = newLibEnvWith(t, func(d *Deps, db *sql.DB) {
-			d.Channels, d.DB = channels.New(db, live), db
-		})
-	} else {
-		e, _ = newChannelsEnv(t)
 	}
+	tv := newTVEnvLive(t, live)
+	e := tv.libEnv
+	// an external channel too (internal/iptv), with its guide
+	tv.addSource("Провайдер")
+	ext := tv.firstExternal()
 	m1, f1 := e.movie("Один", "12+", "a")
 	e.withDuration()
 	if stream {
@@ -447,13 +446,20 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 	}
 	before := snap()
 	id := itoa(c.ID)
+	xid := itoa(ext)
 	for _, q := range [][3]string{
+		{"GET", "/api/channels/" + xid + "/guide", ""}, {"PUT", "/api/channels/" + xid + "/favorite", ""},
+		{"PUT", "/api/channels/last", `{"channelId":` + xid + `}`}, {"GET", "/api/channels/live/ext/" + xid + "/0", ""},
+		{"DELETE", "/api/channels/" + xid + "/favorite", ""},
 		{"GET", "/api/channels", ""}, {"GET", "/api/channels/epg", ""}, {"GET", "/api/channels/" + id + "/guide", ""},
 		{"PUT", "/api/channels/" + id + "/favorite", ""}, {"PUT", "/api/channels/last", `{"channelId":` + id + `}`},
 		{"GET", "/api/channels/live/" + id + "/index.m3u8", ""}, {"GET", "/api/channels/live/" + id + "/video.m3u8", ""},
 		{"DELETE", "/api/channels/" + id + "/favorite", ""},
 	} {
 		w := e.do(q[0], q[1], q[2], e.admin)
+		if (strings.Contains(q[1], "/"+xid+"/") || strings.Contains(q[2], xid)) && w.Code >= 400 {
+			t.Fatalf("external %s %s: %d %s", q[0], q[1], w.Code, w.Body)
+		}
 		if stream && strings.HasSuffix(q[1], ".m3u8") && w.Code != 200 {
 			t.Fatalf("%s: %d %s", q[1], w.Code, w.Body)
 		}

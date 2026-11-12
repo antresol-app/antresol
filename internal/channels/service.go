@@ -45,6 +45,9 @@ type Service struct {
 	kick  chan struct{}
 	once  sync.Once
 
+	warm     WarmFunc // SetWarm (nil: none)
+	warmKick chan struct{}
+
 	// streams of titles outside the library resolved ahead (prefetch)
 	pmu      sync.Mutex
 	prefetch map[entryKey]*prefetched
@@ -68,7 +71,9 @@ func (s *Service) SetRoots(roots []Root) {
 	s.Generator.Catalog.Roots = roots
 }
 
-func (s *Service) init() { s.once.Do(func() { s.kick = make(chan struct{}, 1) }) }
+func (s *Service) init() {
+	s.once.Do(func() { s.kick, s.warmKick = make(chan struct{}, 1), make(chan struct{}, 1) })
+}
 
 // Kick asks for a refresh soon (after a library scan).
 func (s *Service) Kick() {
@@ -82,9 +87,15 @@ func (s *Service) Kick() {
 	}
 }
 
-// Run refreshes at once, then every interval and on Kick, until ctx ends.
+// Run refreshes at once, then every interval and on Kick, until ctx ends
+// (and the warm hook with it).
 func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	s.init()
+	if s.warm != nil {
+		done := make(chan struct{})
+		go func() { defer close(done); s.warmLoop(ctx) }()
+		defer func() { <-done }()
+	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -113,7 +124,7 @@ func (s *Service) Refresh(ctx context.Context) error {
 	}
 	var errs []error
 	for _, c := range all {
-		if !c.Enabled {
+		if !c.Enabled || c.External() {
 			continue
 		}
 		if err := s.BuildChannel(ctx, c); err != nil {
@@ -123,20 +134,33 @@ func (s *Service) Refresh(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// BuildChannel cuts c's schedule at a vanished file and extends it.
+// BuildChannel cuts c's schedule at a vanished file and extends it (an
+// external channel has none).
 func (s *Service) BuildChannel(ctx context.Context, c Channel) error {
+	if c.External() {
+		return nil
+	}
 	s.build.Lock()
 	defer s.build.Unlock()
 	if _, err := s.Store.CutMissing(ctx, c.ID); err != nil {
 		return err
 	}
-	return s.Builder.Build(ctx, c)
+	if err := s.Builder.Build(ctx, c); err != nil {
+		return err
+	}
+	s.askWarm()
+	return nil
 }
 
 // Program is the Source of Live: the schedule entry at t and its file.
 // A channel without a schedule there is built first; a programme whose
-// file went is cut and the schedule rebuilt.
+// file went is cut and the schedule rebuilt. An external channel has
+// nothing (ErrNothing): its stream is the provider's, never encoded here.
 func (s *Service) Program(ctx context.Context, ch int64, t time.Time) (Program, error) {
+	var kind string
+	if err := s.Store.DB.QueryRowContext(ctx, `SELECT kind FROM channels WHERE id=?`, ch).Scan(&kind); err == nil && kind == KindExternal {
+		return Program{}, ErrNothing
+	}
 	for try := 0; ; try++ {
 		e, err := s.Store.At(ctx, ch, t)
 		if errors.Is(err, ErrNothing) && try == 0 {

@@ -1,13 +1,14 @@
 // «ТВ» (/tv): the channels as a television has them — ONE list in number
 // order (themes and the profile's favourites are only filters), each row
 // with what is on, how far it is and what follows; or «Телегид», the
-// programme guide grid. The channel the profile watched last is marked and
-// one tap away. A wide window shows the details of the channel under the
+// programme guide grid. The channel the profile watched last is marked
+// (its number in the accent). A wide window shows the details of the channel under the
 // pointer beside the list. A row opens the live player, which zaps within
 // the list it was opened from. «Управление каналами» is in «⋯».
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { APP_NAME } from '../../brand'
+import { channelsOpened } from '../../api/iptv'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
 import { useIsCompact, useMediaQuery } from '../../state/useMediaQuery'
@@ -19,7 +20,7 @@ import { Toast } from '../../ui/Toast'
 import { ChannelPreview } from './ChannelPreview'
 import { ChannelRow } from './ChannelRow'
 import { Guide } from './Guide'
-import { applyFilter, filterParam, parseFilter, themesOf, validFilter, type ChannelFilter } from './model'
+import { applyFilter, filterParam, numDigits, parseFilter, themesOf, validFilter, type ChannelFilter } from './model'
 import { useChannelList, useNow } from './useChannels'
 import styles from './Tv.module.css'
 
@@ -42,6 +43,10 @@ export function Tv() {
   useEffect(() => {
     document.title = `${t('tv.title')} — ${APP_NAME}`
   }, [t])
+  // «при открытии»: the server refreshes the external sources that ask for it
+  useEffect(() => {
+    channelsOpened().catch(() => undefined)
+  }, [])
   useEffect(() => {
     if (!favError) return
     const id = window.setTimeout(clearFavError, 4000)
@@ -65,7 +70,6 @@ export function Tv() {
       { replace: true },
     )
   const lastId = data?.lastChannel ?? null
-  const last = channels.find((c) => c.id === lastId)
   const [previewId, setPreviewId] = useState<number | null>(null)
   const preview = shown.find((c) => c.id === previewId) ?? shown.find((c) => c.id === lastId) ?? shown[0]
   const favorites = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, Boolean(c.favorite)])), [channels])
@@ -108,11 +112,6 @@ export function Tv() {
           </div>
         )}
         <div className={styles.headerEnd}>
-          {last && !compact && (
-            <ButtonLink to={playerPath(last.id, shown.some((c) => c.id === last.id) ? filter : { kind: 'all' })} variant="secondary" size="small" icon="returnArrow">
-              {t('tv.lastChannel', { number: last.number, name: last.name })}
-            </ButtonLink>
-          )}
           {manage}
         </div>
       </header>
@@ -121,18 +120,6 @@ export function Tv() {
         <div className={styles.filters}>
           <SegmentedControl label={t('tv.filter')} row align="start" value={filterKey} onChange={(v) => setParam('f', v === 'all' ? '' : v)} segments={filters} />
         </div>
-      )}
-
-      {last && compact && view === 'list' && (
-        <ButtonLink
-          to={playerPath(last.id, shown.some((c) => c.id === last.id) ? filter : { kind: 'all' })}
-          variant="secondary"
-          size="small"
-          icon="returnArrow"
-          className={styles.lastPhone}
-        >
-          {t('tv.lastChannel', { number: last.number, name: last.name })}
-        </ButtonLink>
       )}
 
       {state.status === 'error' && (
@@ -168,7 +155,7 @@ export function Tv() {
 
       {view === 'list' && shown.length > 0 && (
         <div className={styles.split}>
-          <ul className={styles.list} aria-label={t('tv.channels')}>
+          <ul className={styles.list} aria-label={t('tv.channels')} style={{ '--num-digits': numDigits(shown) } as CSSProperties}>
             {shown.map((c, i) => (
               <ChannelRow
                 key={c.id}

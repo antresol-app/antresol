@@ -45,7 +45,8 @@ export interface ChannelProgram {
   /** "<channel>-<seq>" (older servers: absent). */
   id?: string
   itemId: number
-  kind?: 'movie' | 'episode'
+  /** 'external': an external playlist's programme (no item page, itemId 0). */
+  kind?: 'movie' | 'episode' | 'external'
   title: string
   subtitle?: string
   overview?: string
@@ -61,6 +62,17 @@ export interface ChannelProgram {
   /** Absent: unknown; empty: none. */
   audio?: ChannelTrack[]
   subtitles?: ChannelTrack[]
+}
+
+/** Where an external channel's stream is, as the server tells this client. */
+export interface ExternalStream {
+  /** The provider's URL, or /api/channels/live/ext/{id}/{n} (a redirect) when the source hides addresses. */
+  url: string
+  userAgent?: string
+  referrer?: string
+  /** The platforms that cannot play it (a header a browser cannot send, http on an https page…). */
+  unsupported: string[]
+  fallbacks: { url: string; userAgent?: string; referrer?: string; unsupported?: string[] }[]
 }
 
 export interface Channel {
@@ -82,6 +94,9 @@ export interface Channel {
   pickInfo?: ChannelPickInfo[]
   now?: ChannelProgram
   next?: ChannelProgram
+  /** From an external playlist: the client plays `stream` itself. */
+  external?: boolean
+  stream?: ExternalStream
 }
 
 export interface ChannelList {

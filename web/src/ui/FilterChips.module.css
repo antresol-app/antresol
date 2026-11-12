@@ -1,0 +1,74 @@
+/* Filter chips: capsules of the small control height; the chosen one white
+   with the inverse label, as SegmentedControl's thumb. */
+.scroller {
+  min-width: 0;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3h);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill-2);
+  color: var(--label);
+  font: var(--t-field);
+  white-space: nowrap;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.chip:hover {
+  background: var(--fill-1);
+}
+.chip[aria-checked='true'] {
+  background: var(--label);
+  color: var(--label-inverse);
+}
+.chip:focus-visible {
+  outline-offset: 2px;
+}
+.label {
+  text-box: var(--control-text-box);
+}
+.count {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  text-box: var(--control-text-box);
+}
+.chip[aria-checked='true'] .count {
+  color: inherit;
+  opacity: 0.6;
+}
+@media (pointer: coarse) {
+  .chip::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-sm) - var(--touch-target)) / 2) 0;
+  }
+}
+/* a phone: one line that scrolls sideways out to the window's edges */
+@media (max-width: 699px) {
+  .scroller {
+    margin: 0 calc(-1 * var(--chips-bleed, 0px));
+    padding: var(--s-1) var(--chips-bleed, 0px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: var(--chips-bleed, 0px);
+    scrollbar-width: none;
+  }
+  .scroller::-webkit-scrollbar {
+    display: none;
+  }
+  .chips {
+    flex-wrap: nowrap;
+    width: max-content;
+  }
+}

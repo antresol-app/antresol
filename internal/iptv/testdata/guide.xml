@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="synthetic-test">
+  <channel id="ch.one">
+    <display-name lang="ru">Тестовый Один HD</display-name>
+    <display-name>Test One</display-name>
+    <icon src="http://img.example.test/one.png"/>
+  </channel>
+  <channel id="ch.two">
+    <display-name>Sample Two FHD</display-name>
+    <display-name lang="ru">Пример Два</display-name>
+  </channel>
+  <channel id="ch.three">
+    <display-name>Demo Three</display-name>
+    <display-name>Demo Three SD</display-name>
+  </channel>
+  <programme start="20261110120000 +0000" stop="20261110130000 +0000" channel="ch.one">
+    <title>Too Old</title>
+  </programme>
+  <programme start="20261111180000 +0000" stop="20261111190000 +0000" channel="ch.one">
+    <title lang="en">Yesterday Show</title>
+  </programme>
+  <programme start="20261112180000 +0300" stop="20261112190000 +0300" channel="ch.one">
+    <title lang="ru">Вечерние новости</title>
+    <desc lang="ru">Синтетическое описание.</desc>
+  </programme>
+  <programme start="20261120120000 +0000" stop="20261120130000 +0000" channel="ch.one">
+    <title>Too Far</title>
+  </programme>
+  <programme start="20261112130000 +0000" stop="20261112140000 +0000" channel="ch.two">
+    <title lang="en">Morning Film</title>
+    <title lang="ru">Утренний фильм</title>
+    <sub-title lang="en">Part One</sub-title>
+    <desc lang="en">An English description.</desc>
+    <desc lang="ru">Русское описание.</desc>
+    <category lang="en">Movie</category>
+    <category lang="ru">Кино</category>
+    <icon src="http://img.example.test/film.jpg"/>
+  </programme>
+  <programme start="20261112140000 +0000" stop="20261112150000 +0000" channel="ch.three">
+    <title>Cats &amp; Dogs</title>
+    <credits><director>Nobody</director><actor>Someone</actor></credits>
+    <rating system="test"><value>0+</value></rating>
+    <desc>Plain desc</desc>
+  </programme>
+  <programme start="20261112150000 +0000" stop="20261112160000 +0000" channel="ch.three">
+    <title>Late Show</title>
+  </programme>
+</tv>

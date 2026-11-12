@@ -17,6 +17,7 @@ import (
 	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/imgcache"
+	"github.com/antresol-app/antresol/internal/iptv"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
@@ -33,6 +34,7 @@ const iptvProto = "iptv"
 
 type channelsAPI struct {
 	svc     *channels.Service
+	ext     *iptv.Service // external channels (nil: none)
 	lib     *library.Repo
 	tokens  *auth.AppTokens
 	network *auth.Network
@@ -59,7 +61,7 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 	if deps.Channels.DataDir == "" {
 		deps.Channels.DataDir = deps.DataDir
 	}
-	return &channelsAPI{svc: deps.Channels, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
+	return &channelsAPI{svc: deps.Channels, ext: deps.ExtIPTV, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
 		users: deps.Users, screen: deps.ScreenTime, dataDir: deps.DataDir, cards: cards}
 }
 
@@ -86,6 +88,9 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Post("/api/channels/{id}/logo", a.uploadLogo)
 	r.Delete("/api/channels/{id}/logo", a.deleteLogo)
 	r.Get("/api/channels/live/{id}/{name}", a.webLive)
+	if a.ext != nil {
+		r.Get("/api/channels/live/ext/{id}/{n}", a.extStream)
+	}
 }
 
 // mountIPTVLinks: the profile's IPTV addresses (Deps.IPTV only).
@@ -102,6 +107,9 @@ func mountIPTV(r chi.Router, a *channelsAPI) {
 	r.Get("/iptv/{token}/live/{id}/{name}", a.iptvLive)
 	r.Get("/iptv/{token}/logo/{name}", a.iptvLogo)
 	r.Get("/iptv/{token}/art/{item}", a.iptvArt)
+	if a.ext != nil {
+		r.Get("/iptv/{token}/ext/{id}", a.iptvExt)
+	}
 }
 
 // ---- the web app ----
@@ -160,6 +168,11 @@ type channelJSON struct {
 	// described, for the editor (channels_fine.go)
 	LogoURL  string              `json:"logoUrl,omitempty"`
 	PickInfo []channels.PickInfo `json:"pickInfo,omitempty"`
+
+	// External: a channel of an external playlist (internal/iptv); Stream
+	// is how to play it (channels_external.go). Absent for own channels.
+	External bool        `json:"external,omitempty"`
+	Stream   *streamJSON `json:"stream,omitempty"`
 }
 
 func (a *channelsAPI) toJSON(ctx context.Context, c channels.Channel, v channels.Viewer, favs map[int64]bool) channelJSON {
@@ -180,7 +193,7 @@ func (a *channelsAPI) display(ctx context.Context, c channels.Channel) (string, 
 	if k, v, ok := strings.Cut(c.AutoKey, ":"); ok && k == "series" && !c.Edited && a.cards != nil && a.lib != nil {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			if it, err := a.lib.Item(ctx, id); err == nil {
-				if t := a.cards.cachedTranslation(ctx, it, metaOf(it)); t != nil {
+				if t := a.cards.programTranslation(ctx, it); t != nil {
 					name = translatedTitle(t, name)
 				}
 			}
@@ -213,7 +226,7 @@ func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]prog
 			continue
 		}
 		p := programJSON{ID: strconv.FormatInt(e.Channel, 10) + "-" + strconv.FormatInt(e.Seq, 10), ItemID: e.ItemID, Kind: x.Kind,
-			Overview: x.Overview, Year: x.Year, Rating: x.Rating, Start: e.Start, End: end,
+			Year: x.Year, Rating: x.Rating, Start: e.Start, End: end,
 			Poster: library.ImageURL(x.ArtItem, "poster", x.ArtPoster), fileID: e.FileID}
 		for _, g := range x.Genres {
 			p.Genres = append(p.Genres, i18n.Genre(ctx, g))
@@ -223,19 +236,9 @@ func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]prog
 			p.External, p.Poster, p.Backdrop = true, tmdbArtURL(x.Poster), tmdbArtURL(x.Backdrop)
 		} else if it, err := a.lib.Item(ctx, x.ArtItem); err == nil {
 			p.Backdrop = library.ImageURL(it.ID, "backdrop", it.Backdrop)
-			if a.cards != nil {
-				// the viewer's language, as the library's cards show it
-				if t := a.cards.cachedTranslation(ctx, it, metaOf(it)); t != nil {
-					x.Title = translatedTitle(t, x.Title)
-					if x.Kind == library.KindEpisode {
-						x.Episode, _ = translatedEpisode(t, library.Item{Title: x.Episode, SeasonNo: x.Season, EpisodeNo: x.Number})
-					} else if t.Overview != "" {
-						p.Overview = t.Overview
-					}
-				}
-			}
+			a.cards.localizeProgram(ctx, &x, it) // the viewer's language
 		}
-		p.Title = x.Title
+		p.Title, p.Overview = x.Title, x.Overview
 		if x.Kind == library.KindEpisode {
 			p.Subtitle = channels.EpisodeLabel(x)
 		}
@@ -291,7 +294,8 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 		var all []channels.Channel
 		all, err = a.svc.Store.All(ctx)
 		for _, c := range all {
-			if channels.CanEdit(c, v) && (c.UserID == 0 || c.UserID == u.ID) {
+			// external channels have their own editor (/api/tv/…)
+			if !c.External() && channels.CanEdit(c, v) && (c.UserID == 0 || c.UserID == u.ID) {
 				cs = append(cs, c)
 			}
 		}
@@ -343,6 +347,24 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, j)
 	}
+	if !manage {
+		xs := sortedExt(a.extFor(r, u, ""))
+		progs := a.extProgrammes(ctx, xs, now, now.Add(4*time.Hour))
+		for _, x := range xs {
+			if x.ChannelID == last {
+				lastChannel = x.ChannelID
+			}
+			j := a.extJSON(r, x, favs)
+			if ps := progs[x.ChannelID]; len(ps) > 0 {
+				j.Now = &ps[0]
+				if len(ps) > 1 {
+					j.Next = &ps[1]
+				}
+			}
+			out = append(out, j)
+		}
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid})
 }
 
@@ -371,7 +393,8 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userOf(r)
-	if !channels.VisibleTo(c, viewerOf(u)) {
+	x, ok := a.sees(r, u, c)
+	if !ok {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}
@@ -380,6 +403,19 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		hours = 24
 	}
 	now := time.Now()
+	if c.External() {
+		favs, err := a.svc.Store.Favorites(r.Context(), u.ID)
+		if err != nil {
+			internalErr(w, r, "guide", err)
+			return
+		}
+		ps := a.extProgrammes(r.Context(), []iptv.ExtChannel{x}, now, now.Add(time.Duration(hours)*time.Hour))[c.ID]
+		if ps == nil {
+			ps = []programJSON{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"channel": a.extJSON(r, x, favs), "programs": ps})
+		return
+	}
 	es, err := a.svc.Store.Range(r.Context(), c.ID, now, now.Add(time.Duration(hours)*time.Hour))
 	if err != nil {
 		internalErr(w, r, "guide", err)
@@ -561,6 +597,10 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
 		return
 	}
+	if c.External() {
+		writeErr(w, r, http.StatusBadRequest, msgExternalEdit)
+		return
+	}
 	var b channelBody
 	if !decode(w, r, &b) {
 		return
@@ -597,6 +637,10 @@ func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	if !channels.CanEdit(c, viewerOf(userOf(r))) {
 		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		return
+	}
+	if c.External() {
+		writeErr(w, r, http.StatusBadRequest, msgExternalEdit) // the source's editor hides it
 		return
 	}
 	if err := a.svc.Store.Delete(r.Context(), c.ID); err != nil {
@@ -666,7 +710,7 @@ func (a *channelsAPI) webLogo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !channels.VisibleTo(c, viewerOf(userOf(r))) && !channels.CanEdit(c, viewerOf(userOf(r))) {
+	if _, ok := a.sees(r, userOf(r), c); !ok && !channels.CanEdit(c, viewerOf(userOf(r))) {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}
@@ -800,7 +844,7 @@ func (a *channelsAPI) visibleChannel(w http.ResponseWriter, r *http.Request, u a
 	if !ok {
 		return c, false
 	}
-	if !channels.VisibleTo(c, viewerOf(u)) {
+	if _, ok := a.sees(r, u, c); !ok {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return c, false
 	}
@@ -834,7 +878,7 @@ func (a *channelsAPI) setLast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := a.svc.Store.Get(r.Context(), b.ChannelID)
-	if errors.Is(err, channels.ErrNotFound) || (err == nil && !channels.VisibleTo(c, viewerOf(u))) {
+	if errors.Is(err, channels.ErrNotFound) || (err == nil && !a.seesOK(r, u, c)) {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}
@@ -857,7 +901,9 @@ type channelEPGJSON struct {
 	Favorite bool          `json:"favorite"`
 	Programs []programJSON `json:"programs"`
 
-	LogoURL string `json:"logoUrl,omitempty"` // the uploaded logo (absent: none)
+	LogoURL string `json:"logoUrl,omitempty"` // the uploaded logo (absent: none); an external channel's tvg-logo
+	// External: a channel of an external playlist (its stream: the list's).
+	External bool `json:"external,omitempty"`
 }
 
 // GET /api/channels/epg?from=<RFC3339>&hours=<1…24>: the guide grid —
@@ -917,6 +963,20 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 		name, cat := a.display(ctx, c)
 		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c)})
 	}
+	xs := sortedExt(a.extFor(r, u, ""))
+	if len(xs) > 0 {
+		progs := a.extProgrammes(ctx, xs, from, to)
+		for _, x := range xs {
+			ps := progs[x.ChannelID]
+			if ps == nil {
+				ps = []programJSON{}
+			}
+			c := x.Channel
+			out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: c.Name, Category: c.Category, Favorite: favs[c.ID], Programs: ps,
+				LogoURL: extLogoURL(x), External: true})
+		}
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"from": from.UTC(), "to": to.UTC(), "channels": out})
 }
 
@@ -954,9 +1014,12 @@ func (a *channelsAPI) m3u(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "m3u", err)
 		return
 	}
+	a.localizeChannels(i18n.WithLanguage(r.Context(), a.guideLanguage(r.Context(), u.ID)), cs)
+	tok := chi.URLParam(r, "token")
+	ext := a.iptvExternals(r, u, tok, time.Time{}, time.Time{})
 	w.Header().Set("Content-Type", "audio/x-mpegurl; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := channels.WriteM3U(w, a.iptvBase(r, chi.URLParam(r, "token")), cs); err != nil {
+	if err := channels.WriteM3UWith(w, a.iptvBase(r, tok), cs, ext); err != nil {
 		log.Printf("channels: m3u: %v", err)
 	}
 }
@@ -967,14 +1030,17 @@ func (a *channelsAPI) epg(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx := r.Context()
+	// in the link profile's interface language
+	lang := a.guideLanguage(r.Context(), u.ID)
+	ctx := i18n.WithLanguage(r.Context(), lang)
 	cs, err := a.svc.Store.Visible(ctx, viewerOf(u))
 	if err != nil {
 		internalErr(w, r, "epg", err)
 		return
 	}
+	a.localizeChannels(ctx, cs)
 	now := time.Now()
-	g := channels.Guide{Base: a.iptvBase(r, chi.URLParam(r, "token")), Channels: cs, Entries: map[int64][]channels.Entry{}, Lang: "ru"}
+	g := channels.Guide{Base: a.iptvBase(r, chi.URLParam(r, "token")), Channels: cs, Entries: map[int64][]channels.Entry{}, Lang: lang}
 	var ids []int64
 	for _, c := range cs {
 		es, err := a.svc.Store.Range(ctx, c.ID, now.Add(-12*time.Hour), now.Add(48*time.Hour))
@@ -991,6 +1057,9 @@ func (a *channelsAPI) epg(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "epg", err)
 		return
 	}
+	a.localizeInfo(ctx, g.Info)
+	// external channels: what their guides have, up to a week ahead
+	g.External = a.iptvExternals(r, u, chi.URLParam(r, "token"), now.Add(-12*time.Hour), now.Add(iptv.EPGAfter))
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	if err := channels.WriteXMLTV(w, g); err != nil {
@@ -1015,7 +1084,15 @@ func (a *channelsAPI) iptvLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseInt(strings.TrimSuffix(chi.URLParam(r, "name"), ".png"), 10, 64)
 	c, gerr := a.svc.Store.Get(r.Context(), id)
-	if err != nil || gerr != nil || !channels.VisibleTo(c, viewerOf(u)) {
+	if err == nil && gerr == nil && c.External() {
+		_, ok := a.extFor(r, u, chi.URLParam(r, "token"))[c.ID]
+		if !ok {
+			gerr = channels.ErrNotFound
+		}
+	} else if err == nil && gerr == nil && !channels.VisibleTo(c, viewerOf(u)) {
+		gerr = channels.ErrNotFound
+	}
+	if err != nil || gerr != nil {
 		http.NotFound(w, r)
 		return
 	}

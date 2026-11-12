@@ -54,7 +54,6 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlo
         <span className={styles.rowText}>
           <span className={styles.rowChannel}>
             <span className={styles.rowChannelName}>{c.name}</span>
-            {last && <span className={styles.rowLastTag}>{t('tv.lastTag')}</span>}
           </span>
           <span className={styles.rowTitle}>{title}</span>
           {p && <ProgressBar value={pct / 100} tone="label" className={styles.rowBar} />}

@@ -1,0 +1,71 @@
+/* A notice: a tinted ground, the glyph in the tint, the words in the
+   label colours, the actions under the words, where the eye ends up after
+   reading them. Inside a group (as="li") it keeps the group's shape. */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2h) var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-control);
+  list-style: none;
+}
+li.notice {
+  border-radius: 0;
+}
+.warning {
+  background: var(--warning-fill);
+}
+.accent {
+  background: var(--accent-fill);
+}
+.destructive {
+  background: var(--destructive-fill);
+}
+.glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  align-self: flex-start;
+  padding-top: var(--s-0);
+}
+.warning .glyph {
+  color: var(--warning);
+}
+.accent .glyph {
+  color: var(--accent);
+}
+.destructive .glyph {
+  color: var(--destructive);
+}
+.text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.glyph + .text {
+  flex-basis: calc(100% - var(--icon-md) - var(--s-3));
+}
+.title {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.message {
+  font: var(--t-subhead);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.title + .message {
+  margin-top: var(--s-0);
+}
+.actions {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding-left: calc(var(--icon-md) + var(--s-3));
+}
+@media (max-width: 699px) {
+  .notice {
+    padding: var(--s-3) var(--s-3h);
+  }
+}

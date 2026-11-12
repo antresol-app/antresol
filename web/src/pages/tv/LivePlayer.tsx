@@ -8,16 +8,36 @@
 // «Звук и субтитры», «Каналы» (the list to switch from), sound, picture in
 // picture, full screen — and it hides after a few quiet seconds.
 //
-// Keys: ↑/↓ (PageUp/PageDown) zap within the list the player was opened
+// Live may be paused: the centre play/pause on the picture comes and goes
+// with the bars (and stays while paused). A resume picks up where it
+// stopped while the stream still holds that picture — about a minute on
+// our channels, the seekable range on an external one — else at the live
+// edge. More than 10 s behind the edge, «В эфир» replaces «Прямой эфир» and
+// jumps back to it (liveEdge.ts).
+//
+// Keys: Space/K (and a keyboard's play/pause key) pause and resume;
+// ↑/↓ (PageUp/PageDown) zap within the list the player was opened
 // from (?f=: all, favourites or one theme), in number order, wrapping;
 // i or Enter shows the info (with the description) and hides it; C the
 // channels; M sound; F full screen; Escape closes what is open, then the
 // player.
 //
+// An external channel (an IPTV playlist's) plays the provider's stream
+// directly: its URL, then its fallbacks, once each. When the web cannot
+// play it (headers a browser cannot send, http on an https page, a
+// provider that refuses other sites — CORS — or a dead stream) the player
+// says so: the channel opens in the Antresol apps or an IPTV player. Its
+// audio and subtitles come from the stream.
+//
+// The voice, on every channel: the viewer's choice on that channel (kept
+// per channel in this browser, externalStream.ts), else the device's
+// language, else the profile's audio languages, else the original
+// (model.pickAudio). The interface language stays the profile's.
+//
 // TV is TV: this player writes nothing but the profile's «last channel»
 // (PUT /api/channels/last) and its stars — no progress, no playback
-// reports, no track memory (__tests__/liveNoHistory.test.tsx).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+// reports, no track memory on the server (__tests__/liveNoHistory.test.tsx).
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type Hls from 'hls.js'
 import { APP_NAME } from '../../brand'
@@ -33,17 +53,19 @@ import { Menu, MenuItem } from '../../ui/Menu'
 import { useMediaQuery } from '../../state/useMediaQuery'
 import { ChannelArt } from './ChannelArt'
 import { ChannelLogo } from './ChannelLogo'
-import { activeCueText, applyRenditions, entriesFromNames, renditionNames, setTrackSession, trackSession, type NativeVideo } from './liveTracks'
+import { activeCueText, applyRenditions, entriesFromNames, renditionNames, type NativeVideo } from './liveTracks'
 import { LiveTrackMenu } from './LiveTrackMenu'
-import { applyFilter, chooseAudioIn, chooseSubsIn, isOnAir, minutesLeft, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, withFavorite, zapTarget, type Rendition } from './model'
+import { applyFilter, chooseAudioIn, chooseSubsIn, isOnAir, minutesLeft, numDigits, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, systemLanguages, withFavorite, zapTarget, type Rendition } from './model'
 import { clock, useNow } from './useChannels'
+import { chromeShown, readClock, resumeTarget, showGoLive, behindLive } from './liveEdge'
+import { channelTracks, externalStreams, setChannelTracks, type ExtBlock } from './externalStream'
 import look from '../../player/SubtitleLook.module.css'
 import styles from './LivePlayer.module.css'
 
 const HIDE_MS = 4000
 const GUIDE_MS = 30_000
 
-type Phase = 'starting' | 'playing' | { error: string }
+type Phase = 'starting' | 'playing' | { error: string } | { ext: ExtBlock }
 
 type WebkitVideo = NativeVideo & {
   webkitSupportsPresentationMode?: (m: string) => boolean
@@ -68,6 +90,7 @@ export function LivePlayer() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [channels, setChannels] = useState<Channel[]>([])
+  const [listed, setListed] = useState(false)
   const [programs, setPrograms] = useState<ChannelProgram[]>([])
   const [phase, setPhase] = useState<Phase>('starting')
   const [muted, setMuted] = useState(false)
@@ -79,7 +102,13 @@ export function LivePlayer() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [prefs, setPrefs] = useState<PlaybackPrefs | null>(null)
-  const [session, setSession] = useState(trackSession)
+  const [session, setSession] = useState(() => channelTracks(channelId))
+  // paused (read from the video: a key, the picture-in-picture window or the system's controls may do it)
+  const [paused, setPaused] = useState(false)
+  // more than 10 s behind the live edge: «В эфир»
+  const [behind, setBehind] = useState(false)
+  // the browser's own HLS: how far before the stream's end playback started (liveEdge)
+  const startOffset = useRef(-1)
   // the renditions the stream has, read again when the player lists them
   const [renditions, setRenditions] = useState<{ audio: Rendition[]; subs: Rendition[] }>({ audio: [], subs: [] })
   const now = useNow(5000)
@@ -90,6 +119,10 @@ export function LivePlayer() {
   const narrow = useMediaQuery('(max-width: 699px)')
 
   const channel = channels.find((c) => c.id === channelId)
+  // what to play: the server's live stream, or an external channel's own
+  // streams (known once the list is in; the key changes only when they do)
+  const external = channel?.external ? externalStreams(channel) : null
+  const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${external.urls.join(' ')}`) : 'own'
   // the list ↑/↓ zap through: the one it was opened from
   const zapList = useMemo(() => {
     const l = applyFilter(channels, filter)
@@ -104,7 +137,13 @@ export function LivePlayer() {
     const load = () => {
       ac.abort()
       ac = new AbortController()
-      getChannels(ac.signal).then((l) => setChannels(l.channels), () => undefined)
+      getChannels(ac.signal).then(
+        (l) => {
+          setChannels(l.channels)
+          setListed(true)
+        },
+        () => setListed(true),
+      )
     }
     load()
     const timer = window.setInterval(load, GUIDE_MS)
@@ -144,13 +183,36 @@ export function LivePlayer() {
   // the stream: native HLS or hls.js; a new channel (or «Повторить») starts over
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !source) return
     let hls: Hls | null = null
     let gone = false
     setPhase('starting')
     setRenditions({ audio: [], subs: [] })
-    const url = liveUrl(channelId)
-    const fail = (msg: string) => !gone && setPhase({ error: msg })
+    if (source.startsWith('blocked:')) {
+      setPhase({ ext: source.slice('blocked:'.length) as ExtBlock })
+      return
+    }
+    const ext = source.startsWith('ext:') ? source.slice(4).split(' ') : null
+    let at = 0
+    const url = ext ? ext[0]! : liveUrl(channelId)
+    // an external stream that fails moves on to the next one, once; none left: the web cannot play it
+    const fail = (msg: string) => {
+      if (gone) return
+      if (!ext) return setPhase({ error: msg })
+      at++
+      if (at < ext.length) {
+        if (hls) {
+          hls.stopLoad()
+          hls.loadSource(ext[at]!)
+        } else {
+          video.src = ext[at]!
+        }
+        play()
+        return
+      }
+      hls?.stopLoad()
+      setPhase({ ext: 'network' })
+    }
     const relist = () => !gone && setRenditions(renditionNames(hls, video as NativeVideo))
     // a browser that refuses to start it with sound (no tap before it) starts it muted
     const play = () =>
@@ -174,14 +236,22 @@ export function LivePlayer() {
           liveSyncDurationCount: 3,
           enableWorker: true,
           backBufferLength: 30,
-          // the server answers 503 while the channel's encoder starts
+          // the server answers 503 while the channel's encoder starts; a
+          // provider's stream gets one more try, then the next stream
           manifestLoadPolicy: {
-            default: {
-              maxTimeToFirstByteMs: Infinity,
-              maxLoadTimeMs: 30_000,
-              timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 },
-              errorRetry: { maxNumRetry: 10, retryDelayMs: 2000, maxRetryDelayMs: 4000 },
-            },
+            default: ext
+              ? {
+                  maxTimeToFirstByteMs: 15_000,
+                  maxLoadTimeMs: 20_000,
+                  timeoutRetry: { maxNumRetry: 1, retryDelayMs: 0, maxRetryDelayMs: 0 },
+                  errorRetry: { maxNumRetry: 1, retryDelayMs: 1000, maxRetryDelayMs: 1000 },
+                }
+              : {
+                  maxTimeToFirstByteMs: Infinity,
+                  maxLoadTimeMs: 30_000,
+                  timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 },
+                  errorRetry: { maxNumRetry: 10, retryDelayMs: 2000, maxRetryDelayMs: 4000 },
+                },
           },
         })
         hlsRef.current = hls
@@ -205,6 +275,8 @@ export function LivePlayer() {
     const onPlaying = () => {
       if (gone || started) return
       started = true
+      const r = video.seekable
+      startOffset.current = hls || !r?.length ? 0 : Math.min(40, Math.max(0, r.end(r.length - 1) - video.currentTime))
       setPhase('playing')
       relist()
     }
@@ -236,12 +308,70 @@ export function LivePlayer() {
       video.removeAttribute('src')
       video.load()
     }
-  }, [channelId, attempt, t])
+  }, [channelId, attempt, t, source])
+
+  // ---------- pause, resume, the live edge ----------
+  const clockNow = useCallback(() => {
+    const video = videoRef.current
+    return video ? readClock({ video, hls: hlsRef.current, startOffset: Math.max(0, startOffset.current) }) : null
+  }, [])
+  const own = !channel?.external
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !source) return
+    startOffset.current = -1
+    setPaused(false)
+    setBehind(false)
+    let pausedAt = 0
+    let behindAtPause = 0
+    const onPause = () => {
+      setPaused(true)
+      pausedAt = Date.now()
+      const c = clockNow()
+      behindAtPause = c ? behindLive(c) : 0
+    }
+    // a resume: from the stopped picture while the stream holds it, else at the edge
+    const onPlay = () => {
+      setPaused(false)
+      if (!pausedAt) return
+      const c = clockNow()
+      const to = c ? resumeTarget({ own, pausedMs: Date.now() - pausedAt, behindAtPause, clock: c }) : null
+      pausedAt = 0
+      if (to !== null) video.currentTime = to
+    }
+    const tick = () => {
+      const c = clockNow()
+      setBehind(Boolean(c && showGoLive(c)))
+    }
+    video.addEventListener('pause', onPause)
+    video.addEventListener('play', onPlay)
+    const id = window.setInterval(tick, 500)
+    return () => {
+      window.clearInterval(id)
+      video.removeEventListener('pause', onPause)
+      video.removeEventListener('play', onPlay)
+    }
+  }, [source, channelId, attempt, own, clockNow])
+  const togglePause = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (v.paused) void v.play().catch(() => undefined)
+    else v.pause()
+  }, [])
+  const goLive = useCallback(() => {
+    const v = videoRef.current
+    const c = clockNow()
+    if (!v || !c?.live) return
+    v.currentTime = c.edge
+    if (v.paused) void v.play().catch(() => undefined)
+    setBehind(false)
+  }, [clockNow])
 
   // why it failed, in the server's words (screen time over, nothing to show…)
-  const failed = typeof phase === 'object'
+  const failed = typeof phase === 'object' && 'error' in phase
+  const isExternal = Boolean(channel?.external)
   useEffect(() => {
-    if (!failed) return
+    if (!failed || isExternal) return
     fetch(liveUrl(channelId), { credentials: 'same-origin' })
       .then(async (r) => {
         if (r.ok) return
@@ -249,13 +379,13 @@ export function LivePlayer() {
         if (b?.error) setPhase({ error: b.error })
       })
       .catch(() => undefined)
-  }, [failed, channelId])
+  }, [failed, channelId, isExternal])
 
   // ---------- audio and subtitles ----------
   // the programme's entries (or, from an older server, the renditions by name)
   const audioEntries = onAir?.audio ?? (renditions.audio.length > 1 ? entriesFromNames(renditions.audio) : undefined)
   const subEntries = onAir?.subtitles ?? (renditions.subs.length ? entriesFromNames(renditions.subs) : onAir?.audio ? [] : undefined)
-  const audioNow = pickAudio(audioEntries, prefs, session)
+  const audioNow = pickAudio(audioEntries, prefs, session, systemLanguages())
   const subsNow = pickSubs(subEntries, prefs, audioNow, session)
   const play = renditionsToPlay(audioNow, subsNow, subEntries !== undefined, renditions, session)
   // switch the renditions when the choice, the programme or the renditions change
@@ -273,17 +403,16 @@ export function LivePlayer() {
     const id = window.setInterval(read, 200)
     return () => window.clearInterval(id)
   }, [play.subs, channelId])
-  // the choice sticks by name for the session (across programmes and zaps)
-  const chooseAudio = (e: ChannelTrack) => {
-    const s = chooseAudioIn(trackSession(), e)
-    setTrackSession(s)
+  // the choice sticks by name per channel in this browser (ours and external ones alike)
+  useEffect(() => {
+    setSession(channelTracks(channelId))
+  }, [channelId])
+  const keep = (s: ReturnType<typeof channelTracks>) => {
+    setChannelTracks(channelId, s)
     setSession(s)
   }
-  const chooseSubs = (e: ChannelTrack | null) => {
-    const s = chooseSubsIn(trackSession(), e)
-    setTrackSession(s)
-    setSession(s)
-  }
+  const chooseAudio = (e: ChannelTrack) => keep(chooseAudioIn(session, e))
+  const chooseSubs = (e: ChannelTrack | null) => keep(chooseSubsIn(session, e))
 
   // ---------- navigation ----------
   const close = useCallback(() => {
@@ -364,6 +493,17 @@ export function LivePlayer() {
       const tag = (e.target as HTMLElement | null)?.tagName
       const onControl = tag === 'BUTTON' || tag === 'A' || tag === 'INPUT'
       switch (e.key) {
+        case ' ':
+          if (onControl) return
+          e.preventDefault()
+          togglePause()
+          break
+        case 'k':
+        case 'K':
+        case 'л':
+        case 'MediaPlayPause':
+          togglePause()
+          break
         case 'ArrowUp':
         case 'PageUp':
           if (panel && e.key === 'ArrowUp') return
@@ -412,9 +552,26 @@ export function LivePlayer() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [zap, toggleFull, close, poke, panel, info, menuOpen])
+  }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause])
 
-  const shown = upright || chrome || info || panel || menuOpen || phase !== 'playing'
+  // the current channel in view in the list: when it opens and when the channel changes
+  // (centred if it was out of view; the list alone scrolls, never the page)
+  const listRef = useRef<HTMLUListElement>(null)
+  const listOpen = panel || upright
+  const listedCount = zapList.length
+  useEffect(() => {
+    const list = listRef.current
+    const row = list?.querySelector<HTMLElement>('[aria-current]')
+    if (!list || !row) return
+    const lr = list.getBoundingClientRect()
+    const rr = row.getBoundingClientRect()
+    if (rr.top >= lr.top && rr.bottom <= lr.bottom) return
+    list.scrollTop += rr.top - lr.top - (lr.height - rr.height) / 2
+  }, [channelId, listOpen, listedCount])
+
+  const playing = phase === 'playing'
+  const show = chromeShown({ poked: chrome, paused, playing, upright, info, panel, menuOpen })
+  const shown = show.bars
   const pointerType = useRef('mouse')
   const pct = onAir ? progressOf(onAir, now) * 100 : 0
   const fav = Boolean(channel?.favorite)
@@ -447,7 +604,8 @@ export function LivePlayer() {
         }}
         onClick={() => {
           if (panel) setPanel(false)
-          else if (shown && phase === 'playing' && pointerType.current === 'touch') {
+          // a finger toggles: what shows hides (on an upright phone the bars stay: the centre button goes)
+          else if ((upright ? show.center : shown) && phase === 'playing' && pointerType.current === 'touch') {
             setChrome(false)
             setInfo(false)
           } else poke()
@@ -478,20 +636,53 @@ export function LivePlayer() {
               <span className={styles.channelName}>{channel.name}</span>
             </h1>
           )}
-          <p className={styles.live}>
-            <span className={styles.liveDot} aria-hidden />
-            {t('tv.live')}
-          </p>
+          {behind ? (
+            <Button variant="secondary" material="clear" size="small" icon="broadcast" className={styles.goLive} onClick={() => (goLive(), poke())}>
+              {t('tv.goLive')}
+            </Button>
+          ) : (
+            <p className={styles.live}>
+              <span className={styles.liveDot} aria-hidden />
+              {t('tv.live')}
+            </p>
+          )}
         </div>
       </header>
 
+      {playing && (
+        <div className={`${styles.center} ${styles.playCenter}`} data-hidden={show.center ? undefined : ''}>
+          <button
+            type="button"
+            className={`${styles.bigPlay} glass-clear`}
+            onClick={() => (togglePause(), poke())}
+            tabIndex={show.center ? 0 : -1}
+            aria-label={paused ? t('tv.resume') : t('common.pause')}
+            title={`${paused ? t('tv.resume') : t('common.pause')} (K)`}
+          >
+            <Icon name={paused ? 'play' : 'pause'} size={44} />
+          </button>
+        </div>
+      )}
       {phase === 'starting' && (
         <div className={styles.center}>
           <span className={styles.spinner} role="status" aria-label={t('tv.starting')} />
           <span className={styles.note}>{t('tv.starting')}</span>
         </div>
       )}
-      {typeof phase === 'object' && (
+      {typeof phase === 'object' && 'ext' in phase && (
+        <div className={styles.center}>
+          <div className={`${styles.error} ${styles.extError} glass-strong`} role="alert">
+            <h2>{t('tv.extOnlyApps')}</h2>
+            <p>{t(`tv.extWhy.${phase.ext}`)}</p>
+            {phase.ext === 'network' && (
+              <Button variant="secondary" size={upright ? 'small' : 'regular'} onClick={() => setAttempt((n) => n + 1)}>
+                {t('tv.retry')}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      {typeof phase === 'object' && 'error' in phase && (
         <div className={styles.center}>
           <div className={`${styles.error} glass-strong`} role="alert">
             <h2>{t('tv.failed')}</h2>
@@ -631,7 +822,7 @@ export function LivePlayer() {
           <header className={styles.panelHead}>
             <h2>{t('tv.channelsPanel')}</h2>
           </header>
-          <ul className={styles.panelList}>
+          <ul className={styles.panelList} ref={listRef} style={{ '--num-digits': numDigits(zapList) } as CSSProperties}>
             {zapList.map((c) => {
               const stripLogos = zapList.some((x) => x.logoUrl)
               const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
@@ -643,7 +834,6 @@ export function LivePlayer() {
                     className={styles.panelRow}
                     data-logos={stripLogos || undefined}
                     aria-current={current || undefined}
-                    ref={current ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
                     onClick={() => tune(c)}
                     onKeyDown={(e) => {
                       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return

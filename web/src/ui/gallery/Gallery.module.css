@@ -269,3 +269,25 @@
   border-radius: var(--r-group);
   font: var(--t-callout);
 }
+
+.virtualBox {
+  height: calc(var(--control-h-md) * 6);
+  overflow-y: auto;
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
+}
+.virtualRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: 100%;
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--separator);
+  font: var(--t-callout);
+  font-variant-numeric: tabular-nums;
+}
+.virtualRow span:first-child {
+  min-width: 4ch;
+  color: var(--label-3);
+  text-align: right;
+}

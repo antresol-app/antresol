@@ -333,3 +333,20 @@ func TestTranslationWithoutArtRefetched(t *testing.T) {
 		t.Fatalf("%+v, hits %v", tr, f.requests())
 	}
 }
+
+// Has: a fresh entry with the seasons asked; never a fetch.
+func TestTranslationsHas(t *testing.T) {
+	s := &Translations{}
+	ctx := context.Background()
+	if s.Has(ctx, "tv", 1, "ru-RU", nil) {
+		t.Fatal("empty cache has it")
+	}
+	s.remember(translationKey("tv", 1, "ru-RU"), cachedTranslation{t: Translation{Title: "x", Covers: []int{1}, Art: true}, at: time.Now()})
+	if !s.Has(ctx, "tv", 1, "ru-RU", []int{1}) || s.Has(ctx, "tv", 1, "ru-RU", []int{1, 2}) || s.Has(ctx, "tv", 1, "en-US", nil) {
+		t.Fatal("seasons or language ignored")
+	}
+	s.remember(translationKey("movie", 2, "ru-RU"), cachedTranslation{t: Translation{Title: "x", Art: true}, at: time.Now().Add(-2 * translationTTL)})
+	if s.Has(ctx, "movie", 2, "ru-RU", nil) {
+		t.Fatal("stale entry counts")
+	}
+}

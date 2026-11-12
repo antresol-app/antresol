@@ -27,6 +27,7 @@ import (
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/i18n"
+	"github.com/antresol-app/antresol/internal/iptv"
 	"github.com/antresol-app/antresol/internal/jellyfin"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/loudness"
@@ -424,6 +425,18 @@ func run() error {
 		Channels:     chans,
 		IPTV:         cfg.IPTV,
 	}
+	// external IPTV playlists and guides in «ТВ» (added by an admin);
+	// their secrets sealed with the server's key
+	seal, err := iptv.NewSealer(ctx, database)
+	if err != nil {
+		return err
+	}
+	extTV := &iptv.Service{Store: &iptv.Store{DB: database}, Channels: chans.Store, Fetch: iptv.NewFetcher(), Seal: seal,
+		ScreenLimited: func(ctx context.Context, uid int64) bool {
+			l, err := screenTime.Limits(ctx, uid)
+			return err == nil && l.Any()
+		}}
+	deps.ExtIPTV = extTV
 	// kids' requests: titles from TMDB, answered by the library (the full
 	// build's own catalog replaces this in ext.apiDeps)
 	if metaSrc.TMDB != nil {
@@ -519,6 +532,8 @@ func run() error {
 	go func() { defer wg.Done(); jobs.Run(ctx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); chans.Run(ctx, 10*time.Minute) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); extTV.Run(ctx) }()
 	if !cfg.LibraryOnly {
 		wg.Add(1)
 		go func() { defer wg.Done(); mon.Run(ctx, 30*time.Second) }()

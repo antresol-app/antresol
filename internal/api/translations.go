@@ -20,21 +20,19 @@ type Translator interface {
 	// Get waits a short while for TMDB when the cache lacks the text or
 	// the seasons (item pages); false: none, the stored text stays.
 	Get(ctx context.Context, kind string, id int, tag string, seasons []int) (tmdb.Translation, bool)
+	// Has: a fresh cached text with the seasons is there (nothing asked
+	// or fetched: the TV guide's warmer).
+	Has(ctx context.Context, kind string, id int, tag string, seasons []int) bool
 }
 
 // translationTarget is the TMDB kind and the language a title's text is
 // wanted in: ok false when the item is not a TMDB title or its stored text
 // already is in the viewer's language.
 func (h *lib) translationTarget(ctx context.Context, it library.Item, m itemMeta) (kind, tag string, ok bool) {
-	if h.Translations == nil || it.TmdbID <= 0 {
+	if h.Translations == nil {
 		return "", "", false
 	}
-	switch it.Kind {
-	case library.KindMovie:
-		kind = "movie"
-	case library.KindSeries:
-		kind = "tv"
-	default:
+	if kind, ok = tmdbKind(it); !ok {
 		return "", "", false
 	}
 	tag = i18n.TMDB(i18n.FromContext(ctx))
@@ -46,6 +44,21 @@ func (h *lib) translationTarget(ctx context.Context, it library.Item, m itemMeta
 		return "", "", false
 	}
 	return kind, tag, true
+}
+
+// tmdbKind is TMDB's kind of a movie or series it ("movie" | "tv"); ok
+// false: not a TMDB title.
+func tmdbKind(it library.Item) (string, bool) {
+	if it.TmdbID <= 0 {
+		return "", false
+	}
+	switch it.Kind {
+	case library.KindMovie:
+		return "movie", true
+	case library.KindSeries:
+		return "tv", true
+	}
+	return "", false
 }
 
 func primaryLang(tag string) string {

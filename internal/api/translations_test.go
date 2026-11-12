@@ -56,6 +56,8 @@ func (f *fakeTranslator) Get(_ context.Context, kind string, id int, tag string,
 	return f.text(kind, id), true
 }
 
+func (f *fakeTranslator) Has(context.Context, string, int, string, []int) bool { return false }
+
 func translatedMovie(t *testing.T) (*libEnv, *fakeTranslator, int64) {
 	f := &fakeTranslator{}
 	e := newLibEnvWith(t, func(d *Deps, _ *sql.DB) { d.Translations = f })

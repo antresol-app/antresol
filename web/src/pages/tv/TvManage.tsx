@@ -4,7 +4,7 @@
 // is turned off instead), «Новый канал» and, for admins, «Обновить
 // автоматические каналы».
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { APP_NAME } from '../../brand'
 import { errorText } from '../../api/client'
 import { deleteChannel, generateChannels, getChannels, updateChannel, type Channel, type ChannelRules } from '../../api/channels'
@@ -23,6 +23,7 @@ import { Toggle } from '../../ui/Toggle'
 import { ChannelEditor } from './ChannelEditor'
 import { ChannelLogo } from './ChannelLogo'
 import { byNumber } from './model'
+import sourcesStyles from './sources/Sources.module.css'
 import styles from './Tv.module.css'
 
 /** What a channel plays, in one line («Фильмы · Комедии · 1990-е · Перемешать»). */
@@ -106,6 +107,26 @@ export function TvManage() {
           </div>
         </header>
 
+        {me.isAdmin && (
+          <GroupedSection className={styles.sourcesEntry}>
+            <ListRow
+              className={sourcesStyles.linkRow}
+              leading={
+                <span className={sourcesStyles.glyph}>
+                  <Icon name="broadcast" size={18} />
+                </span>
+              }
+              label={
+                <Link to="/tv/manage/sources" className={sourcesStyles.rowLink}>
+                  {t('iptv.entry')}
+                </Link>
+              }
+              hint={t('iptv.entryHint')}
+            >
+              <Icon name="chevronRight" size={16} className={sourcesStyles.chevron} />
+            </ListRow>
+          </GroupedSection>
+        )}
         {state.status === 'error' && (
           <div className={styles.empty} role="alert">
             <p>{state.message}</p>

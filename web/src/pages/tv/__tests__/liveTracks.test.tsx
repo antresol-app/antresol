@@ -1,7 +1,9 @@
 // Round 5: the live stream carries up to 8 audio and 6 subtitle renditions
 // with any names in any order. The menu lists them all; the choice is made
-// by NAME and sticks across programmes and zaps (by language on a channel
-// without that name) — through hls.js and through Safari's own HLS.
+// by NAME and sticks per channel, across its programmes (by language on a
+// programme without that name) — through hls.js and through Safari's own
+// HLS. With no choice on a channel: the device's language, then the
+// profile's, then the original.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -99,8 +101,12 @@ const channel = (id: number) => {
   }
 }
 
+let langs = ['ru-RU']
 beforeEach(() => {
   resetTrackSession()
+  localStorage.clear()
+  langs = ['ru-RU']
+  vi.spyOn(navigator, 'languages', 'get').mockImplementation(() => langs)
   hlsState.last = null
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
@@ -146,7 +152,7 @@ const zap = async (key: 'ArrowUp' | 'ArrowDown', to: string) => {
 }
 
 describe('the live player’s tracks (hls.js)', () => {
-  it('lists 8 voices and 6 subtitles, selects by name and keeps the choice across a zap', async () => {
+  it('lists 8 voices and 6 subtitles, selects by name and keeps the choice per channel', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
     mount()
     await screen.findByText('Много голосов')
@@ -163,12 +169,12 @@ describe('the live player’s tracks (hls.js)', () => {
     fireEvent.click(within(await openMenu()).getByRole('menuitemradio', { name: 'English SDH' }))
     await waitFor(() => expect(hlsState.last?.subtitleTrack).toBe(3))
 
-    // channel 2 has neither name: Russian by language, its English subtitles (same language)
+    // channel 2: nothing chosen there — the device's Russian, no subtitles (the profile's «off»)
     await zap('ArrowUp', 'Канал 2')
     await waitFor(() => expect(hlsState.last?.audioTracks.length).toBe(2))
     await waitFor(() => expect(hlsState.last?.audioTrack).toBe(1))
-    expect(hlsState.last?.subtitleTrack).toBe(0)
-    // and back: the very rendition chosen
+    expect(hlsState.last?.subtitleTrack).toBe(-1)
+    // and back: the very rendition chosen on channel 1
     await zap('ArrowUp', 'Канал 1')
     await waitFor(() => expect(hlsState.last?.audioTracks.length).toBe(8))
     await waitFor(() => expect(hlsState.last?.audioTrack).toBe(2))
@@ -176,8 +182,28 @@ describe('the live player’s tracks (hls.js)', () => {
   })
 })
 
+describe('the default voice', () => {
+  it('the device’s language before the profile’s', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
+    langs = ['en-GB', 'ru']
+    mount('/tv/2')
+    await screen.findByText('Канал 2')
+    await waitFor(() => expect(hlsState.last?.audioTracks.length).toBe(2))
+    // the profile says Russian; the browser is English: the original English
+    await waitFor(() => expect(hlsState.last?.audioTrack).toBe(0))
+  })
+  it('no device language present: the profile’s', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
+    langs = ['ja-JP']
+    mount('/tv/2')
+    await screen.findByText('Канал 2')
+    await waitFor(() => expect(hlsState.last?.audioTracks.length).toBe(2))
+    await waitFor(() => expect(hlsState.last?.audioTrack).toBe(1))
+  })
+})
+
 describe('the live player’s tracks (Safari’s own HLS)', () => {
-  it('switches the native audio track by its label and keeps it across a zap', async () => {
+  it('switches the native audio track by its label and keeps it on its channel', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe')
     // the native lists follow the stream the element plays
     const lists = new Map<number, { label: string; language: string; enabled: boolean }[]>()

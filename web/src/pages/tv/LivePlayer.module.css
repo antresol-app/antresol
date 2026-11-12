@@ -89,6 +89,10 @@
 .error {
   composes: error from '../../player/VideoPlayer.module.css';
 }
+/* an external channel the web cannot play: the words, the way out */
+.extError {
+  max-width: min(440px, calc(100vw - 2 * var(--gutter)));
+}
 .note {
   font: var(--t-subhead);
   color: var(--label-2);
@@ -261,7 +265,8 @@
 }
 .panelRow {
   display: grid;
-  grid-template-columns: 2.2em 96px minmax(0, 1fr);
+  --num-w: max(2.2em, calc(var(--num-digits, 2) * 0.62em));
+  grid-template-columns: var(--num-w) 96px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -274,7 +279,7 @@
 }
 /* a list with logos: the logo is a column of its own (empty where a channel has none) */
 .panelRow[data-logos] {
-  grid-template-columns: 2.2em 96px auto minmax(0, 1fr);
+  grid-template-columns: var(--num-w) 96px auto minmax(0, 1fr);
 }
 .panelRow:hover {
   background: var(--fill-hover);
@@ -372,11 +377,12 @@
     border-radius: var(--r-sheet-phone);
   }
   .panelRow {
-    grid-template-columns: 1.8em 80px minmax(0, 1fr);
+    --num-w: max(1.8em, calc(var(--num-digits, 2) * 0.62em));
+    grid-template-columns: var(--num-w) 80px minmax(0, 1fr);
     gap: 10px;
   }
   .panelRow[data-logos] {
-    grid-template-columns: 1.8em 80px auto minmax(0, 1fr);
+    grid-template-columns: var(--num-w) 80px auto minmax(0, 1fr);
   }
   .panelArt {
     width: 80px;
@@ -410,6 +416,20 @@
   }
   .hidden {
     cursor: auto;
+  }
+  /* inside the picture's band: a compact card as wide as the screen */
+  .extError {
+    width: calc(100vw - 2 * var(--gutter));
+    max-height: calc(var(--pic-h) - var(--s-4));
+    gap: var(--s-1h);
+    padding: var(--s-3) var(--s-4);
+    overflow: hidden;
+  }
+  .extError h2 {
+    font: var(--t-headline);
+  }
+  .extError p {
+    font: var(--t-footnote);
   }
   .center {
     top: calc(var(--hdr) + var(--pic-h) / 2);
@@ -449,4 +469,26 @@
   .panelInline .panelList {
     padding: 0 max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
   }
+}
+
+/* ---------- Pause and the live edge ----------
+   The centre play/pause is the film player's (a clear-glass circle on the
+   picture). It comes and goes with a tap or the pointer moving (also on an
+   upright phone, where the bars stay) and stays while paused. */
+.playCenter[data-hidden] {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.96);
+}
+.playCenter[data-hidden] > * {
+  pointer-events: none;
+}
+.bigPlay {
+  composes: bigPlay from '../../player/VideoPlayer.module.css';
+}
+/* «В эфир»: behind the edge, in the place of «Прямой эфир» — the small
+   capsule overhangs the 17 px line it replaces, so the channel's name
+   above it does not move */
+.goLive {
+  align-self: flex-start;
+  margin: 2px 0 -21px -2px;
 }

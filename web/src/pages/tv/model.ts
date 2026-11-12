@@ -224,22 +224,33 @@ export function cleanSession(v: unknown): TrackSession {
 const sameLang = (a: string | undefined, b: string | undefined) => !!a && !!b && (a === b || a.split('-')[0] === b.split('-')[0])
 
 /**
- * The audio entry the programme plays for the viewer: the one they chose (by
- * name); else one in the chosen one's language; else the first of the
- * profile's audio languages present; else Russian (the server's default);
- * else the first entry.
+ * The audio entry the programme plays for the viewer, on our channels and
+ * external ones alike: the one they chose on this channel (by name); else
+ * one in the chosen one's language; else the first of the device's
+ * languages present (`system`: the browser's, navigator.languages); else
+ * the first of the profile's audio languages present; else the original
+ * (an entry named so, else the first one the stream lists).
  */
-export function pickAudio(entries: ChannelTrack[] | undefined, prefs: Pick<PlaybackPrefs, 'audioLangs'> | null, session: TrackSession): ChannelTrack | undefined {
+export function pickAudio(entries: ChannelTrack[] | undefined, prefs: Pick<PlaybackPrefs, 'audioLangs'> | null, session: TrackSession, system: readonly string[] = []): ChannelTrack | undefined {
   if (!entries?.length) return undefined
   if (session.audioName) {
     const hit = entries.find((x) => x.name === session.audioName) ?? entries.find((x) => sameLang(x.lang, session.audioLang))
     if (hit) return hit
   }
-  for (const lang of prefs?.audioLangs ?? []) {
+  for (const lang of [...system, ...(prefs?.audioLangs ?? [])]) {
     const e = entries.find((x) => sameLang(x.lang, lang))
     if (e) return e
   }
-  return entries.find((x) => sameLang(x.lang, 'ru')) ?? entries[0]
+  return entries.find((x) => ORIGINAL.test(x.name) || ORIGINAL.test(x.label)) ?? entries[0]
+}
+
+const ORIGINAL = /оригинал|original/i
+
+/** The device's languages, most wanted first (the browser's; none known: none). */
+export function systemLanguages(): string[] {
+  if (typeof navigator === 'undefined') return []
+  const l = navigator.languages?.length ? navigator.languages : navigator.language ? [navigator.language] : []
+  return l.filter(Boolean)
 }
 
 /**
@@ -310,3 +321,8 @@ export function renditionIndex(names: (string | undefined)[], name: string | und
 
 /** The channels as the guide/list keeps them: a Channel or a ChannelEPG. */
 export type Numbered = Pick<Channel, 'id' | 'number' | 'name' | 'category' | 'favorite'>
+
+/** The digits of the longest channel number in a list (its number column is that wide). */
+export function numDigits(list: readonly Pick<Channel, 'number'>[]): number {
+  return list.reduce((d, c) => Math.max(d, String(c.number).length), 1)
+}

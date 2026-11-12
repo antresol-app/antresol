@@ -236,6 +236,8 @@ export const routes: RouteObject[] = [
           {
             element: <AdminOnly />,
             children: [
+              { path: 'tv/manage/sources', element: page(tv, (m) => m.SourcesPage) },
+              { path: 'tv/manage/sources/:id', element: page(tv, (m) => m.SourceChannels) },
               {
                 path: 'manage',
                 element: section('Manage'),
