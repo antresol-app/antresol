@@ -698,6 +698,7 @@ func (w *Worker) analyse(ctx context.Context, fs []file) (failed map[int64]bool,
 	intros := FindIntros(eps)
 	creds := FindCredits(eps)
 	stings := FindStings(eps, intros)
+	intoTitles := RecapsIntoTitles(chapterRecaps(known), intros)
 	nRecap := 0
 	for _, f := range fs {
 		if failed[f.ID] {
@@ -707,7 +708,7 @@ func (w *Worker) analyse(ctx context.Context, fs []file) (failed map[int64]bool,
 		if s, ok := intros[f.ID]; ok {
 			segs = append(segs, Segment{Kind: Intro, Source: SourceAnalysis, StartMs: ms(s.Start), EndMs: ms(s.End)})
 			if end, ok := stings[f.ID]; ok {
-				if r, ok := w.recap(ctx, eps, f, end, s); ok {
+				if r, ok := w.recap(ctx, eps, f, end, s, intoTitles); ok {
 					segs = append(segs, Segment{Kind: Recap, Source: SourceAnalysis, StartMs: ms(r.Start), EndMs: ms(r.End)})
 					nRecap++
 				}
@@ -754,6 +755,7 @@ func (w *Worker) recapsOnly(ctx context.Context, fs []file, known map[int64][]Se
 		}
 	}
 	stings := FindStings(eps, intros)
+	intoTitles := RecapsIntoTitles(chapterRecaps(known), intros)
 	n := 0
 	for _, f := range fs {
 		if failed[f.ID] {
@@ -761,7 +763,7 @@ func (w *Worker) recapsOnly(ctx context.Context, fs []file, known map[int64][]Se
 		}
 		var segs []Segment
 		if end, ok := stings[f.ID]; ok {
-			if r, ok := w.recap(ctx, eps, f, end, intros[f.ID]); ok {
+			if r, ok := w.recap(ctx, eps, f, end, intros[f.ID], intoTitles); ok {
 				segs = append(segs, Segment{Kind: Recap, Source: SourceAnalysis, StartMs: ms(r.Start), EndMs: ms(r.End)})
 				n++
 			}
@@ -833,12 +835,43 @@ func (w *Worker) episode(ctx context.Context, f file) (Episode, error) {
 	return e, nil
 }
 
+// chapterRecaps are the recaps the files' chapters mark, by file.
+func chapterRecaps(known map[int64][]Segment) map[int64]Span {
+	out := map[int64]Span{}
+	for f, segs := range known {
+		for _, s := range segs {
+			if s.Kind == Recap && s.Source == SourceChapters {
+				out[f] = Span{float64(s.StartMs) / 1000, float64(s.EndMs) / 1000}
+			}
+		}
+	}
+	return out
+}
+
+// firstOf reports whether f is the season's lowest-numbered episode.
+func firstOf(eps []Episode, f int64) bool {
+	n, mine := -1, -1
+	for _, e := range eps {
+		if n < 0 || e.Number < n {
+			n = e.Number
+		}
+		if e.File == f {
+			mine = e.Number
+		}
+	}
+	return mine == n
+}
+
 // recap decodes the picture between the sting and the intro for the black
 // run that ends a recap (every frame: a 2 s run falls between keyframes),
 // and keeps it only when it holds audio of an earlier episode (a cold open
-// is new material).
-func (w *Worker) recap(ctx context.Context, eps []Episode, f file, stingEnd float64, intro Span) (Span, bool) {
-	if intro.Start-stingEnd < recapBlackSec || !EarlierClip(eps, f.ID, stingEnd, intro.Start) {
+// is new material). In a season whose chapter recaps run into the titles
+// (intoTitles) the recap ends at the intro instead, without that audio
+// check (the heads and tails it compares miss clips from mid-episode),
+// except in the season's first episode, where a cold open is likeliest.
+func (w *Worker) recap(ctx context.Context, eps []Episode, f file, stingEnd float64, intro Span, intoTitles bool) (Span, bool) {
+	lent := intoTitles && !firstOf(eps, f.ID)
+	if intro.Start-stingEnd < recapBlackSec || (!lent && !EarlierClip(eps, f.ID, stingEnd, intro.Start)) {
 		return Span{}, false
 	}
 	if err := w.idle(ctx); err != nil {
@@ -850,6 +883,9 @@ func (w *Worker) recap(ctx context.Context, eps []Episode, f file, stingEnd floa
 			w.log().Warn("segments: recap black frames", "file", f.Path, "err", err)
 		}
 		return Span{}, false
+	}
+	if lent {
+		return RecapIntoTitles(stingEnd, intro, bl)
 	}
 	r, ok := RecapAfter(stingEnd, intro, bl)
 	if !ok || !EarlierClip(eps, f.ID, stingEnd, r.End) {

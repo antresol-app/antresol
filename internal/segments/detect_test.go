@@ -209,6 +209,37 @@ func TestStingsAndRecap(t *testing.T) {
 	}
 }
 
+func TestRecapsIntoTitles(t *testing.T) {
+	// Billions S3: «Previously On» ends 1–5 s before the title music
+	recaps := map[int64]Span{1: {4, 119}, 4: {4, 72}, 5: {4, 51}}
+	intros := map[int64]Span{1: {123.6, 138.6}, 2: {65.8, 80.6}, 4: {75.8, 88.8}, 5: {54.5, 69.5}}
+	if !RecapsIntoTitles(recaps, intros) {
+		t.Fatal("billions: recaps run into the titles")
+	}
+	// one recap followed by a cold open: not the season's shape
+	recaps[6], intros[6] = Span{4, 50}, Span{180, 200}
+	if RecapsIntoTitles(recaps, intros) {
+		t.Fatal("a cold open between recap and titles")
+	}
+	// a single chapter recap is no pattern
+	if RecapsIntoTitles(map[int64]Span{1: {4, 119}}, intros) {
+		t.Fatal("one recap")
+	}
+	// S3E3: dark shots inside the recap, the fade to black holds the titles' start
+	black := []Span{{3.6, 7.9}, {14.9, 17.1}, {52.3, 62.2}}
+	if r, ok := RecapIntoTitles(3.6, Span{61.2, 76.2}, black); !ok || r.Start != 0 || r.End != 61.2 {
+		t.Fatalf("E3 %+v %v", r, ok)
+	}
+	// a black run ending just before the titles
+	if r, ok := RecapIntoTitles(3.6, Span{61.2, 76.2}, []Span{{55, 58}}); !ok || r.End != 61.2 {
+		t.Fatalf("black before the titles %+v %v", r, ok)
+	}
+	// no black next to the titles: no recap
+	if _, ok := RecapIntoTitles(3.6, Span{61.2, 76.2}, []Span{{14.9, 17.1}}); ok {
+		t.Fatal("dark shot alone")
+	}
+}
+
 func BenchmarkSharedRuns10min(b *testing.B) {
 	r := rand.New(rand.NewSource(8))
 	x, y := noise(r, 600), noise(r, 600)

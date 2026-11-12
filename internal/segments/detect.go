@@ -7,8 +7,9 @@ import (
 
 // AnalysisVersion is the version of the analysis below; files analysed by
 // an older one are analysed again (3: a recap may end in the black run
-// the intro starts in).
-const AnalysisVersion = 3
+// the intro starts in; 4: a season whose chapter recaps run into the
+// titles lends that to its episodes without chapters).
+const AnalysisVersion = 4
 
 // The analysis' limits (from the skip-segments design).
 const (
@@ -50,6 +51,9 @@ const (
 	recapBlackSec  = 2.0
 	// recapClipSec: a recap holds audio of an earlier episode at least this long
 	recapClipSec = 3.0
+	// meetSec: a chapter recap runs into the titles when the intro's music
+	// starts at most this long after it ends (the fade to black between).
+	meetSec = 6.0
 )
 
 // HeadSec is how much of the start of a file of durSec the intro is looked for in.
@@ -390,6 +394,42 @@ func RecapAfter(stingEnd float64, intro Span, black []Span) (Span, bool) {
 		}
 		r := Span{0, math.Min(b.End, intro.Start)}
 		if b.Start > intro.Start+0.5 || r.Len() < recapMinSec || r.Len() > recapMaxSec {
+			return Span{}, false
+		}
+		return r, true
+	}
+	return Span{}, false
+}
+
+// RecapsIntoTitles reports whether a season's chapter-marked recaps all run
+// straight into the titles (at least two of them): its other episodes'
+// recaps then end at their intro too. recaps and intros are keyed by file.
+func RecapsIntoTitles(recaps, intros map[int64]Span) bool {
+	n := 0
+	for f, r := range recaps {
+		in, ok := intros[f]
+		if !ok {
+			continue
+		}
+		if gap := in.Start - r.End; gap < -0.5 || gap > meetSec {
+			return false
+		}
+		n++
+	}
+	return n >= 2
+}
+
+// RecapIntoTitles is an episode's recap in a season whose recaps run into
+// the titles: 0:00 to the intro's start, when a black run of at least
+// recapBlackSec after the sting ends within meetSec before the intro or
+// holds its start (15 s – 2 min). Dark shots inside the recap do not end it.
+func RecapIntoTitles(stingEnd float64, intro Span, black []Span) (Span, bool) {
+	for _, b := range black {
+		if b.Start < stingEnd || b.Len() < recapBlackSec || b.Start > intro.Start+0.5 || b.End < intro.Start-meetSec {
+			continue
+		}
+		r := Span{0, intro.Start}
+		if r.Len() < recapMinSec || r.Len() > recapMaxSec {
 			return Span{}, false
 		}
 		return r, true
