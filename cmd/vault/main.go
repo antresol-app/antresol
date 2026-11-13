@@ -86,6 +86,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	for _, h := range cfg.PathHints(nil) {
+		log.Print(h)
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return err
 	}
