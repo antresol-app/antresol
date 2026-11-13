@@ -102,31 +102,22 @@ describe('Настройки: музыка и субтитры', () => {
   })
 })
 
-describe('Настройки: языки интерфейса и описаний', () => {
+describe('Настройки сервера: язык описаний', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('«Язык интерфейса» → English re-renders the page in English and remembers it in this browser', async () => {
+  it('is the server\'s: titled «Настройки сервера», no interface language (that is the profile\'s)', async () => {
     stub(base)
     render(<Settings />)
-    const ui = await screen.findByRole('radiogroup', { name: 'Язык интерфейса' })
-    expect(within(ui).getByRole('radio', { name: 'Как в системе' })).toHaveAttribute('aria-checked', 'true')
-    expect(document.documentElement.lang).toBe('ru')
-    await userEvent.click(within(ui).getByRole('radio', { name: 'English' }))
-    expect(await screen.findByRole('heading', { name: 'Settings', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('radiogroup', { name: 'Music away from home' })).toBeInTheDocument()
-    expect(within(screen.getByRole('radiogroup', { name: 'Interface language' })).getByRole('radio', { name: 'English' })).toHaveAttribute('aria-checked', 'true')
-    expect(document.documentElement.lang).toBe('en')
-    expect(localStorage.getItem('vault.uiLanguage')).toBe('en')
-    // back to the system language (Russian in the tests)
-    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Interface language' })).getByRole('radio', { name: 'Same as system' }))
-    expect(await screen.findByRole('heading', { name: 'Настройки', level: 2 })).toBeInTheDocument()
-    expect(document.documentElement.lang).toBe('ru')
+    await screen.findByRole('radiogroup', { name: 'Музыка вне дома' })
+    expect(screen.getByRole('heading', { name: 'Настройки сервера', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Язык интерфейса' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Язык интерфейса')).not.toBeInTheDocument()
   })
 
   it('«Язык описаний медиатеки» shows only when the server has it and saves metadataLanguage', async () => {
     stub(base)
     const { unmount } = render(<Settings />)
-    await screen.findByRole('radiogroup', { name: 'Язык интерфейса' })
+    await screen.findByRole('radiogroup', { name: 'Музыка вне дома' })
     expect(screen.queryByRole('radiogroup', { name: 'Язык описаний медиатеки' })).not.toBeInTheDocument()
     unmount()
     vi.unstubAllGlobals()

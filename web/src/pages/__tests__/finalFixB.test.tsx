@@ -1,12 +1,10 @@
-// Final review, fix B (web minors): item links by kind, «На этом
-// устройстве» in the profile menu, empty Music/Books for kids and adults,
+// Final review, fix B (web minors): item links by kind, empty Music/Books for kids and adults,
 // download nouns by kind, the passwordless note on the app-password sheet.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import type { ItemDetail as Detail, User } from '../../api/types'
 import { itemHref } from '../../components/Card'
-import { ProfileMenu } from '../../components/ProfileMenu'
 import { session } from '../../state/session'
 import { BooksHome } from '../books/BooksHome'
 import { ItemDetail } from '../ItemDetail'
@@ -57,40 +55,8 @@ describe('F19: library links by kind', () => {
   })
 })
 
-describe('F21, F25: the profile menu', () => {
-  it('leads to «На этом устройстве» and warns a passwordless profile that apps work only at home', async () => {
-    vi.stubGlobal('caches', { open: vi.fn() })
-    stubFetch((u) => (u.endsWith('/api/me/app-password') ? json({ exists: false, createdAt: null }) : undefined))
-    render(
-      <MemoryRouter>
-        <ProfileMenu user={adult} />
-        <Routes>
-          <Route path="*" element={<Where />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('button', { name: /Профиль/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'На этом устройстве' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/offline')
-
-    fireEvent.click(screen.getByRole('button', { name: /Профиль/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Пароль для приложений…' }))
-    expect(await screen.findByTestId('app-password-home-only')).toHaveTextContent('Вне дома приложения не подключатся, пока у профиля нет пароля')
-  })
-
-  it('no home-only note for a profile with a password', async () => {
-    stubFetch((u) => (u.endsWith('/api/me/app-password') ? json({ exists: false, createdAt: null }) : undefined))
-    render(
-      <MemoryRouter>
-        <ProfileMenu user={{ ...adult, hasPassword: true }} />
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('button', { name: /Профиль/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Пароль для приложений…' }))
-    expect(await screen.findByRole('dialog', { name: 'Пароль для приложений' })).toBeInTheDocument()
-    expect(screen.queryByTestId('app-password-home-only')).toBeNull()
-  })
-})
+// F21, F25 (the menu's «На этом устройстве», the passwordless note) moved
+// with them to «Настройки»: profileSettings.test.tsx
 
 describe('F24: empty Music and Books', () => {
   const empty = (u: string) => (u.includes('/api/music/home') || u.includes('/api/books/home') ? json({ shelves: [] }) : undefined)

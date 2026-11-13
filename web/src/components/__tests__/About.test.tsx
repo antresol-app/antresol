@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { About, User } from '../../api/types'
 import { resetAbout, sourceLink } from '../../state/about'
-import { session, useSession } from '../../state/session'
+import { session } from '../../state/session'
 import { AboutSheet, versionLabel } from '../AboutSheet'
-import { ProfileMenu } from '../ProfileMenu'
+import { ProfileSettings } from '../../pages/ProfileSettings'
 import { SourceLink } from '../SourceLink'
 
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -76,21 +76,17 @@ describe('the source offer (AGPL §13)', () => {
     expect(versionLabel(own)).toBe('dev')
   })
 
-  it('every profile finds «О сервере…» in its menu', async () => {
+  it('every profile finds «О сервере» in its «Настройки»', async () => {
     serve(official, { ...admin, id: 2, name: 'Ребёнок', isAdmin: false, isKid: true, hasPassword: false, maxRating: '12+' })
     await session.login(2)
-    function Menu() {
-      const { user } = useSession()
-      return user ? <ProfileMenu user={user} /> : null
-    }
     render(
       <MemoryRouter>
-        <Menu />
+        <ProfileSettings />
       </MemoryRouter>,
     )
-    await userEvent.click(screen.getByRole('button', { name: /Ребёнок/ }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'О сервере…' }))
+    await userEvent.click(screen.getByRole('button', { name: /О сервере/ }))
     expect(await screen.findByRole('dialog', { name: 'О сервере' })).toBeInTheDocument()
     expect(await screen.findByRole('link', { name: 'Исходный код · AGPL' })).toBeInTheDocument()
   })
+
 })

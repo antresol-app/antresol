@@ -70,7 +70,7 @@ describe('NotifySheet', () => {
   it('sends the verification letter and confirms the code', async () => {
     render(<NotifySheet onClose={() => {}} />)
     await userEvent.type(await screen.findByLabelText('Адрес почты'), 'anya@example.com')
-    expect(screen.getByText(/не подтверждён/)).toBeInTheDocument()
+    expect(screen.getByText(/Подтвердите адрес/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Отправить проверочное письмо' }))
     // the typed address is saved first, then the letter goes
     await waitFor(() => expect(calls.some((c) => c.url === '/api/me/notify/verify')).toBe(true))
@@ -90,7 +90,7 @@ describe('NotifySheet', () => {
   it('says when the address refused a letter', async () => {
     state = { ...empty, email: 'gone@example.com', bounced: true }
     render(<NotifySheet onClose={() => {}} />)
-    expect(await screen.findByText(/Адрес не принимает письма/)).toBeInTheDocument()
+    expect(await screen.findByText(/Письма на этот адрес не доходят/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Отправить проверочное письмо' })).toBeEnabled()
   })
 

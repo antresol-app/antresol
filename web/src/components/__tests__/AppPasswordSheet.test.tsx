@@ -37,7 +37,7 @@ describe('AppPasswordSheet', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     render(<AppPasswordSheet userName="Александр" onClose={() => {}} />)
     const sheet = await screen.findByRole('dialog', { name: 'Пароль для приложений' })
-    expect(sheet).toHaveTextContent(`сервер — ${location.origin}`)
+    expect(sheet).toHaveTextContent(`Сервер — ${location.origin}`)
     expect(sheet).toHaveTextContent('имя — Александр')
     expect(sheet).toHaveTextContent(`Каталог книг: ${location.origin}/opds`)
     fireEvent.click(await within(sheet).findByRole('button', { name: 'Создать пароль' }))

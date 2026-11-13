@@ -12,7 +12,7 @@ import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { Card } from '../Card'
 import { IconButton } from '../IconButton'
-import { GroupedSection, ListRow } from '../List'
+import { GroupedSection, ListLinkRow, ListRow } from '../List'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../Menu'
 import { NumberField } from '../NumberField'
 import { PlayerBar, PlayerBarButton } from '../PlayerBar'
@@ -283,6 +283,14 @@ export function Gallery() {
             </Card>
           ))}
         </div>
+      </Section>
+
+      <Section title="ListLinkRow" note="A row that opens a sheet or a page: the whole row is the button, a coloured icon tile, an optional value, the chevron.">
+        <GroupedSection title="Просмотр">
+          <ListLinkRow icon="captions" tint="var(--blue)" label="Звук и субтитры" onOpen={() => {}} />
+          <ListLinkRow icon="lock" tint="var(--gray)" label="Пароль для приложений" hint="One short line under the label." onOpen={() => {}} />
+          <ListLinkRow label="Без иконки" value="Включены" onOpen={() => {}} />
+        </GroupedSection>
       </Section>
 
       <Section title="GroupedSection · ListRow" note="The System Settings list. Every control sits on the trailing edge of its row; stack/wide put it under the text.">

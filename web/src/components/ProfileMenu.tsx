@@ -1,25 +1,16 @@
 // Avatar button in the top-right corner. Opens the app's Menu (a sheet on a
-// phone) with the current profile, «Управление» (admins only), «На этом
-// устройстве» (saved albums and books), «Звук и субтитры…» (adults),
-// «Пароль для приложений…», «Устройства…», «О сервере…» and «Сменить профиль»,
-// then the profile's library («Общая медиатека / Моя медиатека», as Photos
-// has it in its View menu besides the toolbar picker) and the language.
-import { useRef, useState } from 'react'
+// phone) with the current profile, its places («Файлы», «Управление» for
+// admins, «Мои просьбы», «Мои слежения»), «Настройки» (the profile's own:
+// pages/ProfileSettings.tsx) and «Сменить профиль», then the profile's
+// library («Общая медиатека / Моя медиатека», as Photos has it in its View
+// menu besides the toolbar picker).
 import { useNavigate } from 'react-router'
-import { updateMe } from '../api/client'
 import type { User } from '../api/types'
-import { offlineSupported } from '../offline/store'
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingRequests } from '../state/kidRequests'
 import { session } from '../state/session'
-import { getLanguagePref, useLang, useT, type LangPref } from '../i18n'
-import { chooseInterfaceLanguage } from '../state/uiLanguage'
-import { AboutSheet } from './AboutSheet'
-import { AppPasswordSheet } from './AppPasswordSheet'
+import { useLang, useT } from '../i18n'
 import { Avatar } from './Avatar'
-import { DevicesSheet } from './DevicesSheet'
-import { NotifySheet } from './NotifySheet'
-import { PlaybackPrefsSheet } from './PlaybackPrefsSheet'
 import { Icon, type IconName } from './Icon'
 import { LIBRARY_OPTIONS } from './LibraryScopeMenu'
 import styles from './ProfileMenu.module.css'
@@ -34,36 +25,13 @@ interface Item {
   badge?: number
 }
 
-const LANG_PREFS = [
-  { value: 'system', label: 'common.uiLanguage.system' },
-  { value: 'ru', label: 'common.uiLanguage.ru' },
-  { value: 'en', label: 'common.uiLanguage.en' },
-] as const satisfies readonly { value: LangPref; label: string }[]
-
 export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchProfile?: () => void }) {
   const t = useT()
   useLang()
-  const pref = getLanguagePref()
   const library = useLibraryScope()
-  const [open, setOpen] = useState(false)
-  const [appPassword, setAppPassword] = useState(false)
-  const [devices, setDevices] = useState(false)
-  const [playback, setPlayback] = useState(false)
-  const [notify, setNotify] = useState(false)
-  const [about, setAbout] = useState(false)
-  const [hideFailed, setHideFailed] = useState(false)
   const navigate = useNavigate()
-  const buttonRef = useRef<HTMLButtonElement>(null)
   // requests waiting for an admin's answer (none where requests are closed)
   const pending = usePendingRequests(user.id, Boolean(user.requests))
-
-  // «Скрывать прогресс просмотра»: an adult's own choice (a kid's is the admin's, in Профили)
-  const toggleHidden = () => {
-    setHideFailed(false)
-    updateMe({ hideProgress: !user.hideProgress })
-      .then((u) => session.updateUser(u))
-      .catch(() => setHideFailed(true))
-  }
 
   const items: Item[] = [
     // The file browser of the media disk (not for kid profiles).
@@ -111,59 +79,12 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
           },
         ]
       : []),
-    // what is saved for listening and reading without the server (and the space it takes)
-    ...(offlineSupported()
-      ? [
-          {
-            id: 'offline',
-            label: t('comp.profile.onDevice'),
-            icon: 'download' as const,
-            run: () => navigate('/offline'),
-          },
-        ]
-      : []),
-    // «Звук и субтитры»: an adult's own defaults (a kid's are the admin's, in Профили)
-    ...(!user.isKid
-      ? [
-          {
-            id: 'playback',
-            label: t('comp.profile.playback'),
-            icon: 'captions' as const,
-            run: () => setPlayback(true),
-          },
-        ]
-      : []),
-    // «Уведомления на почту»: an adult's own (a kid's are the admin's, in Профили)
-    ...(!user.isKid
-      ? [
-          {
-            id: 'notify',
-            label: t('comp.profile.notify'),
-            icon: 'send' as const,
-            run: () => setNotify(true),
-          },
-        ]
-      : []),
-    // Subsonic music apps and OPDS readers sign in with it (kids too).
+    // the profile's own settings: language, sound, mail, app password, devices
     {
-      id: 'app-password',
-      label: t('comp.profile.appPassword'),
-      icon: 'lock',
-      run: () => setAppPassword(true),
-    },
-    // the Vault app on iPhone, iPad and Mac signed in to this profile
-    {
-      id: 'devices',
-      label: t('comp.profile.devices'),
-      icon: 'pip',
-      run: () => setDevices(true),
-    },
-    // «О сервере»: the version, the licence, the source offer (AGPL §13) and the TMDB notice
-    {
-      id: 'about',
-      label: t('comp.about.menu'),
-      icon: 'info',
-      run: () => setAbout(true),
+      id: 'settings',
+      label: t('comp.profile.settings'),
+      icon: 'sliders',
+      run: () => navigate('/settings'),
     },
     {
       id: 'switch',
@@ -187,18 +108,12 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
         label={t('comp.profile.role')}
         placement="bottom-end"
         pickList={false}
-        // the profile, its places, the library and the language: taller than a usual menu (still cut to the window)
+        // the profile, its places and the library: taller than a usual menu (still cut to the window)
         maxHeight={720}
         className={styles.menu}
-        onOpenChange={setOpen}
         trigger={(tp) => (
           <button
             {...tp}
-            ref={(el) => {
-              buttonRef.current = el
-              if (typeof tp.ref === 'function') tp.ref(el)
-              else if (tp.ref) (tp.ref as { current: HTMLButtonElement | null }).current = el
-            }}
             type="button"
             className={styles.trigger}
             onKeyDown={(e) => {
@@ -254,75 +169,9 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
                 </div>
               </>
             )}
-            {/* a family setting: in the «Библиотека» group, not a group of its own */}
-            {!user.isKid && (
-              <>
-                {!library.available && <MenuSeparator />}
-                <MenuItem label={t('comp.profile.hideProgress')} checked={!!user.hideProgress} multi onSelect={toggleHidden} />
-                {/* shown here, announced by the live region outside the menu (a menu holds only items) */}
-                {hideFailed && (
-                  <p className={styles.failed} aria-hidden>
-                    {t('comp.profile.hideProgressFailed')}
-                  </p>
-                )}
-              </>
-            )}
-            {/* «Язык интерфейса»: per browser, for every profile (only the admin has Settings) */}
-            <MenuSeparator />
-            <div role="group" aria-label={t('common.uiLanguage')}>
-              <MenuHeading>{t('common.uiLanguage')}</MenuHeading>
-              {LANG_PREFS.map((o) => (
-                <MenuItem key={o.value} label={t(o.label)} lang={o.value === 'system' ? undefined : o.value} checked={pref === o.value} onSelect={() => chooseInterfaceLanguage(o.value)} />
-              ))}
-            </div>
           </>
         )}
       </Menu>
-      <p className="visually-hidden" role="alert">
-        {open && hideFailed ? t('comp.profile.hideProgressFailed') : ''}
-      </p>
-      {appPassword && (
-        <AppPasswordSheet
-          userName={user.name}
-          passwordless={!user.hasPassword}
-          onClose={() => {
-            setAppPassword(false)
-            buttonRef.current?.focus()
-          }}
-        />
-      )}
-      {playback && (
-        <PlaybackPrefsSheet
-          onClose={() => {
-            setPlayback(false)
-            buttonRef.current?.focus()
-          }}
-        />
-      )}
-      {notify && (
-        <NotifySheet
-          onClose={() => {
-            setNotify(false)
-            buttonRef.current?.focus()
-          }}
-        />
-      )}
-      {about && (
-        <AboutSheet
-          onClose={() => {
-            setAbout(false)
-            buttonRef.current?.focus()
-          }}
-        />
-      )}
-      {devices && (
-        <DevicesSheet
-          onClose={() => {
-            setDevices(false)
-            buttonRef.current?.focus()
-          }}
-        />
-      )}
     </div>
   )
 }

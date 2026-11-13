@@ -1,0 +1,5 @@
+/* one readable column, like System Settings' pane */
+.column {
+  max-width: 680px;
+  margin: 0 auto;
+}

@@ -30,7 +30,7 @@ export const MANAGE_SECTIONS: { to: string; label: Key; icon: IconName; tint: st
   { to: 'files', label: 'common.files', icon: 'folder', tint: 'var(--teal)' },
   { to: 'stats', label: 'manage.section.stats', icon: 'chart', tint: 'var(--orange)' },
   { to: 'profiles', label: 'manage.section.profiles', icon: 'people', tint: 'var(--purple)' },
-  { to: 'settings', label: 'common.settings', icon: 'gear', tint: 'var(--gray)' },
+  { to: 'settings', label: 'settings.serverTitle', icon: 'gear', tint: 'var(--gray)' },
 ]
 
 /** The sections this server has. */

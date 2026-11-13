@@ -89,7 +89,65 @@
   min-width: 0;
 }
 
+/* ListLinkRow: the row is one button, the chevron on the trailing edge */
+.link {
+  padding: 0;
+}
+.linkButton {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: var(--control-h-lg);
+  padding: var(--s-2h) var(--s-4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.linkButton:hover {
+  background: var(--surface-grouped-hover);
+}
+.linkButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.linkButton .label,
+.linkButton .hint {
+  display: block;
+}
+.tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--white);
+}
+.value {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--t-callout);
+  color: var(--label-2);
+}
+.chevron {
+  flex: none;
+  color: var(--label-3);
+}
+
 @media (max-width: 699px) {
+  .row.link {
+    padding: 0;
+  }
+  .linkButton {
+    padding: var(--s-2h) var(--s-3h);
+  }
   .row {
     gap: var(--s-3);
     padding: var(--s-2h) var(--s-3h);

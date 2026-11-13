@@ -102,6 +102,8 @@ const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 
 
 // «Мои просьбы» (kids) load on first visit too.
 const MyRequests = lazy(() => import('../pages/MyRequests'))
+// a profile's own «Настройки» (every profile)
+const ProfileSettings = lazy(() => import('../pages/ProfileSettings'))
 
 // The reader (foliate-js, pdf.js; comics) loads only when a book is opened.
 const ReadRoute = lazy(() => import('../reader/ReadRoute').then((m) => ({ default: m.ReadRoute })))
@@ -180,6 +182,14 @@ export const routes: RouteObject[] = [
           // the design system's gallery: dev server only, never in a build
           ...(import.meta.env.DEV ? [{ path: 'dev/gallery', element: <GalleryRoute /> }] : []),
           { path: 'offline', element: <OfflineHome /> },
+          {
+            path: 'settings',
+            element: (
+              <ChunkBoundary>
+                <ProfileSettings />
+              </ChunkBoundary>
+            ),
+          },
           { path: 'movies', element: page(browse, (m) => m.Movies) },
           { path: 'series', element: page(browse, (m) => m.Series) },
           { path: 'tv', element: page(tv, (m) => m.Tv) },

@@ -163,7 +163,6 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
                 <h3 className={styles.label} id={`${id}-subs`}>
                   {t('comp.playback.subLangs')}
                 </h3>
-                <p className={styles.hint}>{t('comp.playback.subLangsHint')}</p>
                 <RankedList
                   labelledBy={`${id}-subs`}
                   items={prefs.subLangs}

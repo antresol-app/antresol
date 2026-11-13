@@ -1,4 +1,6 @@
-// «Настройки»: one row per setting, each with a plain label. Changes save
+// «Настройки сервера» (admin): what applies to the whole server, one row per
+// setting, each with a plain label. A profile's own settings (the language,
+// sound, mail) are in pages/ProfileSettings.tsx. Changes save
 // by themselves (like iOS); «Качество вне дома» (and the sources build's upload
 // limit and cache size) apply at once on the server. The core build
 // has only the library's settings: no release preferences, online viewing
@@ -19,8 +21,7 @@ import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { NumberField } from '../../ui/NumberField'
-import { getLanguagePref, t, useT, type LangPref } from '../../i18n'
-import { chooseInterfaceLanguage } from '../../state/uiLanguage'
+import { t, useT } from '../../i18n'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
@@ -73,7 +74,7 @@ export function Settings() {
   const t = useT()
 
   useEffect(() => {
-    document.title = `${t('common.settings')} — ${APP_NAME}`
+    document.title = `${t('settings.serverTitle')} — ${APP_NAME}`
     const ac = new AbortController()
     getSettings(ac.signal).then(
       (v) => {
@@ -117,7 +118,7 @@ export function Settings() {
   if (!values) {
     return (
       <section>
-        <h2 className={m.title}>{t('common.settings')}</h2>
+        <h2 className={m.title}>{t('settings.serverTitle')}</h2>
         {error ? (
           <div className={m.problem} role="alert" style={{ marginTop: 16 }}>
             {error}
@@ -158,7 +159,7 @@ export function Settings() {
       <header className={m.header}>
         <div>
           <h2 id="settings-title" className={m.title}>
-            {t('common.settings')}
+            {t('settings.serverTitle')}
           </h2>
           <p className={m.subtitle} aria-live="polite">
             {saved === 'saving' ? t('settings.saving') : saved === 'saved' ? t('settings.saved') : t('settings.autosave')}
@@ -171,10 +172,8 @@ export function Settings() {
         </div>
       )}
 
-      {/* one group: two separate cards would touch without a gap */}
-      <GroupedSection>
-        <InterfaceLanguage />
-        {values.metadataLanguage !== undefined && (
+      {values.metadataLanguage !== undefined && (
+        <GroupedSection>
           <ListRow stack label={t('settings.metadataLanguage')} hint={t('settings.metadataLanguage.hint')}>
             <SegmentedControl
               label={t('settings.metadataLanguage')}
@@ -186,8 +185,8 @@ export function Settings() {
               onChange={(v) => change({ metadataLanguage: v })}
             />
           </ListRow>
-        )}
-      </GroupedSection>
+        </GroupedSection>
+      )}
 
       <GroupedSection title={t('settings.languages')}>
         <ListRow
@@ -667,33 +666,6 @@ function Rescan() {
         {running ? t('settings.rescan.inProgress') : t('settings.rescan.start')}
       </Button>
       {started && !running && !error && <Icon name="checkCircle" size={20} className={m.ok} />}
-    </ListRow>
-  )
-}
-
-/**
- * «Язык интерфейса»: applies in this browser at once and is saved for the
- * profile, so its other apps follow (state/uiLanguage.ts); «Как в системе»
- * follows the profile's own language, else the browser's.
- */
-function InterfaceLanguage() {
-  const t = useT()
-  const [pref, setPref] = useState<LangPref>(getLanguagePref)
-  return (
-    <ListRow stack label={t('common.uiLanguage')} hint={t('settings.uiLanguage.hint')}>
-      <SegmentedControl
-        label={t('common.uiLanguage')}
-        segments={[
-          { value: 'system', label: t('common.uiLanguage.system') },
-          { value: 'ru', label: t('common.uiLanguage.ru') },
-          { value: 'en', label: t('common.uiLanguage.en') },
-        ]}
-        value={pref}
-        onChange={(v: LangPref) => {
-          setPref(v)
-          chooseInterfaceLanguage(v)
-        }}
-      />
     </ListRow>
   )
 }
