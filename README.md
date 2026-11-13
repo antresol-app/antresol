@@ -65,28 +65,127 @@ You need a Linux host with Docker and Compose, and your media in one folder:
     manga/       Series/Volume 01.cbz
 ```
 
-Then, next to [`compose.yml`](compose.yml):
+Your folders may have other names; you set them in `.env` below. No checkout
+is needed: make a folder, for example `~/antresol`, and put two files in it.
+
+`compose.yml` (the same as [`compose.yml`](compose.yml) in this repository):
+
+```yaml
+# Antresol Server with Docker Compose (see README.md, "Install with Docker").
+#
+# Put this file and a .env next to each other (the README has both in full),
+# set MEDIA_DIR in .env to your media folder on the host, then:
+#
+#   docker compose up -d
+#
+# and open http://<host>:8420 from your home network.
+#
+# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
+# /media, and the *_DIR folder names below are relative to it. Do not put
+# host paths into VAULT_* variables: the server sees only the container.
+#
+# To build the image from a checkout instead of pulling it:
+#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
+services:
+  antresol:
+    image: ghcr.io/antresol-app/antresol-server:latest
+    container_name: antresol
+    restart: unless-stopped
+    # stops ffmpeg, then waits for open requests
+    stop_grace_period: 30s
+    ports:
+      - "8420:8420"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VAULT_DATA_DIR: /config
+      VAULT_MEDIA_ROOT: /media
+      # folder names inside MEDIA_DIR; change them in .env if yours differ
+      VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
+      VAULT_SERIES_DIR: ${SERIES_DIR:-series}
+      VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
+      VAULT_BOOKS_DIR: ${BOOKS_DIR:-books}
+      VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
+      VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
+      VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
+      # HLS segments of a transcode: on the media disk, not in the config volume
+      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
+    volumes:
+      - antresol-config:/config
+      # read-write: fetched subtitles, transcode segments, offline copies
+      - ${MEDIA_DIR:-./media}:/media
+    # The image has no GPU video driver yet, so it decodes on the CPU; run the
+    # binary on the host for hardware decoding.
+
+volumes:
+  antresol-config:
+```
+
+`.env`:
 
 ```sh
-cp .env.example .env          # optional: a TMDB key, your time zone, your proxy
-MEDIA_DIR=/srv/media docker compose up -d
+# The media folder ON THE HOST. In the container it is always /media.
+MEDIA_DIR=/srv/media
+
+# Folder names inside MEDIA_DIR, only if yours differ from these:
+# MOVIES_DIR=movies
+# SERIES_DIR=series
+# MUSIC_DIR=music
+# EBOOKS_DIR=books/ebooks
+# AUDIOBOOKS_DIR=books/audiobooks
+# COMICS_DIR=books/manga
+
+# Your time zone
+TZ=Europe/Berlin
+
+# Optional: film and series metadata (free key: themoviedb.org/settings/api).
+# Without it titles, posters and descriptions come only from your files.
+VAULT_TMDB_KEY=
+
+# Behind a reverse proxy (Nginx Proxy Manager, Caddy, Traefik): the proxy's
+# IP address as the server sees it. Leave empty without a proxy.
+VAULT_TRUSTED_PROXIES=
+
+# Optional: automatic subtitles from opensubtitles.com.
+# VAULT_OPENSUBTITLES_KEY=
+# VAULT_OPENSUBTITLES_USER=
+# VAULT_OPENSUBTITLES_PASSWORD=
+```
+
+Then, in that folder:
+
+```sh
+docker compose up -d
+docker compose logs -f     # the library scan reports any folder it cannot find
 ```
 
 Open `http://<host>:8420` from your home network and create the first
 administrator. The server scans the folders at start and every 15 minutes
 (or at once from Manage → Settings in the web interface).
 
+- **Paths.** `MEDIA_DIR` is the only host path. The server runs inside the
+  container and sees your media at `/media`; the `*_DIR` names are relative
+  to it. Do not set `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` or
+  `VAULT_TRANSCODE_DIR` to host paths such as `/tank/media/...`: the
+  container has no such folder (`stat ...: no such file or directory`,
+  `mkdir ...: permission denied`).
 - The container runs as uid/gid 1000 and needs to write to the media folder
-  (subtitles it fetches, temporary transcode files). Settings and the
-  database live in the `antresol-config` volume.
+  (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
+  If your files belong to another user, give uid 1000 write access or add
+  `user: "<uid>:<gid>"` to the service. Settings and the database live in the
+  `antresol-config` volume.
 - The image has no GPU video driver yet, so it transcodes on the CPU. For
   hardware decoding run the binary on the host (see below), where ffmpeg
   uses the host's drivers (`VAULT_HWACCEL`).
 - Outside your home network, put Antresol behind a reverse proxy with HTTPS
-  and set `VAULT_TRUSTED_PROXIES` to the proxy's address. A profile without
-  a password can sign in only from the home network.
-- Every setting is an environment variable; `.env.example` lists the common
-  ones and [docs/build-tags.md](docs/build-tags.md) explains the build.
+  and set `VAULT_TRUSTED_PROXIES` to the proxy's address. The log line
+  `request from <ip> carries X-Forwarded-For ... does not list it` shows the
+  address to put there. A profile without a password can sign in only from
+  the home network.
+- Every setting is an environment variable and can go in `.env`;
+  [`.env.example`](.env.example) lists more of them and
+  [docs/build-tags.md](docs/build-tags.md) explains the build.
 
 **Upgrading from 0.3.0.** The old image gets no new releases: in your old
 compose file or `docker run` command, change the image to the one in

@@ -1,11 +1,17 @@
 # Antresol Server with Docker Compose (see README.md, "Install with Docker").
 #
-#   cp .env.example .env               # optional settings
-#   MEDIA_DIR=/srv/media docker compose up -d
+# Put this file and a .env next to each other (the README has both in full),
+# set MEDIA_DIR in .env to your media folder on the host, then:
 #
-# then open http://<host>:8420 from your home network. MEDIA_DIR holds
-# movies/, series/, music/ and books/ (ebooks/, audiobooks/, manga/).
-# To build the image from this checkout instead of pulling it:
+#   docker compose up -d
+#
+# and open http://<host>:8420 from your home network.
+#
+# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
+# /media, and the *_DIR folder names below are relative to it. Do not put
+# host paths into VAULT_* variables: the server sees only the container.
+#
+# To build the image from a checkout instead of pulling it:
 #   docker build -t ghcr.io/antresol-app/antresol-server:latest .
 services:
   antresol:
@@ -22,10 +28,14 @@ services:
     environment:
       VAULT_DATA_DIR: /config
       VAULT_MEDIA_ROOT: /media
-      VAULT_MOVIES_DIR: movies
-      VAULT_SERIES_DIR: series
-      VAULT_MUSIC_DIR: music
-      VAULT_BOOKS_DIR: books
+      # folder names inside MEDIA_DIR; change them in .env if yours differ
+      VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
+      VAULT_SERIES_DIR: ${SERIES_DIR:-series}
+      VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
+      VAULT_BOOKS_DIR: ${BOOKS_DIR:-books}
+      VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
+      VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
+      VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
       # HLS segments of a transcode: on the media disk, not in the config volume
       VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
     volumes:

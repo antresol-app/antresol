@@ -67,28 +67,128 @@
     manga/       Серия/Том 01.cbz
 ```
 
-Затем рядом с [`compose.yml`](compose.yml):
+Папки могут называться иначе — это задаётся в `.env` ниже. Скачивать
+репозиторий не нужно: создайте папку, например `~/antresol`, и положите в неё
+два файла.
+
+`compose.yml` (тот же, что [`compose.yml`](compose.yml) в репозитории):
+
+```yaml
+# Antresol Server with Docker Compose (see README.md, "Install with Docker").
+#
+# Put this file and a .env next to each other (the README has both in full),
+# set MEDIA_DIR in .env to your media folder on the host, then:
+#
+#   docker compose up -d
+#
+# and open http://<host>:8420 from your home network.
+#
+# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
+# /media, and the *_DIR folder names below are relative to it. Do not put
+# host paths into VAULT_* variables: the server sees only the container.
+#
+# To build the image from a checkout instead of pulling it:
+#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
+services:
+  antresol:
+    image: ghcr.io/antresol-app/antresol-server:latest
+    container_name: antresol
+    restart: unless-stopped
+    # stops ffmpeg, then waits for open requests
+    stop_grace_period: 30s
+    ports:
+      - "8420:8420"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VAULT_DATA_DIR: /config
+      VAULT_MEDIA_ROOT: /media
+      # folder names inside MEDIA_DIR; change them in .env if yours differ
+      VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
+      VAULT_SERIES_DIR: ${SERIES_DIR:-series}
+      VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
+      VAULT_BOOKS_DIR: ${BOOKS_DIR:-books}
+      VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
+      VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
+      VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
+      # HLS segments of a transcode: on the media disk, not in the config volume
+      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
+    volumes:
+      - antresol-config:/config
+      # read-write: fetched subtitles, transcode segments, offline copies
+      - ${MEDIA_DIR:-./media}:/media
+    # The image has no GPU video driver yet, so it decodes on the CPU; run the
+    # binary on the host for hardware decoding.
+
+volumes:
+  antresol-config:
+```
+
+`.env`:
 
 ```sh
-cp .env.example .env          # по желанию: ключ TMDB, часовой пояс, адрес прокси
-MEDIA_DIR=/srv/media docker compose up -d
+# Папка медиатеки НА ХОСТЕ. В контейнере она всегда /media.
+MEDIA_DIR=/srv/media
+
+# Имена папок внутри MEDIA_DIR — только если у вас они другие:
+# MOVIES_DIR=movies
+# SERIES_DIR=series
+# MUSIC_DIR=music
+# EBOOKS_DIR=books/ebooks
+# AUDIOBOOKS_DIR=books/audiobooks
+# COMICS_DIR=books/manga
+
+# Часовой пояс
+TZ=Europe/Moscow
+
+# По желанию: описания фильмов и сериалов (бесплатный ключ:
+# themoviedb.org/settings/api). Без него названия, постеры и описания
+# берутся только из ваших файлов.
+VAULT_TMDB_KEY=
+
+# За обратным прокси (Nginx Proxy Manager, Caddy, Traefik): IP-адрес прокси,
+# как его видит сервер. Без прокси оставьте пустым.
+VAULT_TRUSTED_PROXIES=
+
+# По желанию: автоматические субтитры с opensubtitles.com.
+# VAULT_OPENSUBTITLES_KEY=
+# VAULT_OPENSUBTITLES_USER=
+# VAULT_OPENSUBTITLES_PASSWORD=
+```
+
+Затем в этой папке:
+
+```sh
+docker compose up -d
+docker compose logs -f     # сканирование напишет, какую папку не нашло
 ```
 
 Откройте `http://<хост>:8420` из домашней сети и создайте первого
 администратора. Сервер просматривает папки при старте и каждые 15 минут
 (или сразу: Управление → Настройки в веб-интерфейсе).
 
+- **Пути.** `MEDIA_DIR` — единственный путь на хосте. Сервер работает внутри
+  контейнера и видит медиатеку в `/media`; имена `*_DIR` отсчитываются от неё.
+  Не задавайте `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` или
+  `VAULT_TRANSCODE_DIR` путями хоста вроде `/tank/media/...`: в контейнере
+  такой папки нет (`stat ...: no such file or directory`,
+  `mkdir ...: permission denied`).
 - Контейнер работает от uid/gid 1000, ему нужна запись в папку медиатеки
-  (скачанные субтитры, временные файлы перекодирования). Настройки и база
-  лежат в томе `antresol-config`.
+  (скачанные субтитры, временные файлы перекодирования в `tmp/antresol-hls`).
+  Если файлы принадлежат другому пользователю, дайте uid 1000 право записи
+  или добавьте сервису `user: "<uid>:<gid>"`. Настройки и база лежат в томе
+  `antresol-config`.
 - В образе пока нет драйвера видеокарты, поэтому он перекодирует на
   процессоре. Для аппаратного декодирования запускайте бинарь прямо на хосте
   (см. ниже): ffmpeg возьмёт драйверы хоста (`VAULT_HWACCEL`).
 - Для доступа не из дома поставьте Antresol за обратный прокси с HTTPS и
-  укажите адрес прокси в `VAULT_TRUSTED_PROXIES`. Профиль без пароля входит
-  только из домашней сети.
-- Все настройки задаются переменными окружения; основные перечислены в
-  `.env.example`, сборка описана в [docs/build-tags.md](docs/build-tags.md).
+  укажите адрес прокси в `VAULT_TRUSTED_PROXIES`. Нужный адрес виден в логе:
+  `request from <ip> carries X-Forwarded-For ... does not list it`. Профиль
+  без пароля входит только из домашней сети.
+- Любая настройка — переменная окружения, её можно вписать в `.env`; больше
+  их в [`.env.example`](.env.example), сборка описана в
+  [docs/build-tags.md](docs/build-tags.md).
 
 **Обновление с версии 0.3.0.** На старый образ новые версии больше не выходят:
 в прежнем compose-файле или команде `docker run` замените образ на тот, что в
