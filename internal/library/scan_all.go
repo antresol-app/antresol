@@ -80,6 +80,7 @@ func (s *Scanner) Hold(ctx context.Context) (release func(), err error) {
 func (s *Scanner) ScanAll(ctx context.Context) (ScanStats, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.createMissingRoots(ctx)
 	var st ScanStats
 	var errs []error
 	if err := s.scanVideo(ctx, &st); err != nil {

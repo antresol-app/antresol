@@ -103,7 +103,7 @@ func run() error {
 
 	repo := library.NewRepo(database)
 	jobs := &library.Jobs{
-		Scanner: &library.Scanner{Repo: repo,
+		Scanner: &library.Scanner{Repo: repo, MediaRoot: cfg.MediaRoot,
 			Movies: cfg.Abs(cfg.MoviesDir), Series: cfg.Abs(cfg.SeriesDir), Music: cfg.Abs(cfg.MusicDir),
 			Ebooks: cfg.Abs(cfg.EbooksDir), Audiobooks: cfg.Abs(cfg.AudiobooksDir), Comics: cfg.Abs(cfg.ComicsDir),
 			ArtDir: filepath.Join(cfg.DataDir, "images"), ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),

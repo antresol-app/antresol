@@ -23,7 +23,10 @@ import (
 // in Item.Poster / Item.Backdrop as "file:<absolute path>". Roots are
 // absolute; an empty root is not scanned.
 type Scanner struct {
-	Repo                              *Repo
+	Repo *Repo
+	// MediaRoot: missing roots under it are created empty (createMissingRoots);
+	// "" creates none.
+	MediaRoot                         string
 	Movies, Series                    string
 	Music, Ebooks, Audiobooks, Comics string
 	ArtDir                            string // extracted artwork (embedded covers): DataDir/images

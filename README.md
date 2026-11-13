@@ -169,7 +169,8 @@ administrator. The server scans the folders at start and every 15 minutes
   to it. Do not set `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` or
   `VAULT_TRANSCODE_DIR` to host paths such as `/tank/media/...`: the
   container has no such folder (`stat ...: no such file or directory`,
-  `mkdir ...: permission denied`).
+  `mkdir ...: permission denied`). Missing folders inside it are created
+  empty: all of them on a new install, and music and book folders later too.
 - The container runs as uid/gid 1000 and needs to write to the media folder
   (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
   If your files belong to another user, give uid 1000 write access or add

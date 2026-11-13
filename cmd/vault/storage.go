@@ -16,7 +16,8 @@ import (
 // never created, and must not stop the engine; their scanners do not prune
 // a missing root, and nothing is pruned while the disk is offline.
 // (Folders are never created here: on an unmounted disk that would write to
-// the root disk.)
+// the root disk. library.Scanner.createMissingRoots creates them only where
+// that cannot happen: video roots on a library with no file, the rest online.)
 func storageDirs(cfg config.Config) []string {
 	return []string{cfg.MediaRoot, cfg.Abs(cfg.MoviesDir), cfg.Abs(cfg.SeriesDir)}
 }
