@@ -19,7 +19,7 @@ func listenMDNS(ifaces []netip.Addr) (*net.UDPConn, error) {
 			if serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); serr != nil {
 				return
 			}
-			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, soReusePort, 1)
 		})
 		if err != nil {
 			return err
