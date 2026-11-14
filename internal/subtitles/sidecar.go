@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -199,13 +201,23 @@ type External struct {
 
 var videoExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".mov": true, ".webm": true, ".ts": true, ".m2ts": true}
 
-// subDirs are the subtitle folders of common release layouts.
-var subDirs = map[string]bool{"subs": true, "subtitles": true, "sub": true}
+// isSubFolder says whether a folder name is a subtitle folder of a release
+// layout: one of its whole words is sub, subs, subtitles, субтитры or сабы
+// («Subs», «RUS Subs», «Subs (Eng)»), in any case.
+func isSubFolder(name string) bool {
+	for _, w := range strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		switch w {
+		case "sub", "subs", "subtitles", "субтитры", "сабы":
+			return true
+		}
+	}
+	return false
+}
 
 // FindExternal lists the subtitle files of video, in a stable order: next
-// to it (ParseName), in Subs/ or Subtitles/ beside it (named after it, or
-// any file when it is the only video there), in Subs/<stem>/, and Auto's
-// fallback DataDir/subs/ext/<fileID>.*.
+// to it (ParseName), in subtitle folders beside it (Subs, Subtitles, «RUS
+// Subs»…; named after it, or any file when it is the only video there), in
+// Subs/<stem>/, and Auto's fallback DataDir/subs/ext/<fileID>.*.
 func FindExternal(video, dataDir string, fileID int64) []External {
 	dir := filepath.Dir(video)
 	stem := strings.TrimSuffix(filepath.Base(video), filepath.Ext(video))
@@ -213,53 +225,96 @@ func FindExternal(video, dataDir string, fileID int64) []External {
 	if err != nil {
 		return extDir(dataDir, fileID)
 	}
-	var out []External
-	videos := 0
-	var folders []string
+	var paths []string
 	for _, e := range es { // ReadDir is sorted by name
 		n := e.Name()
-		if e.IsDir() {
-			if subDirs[strings.ToLower(n)] {
-				folders = append(folders, n)
-			}
+		if !e.IsDir() {
+			paths = append(paths, n)
 			continue
 		}
-		if videoExts[strings.ToLower(filepath.Ext(n))] {
-			videos++
+		if !isSubFolder(n) {
+			continue
 		}
-		if s, ok := named(filepath.Join(dir, n), stem); ok {
-			out = append(out, s)
+		ses, _ := os.ReadDir(filepath.Join(dir, n))
+		for _, se := range ses {
+			if !se.IsDir() {
+				paths = append(paths, n+"/"+se.Name())
+			} else if se.Name() == stem {
+				nes, _ := os.ReadDir(filepath.Join(dir, n, stem))
+				for _, ne := range nes {
+					if !ne.IsDir() {
+						paths = append(paths, n+"/"+stem+"/"+ne.Name())
+					}
+				}
+			}
 		}
 	}
-	for _, f := range folders {
-		sd := filepath.Join(dir, f)
-		ses, _ := os.ReadDir(sd)
-		var nested string
-		for _, e := range ses {
-			n := e.Name()
-			if e.IsDir() {
-				if n == stem {
-					nested = n
-				}
-				continue
-			}
-			if s, ok := named(filepath.Join(sd, n), stem); ok {
-				out = append(out, s)
-			} else if videos == 1 && IsSubtitle(n) {
-				out = append(out, loose(filepath.Join(sd, n)))
-			}
-		}
-		if nested != "" {
-			nd := filepath.Join(sd, nested)
-			nes, _ := os.ReadDir(nd)
-			for _, e := range nes {
-				if !e.IsDir() && IsSubtitle(e.Name()) {
-					out = append(out, loose(filepath.Join(nd, e.Name())))
-				}
-			}
-		}
+	out := FindExternalIn(filepath.Base(video), paths)
+	for i := range out {
+		out[i].Path = filepath.Join(dir, filepath.FromSlash(out[i].Path))
 	}
 	return append(out, extDir(dataDir, fileID)...)
+}
+
+// FindExternalIn is FindExternal over a list of files instead of a disk
+// (without the DataDir part): paths are the slash-separated relative paths
+// of every file of a collection, video is one of them, and each Path is an
+// entry of paths.
+func FindExternalIn(video string, paths []string) []External {
+	dir := pathpkg.Dir(video)
+	stem := strings.TrimSuffix(pathpkg.Base(video), pathpkg.Ext(video))
+	sorted := append([]string(nil), paths...)
+	sort.Strings(sorted)
+	var out []External
+	videos := 0
+	folders := map[string][]string{} // subtitle folder → its files' paths below it
+	var order []string
+	for _, p := range sorted {
+		rest := p
+		if dir != "." {
+			if !strings.HasPrefix(p, dir+"/") {
+				continue
+			}
+			rest = p[len(dir)+1:]
+		}
+		parts := strings.Split(rest, "/")
+		switch {
+		case len(parts) == 1:
+			if videoExts[strings.ToLower(pathpkg.Ext(p))] {
+				videos++
+			}
+			if s, ok := named(p, stem); ok {
+				out = append(out, s)
+			}
+		case isSubFolder(parts[0]):
+			if _, seen := folders[parts[0]]; !seen {
+				order = append(order, parts[0])
+			}
+			folders[parts[0]] = append(folders[parts[0]], p)
+		}
+	}
+	for _, f := range order {
+		prefix := f + "/"
+		if dir != "." {
+			prefix = dir + "/" + f + "/"
+		}
+		var nested []External
+		for _, p := range folders[f] {
+			rest := p[len(prefix):]
+			switch parts := strings.Split(rest, "/"); {
+			case len(parts) == 1:
+				if s, ok := named(p, stem); ok {
+					out = append(out, inFolderLang(s, f))
+				} else if videos == 1 && IsSubtitle(rest) {
+					out = append(out, loose(p, f))
+				}
+			case len(parts) == 2 && parts[0] == stem && IsSubtitle(parts[1]):
+				nested = append(nested, loose(p, f))
+			}
+		}
+		out = append(out, nested...)
+	}
+	return out
 }
 
 func named(path, stem string) (External, bool) {
@@ -270,12 +325,22 @@ func named(path, stem string) (External, bool) {
 	return External{Path: path, Lang: lang, Title: title, Forced: forced, Codec: Codecs[strings.ToLower(filepath.Ext(path))]}, true
 }
 
-// loose is a file in a subtitle folder named by the release ("2_Russian.srt").
-func loose(path string) External {
+// inFolderLang gives a file without a language in its name the one its
+// subtitle folder states («RUS Subs», «Subs (Eng)»).
+func inFolderLang(s External, folder string) External {
+	if s.Lang == "" {
+		s.Lang = LangOf("x." + strings.NewReplacer(".", " ").Replace(folder) + ".x")
+	}
+	return s
+}
+
+// loose is a file in the subtitle folder named by the release
+// ("2_Russian.srt"); its language is the name's, else the folder's.
+func loose(path, folder string) External {
 	n := filepath.Base(path)
 	s := External{Path: path, Codec: Codecs[strings.ToLower(filepath.Ext(n))]}
 	stem := strings.TrimSuffix(n, filepath.Ext(n))
-	if s.Lang = LangOf(n); s.Lang == "" {
+	if s.Lang = inFolderLang(External{Lang: LangOf(n)}, folder).Lang; s.Lang == "" {
 		s.Title = stem
 	}
 	for _, w := range strings.FieldsFunc(strings.ToLower(stem), func(r rune) bool { return !unicode.IsLetter(r) }) {

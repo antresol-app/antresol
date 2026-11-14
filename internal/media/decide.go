@@ -51,7 +51,10 @@ type Decision struct {
 	// AudioInputTempo slows or speeds AudioInput (atempo; 0 or 1: none): a
 	// voice-over of a PAL master fitted by vofit. The audio is re-encoded.
 	AudioInputTempo float64
-	Reason          string
+	// AudioInputByteSeek: how an http AudioInput is seeked when it is a
+	// raw constant-bitrate stream (zero: -ss, as a local file always is).
+	AudioInputByteSeek ByteSeek
+	Reason             string
 }
 
 // tempoOn: a tempo other than none.

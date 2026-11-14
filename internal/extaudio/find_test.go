@@ -240,3 +240,67 @@ func TestDescribe(t *testing.T) {
 		t.Fatalf("%v %+v", ok, a)
 	}
 }
+
+// allRel lists every file under dir as slash-separated relative paths.
+func allRel(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			r, _ := filepath.Rel(dir, p)
+			out = append(out, filepath.ToSlash(r))
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestFindInMatchesDiskFind(t *testing.T) {
+	layouts := []struct {
+		name   string
+		files  []string
+		videos []string
+	}{
+		{"sidecars", []string{"Show.S01E02.mkv", "Show.S01E02.LostFilm.mka", "Show.S01E02.ru.srt"}, []string{"Show.S01E02.mkv"}},
+		{"season pack", []string{"S/Show.S01E01.mkv", "S/Show.S01E02.mkv", "S/RUS Sound/Show.S01E01.mka", "S/RUS Sound/Show.S01E02.mka", "S/Music/a.mp3"}, []string{"S/Show.S01E01.mkv", "S/Show.S01E02.mkv"}},
+		{"single video", []string{"Film/Film.mkv", "Film/Audio/Rus.ac3", "Film/Audio/[Goblin]/x.mka", "Film/Audio/a/b/deep.mka", "Film/Soundtrack/s.flac"}, []string{"Film/Film.mkv"}},
+		{"longer stem", []string{"Brat.mkv", "Brat.2.mkv", "Brat.ru.mka", "Brat.2.ru.mka"}, []string{"Brat.mkv", "Brat.2.mkv"}},
+	}
+	for _, l := range layouts {
+		dir := tree(t, l.files...)
+		all := allRel(t, dir)
+		for _, v := range l.videos {
+			want := rels(dir, Find(filepath.Join(dir, filepath.FromSlash(v))))
+			var got []string
+			for _, tr := range FindIn(v, all) {
+				got = append(got, tr.Path)
+			}
+			if len(got) != len(want) {
+				t.Fatalf("%s %s: got %v want %v", l.name, v, got, want)
+			}
+			for i := range want {
+				if got[i] != want[i] {
+					t.Errorf("%s %s: got %v want %v", l.name, v, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestFindInEpisodeTracksInSoundFolder(t *testing.T) {
+	paths := []string{"Show/S01E07.mkv", "Show/S01E08.mkv", "Show/RUS Sound/Show.S01E07.mka", "Show/RUS Sound/Show.S01E08.mka"}
+	got := FindIn("Show/S01E08.mkv", paths)
+	if len(got) != 1 || got[0].Path != "Show/RUS Sound/Show.S01E08.mka" || got[0].Lang != "ru" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestFindInIgnoresOtherFolders(t *testing.T) {
+	paths := []string{"Film/Film.mkv", "Film/Music/Film.mp3", "Film/Music/a.mp3", "Other/Film.ru.mka"}
+	if got := FindIn("Film/Film.mkv", paths); len(got) != 0 {
+		t.Fatalf("%+v", got)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -84,45 +85,106 @@ const MaxTracks = 16
 // episode code (not mp3/flac). An unreadable folder gives nil.
 func Find(video string) []Track {
 	dir := filepath.Dir(video)
-	base := filepath.Base(video)
-	v := subject{stem: strings.TrimSuffix(base, filepath.Ext(base))}
-	if info := release.Parse(base); info.Episode > 0 {
-		v.season, v.episode = info.Season, info.Episode
-	}
 	es, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	var out []Track
-	var sound []string
+	var paths []string
 	for _, e := range es {
-		n := e.Name()
-		if e.IsDir() {
-			if IsSoundFolder(n) {
-				sound = append(sound, n)
-			}
-			continue
+		if !e.IsDir() {
+			paths = append(paths, e.Name())
+		} else if IsSoundFolder(e.Name()) {
+			paths = listBelow(paths, filepath.Join(dir, e.Name()), e.Name(), 1)
 		}
-		if videoExts[strings.ToLower(filepath.Ext(n))] {
+	}
+	out := FindIn(filepath.Base(video), paths)
+	for i := range out {
+		out[i].Path = filepath.Join(dir, filepath.FromSlash(out[i].Path))
+	}
+	return out
+}
+
+// listBelow appends the files of dir (rel: its slash path) and, down to
+// depth 2, of its subfolders.
+func listBelow(paths []string, dir, rel string, depth int) []string {
+	es, err := os.ReadDir(dir)
+	if err != nil {
+		return paths
+	}
+	for _, e := range es {
+		switch {
+		case !e.IsDir():
+			paths = append(paths, rel+"/"+e.Name())
+		case depth < 2:
+			paths = listBelow(paths, filepath.Join(dir, e.Name()), rel+"/"+e.Name(), depth+1)
+		}
+	}
+	return paths
+}
+
+// FindIn is Find over a list of files instead of a disk: paths are the
+// slash-separated relative paths of every file of a collection, video is
+// one of them, and each Track.Path is an entry of paths. The rules are
+// Find's.
+func FindIn(video string, paths []string) []Track {
+	dir := path.Dir(video)
+	base := path.Base(video)
+	v := subject{stem: strings.TrimSuffix(base, path.Ext(base))}
+	if info := release.Parse(base); info.Episode > 0 {
+		v.season, v.episode = info.Season, info.Episode
+	}
+	// parts: the folders below dir, then the file name
+	type entry struct {
+		path    string
+		folders []string
+		name    string
+	}
+	var near []entry
+	var below []entry
+	for _, p := range paths {
+		rest := p
+		if dir != "." {
+			if !strings.HasPrefix(p, dir+"/") {
+				continue
+			}
+			rest = p[len(dir)+1:]
+		}
+		parts := strings.Split(rest, "/")
+		e := entry{path: p, folders: parts[:len(parts)-1], name: parts[len(parts)-1]}
+		switch {
+		case len(parts) == 1:
+			near = append(near, e)
+		case len(parts) <= 3 && IsSoundFolder(parts[0]):
+			below = append(below, e)
+		}
+	}
+	for _, e := range near {
+		if videoExts[strings.ToLower(path.Ext(e.name))] {
 			v.videos++
-			if o := strings.TrimSuffix(n, filepath.Ext(n)); len(o) > len(v.stem) && namedAfter(o, v.stem) {
+			if o := strings.TrimSuffix(e.name, path.Ext(e.name)); len(o) > len(v.stem) && namedAfter(o, v.stem) {
 				v.longer = append(v.longer, o)
 			}
 		}
 	}
-	for _, e := range es {
-		n := e.Name()
-		if e.IsDir() || !IsAudio(n) {
+	var out []Track
+	for _, e := range near {
+		if !IsAudio(e.name) {
 			continue
 		}
-		m := v.match(n, false)
-		if m == noMatch || (m == byEpisode && musicExts[strings.ToLower(filepath.Ext(n))]) {
+		m := v.match(e.name, false)
+		if m == noMatch || (m == byEpisode && musicExts[strings.ToLower(path.Ext(e.name))]) {
 			continue
 		}
-		out = append(out, v.track(filepath.Join(dir, n), m, nil))
+		out = append(out, v.track(e.path, m, nil))
 	}
-	for _, s := range sound {
-		out = append(out, v.inFolder(filepath.Join(dir, s), []string{s}, 1)...)
+	for _, e := range below {
+		if !IsAudio(e.name) {
+			continue
+		}
+		// mp3 and flac: a voice only when the name says whose (an album otherwise)
+		if m := v.match(e.name, true); m != noMatch && (m != loose || !musicExts[strings.ToLower(path.Ext(e.name))]) {
+			out = append(out, v.track(e.path, m, e.folders))
+		}
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Path < out[b].Path })
 	if len(out) > MaxTracks {
@@ -188,38 +250,11 @@ func namedAfter(rest, stem string) bool {
 	return !unicode.IsLetter(c) && !unicode.IsDigit(c)
 }
 
-// inFolder lists the tracks of the sound folder dir (folders: its path from
-// the video's folder) and, at depth 1, of its subfolders.
-func (v subject) inFolder(dir string, folders []string, depth int) []Track {
-	es, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []Track
-	for _, e := range es {
-		n := e.Name()
-		if e.IsDir() {
-			if depth < 2 {
-				out = append(out, v.inFolder(filepath.Join(dir, n), append(append([]string{}, folders...), n), depth+1)...)
-			}
-			continue
-		}
-		if !IsAudio(n) {
-			continue
-		}
-		// mp3 and flac: a voice only when the name says whose (an album otherwise)
-		if m := v.match(n, true); m != noMatch && (m != loose || !musicExts[strings.ToLower(filepath.Ext(n))]) {
-			out = append(out, v.track(filepath.Join(dir, n), m, folders))
-		}
-	}
-	return out
-}
-
-// track describes the file at p, matched by m, in the sound folders
+// track describes the file at the slash path p, matched by m, in the sound folders
 // folders (outermost first; nil: next to the video).
 func (v subject) track(p string, m match, folders []string) Track {
-	n := filepath.Base(p)
-	rest := strings.TrimSuffix(n, filepath.Ext(n))
+	n := path.Base(p)
+	rest := strings.TrimSuffix(n, path.Ext(n))
 	if m == byStem {
 		rest = strings.TrimLeftFunc(rest[len(v.stem):], func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 	}

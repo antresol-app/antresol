@@ -313,3 +313,138 @@ func TestExternalAudioTempo(t *testing.T) {
 		t.Fatal(j)
 	}
 }
+
+// A loopback http audio source (a stream served from this machine): http
+// over tcp, the audio demuxers, the same reconnect flags as the video's
+// http input, the URL as given; seeked like the video before its -i.
+func TestHTTPAudioInputArgs(t *testing.T) {
+	const u = "http://127.0.0.1:8420/api/audio/x/3?k=s"
+	got := AudioInputArgs(u)
+	want := append([]string{"-protocol_whitelist", "http,tcp", "-format_whitelist", AudioFormats}, httpReconnectArgs...)
+	want = append(want, "-i", u)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("got %v\nwant %v", got, want)
+	}
+	if !strings.Contains(strings.Join(got, " "), "-reconnect 1") || strings.Contains(strings.Join(got, " "), "file:") {
+		t.Fatal(got)
+	}
+	d := Decision{Mode: "remux", VideoCopy: true, AudioCopy: true, VideoCodec: "h264", AudioIndex: 0, AudioInput: u}
+	a := BuildArgsThrottled("none", "http://127.0.0.1:8420/v", d, 30, "/w", Throttle{})
+	last := -1
+	var ss []int
+	for i, x := range a {
+		if x == "-i" {
+			last = i
+		}
+		if x == "-ss" {
+			ss = append(ss, i)
+		}
+	}
+	if len(ss) != 2 || a[ss[1]+1] != "30" || ss[1] > last || a[last+1] != u {
+		t.Fatalf("seek before the audio -i: %v", a)
+	}
+}
+
+func TestAudioInputRejectsRemoteURL(t *testing.T) {
+	for _, in := range []string{"http://example.org/a.mka", "https://127.0.0.1/a.mka", "concat:a|b.mka", "ftp://127.0.0.1/a"} {
+		if AudioInputArgs(in) != nil {
+			t.Fatalf("%s accepted", in)
+		}
+	}
+	m := &HLSManager{}
+	d := Decision{Mode: "remux", VideoCopy: true, AudioCopy: true, VideoCodec: "h264", AudioInput: "http://example.org/a.mka"}
+	if _, err := m.Start(context.Background(), StartOptions{Input: "/m/v.mkv", Decision: d, AudioIndex: -1}); err == nil {
+		t.Fatal("Start accepted a remote audio input")
+	}
+}
+
+func TestLocalAudioInputUnchanged(t *testing.T) {
+	got := strings.Join(AudioInputArgs("/m/a.mka"), " ")
+	if got != "-protocol_whitelist file -format_whitelist "+AudioFormats+" -i file:/m/a.mka" {
+		t.Fatal(got)
+	}
+	if got != strings.Join(AudioInputArgs("file:/m/a.mka"), " ") {
+		t.Fatal("file: prefix")
+	}
+}
+
+// A raw constant-bitrate stream knows its byte rate (and its AC-3 frame
+// size); a container or a stream without a bitrate gets none.
+func TestRawAudioByteSeek(t *testing.T) {
+	ac3 := ProbeResult{Container: "ac3", DurationMs: 1_800_000, Audio: []AudioStream{{Codec: "ac3", BitRate: 384000, SampleRate: 48000}}}
+	if b := RawAudioByteSeek(ac3); b != (ByteSeek{Format: "ac3", BytesPerSec: 48000, FrameBytes: 1536, DurationSec: 1800}) {
+		t.Fatalf("ac3 %+v", b)
+	}
+	dts := ProbeResult{Container: "dts", DurationMs: 60_000, Audio: []AudioStream{{Codec: "dts", BitRate: 768000, SampleRate: 48000}}}
+	if b := RawAudioByteSeek(dts); b.Format != "dts" || b.BytesPerSec != 96000 || b.FrameBytes != 0 {
+		t.Fatalf("dts %+v", b)
+	}
+	for name, p := range map[string]ProbeResult{
+		"matroska":   {Container: "mkv", DurationMs: 60_000, Audio: []AudioStream{{Codec: "ac3", BitRate: 384000, SampleRate: 48000}}},
+		"no bitrate": {Container: "ac3", DurationMs: 60_000, Audio: []AudioStream{{Codec: "ac3", SampleRate: 48000}}},
+		"no audio":   {Container: "ac3", DurationMs: 60_000},
+	} {
+		if b := RawAudioByteSeek(p); b != (ByteSeek{}) {
+			t.Errorf("%s: %+v", name, b)
+		}
+	}
+}
+
+// Seeking a raw stream over http opens it at the byte offset of the seek
+// point (no -ss for it: that would read everything before); a local file
+// and a seek past the end keep -ss.
+func TestHTTPRawAudioByteSeekArgs(t *testing.T) {
+	const u = "http://127.0.0.1:8420/api/audio/x/3?k=s"
+	bs := ByteSeek{Format: "ac3", BytesPerSec: 48000, FrameBytes: 1536, DurationSec: 1800}
+	d := Decision{Mode: "remux", VideoCopy: true, AudioCopy: true, VideoCodec: "h264", AudioIndex: 0, AudioInput: u, AudioInputByteSeek: bs}
+	audioPart := func(a []string) string {
+		j := strings.Join(a, " ")
+		i := strings.Index(j, "-i http://127.0.0.1:8420/v")
+		return j[i:]
+	}
+	a := audioPart(BuildArgsThrottled("none", "http://127.0.0.1:8420/v", d, 600.01, "/w", Throttle{}))
+	// 600.01 s × 48000 B/s = 28 800 480, down to a frame (1536 B): 28 800 000
+	if !strings.Contains(a, "-f ac3 -seekable 0 -offset 28800000 -protocol_whitelist http,tcp") || strings.Contains(a, "-ss") {
+		t.Fatalf("byte seek: %s", a)
+	}
+	if !strings.Contains(a, "-i "+u) {
+		t.Fatalf("audio input: %s", a)
+	}
+	// at a tempo the offset is that of the track's own time (s·tempo: 150 s)
+	dt := d
+	dt.AudioInputTempo = 1.5
+	if a := audioPart(BuildArgsThrottled("none", "http://127.0.0.1:8420/v", dt, 100, "/w", Throttle{})); !strings.Contains(a, "-offset 7199232 ") {
+		t.Fatalf("tempo: %s", a)
+	}
+	// the -itsoffset of the track stays before its input
+	do := d
+	do.AudioInputOffsetMs = 250
+	if a := audioPart(BuildArgsThrottled("none", "http://127.0.0.1:8420/v", do, 600, "/w", Throttle{})); !strings.Contains(a, "-itsoffset 0.25 -f ac3 -seekable 0 -offset ") {
+		t.Fatalf("itsoffset: %s", a)
+	}
+	for name, x := range map[string]struct {
+		in    string
+		start float64
+	}{"local file": {"/m/a.ac3", 600}, "past the end": {u, 1800}} {
+		dx := d
+		dx.AudioInput = x.in
+		j := strings.Join(BuildArgsThrottled("none", "/m/v.mkv", dx, x.start, "/w", Throttle{}), " ")
+		if strings.Contains(j, "-offset") || strings.Count(j, "-ss ") != 2 {
+			t.Fatalf("%s: %s", name, j)
+		}
+	}
+	// mp3 and aac may be VBR: their bitrate-based offset would land far off,
+	// so they keep -ss; ac3 (above) still gets the offset
+	for _, f := range []string{"mp3", "aac"} {
+		dv := d
+		dv.AudioInputByteSeek = RawAudioByteSeek(ProbeResult{Container: f, DurationMs: 1_800_000, Audio: []AudioStream{{Codec: f, BitRate: 128000, SampleRate: 44100}}})
+		a := audioPart(BuildArgsThrottled("none", "http://127.0.0.1:8420/v", dv, 600, "/w", Throttle{}))
+		if strings.Contains(a, "-offset") || !strings.Contains(a, "-ss") {
+			t.Fatalf("%s: %s", f, a)
+		}
+	}
+	// no start: neither
+	if j := strings.Join(BuildArgsThrottled("none", "http://127.0.0.1:8420/v", d, 0, "/w", Throttle{}), " "); strings.Contains(j, "-offset") || strings.Contains(j, "-ss") {
+		t.Fatalf("from the start: %s", j)
+	}
+}

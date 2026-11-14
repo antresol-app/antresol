@@ -344,6 +344,9 @@ func (m *HLSManager) Start(ctx context.Context, o StartOptions) (string, error) 
 	if _, _, err := InputArgs(o.Input); err != nil {
 		return "", err
 	}
+	if o.Decision.AudioInput != "" && AudioInputArgs(o.Decision.AudioInput) == nil {
+		return "", ErrUnsafeInput
+	}
 	d := o.Decision
 	if o.AudioIndex >= 0 {
 		d.AudioIndex = o.AudioIndex
@@ -808,18 +811,12 @@ func BuildArgsThrottled(hw, input string, d Decision, startSec float64, outDir s
 			"-readrate_initial_burst", strconv.FormatFloat(th.Burst, 'f', -1, 64))
 	}
 	if isHTTP(operand) {
-		// The local stream: a read waits while pieces are missing and the
-		// server keeps the request open as long as the source lives, so a
-		// swarm stall must not end the stream (ffmpeg would write ENDLIST).
-		// The I/O timeout is only a safety net; reconnects never give up.
-		a = append(a, "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1",
-			"-reconnect_delay_max", "30", "-reconnect_max_retries", "-1", "-reconnect_delay_total_max", "4294",
-			"-rw_timeout", "600000000")
+		a = append(a, httpReconnectArgs...)
 	}
 	a = append(a, "-i", operand)
 	if d.AudioInput != "" {
 		// an external audio file (extaudio): the same timeline, so the same
-		// seek; it comes from the same source as the video, file protocol only
+		// seek; a local file or a loopback http URL (AudioInputArgs)
 		a = append(a, inputOffsetArgs(d.AudioInputOffsetMs)...)
 		if startSec > 0 {
 			// at a tempo the track runs faster or slower on its own time:
@@ -828,9 +825,15 @@ func BuildArgsThrottled(hw, input string, d Decision, startSec float64, outDir s
 			if tempoOn(d.AudioInputTempo) {
 				ss = math.Round(startSec*d.AudioInputTempo*1000) / 1000
 			}
-			a = append(a, "-ss", strconv.FormatFloat(ss, 'f', -1, 64))
+			// a raw stream over http starts at the byte offset of ss
+			// instead (its timeline then begins at 0, like the seeked video's)
+			if seek, ok := byteSeekArgs(d.AudioInput, d.AudioInputByteSeek, ss); ok {
+				a = append(a, seek...)
+			} else {
+				a = append(a, "-ss", strconv.FormatFloat(ss, 'f', -1, 64))
+			}
 		}
-		a = append(a, AudioInputArgs(d.AudioInput)...)
+		a = append(a, audioInputArgsOrNull(d.AudioInput)...)
 	}
 	if !burn {
 		a = append(a, "-map", "0:v:0?")

@@ -140,3 +140,28 @@ func TestWriteSidecar(t *testing.T) {
 		t.Fatalf("read-only: %s %v", p, err)
 	}
 }
+
+func TestFindExternalInSubFolders(t *testing.T) {
+	paths := []string{"Show/S01E08.mkv", "Show/RUS Subs/Show.S01E08.ass", "Show/Subs (Eng)/S01E08.srt", "Show/Extras/S01E08.srt"}
+	got := FindExternalIn("Show/S01E08.mkv", paths)
+	if len(got) != 2 {
+		t.Fatalf("%+v", got)
+	}
+	if got[0].Path != "Show/RUS Subs/Show.S01E08.ass" || got[0].Lang != "ru" || got[0].Codec != "ass" {
+		t.Errorf("%+v", got[0])
+	}
+	if got[1].Path != "Show/Subs (Eng)/S01E08.srt" || got[1].Lang != "en" || got[1].Codec != "subrip" {
+		t.Errorf("%+v", got[1])
+	}
+}
+
+func TestFindExternalSubFolderOnDisk(t *testing.T) {
+	root := t.TempDir()
+	touchFile(t, filepath.Join(root, "Show", "S01E08.mkv"), "v")
+	touchFile(t, filepath.Join(root, "Show", "RUS Subs", "Show.S01E08.ass"), "x")
+	touchFile(t, filepath.Join(root, "Show", "Extras", "S01E08.srt"), "x")
+	got := FindExternal(filepath.Join(root, "Show", "S01E08.mkv"), "", 0)
+	if len(got) != 1 || got[0].Lang != "ru" || got[0].Codec != "ass" || filepath.Base(got[0].Path) != "Show.S01E08.ass" {
+		t.Fatalf("%+v", got)
+	}
+}

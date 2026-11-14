@@ -202,7 +202,7 @@ func LiveArgs(hw string, in LiveInput) []string {
 					a = append(a, "-ss", ff(ss))
 				}
 				a = append(a, throttle()...)
-				a = append(a, AudioInputArgs(x.Input)...)
+				a = append(a, audioInputArgsOrNull(x.Input)...)
 			}
 			audioIn[k] = strconv.Itoa(n) + ":a:0"
 		case x.Index == LiveFirstAudio:

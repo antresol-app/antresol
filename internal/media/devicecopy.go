@@ -174,7 +174,7 @@ func DeviceCopyArgs(hw, input string, pl DeviceCopyPlan, out string) []string {
 	if pl.AudioInput != "" {
 		// the external audio comes from the same source as the video: file protocol only
 		a = append(a, inputOffsetArgs(pl.AudioInputOffsetMs)...)
-		a = append(a, AudioInputArgs(pl.AudioInput)...)
+		a = append(a, audioInputArgsOrNull(pl.AudioInput)...)
 		subInput = 2
 	}
 	for _, e := range pl.ExternalSubs {
