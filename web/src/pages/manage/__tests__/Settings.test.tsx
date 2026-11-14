@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Settings as Values } from '../../../api/types'
-import { Settings } from '../Settings'
+import { renderSettings } from './settingsHarness'
 
 const base: Values = {
   quality: 1080, voice: 'dub', maxSizeGB: 0, uploadLimited: false, uploadLimitKBs: 0, streamCacheGB: 50, remoteQuality: '1080',
@@ -34,13 +34,14 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Музыка вне дома» is saved; without a key the subtitles switch is off and says why', async () => {
     const puts = stub(base)
-    render(<Settings />)
+    const { go } = renderSettings('music')
     const music = await screen.findByRole('radiogroup', { name: 'Музыка вне дома' })
     expect(screen.getByText('Высокое — AAC 256 кбит/с, экономно — 128 кбит/с')).toBeInTheDocument()
     expect(within(music).getByRole('radio', { name: 'Высокое' })).toHaveAttribute('aria-checked', 'true')
     await userEvent.click(within(music).getByRole('radio', { name: 'Экономно' }))
     await waitFor(() => expect(puts.at(-1)?.remoteMusic).toBe('low'))
 
+    go('subtitles')
     const auto = screen.getByRole('switch', { name: 'Искать субтитры автоматически' })
     expect(auto).toBeDisabled()
     expect(screen.getByText('Нужен ключ OpenSubtitles в настройках сервера')).toBeInTheDocument()
@@ -50,16 +51,18 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Мои языки»: added, reordered and removed; subtitles keep only them, in their order', async () => {
     const puts = stub({ ...base, subtitlesAvailable: true, languages: ['ru', 'en'] })
-    render(<Settings />)
+    const { go } = renderSettings('library')
     const mine = await screen.findByRole('list', { name: 'Мои языки' })
     expect(within(mine).getAllByRole('listitem').map((li) => li.dataset.value)).toEqual(['ru', 'en'])
     await userEvent.click(screen.getByRole('button', { name: 'Добавить язык' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Японский' }))
     await waitFor(() => expect(puts.at(-1)?.languages).toEqual(['ru', 'en', 'ja']))
     // only the chosen languages are offered for subtitles
+    go('subtitles')
     await userEvent.click(screen.getByRole('button', { name: 'Языки субтитров: Русский, Английский' }))
     expect(screen.getAllByRole('menuitemcheckbox').map((i) => i.textContent)).toEqual(['Русский', 'Английский', 'Японский'])
     await userEvent.keyboard('{Escape}')
+    go('library')
     // reordered by the handle: English becomes the main language
     screen.getByRole('button', { name: 'Переместить: Английский' }).focus()
     await userEvent.keyboard('{ArrowUp}')
@@ -67,12 +70,12 @@ describe('Настройки: музыка и субтитры', () => {
     // without Russian: subtitles lose it
     await userEvent.click(screen.getByRole('button', { name: 'Убрать: Русский' }))
     await waitFor(() => expect(puts.at(-1)).toMatchObject({ languages: ['en', 'ja'], subtitleLangs: ['en'] }))
-    expect(within(mine).getAllByRole('listitem').map((li) => li.dataset.value)).toEqual(['en', 'ja'])
+    expect(within(screen.getByRole('list', { name: 'Мои языки' })).getAllByRole('listitem').map((li) => li.dataset.value)).toEqual(['en', 'ja'])
   })
 
   it('«Превью при перемотке»: on when the server says nothing, saved when turned off', async () => {
     const puts = stub(base)
-    render(<Settings />)
+    renderSettings('watching')
     const sw = await screen.findByRole('switch', { name: 'Превью при перемотке' })
     expect(sw).toBeChecked()
     await userEvent.click(sw)
@@ -83,7 +86,7 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Место для превью»: 10 ГБ by default, saved when changed', async () => {
     const puts = stub(base)
-    render(<Settings />)
+    renderSettings('watching')
     const space = await screen.findByRole('radiogroup', { name: 'Место для превью' })
     expect(within(space).getByRole('radio', { name: '10 ГБ' })).toHaveAttribute('aria-checked', 'true')
     await userEvent.click(within(space).getByRole('radio', { name: '20 ГБ' }))
@@ -92,7 +95,7 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('subtitle languages: at least one stays on', async () => {
     const puts = stub({ ...base, subtitlesAvailable: true })
-    render(<Settings />)
+    renderSettings('subtitles')
     const auto = await screen.findByRole('switch', { name: 'Искать субтитры автоматически' })
     expect(auto).toBeEnabled()
     await userEvent.click(screen.getByRole('button', { name: 'Языки субтитров: Русский, Английский' }))
@@ -107,23 +110,29 @@ describe('Настройки сервера: язык описаний', () => {
 
   it('is the server\'s: titled «Настройки сервера», no interface language (that is the profile\'s)', async () => {
     stub(base)
-    render(<Settings />)
-    await screen.findByRole('radiogroup', { name: 'Музыка вне дома' })
+    renderSettings()
+    await screen.findByRole('button', { name: /Медиатека и языки/ })
     expect(screen.getByRole('heading', { name: 'Настройки сервера', level: 2 })).toBeInTheDocument()
+    // the first screen: one row per group, the current choice beside it
+    for (const name of ['Медиатека и языки', 'Просмотр', 'Музыка', 'Субтитры', 'Отправка на Kindle']) {
+      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('button', { name: /Музыка.*Высокое/ })).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup')).toBeNull()
     expect(screen.queryByRole('radiogroup', { name: 'Язык интерфейса' })).not.toBeInTheDocument()
     expect(screen.queryByText('Язык интерфейса')).not.toBeInTheDocument()
   })
 
   it('«Язык описаний медиатеки» shows only when the server has it and saves metadataLanguage', async () => {
     stub(base)
-    const { unmount } = render(<Settings />)
-    await screen.findByRole('radiogroup', { name: 'Музыка вне дома' })
+    const { unmount } = renderSettings('library')
+    await screen.findByRole('list', { name: 'Мои языки' })
     expect(screen.queryByRole('radiogroup', { name: 'Язык описаний медиатеки' })).not.toBeInTheDocument()
     unmount()
     vi.unstubAllGlobals()
 
     const puts = stub({ ...base, metadataLanguage: 'ru' })
-    render(<Settings />)
+    renderSettings('library')
     const meta = await screen.findByRole('radiogroup', { name: 'Язык описаний медиатеки' })
     expect(screen.getByText('Для новых сканирований: названия и описания из TMDB')).toBeInTheDocument()
     expect(within(meta).getByRole('radio', { name: 'Русский' })).toHaveAttribute('aria-checked', 'true')
@@ -141,7 +150,7 @@ describe('Настройки: любимые озвучки', () => {
 
   it.runIf(__LIBRARY_EDITION__)('core build: «Любимые озвучки» в «Просмотр», без слов о раздачах', async () => {
     stub({ ...base, languages: ['ru', 'en'] })
-    render(<Settings />)
+    renderSettings('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
     expect(screen.getByText('Очищенные озвучки делаются в этом порядке: первая — главная.')).toBeInTheDocument()
     expect(screen.getByText('Пока ни одной.')).toBeInTheDocument()
@@ -161,13 +170,13 @@ describe('Настройки: /manage/settings#rescan', () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
     stub(base)
-    const first = render(<Settings />)
+    const first = renderSettings('library')
     await screen.findByText('Пересканировать медиатеку')
     expect(scroll).not.toHaveBeenCalled()
     first.unmount()
 
     window.location.hash = '#rescan'
-    render(<Settings />)
+    renderSettings('library')
     await screen.findByText('Пересканировать медиатеку')
     // a passive effect: it may run just after the row is in the document
     await waitFor(() => expect(scroll).toHaveBeenCalledOnce())
@@ -183,7 +192,7 @@ describe('Настройки: отправка на Kindle', () => {
 
   it('a set-up mailbox: one row with its address and «Настроить…», no fields on the page', async () => {
     stub({ ...base, mail, mailPasswordSet: true })
-    render(<Settings />)
+    renderSettings('kindle')
     expect(await screen.findByText('Настроена · me@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Настроить…' })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Сервер SMTP' })).toBeNull()
@@ -192,15 +201,18 @@ describe('Настройки: отправка на Kindle', () => {
 
   it('not set up: says so', async () => {
     stub(base)
-    render(<Settings />)
+    renderSettings('kindle')
     expect(await screen.findByText('Не настроена')).toBeInTheDocument()
   })
 
   it('«Настроить…» opens the steps and the fields; a field saves when left; «Готово» closes', async () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
-    render(<Settings />)
+    renderSettings('kindle')
     await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
     const sheet = screen.getByRole('dialog', { name: 'Отправка на Kindle' })
+    // set up already: the fields first, the steps on demand
+    expect(within(sheet).queryByText(/Создайте пароль для отправки/)).toBeNull()
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Как настроить Gmail и Amazon' }))
     expect(within(sheet).getByText(/Создайте пароль для отправки/)).toBeInTheDocument()
     const host = within(sheet).getByRole('textbox', { name: 'Сервер SMTP' })
     await userEvent.clear(host)
@@ -214,7 +226,7 @@ describe('Настройки: отправка на Kindle', () => {
 
   it('Enter in a field saves it and closes the sheet', async () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
-    render(<Settings />)
+    renderSettings('kindle')
     await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
     const from = within(screen.getByRole('dialog', { name: 'Отправка на Kindle' })).getByRole('textbox', { name: 'Адрес отправителя' })
     await userEvent.clear(from)

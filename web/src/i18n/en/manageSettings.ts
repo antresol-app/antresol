@@ -39,6 +39,7 @@ export default {
   'settings.mail.configure': 'Set Up…',
   'settings.mail.saving': 'Saving…',
   'settings.mail.saved': 'Saved',
+  'settings.mail.showGuide': 'How to set up Gmail and Amazon',
   'settings.mail.guide': 'How to set it up',
   'settings.mail.step1': 'Create a password for sending. In Gmail, turn on 2-Step Verification, open the app passwords page, enter any name and copy the 16-character code: it won’t be shown again.',
   'settings.mail.step1Link': 'Google app passwords',
@@ -145,4 +146,11 @@ export default {
   'prefs.devices': 'Devices',
   'prefs.about': 'About This Server',
   'settings.serverTitle': 'Server Settings',
+  // Server Settings: its first screen
+  'settings.group.library': 'Library & Languages',
+  'settings.group.downloads': 'Downloads',
+  'settings.rescanGroup': 'Scanning',
+  'settings.summary.auto': 'Automatic',
+  'settings.summary.on': 'Set up',
+  'settings.summary.off': 'Not set up',
 } satisfies EnOf<typeof ru>

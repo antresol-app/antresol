@@ -37,6 +37,7 @@ export default {
   'settings.mail.configure': 'Настроить…',
   'settings.mail.saving': 'Сохраняем…',
   'settings.mail.saved': 'Сохранено',
+  'settings.mail.showGuide': 'Как настроить Gmail и Amazon',
   'settings.mail.guide': 'Как настроить',
   'settings.mail.step1': 'Создайте пароль для отправки. В Gmail включите двухэтапную аутентификацию, откройте страницу паролей приложений, введите любое имя и скопируйте код из 16 символов: второй раз его не покажут.',
   'settings.mail.step1Link': 'Пароли приложений Google',
@@ -143,4 +144,11 @@ export default {
   'prefs.devices': 'Устройства',
   'prefs.about': 'О сервере',
   'settings.serverTitle': 'Настройки сервера',
+  // «Настройки сервера»: its first screen
+  'settings.group.library': 'Медиатека и языки',
+  'settings.group.downloads': 'Загрузки',
+  'settings.rescanGroup': 'Сканирование',
+  'settings.summary.auto': 'Автоматически',
+  'settings.summary.on': 'Настроена',
+  'settings.summary.off': 'Не настроена',
 } as const

@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { Files } from '../Files'
-import { Settings } from '../Settings'
+import { renderSettings } from './settingsHarness'
 
 function json(body: unknown, status = 200) {
   return new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -70,11 +70,7 @@ describe('Settings: «Качество вне дома»', () => {
       if (url === '/api/library/status') return json({ running: false, queued: false, movies: 0, episodes: 0 })
       return undefined
     })
-    render(
-      <MemoryRouter>
-        <Settings />
-      </MemoryRouter>,
-    )
+    renderSettings('watching')
     const group = await screen.findByRole('radiogroup', { name: 'Качество вне дома' })
     expect(within(group).getByRole('radio', { name: '1080p' })).toHaveAttribute('aria-checked', 'true')
     await userEvent.click(within(group).getByRole('radio', { name: '720p' }))

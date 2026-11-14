@@ -9,7 +9,7 @@ export function RescanLink({ variant }: { variant?: 'secondary' }) {
   const { user } = useSession()
   if (!user?.isAdmin) return null
   return (
-    <ButtonLink to="/manage/settings#rescan" icon="restart" variant={variant}>
+    <ButtonLink to="/manage/settings/library#rescan" icon="restart" variant={variant}>
       {t('browse.rescanInSettings')}
     </ButtonLink>
   )

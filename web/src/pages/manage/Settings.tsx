@@ -1,5 +1,6 @@
-// «Настройки сервера» (admin): what applies to the whole server, one row per
-// setting, each with a plain label. A profile's own settings (the language,
+// «Настройки сервера» (admin): what applies to the whole server. The page
+// opens on a short list of its groups (System Settings style); each group is
+// its own screen, /manage/settings/<group>, one row per setting. A profile's own settings (the language,
 // sound, mail) are in pages/ProfileSettings.tsx. Changes save
 // by themselves (like iOS); «Качество вне дома» (and the sources build's upload
 // limit and cache size) apply at once on the server. The core build
@@ -19,7 +20,9 @@ import { MultiSelect, Select } from '../../ui/Select'
 import { StudioList } from '../../components/StudioList'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
-import { GroupedSection, ListRow } from '../../ui/List'
+import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
+import type { IconName } from '../../components/Icon'
+import { Navigate, NavLink, useNavigate, useParams } from 'react-router'
 import { NumberField } from '../../ui/NumberField'
 import { t, useT } from '../../i18n'
 import m from './Manage.module.css'
@@ -61,6 +64,50 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
   }
 }
 
+/** The screens of «Настройки сервера», in their order on its first screen. */
+export type SettingsGroup = 'library' | 'downloads' | 'watching' | 'music' | 'subtitles' | 'seeding' | 'kindle'
+
+interface GroupInfo {
+  id: SettingsGroup
+  label: 'settings.group.library' | 'settings.group.downloads' | 'settings.watching' | 'common.music' | 'common.subtitles' | 'settings.seedingGroup' | 'settings.mailGroup'
+  icon: IconName
+  tint: string
+}
+
+/** The groups this build has (the core build downloads nothing and seeds nothing). */
+export function settingsGroups(): GroupInfo[] {
+  const all: (GroupInfo & { fullOnly?: boolean })[] = [
+    { id: 'library', label: 'settings.group.library', icon: 'film', tint: 'var(--blue)' },
+    { id: 'downloads', label: 'settings.group.downloads', icon: 'download', tint: 'var(--green)', fullOnly: true },
+    { id: 'watching', label: 'settings.watching', icon: 'play', tint: 'var(--indigo)' },
+    { id: 'music', label: 'common.music', icon: 'music', tint: 'var(--pink)' },
+    { id: 'subtitles', label: 'common.subtitles', icon: 'captions', tint: 'var(--teal)' },
+    { id: 'seeding', label: 'settings.seedingGroup', icon: 'arrowUp', tint: 'var(--cyan)', fullOnly: true },
+    { id: 'kindle', label: 'settings.mailGroup', icon: 'send', tint: 'var(--orange)' },
+  ]
+  return all.filter((g) => !(__LIBRARY_EDITION__ && g.fullOnly))
+}
+
+/** The current choice of a group, dimmed on its row of the first screen. */
+function summary(id: SettingsGroup, v: Values): string {
+  switch (id) {
+    case 'library':
+      return (v.languages?.length ? v.languages : DEFAULT_LANGS).map((c) => langLabel(c)).join(', ')
+    case 'downloads':
+      return v.quality === 2160 ? '4K' : `${v.quality}p`
+    case 'watching':
+      return v.remoteQuality === 'original' ? t('common.original') : `${v.remoteQuality ?? '1080'}p`
+    case 'music':
+      return t(`settings.remoteMusic.${v.remoteMusic ?? 'high'}`)
+    case 'subtitles':
+      return v.subtitlesAvailable && v.autoSubtitles ? t('settings.summary.auto') : ''
+    case 'kindle':
+      return v.mail?.host && v.mail.from ? t('settings.summary.on') : t('settings.summary.off')
+    default:
+      return ''
+  }
+}
+
 /** «Место для превью» choices, GB. */
 const TRICKPLAY_BUDGETS = [5, 10, 20, 50]
 
@@ -71,7 +118,10 @@ export function Settings() {
   const [saved, setSaved] = useState<'' | 'saving' | 'saved'>('')
   const timer = useRef<number | undefined>(undefined)
   const latest = useRef<Values | null>(null)
+  const pending = useRef(false)
   const t = useT()
+  const navigate = useNavigate()
+  const group = useParams().group as SettingsGroup | undefined
 
   useEffect(() => {
     document.title = `${t('settings.serverTitle')} — ${APP_NAME}`
@@ -111,9 +161,20 @@ export function Settings() {
     latest.current = next
     setValues(next)
     window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => void flush(), wait)
+    pending.current = true
+    timer.current = window.setTimeout(() => {
+      pending.current = false
+      void flush()
+    }, wait)
   }
-  useEffect(() => () => window.clearTimeout(timer.current), [])
+  // leaving with a change still waiting (a number field's pause): send it
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current)
+      if (pending.current) void flush()
+    },
+    [flush],
+  )
 
   if (!values) {
     return (
@@ -154,12 +215,37 @@ export function Settings() {
       />
     </ListRow>
   )
+  const groups = settingsGroups()
+  const current = groups.find((g) => g.id === group)
+  if (!current) {
+    // the list of groups, or a group this build does not have
+    if (group) return <Navigate to="/manage/settings" replace />
+    return (
+      <section aria-labelledby="settings-title" className={styles.page}>
+        <header className={m.header}>
+          <h2 id="settings-title" className={m.title}>
+            {t('settings.serverTitle')}
+          </h2>
+        </header>
+        <GroupedSection>
+          {groups.map((g) => (
+            <ListLinkRow key={g.id} icon={g.icon} tint={g.tint} label={t(g.label)} value={summary(g.id, values)} onOpen={() => navigate(`/manage/settings/${g.id}`)} />
+          ))}
+        </GroupedSection>
+      </section>
+    )
+  }
+  const at = (id: SettingsGroup) => group === id
   return (
     <section aria-labelledby="settings-title" className={styles.page}>
+      <NavLink to="/manage/settings" className={m.back}>
+        <Icon name="chevronLeft" size={18} strokeWidth={2.4} />
+        {t('settings.serverTitle')}
+      </NavLink>
       <header className={m.header}>
         <div>
           <h2 id="settings-title" className={m.title}>
-            {t('settings.serverTitle')}
+            {t(current.label)}
           </h2>
           <p className={m.subtitle} aria-live="polite">
             {saved === 'saving' ? t('settings.saving') : saved === 'saved' ? t('settings.saved') : t('settings.autosave')}
@@ -172,7 +258,7 @@ export function Settings() {
         </div>
       )}
 
-      {values.metadataLanguage !== undefined && (
+      {at('library') && values.metadataLanguage !== undefined && (
         <GroupedSection>
           <ListRow stack label={t('settings.metadataLanguage')} hint={t('settings.metadataLanguage.hint')}>
             <SegmentedControl
@@ -188,6 +274,7 @@ export function Settings() {
         </GroupedSection>
       )}
 
+      {at('library') && (
       <GroupedSection title={t('settings.languages')}>
         <ListRow
           wide
@@ -207,9 +294,10 @@ export function Settings() {
           />
         </ListRow>
       </GroupedSection>
+      )}
 
       {/* the sources build's release preferences */}
-      {!__LIBRARY_EDITION__ && (
+      {!__LIBRARY_EDITION__ && at('downloads') && (
         <>
           <GroupedSection title={t('settings.newVideo')}>
             <ListRow stack label={t('settings.videoQuality')} hint={t('settings.videoQuality.hint', { app: APP_NAME })}>
@@ -250,7 +338,8 @@ export function Settings() {
         </>
       )}
 
-      <GroupedSection title={t('settings.watching')}>
+      {at('watching') && (
+      <GroupedSection>
         <ListRow
           stack
           label={t('settings.remoteQuality')}
@@ -293,8 +382,10 @@ export function Settings() {
         )}
         {!__LIBRARY_EDITION__ && <OnlineRow enabled={values.onlineEnabled ?? true} onChange={(on) => change({ onlineEnabled: on })} />}
       </GroupedSection>
+      )}
 
-      <GroupedSection title={t('common.music')}>
+      {at('music') && (
+      <GroupedSection>
         <ListRow stack label={t('settings.remoteMusic')} hint={t('settings.remoteMusic.hint')}>
           <SegmentedControl
             label={t('settings.remoteMusic')}
@@ -344,8 +435,10 @@ export function Settings() {
           </>
         )}
       </GroupedSection>
+      )}
 
-      <GroupedSection title={t('common.subtitles')}>
+      {at('subtitles') && (
+      <GroupedSection>
         <ListRow
           label={t('settings.autoSubtitles')}
           hint={values.subtitlesAvailable ? t('settings.autoSubtitles.hint', { app: APP_NAME }) : t('settings.autoSubtitles.noKey')}
@@ -368,17 +461,23 @@ export function Settings() {
           />
         </ListRow>
       </GroupedSection>
+      )}
 
       {/* another build's settings */}
       {!__LIBRARY_EDITION__ && (
         <>
+          {at('downloads') && (
           <GroupedSection title={t('settings.booksGroup')}>
             {kindLangs('bookLangs', t('settings.bookLangs'))}
             {kindLangs('audiobookLangs', t('settings.audiobookLangs'))}
             {kindLangs('comicLangs', t('settings.comicLangs'))}
           </GroupedSection>
+          )}
 
-          <GroupedSection title={t('settings.seedingGroup')}>
+          {at('seeding') && (
+          // a neutral mark: another build's row joins this group (data-settings-group)
+          <div data-settings-group="seeding">
+          <GroupedSection>
             <IncomingRow />
             <ListRow label={t('settings.uploadLimit')} hint={t('settings.uploadLimit.hint')}>
               {values.uploadLimited && <UploadLimitField mbs={mbs} onChange={(v) => change({ uploadLimitKBs: Math.round(v * 1024) }, 700)} />}
@@ -398,16 +497,22 @@ export function Settings() {
               />
             </ListRow>
           </GroupedSection>
+          </div>
+          )}
         </>
       )}
 
-      <GroupedSection title={t('settings.mailGroup')}>
-        <MailRow values={values} saved={saved} error={error} onChange={(mail) => change({ mail })} />
-      </GroupedSection>
+      {at('kindle') && (
+        <GroupedSection>
+          <MailRow values={values} saved={saved} error={error} onChange={(mail) => change({ mail })} />
+        </GroupedSection>
+      )}
 
-      <GroupedSection title={t('common.library')}>
-        <Rescan />
-      </GroupedSection>
+      {at('library') && (
+        <GroupedSection title={t('settings.rescanGroup')}>
+          <Rescan />
+        </GroupedSection>
+      )}
     </section>
   )
 }
@@ -422,6 +527,8 @@ function MailRow({ values, saved, error, onChange }: { values: Values; saved: ''
   const [open, setOpen] = useState(false)
   const mail = values.mail
   const ready = Boolean(mail?.host && mail.from && (!mail.username || values.mailPasswordSet))
+  // not set up yet: the steps are what is needed first
+  const [guide, setGuide] = useState(!ready)
   // a field saves when it is left: leave it before the sheet goes (Enter in a
   // field runs «Готово», and an unmounted field never blurs)
   const close = () => {
@@ -439,10 +546,18 @@ function MailRow({ values, saved, error, onChange }: { values: Values; saved: ''
           role="dialog"
           size="wide"
           onCancel={() => close()}
+          closeButton={false}
           actions={[{ label: t('common.done'), kind: 'primary', run: () => close() }]}
         >
           <div className={styles.mailBlock}>
-            <MailGuide />
+            {/* the fields first; the long how-to only on demand (already set up: rarely needed) */}
+            {guide ? (
+              <MailGuide />
+            ) : (
+              <Button size="small" variant="plain" icon="info" onClick={() => setGuide(true)}>
+                {t('settings.mail.showGuide')}
+              </Button>
+            )}
             <MailFields mail={mail} passwordSet={values.mailPasswordSet ?? false} onChange={onChange} saved={saved} error={error} />
           </div>
         </Sheet>

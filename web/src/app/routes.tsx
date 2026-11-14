@@ -256,7 +256,7 @@ export const routes: RouteObject[] = [
                   { path: 'files', element: section('Files') },
                   { path: 'stats', element: section('Stats') },
                   { path: 'profiles', element: section('Profiles') },
-                  { path: 'settings', element: section('Settings') },
+                  { path: 'settings/:group?', element: section('Settings') },
                   { path: 'requests', element: section('Requests') },
                   { path: 'migrate', element: section('Migrate') },
                   { path: 'import', element: section('Import') },
