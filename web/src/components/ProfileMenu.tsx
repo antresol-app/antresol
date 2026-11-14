@@ -34,6 +34,13 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
   const pending = usePendingRequests(user.id, Boolean(user.requests))
 
   const items: Item[] = [
+    // what comes out of the titles this profile marked
+    {
+      id: 'calendar',
+      label: t('tracking.calendar.title'),
+      icon: 'clock' as const,
+      run: () => navigate('/calendar'),
+    },
     // The file browser of the media disk (not for kid profiles).
     ...(!user.isKid
       ? [

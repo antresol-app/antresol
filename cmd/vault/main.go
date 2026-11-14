@@ -45,6 +45,7 @@ import (
 	"github.com/antresol-app/antresol/internal/screentime"
 	"github.com/antresol-app/antresol/internal/segments"
 	"github.com/antresol-app/antresol/internal/subsonic"
+	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/antresol-app/antresol/internal/trickplay"
 	"github.com/antresol-app/antresol/internal/version"
 	"github.com/antresol-app/antresol/internal/voclean"
@@ -371,6 +372,16 @@ func run() error {
 	// generated channels follow the library (new files need their
 	// durations), vanished files leave the schedules
 	jobs.AfterProbe = func(context.Context) { chans.Kick() }
+	// ongoing tracking: the marked titles' episode lists (TMDB) and where
+	// each episode can be got; new ones go to the profiles that marked them
+	trackStore := &tracking.Store{DB: database}
+	tracker := &tracking.Service{Store: trackStore, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(repo)},
+		Notify: notifier, Interest: trackStore.Interested, Log: slog.Default().With("component", "tracking"),
+		Watched: []tracking.WatchedFunc{tracking.LibraryWatched(repo, progStore)}}
+	if metaSrc.TMDB != nil {
+		tracker.Skeleton = tracking.NewTMDBSkeleton(metaSrc.TMDB)
+	}
+	ext.trackingHooks(tracker)
 	jobs.AfterScan = func(ctx context.Context) {
 		ext.afterScan(ctx)
 		// new episodes and titles for the letters (enriched by now)
@@ -410,7 +421,7 @@ func run() error {
 		ScreenTime: screenTime,
 		Users:      users, Sessions: sessions, Network: network, Throttle: throttle,
 		MediaKeys: auth.NewMediaKeys(mkSecret, sessions),
-		Library:   repo, Progress: progStore, Jobs: jobs, HLS: hls,
+		Library:   repo, Progress: progStore, Jobs: jobs, HLS: hls, Tracking: tracker,
 		AudioTranscoder: audioTr, DeviceCopies: deviceCopies,
 		Music: musicStore, ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),
 		DataDir: cfg.DataDir, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe,
@@ -551,6 +562,10 @@ func run() error {
 	go func() { defer wg.Done(); segWorker.Run(ctx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); notifier.Run(ctx) }()
+	if tracker.Skeleton != nil { // episode lists need TMDB
+		wg.Add(1)
+		go func() { defer wg.Done(); tracker.Run(ctx) }()
+	}
 	wg.Add(1)
 	go func() { defer wg.Done(); trickWorker.Run(ctx) }()
 	wg.Add(1)

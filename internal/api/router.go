@@ -32,6 +32,7 @@ import (
 	"github.com/antresol-app/antresol/internal/screentime"
 	"github.com/antresol-app/antresol/internal/segments"
 	"github.com/antresol-app/antresol/internal/subtitles"
+	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/antresol-app/antresol/internal/version"
 	"github.com/antresol-app/antresol/internal/webui"
 	"github.com/go-chi/chi/v5"
@@ -75,6 +76,11 @@ type Deps struct {
 	// ComicsCache is where RAR/7z volumes are unpacked for the page API
 	// (the scanner's Scanner.ComicsCache); "": DataDir/comics-cache.
 	ComicsCache string
+
+	// Tracking is ongoing tracking: marks, the feed and calendar of the
+	// marked titles (/api/marks*, /api/tracking/*) and the «Вышло новое»
+	// shelf of /api/home; nil disables them.
+	Tracking *tracking.Service
 
 	// Files is the file browser; nil disables /api/files/*.
 	Files *files.Service
@@ -290,6 +296,9 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 				mountNotify(r, h)
 			}
 			mountTrickplay(r, h)
+			if deps.Tracking != nil {
+				mountTracking(r, h)
+			}
 			mountScreenTime(r, h)
 			if requests != nil {
 				mountKidRequests(r, requests)

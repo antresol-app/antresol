@@ -31,6 +31,7 @@ const SEE_ALL: Record<string, string> = {
   'recent-series': '/series',
   'recently-played': '/music',
   reading: '/books',
+  'tracked-new': '/calendar',
 }
 
 /** The shelves that show titles still downloading, and of which kinds. */
@@ -164,7 +165,14 @@ export function Home() {
         <ScreenTimeChip />
         {filled.map((s, i) => (
           <Fragment key={s.id}>
-            <Shelf title={s.title} cards={s.cards} variant={shelfVariant(s)} seeAllTo={SEE_ALL[s.id]} priority={i === 0} />
+            <Shelf
+              title={s.title}
+              cards={s.cards}
+              variant={shelfVariant(s)}
+              seeAllTo={SEE_ALL[s.id]}
+              priority={i === 0}
+              offLibraryUnlinked={s.id === 'tracked-new'}
+            />
             {/* the channels on air after the first shelf («Продолжить» when there is one) */}
             {i === 0 && <OnAirShelf />}
           </Fragment>

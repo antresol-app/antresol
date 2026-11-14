@@ -22,9 +22,12 @@ type Event struct {
 // Data is what the letter says about an event.
 type Data struct {
 	// Title: the series of an episode, else the title itself.
-	Title   string `json:"title"`
-	Year    int    `json:"year,omitempty"`
-	Kind    string `json:"kind,omitempty"` // library kind of ItemID (the link)
+	Title string `json:"title"`
+	Year  int    `json:"year,omitempty"`
+	Kind  string `json:"kind,omitempty"` // library kind of ItemID (the link)
+	// Path: the page the letter links to when there is no library item
+	// (a server path, "/..."; "" none).
+	Path    string `json:"path,omitempty"`
 	Season  int    `json:"season,omitempty"`
 	Episode int    `json:"episode,omitempty"`
 	// EpisodeTitle: what an episode without numbers is listed by.

@@ -10,6 +10,7 @@ export const browse = chunk(() => import('../pages/libraryPages'))
 export const search = chunk(() => import('../pages/Search'))
 export const auth = chunk(() => import('../pages/auth'))
 export const tv = chunk(() => import('../pages/tv'))
+export const calendar = chunk(() => import('../pages/Calendar'))
 
 /** Loads the navigation's sections in the background (not on a metered connection that asks to save data). */
 export function prefetchSections() {

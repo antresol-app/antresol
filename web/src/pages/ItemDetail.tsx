@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, downloadUrl, getItem, getTitle, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
 import type { Episode, ItemDetail as Detail, MediaFile, TitleInfo } from '../api/types'
+import { MarkButton } from '../components/MarkButton'
 import { ActionBar, episodeToPlay, type PlayOptions } from '../components/ActionBar'
 import type { WatchWay } from '../components/WatchButton'
 import { ButtonLink, Button } from '../ui/Button'
@@ -14,8 +15,8 @@ import { itemHref } from '../components/Card'
 import { SubtitleSearchSheet } from '../player/SubtitleSearchSheet'
 import { VoiceOverSheet } from '../components/VoiceOverSheet'
 // the sources build's parts of the page: TMDB titles, «Следить», the «Онлайн»
-// way, adding seasons (not in the core build: see docs/build-tags.md)
-import { AddSeason, FollowButton, followTarget, fromTitle, OnlineWay, TitleActions } from './ItemDetailFull'
+// way, adding seasons, the pinned release (not in the core build: see docs/build-tags.md)
+import { AddSeason, FollowButton, followTarget, fromTitle, OnlineWay, PinnedPanel, TitleActions } from './ItemDetailFull'
 import { EpisodeList, episodesCount } from '../components/EpisodeList'
 import { FamilyProgress, useFamily, type FamilyKind } from '../components/FamilyProgress'
 import { Icon } from '../components/Icon'
@@ -274,9 +275,12 @@ export function ItemDetail() {
   const shownInfo = info.filter(([, v]) => v)
 
   // «Смотреть» plays the server's file; the sources build adds «Онлайн» to its ▾
+  // the mark is the one «Хочу посмотреть» of a library movie or series (it keeps the watchlist in step)
+  const marked = (it.kind === 'series' || it.kind === 'movie') && it.id > 0 && Boolean(it.tmdbId)
   const actionBar = (moreWays?: WatchWay[]) => (
     <ActionBar
       item={it}
+      watchlistButton={!marked}
       onPlay={play}
       moreWays={moreWays}
       onChanged={() => load(true)}
@@ -307,6 +311,8 @@ export function ItemDetail() {
               onClick={() => setAddingSeason((v) => !v)}
             />
           )}
+          {/* «Отметка»: the profile's state on the title (tracking) */}
+          {marked ? <MarkButton key={`${it.kind}-${it.tmdbId}`} kind={it.kind === 'movie' ? 'movie' : 'series'} tmdbId={it.tmdbId!} /> : null}
           {followButton}
         </>
       }
@@ -408,6 +414,7 @@ export function ItemDetail() {
                 <VoiceOverSheet itemId={it.id} title={it.title} onClose={() => setFindingVoices(false)} />
               )}
               {!__LIBRARY_EDITION__ && canAddSeason && addingSeason && <AddSeason item={it} tmdbId={it.tmdbId!} isAdmin={Boolean(user?.isAdmin)} />}
+              {!__LIBRARY_EDITION__ && followOf && <PinnedPanel key={`${followOf.kind}-${followOf.tmdbId}`} kind={followOf.kind} tmdbId={followOf.tmdbId} name={it.title} poster={it.poster} />}
             </>
           )}
         </div>

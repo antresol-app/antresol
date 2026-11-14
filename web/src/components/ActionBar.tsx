@@ -43,6 +43,8 @@ export interface ActionBarProps {
   download?: ReactNode
   /** Round buttons before «Хочу посмотреть» («Добавить сезон…», «Следить»): phone tiles too. */
   toggles?: ReactNode
+  /** false: the page has its own «Хочу посмотреть» (the mark, tracking); default true. */
+  watchlistButton?: boolean
   /** The admin's «Удалить»: the red round button at the end of the row on a
    *  wide screen; on a phone the last item of «Ещё» (as in Apple's apps, a
    *  destructive action lives in the menu, and the tiles keep their room). */
@@ -95,7 +97,7 @@ function fileBadges(f: MediaFile, quality = true): string {
   return [quality && f.resolution, langs(f.audio), subs && t('comp.action.subs', { langs: subs }), formatSize(f.size)].filter(Boolean).join(' · ')
 }
 
-export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, deletion, onFindSubtitles, onFindVoiceOvers }: ActionBarProps) {
+export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, onFindVoiceOvers }: ActionBarProps) {
   const t = useT()
   const [inList, setInList] = useState(item.inWatchlist)
   const [busy, setBusy] = useState(false)
@@ -222,7 +224,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
         {/* Secondary actions: a row of equal tiles on phones. */}
         <ActionTiles>
           {toggles}
-          {item.id > 0 && (
+          {item.id > 0 && watchlistButton && (
             <IconButton
               size="lg"
               icon="watchlist"

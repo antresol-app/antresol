@@ -137,6 +137,12 @@ describe('library page', () => {
     session.reset()
   })
 
+  it('a movie with a TMDB id has the mark as its one «Хочу посмотреть»: no watchlist button', async () => {
+    await openPage()
+    expect(await screen.findByRole('button', { name: /^Отметка/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Хочу посмотреть' })).toBeNull()
+  })
+
   it.runIf(__LIBRARY_EDITION__)('core build: a plain «Смотреть», no ▾ and no «Онлайн»', async () => {
     await openPage()
     expect(screen.getByRole('button', { name: 'Смотреть' })).not.toHaveAttribute('aria-haspopup')

@@ -19,6 +19,7 @@ import migrate from './ru/migrate'
 import playlistImport from './ru/playlistImport'
 import channels from './ru/channels'
 import iptv from './ru/iptv'
+import tracking from './ru/tracking'
 import full from './ru/full'
 
 export const ru = {
@@ -37,5 +38,6 @@ export const ru = {
   ...playlistImport,
   ...channels,
   ...iptv,
+  ...tracking,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

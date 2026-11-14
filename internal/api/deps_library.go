@@ -19,6 +19,9 @@ type fullDeps struct{}
 
 func mountFull(chi.Router, Deps, *auth.Guard, *lib) {}
 
+// fullUploadPath: the core build has no multipart uploads beyond fileUpload's.
+func fullUploadPath(string) bool { return false }
+
 type meCaps struct{}
 
 // meExtra: /api/me has no capability fields beyond libraryOnly.

@@ -1988,3 +1988,42 @@ export interface ScreenLimited {
   userIds: number[]
   passwordless: { id: number; name: string }[]
 }
+
+// --- tracking: marks, «Вышло новое», calendar (internal/api/tracking_handlers.go) ---
+
+export type MarkState = 'planned' | 'watching' | 'completed' | 'on_hold' | 'dropped'
+
+/** The profile's mark on a title. */
+export interface TitleMark {
+  state: MarkState
+  score: number | null
+  origin: string
+  updatedAt: string
+}
+
+/** A tracked title; itemId is its library item (absent: not in the library). */
+export interface TrackTitle {
+  kind: 'series' | 'movie'
+  tmdbId: number
+  name: string
+  poster: string
+  status: string
+  itemId?: number
+}
+
+/** An episode (or a movie's release) of a tracked title. */
+export interface TrackingItem {
+  title: TrackTitle
+  season: number
+  episode: number
+  name: string
+  airDate?: string
+  /** When it became available (null: not yet). */
+  firstSeen: string | null
+  kinds: string[]
+}
+
+export interface CalendarDay {
+  date: string
+  items: TrackingItem[]
+}

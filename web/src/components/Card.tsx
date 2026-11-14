@@ -19,6 +19,11 @@ export interface CardProps {
   variant?: CardVariant
   /** Eager-load images for the first visible cards. */
   priority?: boolean
+  /**
+   * A TMDB title off the library is not a link in the core build (it has no
+   * page there): the tracked «Вышло новое» shelf.
+   */
+  offLibraryUnlinked?: boolean
 }
 
 export function cardHref(c: CardData) {
@@ -26,8 +31,14 @@ export function cardHref(c: CardData) {
   if (!__LIBRARY_EDITION__ && c.online && c.tmdbId && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')) {
     return onlineCardHref(c.tmdbKind, c.tmdbId, c.season ?? 0, c.episode ?? 0, c.resumeSec ?? 0)
   }
-  if (!__LIBRARY_EDITION__ && isTitleCard(c)) return `/title/${c.tmdbKind}/${c.tmdbId}`
+  if (!__LIBRARY_EDITION__ && isTitleCard(c)) return titleCardHref(c)
   return itemHref(c.kind, c.id)
+}
+
+/** A TMDB title's page; a new episode («Вышло новое») is chosen there for «Смотреть». */
+function titleCardHref(c: CardData): string {
+  const base = `/title/${c.tmdbKind}/${c.tmdbId}`
+  return c.tmdbKind === 'series' && c.season && c.episode ? `${base}?season=${c.season}&episode=${c.episode}` : base
 }
 
 /**
@@ -119,7 +130,7 @@ const CARD_SIZES: Record<CardVariant, string> = {
   wide: '(max-width: 699px) 80vw, (max-width: 1099px) 34vw, 26vw',
 }
 
-export function Card({ card, variant = 'poster', priority = false }: CardProps) {
+export function Card({ card, variant = 'poster', priority = false, offLibraryUnlinked = false }: CardProps) {
   const t = useT()
   const { user } = useSession()
   const art = variant === 'wide' ? card.backdrop || card.poster : card.poster || card.backdrop
@@ -131,7 +142,8 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
   const pending = !__LIBRARY_EDITION__ ? card.pending : undefined
   const own = !!pending && !(card.id > 0)
   const sub = own ? pendingLabel(t, pending) : secondaryLine(card)
-  const href = own ? pendingHref(card, !!user?.isAdmin) : cardHref(card)
+  const unlinked = offLibraryUnlinked && __LIBRARY_EDITION__ && !(card.id > 0) && !!card.tmdbId
+  const href = own ? pendingHref(card, !!user?.isAdmin) : unlinked ? null : cardHref(card)
 
   const className = [
     styles.card,

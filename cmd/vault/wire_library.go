@@ -10,6 +10,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/notify"
+	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/antresol-app/antresol/internal/vofit"
 )
 
@@ -28,6 +29,7 @@ func (*extras) applySettings(api.AppSettings)          {}
 func (*extras) fileHooks(*files.ServiceConfig)         {}
 func (*extras) afterScan(context.Context)              {}
 func (*extras) notifyHooks(*notify.Service)            {}
+func (*extras) trackingHooks(*tracking.Service)        {}
 func (*extras) apiDeps(*api.Deps, *auth.Store) error   { return nil }
 func (*extras) start(context.Context, *sync.WaitGroup) {}
 func (*extras) wait()                                  {}

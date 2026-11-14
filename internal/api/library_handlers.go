@@ -294,6 +294,14 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shelves := []shelf{{"continue", i18n.TC(ctx, "shelf", "Продолжить"), cont}}
+	// «Вышло новое»: what appeared of the profile's marked titles (only when any)
+	if h.Tracking != nil {
+		if fresh, err := h.trackedShelf(ctx, u); err != nil {
+			log.Printf("home: tracked shelf: %v", err)
+		} else if len(fresh) > 0 {
+			shelves = append(shelves, shelf{"tracked-new", trackedShelfTitle(ctx), fresh})
+		}
+	}
 	// ?family=1 (the web): «Семья смотрит»; the app's shelves stay as they were
 	if r.URL.Query().Get("family") == "1" {
 		fam, err := h.familyShelf(ctx, r, u, mine)
@@ -883,6 +891,11 @@ func (h *lib) watchlist(add bool) http.HandlerFunc {
 		}
 		if err != nil {
 			internalErr(w, r, "watchlist", err)
+			return
+		}
+		// the mark follows the watchlist (tracking)
+		if err := h.watchlistToMark(r.Context(), uid, it, add); err != nil {
+			internalErr(w, r, "watchlist mark", err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

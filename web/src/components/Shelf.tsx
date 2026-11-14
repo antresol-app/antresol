@@ -21,9 +21,11 @@ export interface ShelfProps {
    * the size they have where the column stops growing.
    */
   contained?: boolean
+  /** Its TMDB titles off the library are not links in the core build (Card offLibraryUnlinked). */
+  offLibraryUnlinked?: boolean
 }
 
-export function Shelf({ title, cards, variant = 'poster', seeAllTo, priority = false, contained = false }: ShelfProps) {
+export function Shelf({ title, cards, variant = 'poster', seeAllTo, priority = false, contained = false, offLibraryUnlinked = false }: ShelfProps) {
   const headingId = useId()
   if (cards.length === 0) return null
 
@@ -44,7 +46,7 @@ export function Shelf({ title, cards, variant = 'poster', seeAllTo, priority = f
       <Rail>
         {cards.map((c, i) => (
           <li key={cardKey(c)} className={styles.cell}>
-            <Card card={c} variant={variant} priority={priority && i < 8} />
+            <Card card={c} variant={variant} priority={priority && i < 8} offLibraryUnlinked={offLibraryUnlinked} />
           </li>
         ))}
       </Rail>

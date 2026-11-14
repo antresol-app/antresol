@@ -12,7 +12,7 @@ import { OfflineHome } from '../pages/OfflineHome'
 import { offlineAvailable } from '../offline/store'
 import { session, useSession } from '../state/session'
 import { ChunkBoundary } from './ChunkBoundary'
-import { auth, books, browse, music, search, tv } from './chunks'
+import { auth, books, browse, calendar, music, search, tv } from './chunks'
 import { chunk, lazyFrom, type Chunk } from './lazyChunk'
 import { FullSectionPrefetch, fullManageRoutes, fullNoKidsRoutes, fullPlayerRoutes, fullShellRoutes } from './routesFull'
 import { Shell } from './Shell'
@@ -193,6 +193,7 @@ export const routes: RouteObject[] = [
           { path: 'movies', element: page(browse, (m) => m.Movies) },
           { path: 'series', element: page(browse, (m) => m.Series) },
           { path: 'tv', element: page(tv, (m) => m.Tv) },
+          { path: 'calendar', element: page(calendar, (m) => m.Calendar) },
           {
             path: 'music',
             children: [

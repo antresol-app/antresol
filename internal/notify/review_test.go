@@ -248,3 +248,30 @@ func TestEpisodeWithoutNumbersShowsItsTitle(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+// Titles off the library (group and item ids below 1) are listed one line
+// each, linked by their own path; a film is listed with its link too.
+func TestOffLibraryTitlesGetTheirOwnLinesAndLinks(t *testing.T) {
+	link := func(p string) string {
+		if p == "" {
+			return ""
+		}
+		return "https://x.example" + p
+	}
+	evs := []stored{
+		{groupID: -1, data: Data{Title: "Alpha", Season: 1, Episode: 3, Path: "/title/series/1"}},
+		{groupID: -2, data: Data{Title: "Beta", Season: 2, Episode: 1, Path: "/title/series/2"}},
+	}
+	got := renderEpisodes("ru", evs, link)
+	if len(got) != 2 || got[0].Line != "Alpha — 1 новая серия: S01E03" || got[0].Link != "https://x.example/title/series/1" ||
+		got[1].Line != "Beta — 1 новая серия: S02E01" || got[1].Link != "https://x.example/title/series/2" {
+		t.Fatalf("%+v", got)
+	}
+	films := renderAvailable("ru", []stored{
+		{groupID: -3, data: Data{Title: "Film", Kind: "movie", Path: "/title/movie/3"}},
+		{groupID: -4, data: Data{Title: "Other", Kind: "movie", Path: "//evil.example/x"}},
+	}, link)
+	if len(films) != 2 || films[0].Line != "Film" || films[0].Link != "https://x.example/title/movie/3" || films[1].Link != "" {
+		t.Fatalf("%+v", films)
+	}
+}

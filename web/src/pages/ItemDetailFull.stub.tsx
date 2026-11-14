@@ -22,6 +22,10 @@ export function FollowButton(_props: { kind: 'series' | 'movie'; tmdbId: number;
   return null
 }
 
+export function PinnedPanel(_props: { kind: 'series' | 'movie'; tmdbId: number; name?: string; poster?: string }) {
+  return null
+}
+
 interface OnlineSheetTarget {
   kind: string
   tmdbId: number

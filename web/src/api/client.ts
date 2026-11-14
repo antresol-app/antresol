@@ -2,6 +2,9 @@
 // pages never call fetch directly.
 import type {
   About,
+  CalendarDay,
+  MarkState,
+  TitleMark,
   Annotation,
   LibraryScope,
   TrickplayIndex,
@@ -614,3 +617,16 @@ export const getScreenLimited = (signal?: AbortSignal) => request<ScreenLimited>
 export const getScreenTime = (userId: number, signal?: AbortSignal) => request<ScreenReport>('GET', `/api/users/${userId}/screen-time`, undefined, signal)
 export const saveScreenLimits = (userId: number, l: ScreenLimits) => request<ScreenReport>('PUT', `/api/users/${userId}/screen-time`, l)
 export const addScreenBonus = (userId: number, minutes: number) => request<ScreenReport>('POST', `/api/users/${userId}/screen-time/bonus`, { minutes })
+
+// --- tracking: marks and the calendar ---
+const markPath = (kind: 'series' | 'movie', tmdbId: number) => `/api/marks/${kind}/${tmdbId}`
+/** The profile's mark on a title (null: none). */
+export const getMark = (kind: 'series' | 'movie', tmdbId: number, signal?: AbortSignal) =>
+  request<{ mark: TitleMark | null }>('GET', markPath(kind, tmdbId), undefined, signal).then((r) => r.mark)
+/** `title`: the name and poster of a title the library lacks (the server keeps them for the feed). */
+export const putMark = (kind: 'series' | 'movie', tmdbId: number, state: MarkState, title?: { name?: string; poster?: string }) =>
+  request<{ mark: TitleMark }>('PUT', markPath(kind, tmdbId), { state, ...(title?.name ? { name: title.name } : {}), ...(title?.poster ? { poster: title.poster } : {}) }).then((r) => r.mark)
+export const deleteMark = (kind: 'series' | 'movie', tmdbId: number) => request<void>('DELETE', markPath(kind, tmdbId))
+/** What comes out between two dates (YYYY-MM-DD, at most 42 days apart) of the titles this profile marked. */
+export const getTrackingCalendar = (from: string, to: string, signal?: AbortSignal) =>
+  request<{ days: CalendarDay[] }>('GET', `/api/tracking/calendar${qs({ from, to })}`, undefined, signal).then((r) => r.days)

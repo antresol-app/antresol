@@ -55,10 +55,10 @@ func csrfGuarded(next http.Handler, cop *http.CrossOriginProtection) http.Handle
 // (POST /api/books/upload) and a channel's logo (POST /api/channels/{id}/logo)
 // are multipart, a type a cross-origin form may send without a preflight, so
 // they must also carry X-Vault-Upload, a header only a same-origin script can
-// set.
+// set. Another build may add its own upload paths (fullUploadPath).
 func fileUpload(r *http.Request, mt string) bool {
 	return mt == "multipart/form-data" && r.Method == http.MethodPost &&
-		(r.URL.Path == "/api/import/files" || r.URL.Path == "/api/books/upload" || channelLogoPath(r.URL.Path)) &&
+		(r.URL.Path == "/api/import/files" || r.URL.Path == "/api/books/upload" || channelLogoPath(r.URL.Path) || fullUploadPath(r.URL.Path)) &&
 		r.Header.Get("X-Vault-Upload") != ""
 }
 

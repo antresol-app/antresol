@@ -82,6 +82,18 @@ func itemPath(kind string, id int64) string {
 	return ""
 }
 
+// pathOf is the page of an event: its library item's, else its own Path
+// (only a server path: "/..." but not "//...").
+func pathOf(kind string, itemID int64, d Data) string {
+	if p := itemPath(kind, itemID); p != "" {
+		return p
+	}
+	if strings.HasPrefix(d.Path, "/") && !strings.HasPrefix(d.Path, "//") && !strings.Contains(d.Path, `\`) {
+		return d.Path
+	}
+	return ""
+}
+
 func titleYear(d Data) string {
 	if d.Year > 0 {
 		return d.Title + " (" + strconv.Itoa(d.Year) + ")"
@@ -158,7 +170,7 @@ func renderEpisodes(lang string, evs []stored, link func(string) string) []entry
 		}
 		out = append(out, entry{
 			Line:   line,
-			Link:   link(itemPath(library.KindSeries, g.first.itemID)),
+			Link:   link(pathOf(library.KindSeries, g.first.itemID, g.first.data)),
 			Poster: g.first.data.Poster,
 		})
 	}
@@ -173,7 +185,7 @@ func renderAvailable(lang string, evs []stored, link func(string) string) []entr
 			continue
 		}
 		seen[e.itemID] = true
-		out = append(out, entry{Line: titleYear(e.data), Link: link(itemPath(e.data.Kind, e.itemID)), Poster: e.data.Poster})
+		out = append(out, entry{Line: titleYear(e.data), Link: link(pathOf(e.data.Kind, e.itemID, e.data)), Poster: e.data.Poster})
 	}
 	return out
 }
