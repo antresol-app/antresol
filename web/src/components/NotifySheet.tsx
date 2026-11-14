@@ -4,7 +4,8 @@
 // письмо»: a code to type here, and a link in the letter). An adult opens
 // it from the profile menu; a kid's are the administrator's (Профили), as
 // «Звук и субтитры» are. The letters come in the interface language the
-// settings were saved in.
+// settings were saved in. A switch saves at once, the address when the field
+// is left (useAutosave); «Готово» only closes.
 import { useEffect, useId, useState } from 'react'
 import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, type NotifyPrefsInput, errorText } from '../api/client'
 import type { NotifyPrefs, NotifyTopic } from '../api/types'
@@ -16,6 +17,7 @@ import { Sheet } from '../ui/Sheet'
 import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
 import styles from './NotifySheet.module.css'
+import { useAutosave } from './useAutosave'
 
 export interface NotifySheetProps {
   /** Another profile's (an administrator in «Профили»); none: the signed-in one. */
@@ -84,18 +86,31 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
   const change = (patch: Partial<NotifyPrefs>) => setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, ...patch } } : s))
   const failed = (e: unknown, fallback: Key) => setError(errorText(e, t(fallback)))
 
-  const save = async () => {
+  const autosave = useAutosave<NotifyPrefs>(
+    async (p) => {
+      const out = await saveNotifyPrefs(inputOf(p), userId)
+      setSavedEmail(out.email)
+      // keep what is being edited; take the server's word on the address
+      setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, verified: out.verified, bounced: out.bounced } } : s))
+    },
+    (e) => failed(e, 'comp.notify.saveFailed'),
+  )
+  /** A switch: shown and saved at once. */
+  const flip = (patch: Partial<NotifyPrefs>) => {
     if (!prefs) return
-    setBusy(true)
+    const next = { ...prefs, ...patch }
+    setState({ status: 'ready', prefs: next })
     setError('')
-    try {
-      await saveNotifyPrefs(inputOf(prefs), userId)
-      onClose()
-    } catch (e) {
-      failed(e, 'comp.notify.saveFailed')
-    } finally {
-      setBusy(false)
-    }
+    autosave.schedule(next)
+  }
+  /** The address is saved when the field is left (or before its letter). */
+  const commitEmail = () => {
+    if (prefs && prefs.email.trim() !== savedEmail) autosave.schedule(prefs)
+  }
+  const done = async () => {
+    commitEmail()
+    await autosave.flush()
+    onClose()
   }
 
   const sendLetter = async () => {
@@ -146,11 +161,9 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
       role="dialog"
       size="wide"
       busy={busy}
-      onCancel={onClose}
-      actions={[
-        { label: t('common.cancel'), kind: 'cancel', run: onClose },
-        { label: t('common.save'), kind: 'primary', disabled: !prefs, run: () => void save() },
-      ]}
+      onCancel={() => void done()}
+      closeButton={false}
+      actions={[{ label: t('common.done'), kind: 'primary', run: () => void done() }]}
     >
       <div className={styles.form}>
         <p className={styles.hint}>{t('comp.notify.intro')}</p>
@@ -176,6 +189,7 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 placeholder="name@example.com"
                 value={prefs.email}
                 onChange={(e) => change({ email: e.target.value })}
+                onBlur={commitEmail}
               />
               <p className={confirmed ? styles.ok : styles.hint} role="status">
                 {email === '' ? '' : confirmed ? (
@@ -231,7 +245,7 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                           </span>
                         )}
                       </div>
-                      <Toggle label={t(l.label)} checked={prefs[topic]} describedBy={hintId} onChange={(on) => change({ [topic]: on })} />
+                      <Toggle label={t(l.label)} checked={prefs[topic]} describedBy={hintId} onChange={(on) => flip({ [topic]: on })} />
                     </li>
                   )
                 })}
@@ -242,10 +256,13 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                       {t('comp.notify.quietHint')}
                     </span>
                   </div>
-                  <Toggle label={t('comp.notify.quiet')} checked={prefs.quietHours} describedBy={`${id}-quiet-hint`} onChange={(quietHours) => change({ quietHours })} />
+                  <Toggle label={t('comp.notify.quiet')} checked={prefs.quietHours} describedBy={`${id}-quiet-hint`} onChange={(quietHours) => flip({ quietHours })} />
                 </li>
               </ul>
               <p className={styles.hint}>{t('comp.notify.digest')}</p>
+              <p className={styles.hint} role="status">
+                {autosave.status === 'saving' ? t('settings.saving') : autosave.status === 'saved' ? t('settings.saved') : ''}
+              </p>
               {/* a server setting: only the admin can do anything about it */}
               {!prefs.publicLinks && isAdmin && <p className={styles.hint}>{t('comp.notify.noLinks')}</p>}
             </section>

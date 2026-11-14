@@ -43,9 +43,11 @@ describe('PlaybackPrefsSheet', () => {
     expect(screen.getByRole('list', { name: 'Язык субтитров' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: 'Очень крупный' }))
     await userEvent.click(screen.getByRole('radio', { name: 'Сплошной' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    // saved by itself; «Готово» sends what still waits and closes
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    const put = calls.find((c) => c.method === 'PUT')!
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull()
+    const put = calls.filter((c) => c.method === 'PUT').at(-1)!
     expect(put.url).toBe('/api/me/playback-prefs')
     expect(put.body).toEqual({ audioLangs: ['en', 'ru'], subMode: 'foreign', subLangs: ['ru', 'en'], subSize: 'xl', subBackground: 'solid' })
   })
@@ -62,7 +64,8 @@ describe('PlaybackPrefsSheet', () => {
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/me/playback-prefs/prefer-cleaned', method: 'PUT', body: { on: true } }])
     // the household's languages stay followed: closing saves nothing else
     expect(screen.getByText('Сейчас — языки семьи из настроек.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
   })
 
@@ -75,7 +78,7 @@ describe('PlaybackPrefsSheet', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     await userEvent.click(sw)
     await waitFor(() => expect(calls.some((c) => c.url === '/api/users/7/playback-prefs/prefer-cleaned')).toBe(true))
-    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Сплошной' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/playback-prefs')).toBe(true))
     expect(calls.find((c) => c.method === 'PUT' && c.url === '/api/users/7/playback-prefs')!.body).not.toHaveProperty('preferCleaned')
   })
@@ -84,7 +87,7 @@ describe('PlaybackPrefsSheet', () => {
     render(<PlaybackPrefsSheet userId={7} name="Вася" onClose={() => {}} />)
     expect(await screen.findByRole('dialog', { name: 'Звук и субтитры: Вася' })).toBeInTheDocument()
     await screen.findByText('Сейчас — языки семьи из настроек.')
-    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Крупный' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/playback-prefs')).toBe(true))
   })
 })

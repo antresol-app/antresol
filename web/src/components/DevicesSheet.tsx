@@ -8,7 +8,6 @@ import { getDevices, revokeDevice, errorText } from '../api/client'
 import type { Device } from '../api/types'
 import { locale, t as tr, useT } from '../i18n'
 import { Avatar } from './Avatar'
-import { Icon } from './Icon'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { GroupedSection, ListRow } from '../ui/List'
@@ -92,12 +91,9 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
         role="dialog"
         size="wide"
         dismissOnOutside
-        icon={
-          <span className={styles.badge}>
-            <Icon name="pip" size={26} />
-          </span>
-        }
         onCancel={onClose}
+        closeButton={false}
+        actions={[{ label: t('common.done'), kind: 'primary', run: onClose }]}
       >
         <div className={styles.body} tabIndex={-1} data-autofocus>
           {state.status === 'loading' && <p className={styles.note}>{t('common.loadingEllipsis')}</p>}

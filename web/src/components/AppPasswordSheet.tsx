@@ -7,7 +7,6 @@ import { Button } from '../ui/Button'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createAppPassword, getAppPassword, revokeAppPassword, errorText } from '../api/client'
 import { locale, t as tr, useT } from '../i18n'
-import { Icon } from './Icon'
 import { Sheet } from '../ui/Sheet'
 import styles from './AppPasswordSheet.module.css'
 
@@ -137,15 +136,12 @@ export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswor
         title={t('comp.appPassword.title')}
         role="dialog"
         size="wide"
-        icon={
-          <span className={styles.badge}>
-            <Icon name="lock" size={26} />
-          </span>
-        }
         message={
           <>{t('comp.appPassword.message', { origin, name: userName })}</>
         }
         onCancel={onClose}
+        closeButton={false}
+        actions={[{ label: t('common.done'), kind: 'primary', run: onClose }]}
       >
         {/* focus lands here, not in the server field (no stray selection) */}
         <div className={styles.body} tabIndex={-1} data-autofocus>

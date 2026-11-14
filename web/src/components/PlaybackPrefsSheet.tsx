@@ -1,8 +1,9 @@
 // «Звук и субтитры»: a profile's audio and subtitle defaults, kept on the
 // server so they follow the profile to every browser and the app. The
 // player uses them when nothing more specific applies (the tracks chosen
-// in a series come first). An adult opens it from the profile menu; a
-// kid's is the administrator's (Профили), as «Скрывать прогресс» is.
+// in a series come first). An adult opens it from «Настройки»; a kid's is
+// the administrator's (Профили), as «Скрывать прогресс» is. Changes save by
+// themselves (useAutosave); «Готово» only closes.
 import { useEffect, useId, useState } from 'react'
 import { getPlaybackPrefs, resetPlaybackPrefs, savePlaybackPrefs, setPreferCleaned, errorText } from '../api/client'
 import type { LangCode, PlaybackPrefs, SubBackground, SubMode, SubSize } from '../api/types'
@@ -16,6 +17,7 @@ import { Select } from '../ui/Select'
 import { Sheet } from '../ui/Sheet'
 import { Toggle } from '../ui/Toggle'
 import styles from './PlaybackPrefsSheet.module.css'
+import { useAutosave } from './useAutosave'
 
 export interface PlaybackPrefsSheetProps {
   /** Another profile's (an administrator in «Профили»); none: the signed-in one. */
@@ -48,25 +50,37 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
   }, [userId, t])
 
   const prefs = state.status === 'ready' ? state.prefs : null
-  const change = (patch: Partial<PlaybackPrefs>) => setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, ...patch } } : s))
+  const failed = (e: unknown) => setError(errorText(e, t('comp.playback.saveFailed')))
+  const autosave = useAutosave<PlaybackPrefs>(async (p) => {
+    const { custom: _, preferCleaned: __, ...input } = p
+    const out = await savePlaybackPrefs(input, userId)
+    // keep what is being edited; take only whether it is the profile's own now
+    setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, custom: out.custom } } : s))
+  }, failed)
+  /** A change of the form: shown at once, saved a moment later (a drag is one request). */
+  const change = (patch: Partial<PlaybackPrefs>) => {
+    if (!prefs) return
+    const next = { ...prefs, ...patch }
+    setState({ status: 'ready', prefs: next })
+    setError('')
+    if (next.audioLangs.length > 0) autosave.schedule(next, 300)
+  }
+  const done = async () => {
+    await autosave.flush()
+    onClose()
+  }
 
-  const run = async (op: () => Promise<PlaybackPrefs>, close: boolean) => {
+  const reset = async () => {
     setBusy(true)
     setError('')
     try {
-      const p = await op()
-      if (close) onClose()
-      else setState({ status: 'ready', prefs: p })
+      await autosave.flush()
+      setState({ status: 'ready', prefs: await resetPlaybackPrefs(userId) })
     } catch (e) {
-      setError(errorText(e, t('comp.playback.saveFailed')))
+      failed(e)
     } finally {
       setBusy(false)
     }
-  }
-  const save = () => {
-    if (!prefs) return
-    const { custom: _, preferCleaned: __, ...input } = prefs
-    void run(() => savePlaybackPrefs(input, userId), true)
   }
   // «Выбирать очищенную озвучку» is saved as it flips, apart from the rest
   // (which stays as edited here, saved or not)
@@ -74,12 +88,13 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
   const toggleCleaned = async (on: boolean) => {
     setCleanedBusy(true)
     setError('')
-    change({ preferCleaned: on })
+    const flip = (v: boolean) => setState((s) => (s.status === 'ready' ? { status: 'ready', prefs: { ...s.prefs, preferCleaned: v } } : s))
+    flip(on)
     try {
       const p = await setPreferCleaned(on, userId)
-      change({ preferCleaned: Boolean(p.preferCleaned) })
+      flip(Boolean(p.preferCleaned))
     } catch (e) {
-      change({ preferCleaned: !on })
+      flip(!on)
       setError(errorText(e, t('comp.playback.saveFailed')))
     } finally {
       setCleanedBusy(false)
@@ -92,11 +107,9 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
       role="dialog"
       size="wide"
       busy={busy}
-      onCancel={onClose}
-      actions={[
-        { label: t('common.cancel'), kind: 'cancel', run: onClose },
-        { label: t('common.save'), kind: 'primary', disabled: !prefs || prefs.audioLangs.length === 0, run: save },
-      ]}
+      onCancel={() => void done()}
+      closeButton={false}
+      actions={[{ label: t('common.done'), kind: 'primary', run: () => void done() }]}
     >
       <div className={styles.form}>
         <p className={styles.hint}>{t('comp.playback.intro')}</p>
@@ -209,10 +222,10 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
             </section>
             <div className={styles.footer}>
               <p className={styles.hint} role="status">
-                {prefs.custom ? '' : t('comp.playback.household')}
+                {autosave.status === 'saving' ? t('settings.saving') : autosave.status === 'saved' ? t('settings.saved') : prefs.custom ? '' : t('comp.playback.household')}
               </p>
               {prefs.custom && (
-                <Button size="small" variant="secondary" disabled={busy} onClick={() => void run(() => resetPlaybackPrefs(userId), false)}>
+                <Button size="small" variant="secondary" disabled={busy} onClick={() => void reset()}>
                   {t('comp.playback.reset')}
                 </Button>
               )}

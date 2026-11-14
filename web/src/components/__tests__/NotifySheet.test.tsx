@@ -61,9 +61,10 @@ describe('NotifySheet', () => {
     expect(screen.getByRole('switch', { name: 'Не присылать ночью (22:00–08:00)' })).toHaveAttribute('aria-checked', 'true')
     await userEvent.type(screen.getByLabelText('Адрес почты'), 'anya@example.com')
     await userEvent.click(episodes)
-    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    const put = calls.find((c) => c.method === 'PUT')!
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull()
+    const put = calls.filter((c) => c.method === 'PUT').at(-1)!
     expect(put.url).toBe('/api/me/notify')
     expect(put.body).toEqual({ email: 'anya@example.com', episodes: true, available: false, requests: false, downloads: false, quietHours: true, lang: 'ru' })
   })
@@ -102,7 +103,8 @@ describe('NotifySheet', () => {
     expect(await screen.findByText(/Почта сервера не настроена/)).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Мои просьбы одобрены / в медиатеке' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Отправить проверочное письмо' })).toBeDisabled()
-    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    // a switch saves at once
+    await userEvent.click(screen.getByRole('switch', { name: 'Мои просьбы одобрены / в медиатеке' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/notify')).toBe(true))
   })
 
