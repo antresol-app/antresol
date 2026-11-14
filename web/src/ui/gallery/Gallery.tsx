@@ -13,6 +13,7 @@ import { Button } from '../Button'
 import { Card } from '../Card'
 import { IconButton } from '../IconButton'
 import { GroupedSection, ListLinkRow, ListRow } from '../List'
+import { ToggleChips } from '../ToggleChips'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../Menu'
 import { NumberField } from '../NumberField'
 import { PlayerBar, PlayerBarButton } from '../PlayerBar'
@@ -283,6 +284,19 @@ export function Gallery() {
             </Card>
           ))}
         </div>
+      </Section>
+
+      <Section title="ToggleChips" note="Several choices on at once (a channel's genres, countries, decades); the count dimmed; «Ещё…» after them for a long list.">
+        <ToggleChips
+          label="Страны"
+          chips={[
+            { value: 'SU', label: 'СССР', count: 214 },
+            { value: 'US', label: 'США', count: 980 },
+            { value: 'FR', label: 'Франция', count: 61 },
+          ]}
+          value={['SU']}
+          onToggle={() => {}}
+        />
       </Section>
 
       <Section title="ListLinkRow" note="A row that opens a sheet or a page: the whole row is the button, a coloured icon tile, an optional value, the chevron.">

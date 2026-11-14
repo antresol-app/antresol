@@ -1,0 +1,25 @@
+/* Toggle chips: FilterChips' capsules, several on at once, always wrapping. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.chip {
+  composes: chip from './FilterChips.module.css';
+}
+.chip[aria-pressed='true'] {
+  background: var(--label);
+  color: var(--label-inverse);
+}
+.label {
+  composes: label from './FilterChips.module.css';
+}
+.count {
+  composes: count from './FilterChips.module.css';
+}
+.chip[aria-pressed='true'] .count {
+  color: inherit;
+  opacity: 0.6;
+}

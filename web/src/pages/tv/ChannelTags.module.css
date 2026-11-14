@@ -1,0 +1,49 @@
+/* The channel editor's tags: the years' exact range under the decades, and
+   the preview's posters, one row that scrolls sideways. */
+.years {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2h);
+  color: var(--label-2);
+}
+.posters {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0 0 var(--s-1);
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.poster {
+  flex: none;
+  width: 72px;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--fill-3);
+  box-shadow: var(--artwork-outline);
+}
+.poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.noPoster {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--s-1);
+  font: var(--t-caption-2);
+  color: var(--label-2);
+  text-align: center;
+  overflow: hidden;
+}
+/* a new count is on its way */
+.busy {
+  opacity: 0.6;
+  transition: opacity var(--d-fast) var(--ease-out);
+}

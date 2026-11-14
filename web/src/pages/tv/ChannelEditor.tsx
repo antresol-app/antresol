@@ -19,7 +19,7 @@ import {
 } from '../../api/channels'
 import { useT } from '../../i18n'
 import { GroupedSection, ListRow } from '../../ui/List'
-import { MultiSelect, Select } from '../../ui/Select'
+import { Select } from '../../ui/Select'
 import { NumberField } from '../../ui/NumberField'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import { Sheet } from '../../ui/Sheet'
@@ -28,10 +28,11 @@ import { Toggle } from '../../ui/Toggle'
 import { ChannelExtrasRow } from './ChannelExtrasRow'
 import { ChannelLogoRow } from './ChannelLogoRow'
 import { ChannelPicks, picksOf } from './ChannelPicks'
+import { ChannelPrompt } from './ChannelPrompt'
+import { ChannelTags, tagRulesOf, type TagRules } from './ChannelTags'
 import styles from './Tv.module.css'
 
 const RATINGS = ['0+', '6+', '12+', '16+', '18+']
-type Kind = 'movie' | 'series'
 type Content = 'rules' | 'picks'
 
 export interface ChannelEditorProps {
@@ -49,15 +50,15 @@ export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: 
   const t = useT()
   const r: ChannelRules = channel?.rules ?? {}
   const [name, setName] = useState(channel?.name ?? '')
+  // the name «Опишите канал» gave (replaced by the next one until edited)
+  const [autoName, setAutoName] = useState('')
   const [category, setCategory] = useState(channel?.category ?? '')
   const [number, setNumber] = useState(channel?.number ?? 0)
   const [personal, setPersonal] = useState(channel ? channel.personal : !me.isAdmin)
   const [enabled, setEnabled] = useState(channel?.enabled ?? true)
   const [picks, setPicks] = useState<ChannelPick[]>(() => picksOf(r))
   const [content, setContent] = useState<Content>(picks.length ? 'picks' : 'rules')
-  const [kinds, setKinds] = useState<Kind[]>(r.kinds?.length ? r.kinds : ['movie', 'series'])
-  const [genres, setGenres] = useState<string[]>(r.genres ?? [])
-  const [decade, setDecade] = useState(r.yearFrom ? String(r.yearFrom) : '')
+  const [tags, setTags] = useState<TagRules>(() => tagRulesOf(r))
   const [library, setLibrary] = useState(String(r.libraryUser ?? 0))
   const [order, setOrder] = useState<ChannelOrder>(r.order ?? 'shuffle')
   const [rating, setRating] = useState(r.maxRating ?? '')
@@ -98,13 +99,8 @@ export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: 
     // round 1's titles are rewritten as picks of kind «title»
     if (content === 'picks') rules.picks = picks
     else {
-      rules.kinds = kinds.length === 2 ? undefined : kinds
-      rules.genres = genres.length ? genres : undefined
+      Object.assign(rules, tags)
       rules.extras = extras || undefined
-      if (decade) {
-        rules.yearFrom = Number(decade)
-        rules.yearTo = Number(decade) + 9
-      }
     }
     const body: ChannelInput = { name, number: number || undefined, category, personal, enabled, rules }
     setBusy(true)
@@ -140,11 +136,45 @@ export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: 
         { label: channel ? t('tv.editor.save') : t('tv.editor.create'), kind: 'primary', disabled: !name.trim() || needPicks || busy, run: () => void save() },
       ]}
     >
-      <div className={styles.form}>
-        <TextField label={t('tv.editor.name')} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={80} />
-        <TextField label={t('tv.editor.category')} hint={t('tv.editor.categoryHint')} value={category} onChange={(e) => setCategory(e.target.value)} autoComplete="off" maxLength={80} />
-      </div>
+      {/* first what it shows: a sentence, or the tags; then the channel itself */}
+      {content === 'rules' && (
+        <ChannelPrompt
+          onSuggested={(sg) => {
+            setTags(tagRulesOf(sg.rules))
+            if (!name.trim() || name === autoName) {
+              setName(sg.name)
+              setAutoName(sg.name)
+            }
+          }}
+        />
+      )}
       <GroupedSection>
+        <ListRow label={t('tv.editor.content')} stack>
+          <SegmentedControl
+            label={t('tv.editor.content')}
+            size="small"
+            value={content}
+            onChange={setContent}
+            segments={[
+              { value: 'rules', label: t('tv.editor.byRules') },
+              { value: 'picks', label: t('tv.editor.byTitles') },
+            ]}
+          />
+        </ListRow>
+      </GroupedSection>
+      {content === 'rules' ? (
+        <ChannelTags options={options} value={tags} onChange={setTags} />
+      ) : (
+        <ChannelPicks picks={picks} onChange={setPicks} options={options} info={channel?.pickInfo} need={needPicks} />
+      )}
+
+      <GroupedSection title={t('tv.editor.channel')}>
+        <li className={styles.formRow}>
+          <div className={styles.form}>
+            <TextField label={t('tv.editor.name')} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={80} />
+            <TextField label={t('tv.editor.category')} hint={t('tv.editor.categoryHint')} value={category} onChange={(e) => setCategory(e.target.value)} autoComplete="off" maxLength={80} />
+          </div>
+        </li>
         {channel && (
           <ListRow label={t('tv.editor.number')}>
             <NumberField label={t('tv.editor.number')} value={number} onChange={setNumber} min={1} max={99999} chars={3} />
@@ -179,59 +209,11 @@ export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: 
         </ListRow>
       </GroupedSection>
 
-      <GroupedSection title={t('tv.editor.content')}>
+      <GroupedSection title={t('tv.editor.playback')}>
         <ListRow label={t('tv.editor.library')}>
           <Select label={t('tv.editor.library')} value={libraryValue} options={libraryOptions} onChange={setLibrary} placement="bottom-end" />
         </ListRow>
-        <ListRow label={t('tv.editor.content')} stack>
-          <SegmentedControl
-            label={t('tv.editor.content')}
-            size="small"
-            value={content}
-            onChange={setContent}
-            segments={[
-              { value: 'rules', label: t('tv.editor.byRules') },
-              { value: 'picks', label: t('tv.editor.byTitles') },
-            ]}
-          />
-        </ListRow>
-        {content === 'rules' && (
-          <>
-            <ListRow label={t('tv.editor.kinds')}>
-              <MultiSelect
-                label={t('tv.editor.kinds')}
-                value={kinds}
-                min={1}
-                options={[
-                  { value: 'movie' as Kind, label: t('tv.rules.movies') },
-                  { value: 'series' as Kind, label: t('tv.rules.series') },
-                ]}
-                onChange={setKinds}
-                placement="bottom-end"
-              />
-            </ListRow>
-            <ListRow label={t('tv.editor.genres')}>
-              <MultiSelect
-                label={t('tv.editor.genres')}
-                value={genres}
-                none={t('tv.editor.anyGenre')}
-                options={(options?.genres ?? []).map((g) => ({ value: g.key, label: g.name }))}
-                onChange={setGenres}
-                placement="bottom-end"
-              />
-            </ListRow>
-            <ListRow label={t('tv.editor.years')}>
-              <Select
-                label={t('tv.editor.years')}
-                value={decade}
-                options={[{ value: '', label: t('tv.editor.anyYears') }, ...(options?.decades ?? []).map((d) => ({ value: String(d), label: t('tv.rules.decade', { decade: d }) }))]}
-                onChange={setDecade}
-                placement="bottom-end"
-              />
-            </ListRow>
-            {options?.extrasAvailable && <ChannelExtrasRow checked={extras} onChange={setExtras} />}
-          </>
-        )}
+        {content === 'rules' && options?.extrasAvailable && <ChannelExtrasRow checked={extras} onChange={setExtras} />}
         <ListRow
           label={t('tv.editor.order')}
           hint={content === 'picks' ? (order === 'ordered' ? t('tv.picks.orderedHint') : t('tv.picks.shuffleHint')) : t('tv.editor.orderHint')}
@@ -259,7 +241,6 @@ export function ChannelEditor({ channel, me, onClose, onSaved, onLogoChanged }: 
         </ListRow>
       </GroupedSection>
 
-      {content === 'picks' && <ChannelPicks picks={picks} onChange={setPicks} options={options} info={channel?.pickInfo} need={needPicks} />}
       {error && (
         <p className={styles.formError} role="alert">
           {error}

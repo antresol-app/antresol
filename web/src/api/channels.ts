@@ -18,6 +18,12 @@ export interface ChannelRules {
   genres?: string[]
   yearFrom?: number
   yearTo?: number
+  /** Made in any of these countries (ISO 3166-1, «SU» the Soviet Union). */
+  countries?: string[]
+  /** The original language is any of these (ISO 639-1). */
+  languages?: string[]
+  /** Themes: TMDB keywords (English, lower case). */
+  keywords?: string[]
   /** Round 1's chosen titles (read only: the editor saves them as picks). */
   titles?: number[]
   /** The channel's own ordered list; when set it is the whole pool (the filters are ignored). */
@@ -137,6 +143,34 @@ export interface ChannelOptions {
   profiles: { id: number; name: string }[]
   /** The server can mix in films from outside the library (rules.extras). */
   extrasAvailable?: boolean
+  /** What the library has to pick by, the most common first (older servers: none). */
+  countries?: TagCount[]
+  languages?: TagCount[]
+  keywords?: TagCount[]
+  yearMin?: number
+  yearMax?: number
+  /** «Опишите канал» has a language model behind it (else the words alone). */
+  aiAvailable?: boolean
+}
+
+export interface TagCount {
+  key: string
+  count: number
+}
+
+/** What a channel of some rules would play now (POST /api/channels/preview). */
+export interface ChannelPreviewResult {
+  movies: number
+  series: number
+  episodes: number
+  items: { id: number; kind: 'movie' | 'series'; title: string; year?: number; poster?: string }[]
+}
+
+/** A channel read from a sentence (POST /api/channels/suggest). */
+export interface ChannelSuggestion {
+  name: string
+  rules: ChannelRules
+  via: 'words' | 'ai'
 }
 
 /** A pick as the server describes it (Channel.pickInfo). */
@@ -192,6 +226,9 @@ export const setChannelFavorite = (id: number, on: boolean) => request<void>(on 
 /** The channel was tuned in: the profile's «last channel» (never progress or history). */
 export const setLastChannel = (id: number) => request<void>('PUT', '/api/channels/last', { channelId: id })
 
+export const previewChannel = (rules: ChannelRules, signal?: AbortSignal) =>
+  request<ChannelPreviewResult>('POST', '/api/channels/preview', { rules }, signal)
+export const suggestChannel = (text: string, signal?: AbortSignal) => request<ChannelSuggestion>('POST', '/api/channels/suggest', { text }, signal)
 export const getChannelOptions = (signal?: AbortSignal) => request<ChannelOptions>('GET', '/api/channels/options', undefined, signal)
 
 export const searchChannelOptions = (q: string, signal?: AbortSignal) =>
