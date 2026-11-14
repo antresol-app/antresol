@@ -656,3 +656,51 @@ func TestRemovalRereadsMark(t *testing.T) {
 		t.Fatalf("edited mark deleted: %+v", m)
 	}
 }
+
+// myshowsMark writes a mark as the MyShows puller would.
+func (e *syncEnv) myshowsMark(kind string, tmdbID int64, state tracking.MarkState, at time.Time) int64 {
+	e.t.Helper()
+	ctx := context.Background()
+	ti, err := e.st.EnsureTitle(ctx, kind, tmdbID, "x", "")
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.st.SetMark(ctx, tracking.Mark{UserID: e.uid, TitleID: ti.ID, State: state, UpdatedAt: at, Origin: "myshows"}); err != nil {
+		e.t.Fatal(err)
+	}
+	return ti.ID
+}
+
+func TestFirstLinkNeverPushesMyShowsMarks(t *testing.T) {
+	e := newSyncEnv(t)
+	newer := e.now.Add(-time.Minute)
+	e.myshowsMark("series", 104, tracking.Planned, newer) // anime, read from MyShows
+	only := e.local("movie", 102, tracking.Planned, newer)
+	e.clearOutbox()
+	e.remote.rates = []RemoteRate{rate(11, 1, "completed", 7, e.now.Add(-48*time.Hour))}
+	e.pull()
+	if items := e.outbox(); len(items) != 1 || items[0].TitleID != only {
+		t.Fatalf("outbox %+v (want only title %d)", items, only)
+	}
+	if m := e.mark("series", 104); m == nil || m.Origin != "myshows" {
+		t.Fatalf("MyShows mark changed: %+v", m)
+	}
+}
+
+func TestRemovalNeverRequeuesMyShowsMark(t *testing.T) {
+	e := newSyncEnv(t)
+	t0 := e.now.Add(-48 * time.Hour)
+	e.remote.rates = []RemoteRate{rate(11, 1, "watching", 0, t0), rate(14, 4, "planned", 0, t0)}
+	e.pull()
+	// MyShows changed series 101 since; Shikimori then drops it
+	e.myshowsMark("series", 101, tracking.Completed, e.now.Add(-time.Hour))
+	e.clearOutbox()
+	e.remote.rates = []RemoteRate{rate(14, 4, "planned", 0, t0)}
+	e.pull()
+	if m := e.mark("series", 101); m == nil || m.State != tracking.Completed || m.Origin != "myshows" {
+		t.Fatalf("newer MyShows mark lost: %+v", m)
+	}
+	if items := e.outbox(); len(items) != 0 {
+		t.Fatalf("MyShows mark queued for Shikimori: %+v", items)
+	}
+}

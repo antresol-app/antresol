@@ -2152,8 +2152,19 @@ export interface ShikimoriState {
   /** Remote entries that were not found in TMDB. */
   unmapped: number
 }
+/** GET /api/accounts → myshows (read only; absent on a server without it). */
+export interface MyShowsState {
+  linked: boolean
+  /** The MyShows login. */
+  nickname: string
+  status: Exclude<ShikimoriStatus, 'relogin'>
+  lastError: string
+  lastSync: string | null
+  unmapped: number
+}
 export interface AccountsState {
   shikimori: ShikimoriState
+  myshows?: MyShowsState
 }
 
 /** The server's Shikimori OAuth client (admin); the secret is never returned. */

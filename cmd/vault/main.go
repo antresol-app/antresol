@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/accounts"
+	"github.com/antresol-app/antresol/internal/accounts/myshows"
 	"github.com/antresol-app/antresol/internal/accounts/shikimori"
 	"github.com/antresol-app/antresol/internal/animemap"
 	"github.com/antresol-app/antresol/internal/api"
@@ -714,8 +715,9 @@ type accountsWiring struct {
 }
 
 // newAccounts builds the anime map, the Shikimori sync (pull, outbox push,
-// OAuth) and its routes, and subscribes the sync to the tracking store's
-// mark changes and the progress store's watched changes.
+// OAuth) and its routes, the MyShows puller (read only, hourly, under the
+// Shikimori sync's per-profile lock), and subscribes the sync to the
+// tracking store's mark changes and the progress store's watched changes.
 func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, tracker *tracking.Service, tm *tmdb.Client,
 	repo *library.Repo, prog *progress.Store, publicURL string) (*accountsWiring, error) {
 	keyHex, err := auth.LoadOrCreateSetting(ctx, database, "accounts_token_key", 32)
@@ -766,10 +768,23 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 			u, ok := auth.UserFrom(r.Context())
 			return accounts.Viewer{ID: u.ID, IsKid: u.IsKid, IsAdmin: u.IsAdmin}, ok
 		}}
+	var mshows *myshows.Puller
+	if tm != nil {
+		msc := myshows.New(cmp.Or(os.Getenv("VAULT_MYSHOWS_URL"), myshows.DefaultBase), nil)
+		mshows = &myshows.Puller{Accounts: store, Tracker: accountTracker{trackStore}, Remote: msc,
+			Map: &myshows.Mapper{DB: database, Client: msc, Find: tmdbIMDbFind(tm)}, Kick: tracker.Kick,
+			Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
+		acctAPI.MyShows = myShowsAccount{p: mshows, c: msc}
+	}
 	return &accountsWiring{routes: api.AccountRoutes{API: acctAPI.Routes, Browser: acctAPI.BrowserRoutes}, start: func(ctx context.Context, wg *sync.WaitGroup) {
 		wg.Add(2)
 		go func() { defer wg.Done(); amap.Run(ctx) }()
 		go func() { defer wg.Done(); syncer.Run(ctx) }()
+		if mshows != nil {
+			// without TMDB no show maps (and misses would be cached)
+			wg.Add(1)
+			go func() { defer wg.Done(); mshows.Run(ctx) }()
+		}
 	}}, nil
 }
 
@@ -856,6 +871,23 @@ func (a accountTracker) SetMark(ctx context.Context, m accounts.Mark) error {
 
 func (a accountTracker) DeleteMark(ctx context.Context, uid, titleID int64, origin string) error {
 	return a.st.DeleteMarkFrom(ctx, uid, titleID, origin)
+}
+
+// tmdbIMDbFind looks an IMDb id up on TMDB for the MyShows map: a show
+// first, else a movie.
+func tmdbIMDbFind(tm *tmdb.Client) myshows.FindFunc {
+	return func(ctx context.Context, imdb string) (int64, string, bool, error) {
+		for _, kind := range []string{"series", "movie"} {
+			id, err := tm.Find(ctx, kind, "imdb_id", imdb)
+			if err == nil {
+				return int64(id), kind, true, nil
+			}
+			if !errors.Is(err, tmdb.ErrNotFound) {
+				return 0, "", false, err
+			}
+		}
+		return 0, "", false, nil
+	}
 }
 
 // shikimoriRemote is accounts.Remote over the Shikimori client.
@@ -977,4 +1009,26 @@ func (s tmdbAnimeSearch) SearchTV(ctx context.Context, q string, year int) ([]an
 func (s tmdbAnimeSearch) SearchMovie(ctx context.Context, q string, year int) ([]animemap.Candidate, error) {
 	rs, err := s.c.SearchMovie(ctx, q, year)
 	return animeCandidates(rs), err
+}
+
+// myShowsAccount adapts the MyShows client and puller to the accounts API.
+type myShowsAccount struct {
+	p *myshows.Puller
+	c *myshows.Client
+}
+
+func (m myShowsAccount) Check(ctx context.Context, login string) error {
+	_, err := m.c.ProfileShows(ctx, login)
+	switch {
+	case errors.Is(err, myshows.ErrNotFound):
+		return accounts.ErrRemoteNotFound
+	case errors.Is(err, myshows.ErrPrivate):
+		return accounts.ErrRemoteForbidden
+	}
+	return err
+}
+
+func (m myShowsAccount) Pull(ctx context.Context, uid int64) error {
+	_, err := m.p.PullOne(ctx, uid)
+	return err
 }

@@ -358,3 +358,102 @@ func TestOAuthStatesCapped(t *testing.T) {
 		t.Fatal("oldest state kept")
 	}
 }
+
+// fakeMyShows plays the MyShows side of the routes.
+type fakeMyShows struct {
+	logins map[string]error // login → check result (absent: unknown)
+	pulls  []int64
+	budget []time.Duration // time the pull's context allows
+}
+
+func (f *fakeMyShows) Check(_ context.Context, login string) error {
+	err, ok := f.logins[login]
+	if !ok {
+		return ErrRemoteNotFound
+	}
+	return err
+}
+
+func (f *fakeMyShows) Pull(ctx context.Context, uid int64) error {
+	if d, ok := ctx.Deadline(); ok {
+		f.budget = append(f.budget, time.Until(d))
+	}
+	f.pulls = append(f.pulls, uid)
+	return nil
+}
+
+func TestMyShowsRoutes(t *testing.T) {
+	e := newAPIEnv(t)
+	ms := &fakeMyShows{logins: map[string]error{"tester": nil, "hidden": ErrRemoteForbidden, "down": context.DeadlineExceeded}}
+	e.api.MyShows = ms
+	body := func(w *httptest.ResponseRecorder) (m struct {
+		MyShows *struct {
+			Linked    bool    `json:"linked"`
+			Nickname  string  `json:"nickname"`
+			Status    string  `json:"status"`
+			LastError string  `json:"lastError"`
+			LastSync  *string `json:"lastSync"`
+			Unmapped  int     `json:"unmapped"`
+		} `json:"myshows"`
+	}) {
+		t.Helper()
+		must(t, json.Unmarshal(w.Body.Bytes(), &m))
+		return m
+	}
+
+	m := body(e.do("GET", "/api/accounts", ""))
+	if m.MyShows == nil || m.MyShows.Linked || m.MyShows.Status != StatusOK {
+		t.Fatalf("unlinked: %+v", m.MyShows)
+	}
+
+	for login, code := range map[string]int{"nobody": 404, "hidden": 422, "down": 502} {
+		if w := e.do("PUT", "/api/accounts/myshows", `{"nickname":"`+login+`"}`); w.Code != code || !strings.Contains(w.Body.String(), `"error":"L:`) {
+			t.Fatalf("%s: %d %s", login, w.Code, w.Body)
+		}
+	}
+	if w := e.do("PUT", "/api/accounts/myshows", `{"nickname":"  "}`); w.Code != 400 {
+		t.Fatalf("empty: %d", w.Code)
+	}
+	if m := body(e.do("GET", "/api/accounts", "")); m.MyShows.Linked || len(ms.pulls) != 0 {
+		t.Fatalf("a failed check linked or pulled: %+v %v", m.MyShows, ms.pulls)
+	}
+
+	w := e.do("PUT", "/api/accounts/myshows", `{"nickname":" tester "}`)
+	if w.Code != 200 {
+		t.Fatalf("link: %d %s", w.Code, w.Body)
+	}
+	if m := body(w); m.MyShows == nil || !m.MyShows.Linked || m.MyShows.Nickname != "tester" {
+		t.Fatalf("link body: %+v", m.MyShows)
+	}
+	if len(ms.pulls) != 1 || ms.pulls[0] != e.uid {
+		t.Fatalf("pulls: %v", ms.pulls)
+	}
+	// a first read of ~400 shows takes up to ten minutes: no short deadline
+	if len(ms.budget) != 1 || ms.budget[0] < 30*time.Minute {
+		t.Fatalf("link-time pull budget %v", ms.budget)
+	}
+
+	if w := e.do("DELETE", "/api/accounts/myshows", ""); w.Code != 204 {
+		t.Fatalf("unlink: %d", w.Code)
+	}
+	if m := body(e.do("GET", "/api/accounts", "")); m.MyShows.Linked {
+		t.Fatal("still linked")
+	}
+
+	e.viewer.IsKid = true
+	for _, c := range [][2]string{{"PUT", `{"nickname":"tester"}`}, {"DELETE", ""}} {
+		if w := e.do(c[0], "/api/accounts/myshows", c[1]); w.Code != 403 {
+			t.Fatalf("kid %s: %d", c[0], w.Code)
+		}
+	}
+}
+
+func TestMyShowsAbsentWithoutRemote(t *testing.T) {
+	e := newAPIEnv(t)
+	if strings.Contains(e.do("GET", "/api/accounts", "").Body.String(), "myshows") {
+		t.Fatal("myshows must be absent without a remote")
+	}
+	if w := e.do("PUT", "/api/accounts/myshows", `{"nickname":"tester"}`); w.Code != 404 {
+		t.Fatalf("PUT: %d", w.Code)
+	}
+}

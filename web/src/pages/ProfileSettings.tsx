@@ -4,11 +4,12 @@
 // its sheet. What applies to the whole server is the admin's, in
 // «Управление → Настройки сервера». A kid's sound and mail are the admin's
 // (Профили), as «Скрывать прогресс» is.
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { updateMe } from '../api/client'
 import { APP_NAME } from '../brand'
 import { AboutSheet } from '../components/AboutSheet'
+import { MyShowsAccount } from '../components/accounts/MyShowsAccount'
 import { ShikimoriAccount } from '../components/accounts/ShikimoriAccount'
 import { AppPasswordSheet } from '../components/AppPasswordSheet'
 import { DevicesSheet } from '../components/DevicesSheet'
@@ -47,6 +48,12 @@ export function ProfileSettings() {
     showNotice(error ? t(`acct.err.${known.includes(error) ? error : 'exchange'}` as Key) : t('acct.ok'), 5000)
     setParams({}, { replace: true })
   }, [params, setParams, t])
+
+  // a fresh read of the accounts: the cached link state may be a session old
+  // (a layout effect: it runs before the account blocks' own loads start)
+  useLayoutEffect(() => {
+    resetAccounts()
+  }, [])
 
   useEffect(() => {
     document.title = `${t('common.settings')} — ${APP_NAME}`
@@ -107,6 +114,7 @@ export function ProfileSettings() {
         )}
 
         {adult && <ShikimoriAccount />}
+        {adult && <MyShowsAccount />}
 
         <GroupedSection title={t('prefs.apps')}>
           <ListLinkRow icon="lock" tint="var(--gray)" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />

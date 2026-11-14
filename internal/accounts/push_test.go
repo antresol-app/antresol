@@ -477,3 +477,58 @@ func TestPushKeepsRemoteEpisodesWhenNoneWatchedHere(t *testing.T) {
 		t.Fatalf("movie updates %+v", e.w.updates)
 	}
 }
+
+// A mark read from MyShows is never newer for Shikimori: an episode-
+// triggered push sends episodes and upgrade-only status changes, never the
+// MyShows status or score, and creates no entry.
+func TestEpisodePushNeverCopiesMyShowsMark(t *testing.T) {
+	e := newPushEnv(t)
+	ctx := context.Background()
+	score := 8
+	mark := func(tmdbID int64, state tracking.MarkState) int64 {
+		ti, err := e.st.EnsureTitle(ctx, "series", tmdbID, "x", "")
+		must(t, err)
+		must(t, e.st.SetMark(ctx, tracking.Mark{UserID: e.uid, TitleID: ti.ID, State: state, Score: &score, UpdatedAt: e.now, Origin: "myshows"}))
+		return ti.ID
+	}
+	// 400: cour 1 planned remotely; MyShows says dropped; E1–3 watched here
+	a := mark(400, tracking.Dropped)
+	must(t, e.acc.SetRate(ctx, Rate{UserID: e.uid, Provider: Shikimori, TargetID: 31, TitleID: a, TMDBSeason: 1, RateID: 71, RemoteStatus: "planned", AnimeEpisodes: 12}))
+	e.episodes[a] = aired(1, 1, 12)
+	e.watched[400] = watchedRange(1, 1, 3)
+	// 101: watching remotely; MyShows says completed; E1–3 of 12 watched
+	b := mark(101, tracking.Completed)
+	must(t, e.acc.SetRate(ctx, Rate{UserID: e.uid, Provider: Shikimori, TargetID: 1, TitleID: b, TMDBSeason: 1, RateID: 61, RemoteStatus: "watching", AnimeEpisodes: 12}))
+	e.episodes[b] = aired(1, 1, 12)
+	e.watched[101] = watchedRange(1, 1, 3)
+	// 104: not in the remote list
+	c := mark(104, tracking.Watching)
+	e.episodes[c] = aired(1, 1, 12)
+	e.watched[104] = watchedRange(1, 1, 2)
+	e.clearOutbox()
+	for _, tid := range []int64{a, b, c} {
+		e.sy.EpisodesChanged(ctx, e.uid, tid)
+	}
+	e.push()
+	if len(e.w.creates) != 0 {
+		t.Fatalf("created from a MyShows mark: %+v", e.w.creates)
+	}
+	byRate := map[int64]RateWrite{}
+	for _, u := range e.w.updates {
+		byRate[u.RateID] = u.W
+	}
+	if w := byRate[71]; w.Status != "watching" || w.Episodes == nil || *w.Episodes != 3 || w.Score != nil {
+		t.Fatalf("planned cour: want episodes 3 + upgrade to watching, no score: %+v", w)
+	}
+	if w := byRate[61]; w.Status != "" || w.Episodes == nil || *w.Episodes != 3 || w.Score != nil {
+		t.Fatalf("watching cour: want episodes 3 only: %+v", w)
+	}
+	// every episode of 101 watched here: the upgrade to completed is allowed
+	e.w.updates = nil
+	e.watched[101] = watchedRange(1, 1, 12)
+	e.sy.EpisodesChanged(ctx, e.uid, b)
+	e.push()
+	if len(e.w.updates) != 1 || e.w.updates[0].W.Status != "completed" || e.w.updates[0].W.Score != nil {
+		t.Fatalf("updates %+v", e.w.updates)
+	}
+}

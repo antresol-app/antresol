@@ -10,7 +10,12 @@ func init() {
 		"Укажите ник на Shikimori":                         "Enter your Shikimori nickname",
 		"Shikimori не отвечает, попробуйте позже":          "Shikimori is not answering, try again later",
 		"Запись на Shikimori не настроена на этом сервере": "Writing to Shikimori is not set up on this server",
+		"Укажите логин на MyShows":                         "Enter your MyShows login",
+		"Пользователь MyShows не найден":                   "MyShows user not found",
+		"Профиль MyShows скрыт":                            "The MyShows profile is private",
+		"MyShows не отвечает, попробуйте позже":            "MyShows is not answering, try again later",
 		"Не удалось прочитать данные":                      "Could not read the data",
+		"TMDB недоступен, попробуем позже":                 "TMDB is unavailable, will try again later",
 		"Не удалось сохранить":                             "Could not save",
 		"Неверный запрос":                                  "Bad request",
 	})

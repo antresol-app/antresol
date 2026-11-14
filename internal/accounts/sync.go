@@ -134,6 +134,11 @@ type Syncer struct {
 	locks map[int64]*sync.Mutex
 }
 
+// originMyShows is the origin of marks read from a MyShows list
+// (internal/accounts/myshows.Provider). MyShows is a read-only secondary
+// source: such a mark is never pushed to Shikimori.
+const originMyShows = "myshows"
+
 const privateMsg = "Список скрыт: войдите через Shikimori"
 
 func (s *Syncer) now() time.Time {
@@ -164,6 +169,11 @@ func (s *Syncer) userLock(uid int64) *sync.Mutex {
 	}
 	return l
 }
+
+// UserLock is the lock that serialises one profile's syncs: other
+// providers' pulls take it too, so two lists never write a profile's
+// marks at once.
+func (s *Syncer) UserLock(uid int64) *sync.Mutex { return s.userLock(uid) }
 
 // localState maps a remote status to a mark state ("" = unknown status).
 func localState(status string) string {
@@ -616,8 +626,9 @@ func (s *Syncer) apply(ctx context.Context, link Link, rates []RemoteRate, authe
 							return res, err
 						}
 						res.Updated++
-					} else if writesQueued(link) {
-						// changed here since: it goes back to the list
+					} else if writesQueued(link) && local.Origin != originMyShows {
+						// changed here since: it goes back to the list (a
+						// mark read from MyShows never goes out)
 						if err := s.Accounts.Enqueue(ctx, uid, Shikimori, tid, "upsert", now); err != nil {
 							return res, err
 						}
@@ -641,8 +652,9 @@ func (s *Syncer) apply(ctx context.Context, link Link, rates []RemoteRate, authe
 	// first link: the profile's anime marks the remote lacks go out (not
 	// told by a list that may have been cut short)
 	if writesQueued(link) && len(rates) < rateListCap {
-		for tid := range marks {
-			if _, ok := byTitle[tid]; ok {
+		for tid, m := range marks {
+			if _, ok := byTitle[tid]; ok || m.Origin == originMyShows {
+				// a mark read from MyShows never goes out
 				continue
 			}
 			t, ok, err := s.Tracking.Title(ctx, tid)

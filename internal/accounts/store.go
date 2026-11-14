@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -125,13 +126,45 @@ func (s *Store) Links(ctx context.Context, provider string) ([]Link, error) {
 }
 
 // SetNickname creates the link when missing and records the remote
-// account's nickname and id.
+// account's nickname and id. A MyShows link set to a different login is
+// linked anew: its first pull runs again (first_pull_done, status and the
+// last sync cleared) and the old login's twins and seen entries
+// (myshows_entries) go.
 func (s *Store) SetNickname(ctx context.Context, uid int64, provider, nick string, externalID int64) error {
-	_, err := s.DB.ExecContext(ctx,
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if provider == "myshows" {
+		var old string
+		err := tx.QueryRowContext(ctx, `SELECT nickname FROM account_links WHERE user_id=? AND provider=?`, uid, provider).Scan(&old)
+		switch {
+		case err == nil && old != nick:
+			for _, q := range []string{
+				`UPDATE account_links SET first_pull_done=0, status='ok', last_error='', last_sync_at=0, unmapped=0, linked_at=? WHERE user_id=? AND provider='myshows'`,
+				`DELETE FROM account_rates WHERE user_id=? AND provider='myshows'`,
+				`DELETE FROM myshows_entries WHERE user_id=?`,
+			} {
+				args := []any{uid}
+				if strings.HasPrefix(q, "UPDATE") {
+					args = []any{time.Now().Unix(), uid}
+				}
+				if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+					return err
+				}
+			}
+		case err != nil && err != sql.ErrNoRows:
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO account_links(user_id, provider, nickname, external_id, linked_at) VALUES(?,?,?,?,?)
 		 ON CONFLICT(user_id, provider) DO UPDATE SET nickname=excluded.nickname, external_id=excluded.external_id`,
-		uid, provider, nick, externalID, time.Now().Unix())
-	return err
+		uid, provider, nick, externalID, time.Now().Unix()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func aad(uid int64, provider, field string) string {
@@ -220,7 +253,8 @@ func (s *Store) SetStatus(ctx context.Context, uid int64, provider, status, last
 	return err
 }
 
-// Unlink removes the link with its rates and pending outbox.
+// Unlink removes the link with its rates and pending outbox (a MyShows
+// link also its seen list entries, myshows_entries).
 func (s *Store) Unlink(ctx context.Context, uid int64, provider string) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -233,6 +267,11 @@ func (s *Store) Unlink(ctx context.Context, uid int64, provider string) error {
 		`DELETE FROM account_links WHERE user_id=? AND provider=?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, uid, provider); err != nil {
+			return err
+		}
+	}
+	if provider == "myshows" {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM myshows_entries WHERE user_id=?`, uid); err != nil {
 			return err
 		}
 	}

@@ -394,7 +394,14 @@ func syncedAt(rates []Rate) time.Time {
 // second of the time recorded (a pulled or pushed one) reads as unchanged
 // until its next change; a differing time, earlier or later, is a change
 // (a mark set here after one pulled with a future remote time is earlier).
+// A mark read from MyShows (origin myshows) is never newer: MyShows is a
+// read-only secondary source, so its status and score never reach
+// Shikimori; only episodes watched here (and their upgrade-only status
+// moves) do.
 func markNewer(m Mark, r Rate, synced time.Time) bool {
+	if m.Origin == originMyShows {
+		return false
+	}
 	if r.RateID == 0 {
 		return true
 	}
@@ -475,7 +482,9 @@ func planCours(kind string, m Mark, rates []Rate, watched map[[2]int]bool, eps [
 	synced := syncedAt(rates)
 	var out []courWrite
 	add := func(cw courWrite) {
-		if !cw.empty() {
+		// a mark read from MyShows creates no remote entry (it has no
+		// status of its own to give one)
+		if !cw.empty() && !(m.Origin == originMyShows && cw.rate.RateID == 0) {
 			out = append(out, cw)
 		}
 	}

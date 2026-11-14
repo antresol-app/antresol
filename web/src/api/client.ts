@@ -5,6 +5,7 @@ import type {
   TranscodingView,
   About,
   AccountsState,
+  MyShowsState,
   CalendarDay,
   ShikimoriAdminSettings,
   MarkState,
@@ -660,6 +661,8 @@ export const getTrackingCalendar = (from: string, to: string, signal?: AbortSign
 // --- accounts: the profile's Shikimori link (404 when the server has no accounts) ---
 export const getAccounts = (signal?: AbortSignal) => request<AccountsState>('GET', '/api/accounts', undefined, signal)
 export const linkShikimori = (nickname: string) => request<AccountsState>('PUT', '/api/accounts/shikimori', { nickname }).then((r) => r.shikimori)
+export const linkMyShows = (nickname: string) => request<AccountsState>('PUT', '/api/accounts/myshows', { nickname }).then((r) => r.myshows as MyShowsState)
+export const unlinkMyShows = () => request<void>('DELETE', '/api/accounts/myshows')
 export const unlinkShikimori = () => request<void>('DELETE', '/api/accounts/shikimori')
 /** enable: the sign-in address to open; disable: nothing. */
 export const setShikimoriWrite = (enable: boolean) => request<{ authorizeUrl?: string } | void>('POST', '/api/accounts/shikimori/write', { enable })

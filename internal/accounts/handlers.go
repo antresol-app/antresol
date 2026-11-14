@@ -102,6 +102,9 @@ type API struct {
 	// Background runs work after the response (nil: a goroutine).
 	Background func(func())
 	Log        *slog.Logger
+	// MyShows is the read-only MyShows link (nil: not offered, its routes
+	// answer 404 and GET leaves "myshows" out).
+	MyShows MyShows
 
 	mu     sync.Mutex
 	states map[string]oauthState
@@ -120,7 +123,10 @@ const maxStates = 1000
 // Routes mounts the API:
 //
 //	GET    /api/accounts
-//	  → {"shikimori": {"linked": bool, "nickname": str, "status": "ok"|"private"|"not_found"|"error"|"relogin",
+//	  → {"myshows": {"linked": bool, "nickname": str (the MyShows login), "status": "ok"|"private"|"not_found"|"error",
+//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "unmapped": int}
+//	     (only when MyShows is offered; read only: nothing is sent back to MyShows),
+//	     "shikimori": {"linked": bool, "nickname": str, "status": "ok"|"private"|"not_found"|"error"|"relogin",
 //	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null,
 //	     "writeState": "unasked"|"asked"|"enabled"|"declined",
 //	     "canWrite": bool (an OAuth client is configured and the public URL is https), "unmapped": int}}
@@ -129,6 +135,10 @@ const maxStates = 1000
 //	POST   /api/accounts/shikimori/write   {"enable": false} → 204 (declined, queue cleared)
 //	                                       {"enable": true}  → {"authorizeUrl": str}; 409 when canWrite is false
 //	POST   /api/accounts/shikimori/asked   → 204 (the write-back prompt was shown: unasked becomes asked; any other state stays)
+//	PUT    /api/accounts/myshows           {"nickname": login} → the GET body; the list is read once to check the login:
+//	                                       404 {"error"} unknown login, 422 {"error"} private profile (nothing is linked),
+//	                                       502 {"error"} MyShows not answering; 404 when MyShows is not offered
+//	DELETE /api/accounts/myshows           → 204 (the link, its twins and seen entries removed; marks stay)
 //	GET    /api/accounts/admin/shikimori   (admin) → {"clientId", "hasSecret": bool, "fromEnv": bool, "redirectUri", "scope": "user_rates"}
 //	PUT    /api/accounts/admin/shikimori   (admin) {"clientId", "clientSecret"} → 204 (an empty secret keeps the stored one)
 func (a *API) Routes(r chi.Router) {
@@ -137,6 +147,8 @@ func (a *API) Routes(r chi.Router) {
 	r.Delete("/api/accounts/shikimori", a.unlink)
 	r.Post("/api/accounts/shikimori/write", a.write)
 	r.Post("/api/accounts/shikimori/asked", a.asked)
+	r.Put("/api/accounts/myshows", a.putMyShows)
+	r.Delete("/api/accounts/myshows", a.unlinkMyShows)
 	r.Get("/api/accounts/admin/shikimori", a.adminGet)
 	r.Put("/api/accounts/admin/shikimori", a.adminPut)
 }
@@ -214,7 +226,7 @@ type shikimoriJSON struct {
 	Unmapped   int     `json:"unmapped"`
 }
 
-func (a *API) state(ctx context.Context, uid int64) (map[string]shikimoriJSON, error) {
+func (a *API) state(ctx context.Context, uid int64) (map[string]any, error) {
 	out := shikimoriJSON{WriteState: "unasked", Status: StatusOK, CanWrite: a.Sync.OAuth != nil && a.Sync.OAuth.CanWrite(ctx)}
 	l, ok, err := a.Sync.Accounts.Link(ctx, uid, Shikimori)
 	if err != nil {
@@ -229,7 +241,15 @@ func (a *API) state(ctx context.Context, uid int64) (map[string]shikimoriJSON, e
 			out.LastSync = &s
 		}
 	}
-	return map[string]shikimoriJSON{Shikimori: out}, nil
+	res := map[string]any{Shikimori: out}
+	if a.MyShows != nil {
+		ms, err := a.myShowsState(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		res[myShowsProvider] = ms
+	}
+	return res, nil
 }
 
 func (a *API) get(w http.ResponseWriter, r *http.Request) {
