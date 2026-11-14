@@ -5,6 +5,7 @@ package i18n
 func init() {
 	Register(EN, map[string]string{
 		"Вышло новое": "New for you",
+		"Неизвестный тип источника":     "Unknown source type",
 		"Неизвестное состояние отметки": "Unknown list state",
 		"Оценка — от 1 до 10":           "The score is from 1 to 10",
 		"Неверное число дней":           "Invalid number of days",

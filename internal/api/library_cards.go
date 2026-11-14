@@ -15,6 +15,7 @@ import (
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/progress"
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/sync/singleflight"
 )
 
 // Card is the compact item representation used by shelves, lists and search.
@@ -100,6 +101,10 @@ type lib struct {
 	// another build's search results and title pages of a kid carry its
 	// state, and its admin approves it there.
 	requests *kidRequests
+	// refreshes runs one on-demand tracking refresh per title at a time:
+	// concurrent requests for the title (the guide's episodes and choice)
+	// wait for it and share it (ensureFresh).
+	refreshes singleflight.Group
 }
 
 func userOf(r *http.Request) auth.User {

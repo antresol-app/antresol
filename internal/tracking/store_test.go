@@ -3,6 +3,7 @@ package tracking
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -195,5 +196,93 @@ func TestDueAndSetChecked(t *testing.T) {
 	}
 	if err := s.ReplaceEpisodes(ctx, ts[0].ID, []Episode{{Season: 1, Number: 1, AirDate: "2026-01-01"}}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSourceMetaRoundTrip(t *testing.T) {
+	s, ctx := newStore(t), context.Background()
+	ti, _ := s.EnsureTitle(ctx, "series", 1, "S", "")
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fi := 3
+	m := SourceMeta{ItemID: 5, Provider: "b1", Voice: "Дубляж", Lang: "ru", Audio: "Dub", Studios: []string{"X"}, Subs: []string{"en"}, FileIndex: &fi}
+	if _, err := s.UpsertSources(ctx, ti.ID, "online", []Source{{Season: 1, Episode: 1, Ref: "r", Meta: m}}, t0); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Sources(ctx, ti.ID)
+	if len(got) != 1 || !reflect.DeepEqual(got[0].Meta, m) {
+		t.Fatalf("%+v", got)
+	}
+	m2 := SourceMeta{Lang: "en", Audio: "Original"}
+	if _, err := s.UpsertSources(ctx, ti.ID, "online", []Source{{Season: 1, Episode: 1, Ref: "r", Meta: m2}}, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Sources(ctx, ti.ID)
+	if len(got) != 1 || !reflect.DeepEqual(got[0].Meta, m2) || !got[0].FirstSeen.Equal(t0) || !got[0].LastSeen.Equal(t0.Add(time.Hour)) {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestChoicePerProfile(t *testing.T) {
+	s, ctx := newStore(t), context.Background()
+	u1, u2 := addUser(t, s, "one"), addUser(t, s, "two")
+	if _, ok, err := s.Choice(ctx, u1, "series", 7); ok || err != nil {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	now := time.Now()
+	c1, c2 := Choice{Kind: "online", Provider: "b1", Voice: "A"}, Choice{Kind: "torrent", Quality: "1080p", Lang: "ja"}
+	if err := s.SetChoice(ctx, u1, "series", 7, c1, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChoice(ctx, u2, "series", 7, c2, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChoice(ctx, u1, "series", 7, Choice{Kind: "library"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, _ := s.Choice(ctx, u1, "series", 7); !ok || c.Kind != "library" {
+		t.Fatalf("%+v", c)
+	}
+	if c, ok, _ := s.Choice(ctx, u2, "series", 7); !ok || c != c2 {
+		t.Fatalf("%+v", c)
+	}
+	if _, err := s.DB.Exec(`DELETE FROM users WHERE id=?`, u2); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.DB.QueryRow(`SELECT count(*) FROM title_choices WHERE user_id=?`, u2).Scan(&n)
+	if n != 0 {
+		t.Fatalf("cascade: %d", n)
+	}
+}
+
+// TestUpsertSourcesKeepsFirstSeenOnRefChange: a row whose ref changed (a
+// library ref migration, a new pinned version, a re-uploaded torrent) keeps
+// the episode's first_seen of that kind, is not reported added and does not
+// come back in the feed.
+func TestUpsertSourcesKeepsFirstSeenOnRefChange(t *testing.T) {
+	s, ctx := newStore(t), context.Background()
+	u := addUser(t, s, "one")
+	ti, _ := s.EnsureTitle(ctx, "movie", 5, "M", "")
+	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Watching})
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.AddDate(0, 2, 0)
+	if _, err := s.UpsertSources(ctx, ti.ID, "library", []Source{{Ref: "17"}}, t0); err != nil {
+		t.Fatal(err)
+	}
+	added, err := s.UpsertSources(ctx, ti.ID, "library", []Source{{Ref: "item:17"}}, t1)
+	if err != nil || len(added) != 0 {
+		t.Fatalf("added %v %v", added, err)
+	}
+	got, _ := s.Sources(ctx, ti.ID)
+	if len(got) != 1 || got[0].Ref != "item:17" || !got[0].FirstSeen.Equal(t0) || !got[0].LastSeen.Equal(t1) {
+		t.Fatalf("%+v", got)
+	}
+	if f, _ := s.Feed(ctx, u, t1.Add(-time.Hour), nil); len(f) != 0 {
+		t.Fatalf("feed %+v", f)
+	}
+	// a second episode of the same kind is still new and added
+	added, _ = s.UpsertSources(ctx, ti.ID, "library", []Source{{Ref: "item:17"}, {Season: 1, Episode: 2, Ref: "x"}}, t1)
+	if len(added) != 1 || added[0].Ref != "x" {
+		t.Fatalf("added %+v", added)
 	}
 }

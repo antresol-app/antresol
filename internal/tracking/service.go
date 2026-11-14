@@ -81,6 +81,9 @@ type Service struct {
 	// Watched say which episodes a profile has watched (the library's
 	// progress, and more in the full build); the feed leaves them out.
 	Watched []WatchedFunc
+	// WatchStates are the same with positions, for the episodes endpoint;
+	// the full build appends «Смотреть онлайн» progress in trackingHooks.
+	WatchStates []WatchStateFunc
 
 	startAfter time.Duration // 0 = defaultStart (tests shorten it)
 

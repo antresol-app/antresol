@@ -32,7 +32,7 @@ export const episodeCode = (e: Pick<Episode, 'seasonNo' | 'episodeNo'>) =>
 
 export const seasonLabel = (s: Pick<Season, 'number'>) => (s.number === 0 ? tr('comp.episode.specials') : tr('comp.episode.season', { n: s.number }))
 
-export function episodeTitle(e: Episode): string {
+export function episodeTitle(e: Pick<Episode, 'title' | 'episodeNo'>): string {
   const name = e.title.trim()
   return name && !/^(серия|episode)\s*\d+$/i.test(name) ? name : tr('comp.episode.number', { n: e.episodeNo })
 }

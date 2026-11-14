@@ -27,6 +27,9 @@ type meCaps struct{}
 // meExtra: /api/me has no capability fields beyond libraryOnly.
 type meExtra struct{}
 
+// onlineAllowed: the core build has no «Смотреть онлайн».
+func (meExtra) onlineAllowed() bool { return false }
+
 func newMeCaps(Deps) meCaps                          { return meCaps{} }
 func (meCaps) of(context.Context, auth.User) meExtra { return meExtra{} }
 

@@ -377,7 +377,8 @@ func run() error {
 	trackStore := &tracking.Store{DB: database}
 	tracker := &tracking.Service{Store: trackStore, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(repo)},
 		Notify: notifier, Interest: trackStore.Interested, Log: slog.Default().With("component", "tracking"),
-		Watched: []tracking.WatchedFunc{tracking.LibraryWatched(repo, progStore)}}
+		Watched:     []tracking.WatchedFunc{tracking.LibraryWatched(repo, progStore)},
+		WatchStates: []tracking.WatchStateFunc{tracking.LibraryWatchState(repo, progStore)}}
 	if metaSrc.TMDB != nil {
 		tracker.Skeleton = tracking.NewTMDBSkeleton(metaSrc.TMDB)
 	}

@@ -67,13 +67,25 @@ func scanFeedItem(r scanner) (FeedItem, error) {
 	return it, nil
 }
 
+// IsNews is the one rule of «Вышло новое», shared by Feed and the
+// episodes route's «новое» tag: an episode whose first source (the earliest
+// of every kind) appeared at or after since, unless it is a series episode
+// that aired more than mailMaxAge before since (its source is a scanner's
+// baseline, old news).
+func IsNews(kind, airDate string, first, since time.Time) bool {
+	if first.Before(since) {
+		return false
+	}
+	return !(kind == "series" && airDate != "" && airDate < since.Add(-mailMaxAge).UTC().Format(time.DateOnly))
+}
+
 // Feed lists the episodes of the profile's tracked titles (marks planned,
 // watching, on hold; a watchlisted library title without a mark) whose first source appeared at or after since, newest
 // first, leaving out what watched (nil: nothing) says the profile has
 // watched. An episode of a series that aired more than mailMaxAge before
 // since is old news (its source is a scanner's baseline) and is left out.
+// The rule is IsNews: the query narrows by first_seen, IsNews decides.
 func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched WatchedFunc) ([]FeedItem, error) {
-	old := since.Add(-mailMaxAge).UTC().Format(time.DateOnly)
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, src.season, src.episode,
 		  COALESCE(e.name,''), COALESCE(e.air_date,''), src.first, src.kinds
 		FROM `+interest+` m JOIN tracked_titles t ON t.id=m.title_id
@@ -81,9 +93,8 @@ func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched
 		      FROM episode_sources GROUP BY title_id, season, episode) src ON src.title_id=t.id
 		LEFT JOIN title_episodes e ON e.title_id=t.id AND e.season=src.season AND e.number=src.episode
 		WHERE m.user_id=? AND src.first >= ?
-		  AND NOT (t.kind='series' AND COALESCE(e.air_date,'') <> '' AND e.air_date < ?)
 		ORDER BY src.first DESC, t.id, src.season DESC, src.episode DESC`,
-		userID, since.UTC().Format(time.RFC3339), old)
+		userID, since.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +105,9 @@ func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched
 			rows.Close()
 			return nil, err
 		}
-		all = append(all, it)
+		if IsNews(it.Title.Kind, it.AirDate, it.FirstSeen, since) {
+			all = append(all, it)
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

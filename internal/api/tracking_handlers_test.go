@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ type trackSkeleton struct {
 	eps   []tracking.Episode
 	info  tracking.TitleInfo
 	calls int
+	delay time.Duration // each fetch takes this long (overlapping requests)
 }
 
 func (f *trackSkeleton) Episodes(ctx context.Context, t tracking.Title) ([]tracking.Episode, string, error) {
@@ -29,6 +31,7 @@ func (f *trackSkeleton) Episodes(ctx context.Context, t tracking.Title) ([]track
 }
 
 func (f *trackSkeleton) EpisodesInfo(_ context.Context, t tracking.Title) ([]tracking.Episode, string, tracking.TitleInfo, error) {
+	time.Sleep(f.delay)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -41,7 +44,10 @@ type trackEnv struct {
 	sk  *trackSkeleton
 }
 
-func newTrackEnv(t *testing.T) *trackEnv {
+func newTrackEnv(t *testing.T) *trackEnv { return newTrackEnvWith(t, nil) }
+
+// newTrackEnvWith is newTrackEnv with more of the router's deps set.
+func newTrackEnvWith(t *testing.T, opt func(*Deps)) *trackEnv {
 	today := time.Now().Format(time.DateOnly)
 	sk := &trackSkeleton{eps: []tracking.Episode{{Season: 1, Number: 1, Name: "Первая", AirDate: today},
 		{Season: 1, Number: 2, Name: "Вторая", AirDate: today}}}
@@ -50,7 +56,11 @@ func newTrackEnv(t *testing.T) *trackEnv {
 		st := &tracking.Store{DB: db}
 		te.svc = &tracking.Service{Store: st, Skeleton: sk, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(d.Library)}}
 		te.svc.Watched = []tracking.WatchedFunc{tracking.LibraryWatched(d.Library, d.Progress)}
+		te.svc.WatchStates = []tracking.WatchStateFunc{tracking.LibraryWatchState(d.Library, d.Progress)}
 		d.Tracking = te.svc
+		if opt != nil {
+			opt(d)
+		}
 	})
 	return te
 }
@@ -529,5 +539,279 @@ func TestPutMarkKeepsScore(t *testing.T) {
 	e.do("PUT", "/api/marks/series/90", `{"state":"completed","score":null}`, e.admin)
 	if m := e.markOf("/api/marks/series/90"); m.Mark == nil || m.Mark.Score != nil {
 		t.Fatalf("null did not clear: %+v", m.Mark)
+	}
+}
+
+func TestChoiceRoute(t *testing.T) {
+	e := newTrackEnv(t)
+	kid := e.addUser(`{"name":"Вася","isKid":true,"maxRating":"12+"}`, e.admin)
+	kc := session(e.do("POST", "/api/login", `{"userId":`+itoa(kid.ID)+`}`, nil))
+	lim := e.addUser(`{"name":"Гость","maxRating":"16+"}`, e.admin)
+	lc := session(e.do("POST", "/api/login", `{"userId":`+itoa(lim.ID)+`}`, nil))
+	e.offLibrary(e.track(1, "series", 71, "Чужое взрослое"), "18+")
+	e.offLibrary(e.track(1, "series", 70, "Чужое детское"), "0+")
+	if w := e.do("GET", "/api/tracking/series/70/choice", "", e.admin); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"choice":null}` {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"online","provider":"b1","voice":"A","lang":"ru","quality":"1080p"}`, e.admin); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	w := e.do("GET", "/api/tracking/series/70/choice", "", e.admin)
+	var out struct {
+		Choice *tracking.Choice `json:"choice"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if out.Choice == nil || *out.Choice != (tracking.Choice{Kind: "online", Provider: "b1", Voice: "A", Lang: "ru", Quality: "1080p"}) {
+		t.Fatalf("%s", w.Body)
+	}
+	// per profile
+	if w := e.do("GET", "/api/tracking/series/70/choice", "", lc); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"choice":null}` {
+		t.Fatalf("other profile %d %s", w.Code, w.Body)
+	}
+	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"magnet"}`, e.admin); w.Code != 400 {
+		t.Fatalf("bad kind %d", w.Code)
+	}
+	if w := e.do("PUT", "/api/tracking/series/70/choice", `{}`, e.admin); w.Code != 204 {
+		t.Fatalf("empty %d", w.Code)
+	}
+	// the gate hides a title from a kid
+	if w := e.do("GET", "/api/tracking/series/71/choice", "", kc); w.Code != 404 {
+		t.Fatalf("kid get %d", w.Code)
+	}
+	if w := e.do("PUT", "/api/tracking/series/71/choice", `{"kind":"online"}`, kc); w.Code != 404 {
+		t.Fatalf("kid put %d", w.Code)
+	}
+}
+
+// episodesOut is the episodes endpoint's answer, as the apps read it.
+type episodesOut struct {
+	Episodes []struct {
+		Season      int    `json:"season"`
+		Number      int    `json:"number"`
+		Name        string `json:"name"`
+		AirDate     string `json:"airDate"`
+		Watched     bool   `json:"watched"`
+		PositionSec int    `json:"positionSec"`
+		New         bool   `json:"new"`
+		Sources     []struct {
+			Kind    string              `json:"kind"`
+			Ref     string              `json:"ref"`
+			Quality string              `json:"quality"`
+			Meta    tracking.SourceMeta `json:"meta"`
+		} `json:"sources"`
+	} `json:"episodes"`
+}
+
+func (e *trackEnv) episodes(tmdbID int64, c *http.Cookie) episodesOut {
+	e.t.Helper()
+	w := e.do("GET", "/api/tracking/series/"+itoa(tmdbID)+"/episodes", "", c)
+	if w.Code != 200 {
+		e.t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	return decodeJSON[episodesOut](e.t, w.Body.Bytes())
+}
+
+func (o episodesOut) kinds(ep int) []string {
+	var k []string
+	for _, s := range o.Episodes[ep].Sources {
+		k = append(k, s.Kind)
+	}
+	return k
+}
+
+// srcRows gives episode 1 of a title one row of each kind.
+func (e *trackEnv) srcRows(ti tracking.Title) {
+	ctx := context.Background()
+	now := time.Now()
+	for _, k := range []string{"pinned", "torrent", "online"} {
+		if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, k, []tracking.Source{{Season: 1, Episode: 1, Ref: k + "-ref"}}, now); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+}
+
+func TestLibraryRowsCarryEpisodeItem(t *testing.T) {
+	e := newTrackEnv(t)
+	ids := e.series("Сёгун", "16+", 42)
+	fs, err := e.repo.FilesOf(context.Background(), ids[0])
+	if err != nil || len(fs) != 1 {
+		t.Fatal(err, fs)
+	}
+	if err := e.repo.SetProbe(context.Background(), fs[0].ID, `{"Video":{"Width":1920,"Height":1080}}`, 1000); err != nil {
+		t.Fatal(err)
+	}
+	e.refresh(e.track(1, "series", 42, "Сёгун"))
+	out := e.episodes(42, e.admin)
+	src := out.Episodes[0].Sources
+	if len(src) != 1 || src[0].Kind != "library" || src[0].Ref != "item:"+itoa(ids[0]) || src[0].Quality != "1080p" ||
+		src[0].Meta.ItemID != ids[0] || src[0].Meta.FileID != fs[0].ID {
+		t.Fatalf("%+v", src)
+	}
+}
+
+func TestEpisodesFilterLibraryOnly(t *testing.T) {
+	e := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
+	e.series("Сёгун", "", 42)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.srcRows(ti)
+	e.refresh(ti)
+	if k := e.episodes(42, e.admin).kinds(0); len(k) != 1 || k[0] != "library" {
+		t.Fatalf("kinds %v", k)
+	}
+}
+
+func TestEpisodesNoOnlineForKid(t *testing.T) {
+	e := newTrackEnv(t)
+	e.series("Сёгун", "6+", 42)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.srcRows(ti)
+	e.refresh(ti)
+	for _, k := range e.episodes(42, e.kid("")).kinds(0) {
+		if k == "online" {
+			t.Fatal("kid sees online")
+		}
+	}
+}
+
+func TestEpisodesWatchedMerged(t *testing.T) {
+	e := newTrackEnv(t)
+	e.svc.WatchStates = []tracking.WatchStateFunc{
+		func(context.Context, int64, string, int64) (map[[2]int]tracking.WatchState, error) {
+			return map[[2]int]tracking.WatchState{{1, 1}: {PositionSec: 30}, {1, 2}: {Watched: true, PositionSec: 5}}, nil
+		},
+		func(context.Context, int64, string, int64) (map[[2]int]tracking.WatchState, error) {
+			return map[[2]int]tracking.WatchState{{1, 1}: {Watched: true, PositionSec: 90}, {1, 2}: {PositionSec: 50}}, nil
+		}}
+	out := e.episodes(42, e.admin)
+	a, b := out.Episodes[0], out.Episodes[1]
+	if !a.Watched || a.PositionSec != 90 || !b.Watched || b.PositionSec != 50 {
+		t.Fatalf("%+v %+v", a, b)
+	}
+}
+
+func TestEpisodesNewFlag(t *testing.T) {
+	e := newTrackEnv(t)
+	e.series("Сёгун", "", 42)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.refresh(ti)
+	ctx := context.Background()
+	// episode 1: a fresh torrent; episode 2: only the library file
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	out := e.episodes(42, e.admin)
+	if !out.Episodes[0].New || out.Episodes[1].New {
+		t.Fatalf("new %v %v", out.Episodes[0].New, out.Episodes[1].New)
+	}
+	// watched: no longer new
+	e.svc.WatchStates = append(e.svc.WatchStates, func(context.Context, int64, string, int64) (map[[2]int]tracking.WatchState, error) {
+		return map[[2]int]tracking.WatchState{{1, 1}: {Watched: true}}, nil
+	})
+	if out = e.episodes(42, e.admin); out.Episodes[0].New {
+		t.Fatal("watched episode is new")
+	}
+	// a torrent first seen outside the feed window is not new
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 2, Ref: "old"}}, time.Now().AddDate(0, 0, -feedDays-3)); err != nil {
+		t.Fatal(err)
+	}
+	if out = e.episodes(42, e.admin); out.Episodes[1].New {
+		t.Fatal("old torrent is new")
+	}
+}
+
+// TestEpisodesListLibraryOnlyEpisodes: a library file whose episode the
+// TMDB list lacks (a special, absolute numbering, a stale list) is still
+// an episode of the guide, in season/number order, named by its item.
+func TestEpisodesListLibraryOnlyEpisodes(t *testing.T) {
+	e := newTrackEnv(t)
+	e.series("Сёгун", "", 42)
+	for _, x := range []struct {
+		season, episode int
+		name            string
+	}{{0, 3, "Спецвыпуск"}, {1, 7, "Седьмая"}} {
+		p := filepath.Join(e.media, "Сёгун-extra-"+itoa(int64(x.season))+"-"+itoa(int64(x.episode))+".mkv")
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.repo.UpsertEpisode(context.Background(), library.EpisodeInput{SeriesTitle: "Сёгун", SeriesTmdbID: 42,
+			Season: x.season, Episode: x.episode, Title: x.name, File: library.FileInput{Path: p, Size: 1}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.refresh(e.track(1, "series", 42, "Сёгун"))
+	out := e.episodes(42, e.admin)
+	var got []string
+	for _, ep := range out.Episodes {
+		got = append(got, itoa(int64(ep.Season))+"x"+itoa(int64(ep.Number))+" "+ep.Name+" "+ep.AirDate+" "+strings.Join(out.kinds(len(got)), ","))
+	}
+	today := time.Now().Format(time.DateOnly)
+	want := []string{"0x3 Спецвыпуск  library", "1x1 Первая " + today + " library", "1x2 Вторая " + today + " library", "1x7 Седьмая  library"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("episodes\n%v\nwant\n%v", got, want)
+	}
+}
+
+// TestEpisodesNewFollowsFeedRule: «новое» on a row agrees with «Вышло
+// новое»: an episode that aired long ago is old news however fresh its
+// torrent, and an episode already in the library does not turn new when it
+// gets another source.
+func TestEpisodesNewFollowsFeedRule(t *testing.T) {
+	e := newTrackEnv(t)
+	e.sk.eps[0].AirDate = time.Now().AddDate(0, 0, -60).Format(time.DateOnly)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.refresh(ti)
+	ctx := context.Background()
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := e.episodes(42, e.admin); out.Episodes[0].New {
+		t.Fatal("an episode aired 60 days ago is new")
+	}
+
+	e2 := newTrackEnv(t)
+	e2.series("Сёгун", "", 42)
+	ti2 := e2.track(1, "series", 42, "Сёгун")
+	e2.refresh(ti2)
+	old := time.Now().AddDate(0, 0, -feedDays-5).UTC().Format(time.RFC3339)
+	if _, err := e2.db.Exec(`UPDATE episode_sources SET first_seen=? WHERE kind='library'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e2.svc.Store.UpsertSources(ctx, ti2.ID, "pinned", []tracking.Source{{Season: 1, Episode: 1, Ref: "pin:1:0"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := e2.episodes(42, e2.admin); out.Episodes[0].New {
+		t.Fatal("a library episode with a fresh pin is new")
+	}
+}
+
+// TestOnDemandRefreshSharedByConcurrentRequests: the guide asks for the
+// episodes and the choice of an untracked title at once; one refresh serves
+// both.
+func TestOnDemandRefreshSharedByConcurrentRequests(t *testing.T) {
+	e := newTrackEnv(t)
+	e.sk.delay = 150 * time.Millisecond
+	// the title exists (as a first visit leaves it), never refreshed
+	if _, err := e.svc.Store.EnsureTitle(context.Background(), "series", 55, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	codes := make([]int, 4)
+	for i, path := range []string{"episodes", "choice", "episodes", "choice"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes[i] = e.do("GET", "/api/tracking/series/55/"+path, "", e.admin).Code
+		}()
+	}
+	wg.Wait()
+	for i, c := range codes {
+		if c != 200 {
+			t.Fatalf("request %d: %d", i, c)
+		}
+	}
+	e.sk.mu.Lock()
+	defer e.sk.mu.Unlock()
+	if e.sk.calls != 1 {
+		t.Fatalf("refreshes %d, want 1", e.sk.calls)
 	}
 }

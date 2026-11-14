@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -191,7 +192,10 @@ func (s *Store) ReplaceEpisodes(ctx context.Context, titleID int64, eps []Episod
 
 // UpsertSources syncs the sources of one kind for a title: rows not in srcs
 // are deleted, known rows get last_seen (and details) refreshed, and the rows
-// new for that title+kind are returned.
+// new for that title+kind are returned. A row whose episode already had a row
+// of the kind under another ref (a library ref migration, a new pinned
+// version, a re-uploaded torrent) takes that episode's earliest first_seen
+// and is not returned: it is the same source under a new name, not news.
 func (s *Store) UpsertSources(ctx context.Context, titleID int64, kind string, srcs []Source, now time.Time) ([]Source, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -204,18 +208,24 @@ func (s *Store) UpsertSources(ctx context.Context, titleID int64, kind string, s
 		ref        string
 	}
 	existing := map[key]bool{}
+	firstOf := map[[2]int]string{} // the earliest first_seen of each episode's rows
 	rows, err := tx.QueryContext(ctx,
-		`SELECT season, episode, ref FROM episode_sources WHERE title_id=? AND kind=?`, titleID, kind)
+		`SELECT season, episode, ref, first_seen FROM episode_sources WHERE title_id=? AND kind=?`, titleID, kind)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var k key
-		if err := rows.Scan(&k.season, &k.ep, &k.ref); err != nil {
+		var fs string
+		if err := rows.Scan(&k.season, &k.ep, &k.ref, &fs); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		existing[k] = true
+		// RFC3339 UTC strings order as times
+		if f, ok := firstOf[[2]int{k.season, k.ep}]; !ok || fs < f {
+			firstOf[[2]int{k.season, k.ep}] = fs
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -237,20 +247,28 @@ func (s *Store) UpsertSources(ctx context.Context, titleID int64, kind string, s
 			labels = []string{}
 		}
 		lj, _ := json.Marshal(labels)
+		mj, _ := json.Marshal(src.Meta)
 		if existing[k] {
 			if _, err := tx.ExecContext(ctx,
-				`UPDATE episode_sources SET provider=?, quality=?, labels_json=?, last_seen=?
+				`UPDATE episode_sources SET provider=?, quality=?, labels_json=?, meta_json=?, last_seen=?
 				 WHERE title_id=? AND season=? AND episode=? AND kind=? AND ref=?`,
-				src.Provider, src.Quality, string(lj), ts, titleID, src.Season, src.Episode, kind, src.Ref); err != nil {
+				src.Provider, src.Quality, string(lj), string(mj), ts, titleID, src.Season, src.Episode, kind, src.Ref); err != nil {
 				return nil, err
 			}
 			continue
 		}
+		first, renamed := firstOf[[2]int{src.Season, src.Episode}]
+		if !renamed {
+			first = ts
+		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO episode_sources(title_id, season, episode, kind, ref, provider, quality, labels_json, first_seen, last_seen)
-			 VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			titleID, src.Season, src.Episode, kind, src.Ref, src.Provider, src.Quality, string(lj), ts, ts); err != nil {
+			`INSERT INTO episode_sources(title_id, season, episode, kind, ref, provider, quality, labels_json, meta_json, first_seen, last_seen)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			titleID, src.Season, src.Episode, kind, src.Ref, src.Provider, src.Quality, string(lj), string(mj), first, ts); err != nil {
 			return nil, err
+		}
+		if renamed {
+			continue
 		}
 		n := src
 		n.TitleID, n.Kind, n.FirstSeen, n.LastSeen = titleID, kind, now, now
@@ -275,7 +293,7 @@ func (s *Store) UpsertSources(ctx context.Context, titleID int64, kind string, s
 // Sources lists all sources of a title.
 func (s *Store) Sources(ctx context.Context, titleID int64) ([]Source, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT title_id, season, episode, kind, ref, provider, quality, labels_json, first_seen, last_seen
+		`SELECT title_id, season, episode, kind, ref, provider, quality, labels_json, meta_json, first_seen, last_seen
 		 FROM episode_sources WHERE title_id=? ORDER BY season, episode, kind, ref`, titleID)
 	if err != nil {
 		return nil, err
@@ -284,11 +302,12 @@ func (s *Store) Sources(ctx context.Context, titleID int64) ([]Source, error) {
 	var out []Source
 	for rows.Next() {
 		var x Source
-		var lj, fs, ls string
-		if err := rows.Scan(&x.TitleID, &x.Season, &x.Episode, &x.Kind, &x.Ref, &x.Provider, &x.Quality, &lj, &fs, &ls); err != nil {
+		var lj, mj, fs, ls string
+		if err := rows.Scan(&x.TitleID, &x.Season, &x.Episode, &x.Kind, &x.Ref, &x.Provider, &x.Quality, &lj, &mj, &fs, &ls); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(lj), &x.Labels)
+		_ = json.Unmarshal([]byte(mj), &x.Meta)
 		x.FirstSeen, _ = time.Parse(time.RFC3339, fs)
 		x.LastSeen, _ = time.Parse(time.RFC3339, ls)
 		out = append(out, x)
@@ -449,4 +468,36 @@ func (s *Store) Episodes(ctx context.Context, titleID int64) ([]Episode, error) 
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// Choice is the profile's source choice for a title (false: none made).
+func (s *Store) Choice(ctx context.Context, userID int64, kind string, tmdbID int64) (Choice, bool, error) {
+	var cj string
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT choice_json FROM title_choices WHERE user_id=? AND kind=? AND tmdb_id=?`,
+		userID, kind, tmdbID).Scan(&cj)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Choice{}, false, nil
+	}
+	if err != nil {
+		return Choice{}, false, err
+	}
+	var c Choice
+	if err := json.Unmarshal([]byte(cj), &c); err != nil {
+		return Choice{}, false, err
+	}
+	return c, true, nil
+}
+
+// SetChoice stores the profile's source choice for a title.
+func (s *Store) SetChoice(ctx context.Context, userID int64, kind string, tmdbID int64, c Choice, now time.Time) error {
+	cj, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx,
+		`INSERT INTO title_choices(user_id, kind, tmdb_id, choice_json, updated_at) VALUES(?,?,?,?,?)
+		 ON CONFLICT(user_id, kind, tmdb_id) DO UPDATE SET choice_json=excluded.choice_json, updated_at=excluded.updated_at`,
+		userID, kind, tmdbID, string(cj), now.Unix())
+	return err
 }

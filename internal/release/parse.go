@@ -513,3 +513,38 @@ func Normalize(title string) string {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}), " ")
 }
+
+// reAudioTag: an explicit audio-language tag of a release name, written in
+// capitals («ENG», «JAP»).
+var reAudioTag = rx(lb + `(RUS|ENG|JAP|JPN|KOR|UKR|GER|FRE|ITA|SPA|CHI)` + rb)
+
+// AudioLang is the ISO 639-1 language of a release's audio track: an explicit
+// tag in the name (ENG, JAP, ...) wins unless the same language is the
+// release's subtitle language; Russian dub types (Dub, MVO, AVO) and named
+// voice-over studios mean "ru"; an original track or nothing said is "" (unknown).
+func AudioLang(name string, info Info) string {
+	for _, m := range reAudioTag.FindAllStringSubmatch(name, -1) {
+		c := subLangs[strings.ToLower(m[1])]
+		if c != "" && !containsStr(info.Subs, c) {
+			return c
+		}
+	}
+	for _, a := range info.Audio {
+		if a == "Dub" || a == "MVO" || a == "AVO" {
+			return "ru"
+		}
+	}
+	if len(info.Studios) > 0 {
+		return "ru"
+	}
+	return ""
+}
+
+func containsStr(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}

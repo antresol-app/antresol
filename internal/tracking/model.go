@@ -57,5 +57,29 @@ type Source struct {
 	Ref, Provider       string
 	Quality             string
 	Labels              []string
+	Meta                SourceMeta
 	FirstSeen, LastSeen time.Time
+}
+
+// SourceMeta is what a source offers beyond provider and quality.
+type SourceMeta struct {
+	ItemID    int64    `json:"itemId,omitempty"`     // library: the episode (or movie) item to play
+	FileID    int64    `json:"fileId,omitempty"`     // library: the file
+	SourceID  string   `json:"sourceId,omitempty"`   // torrent/pinned: indexer source id
+	Provider  string   `json:"providerId,omitempty"` // online: balancer id (online_progress.source)
+	Voice     string   `json:"voice,omitempty"`      // online: voice name; torrent/pinned: first studio or ""
+	Lang      string   `json:"lang,omitempty"`       // audio language: ISO 639-1 ("ru","en","ja"), "" = unknown
+	Audio     string   `json:"audio,omitempty"`      // Dub|MVO|AVO|Original|""
+	Studios   []string `json:"studios,omitempty"`
+	Subs      []string `json:"subs,omitempty"`
+	FileIndex *int     `json:"fileIndex,omitempty"` // pinned: engine file index
+}
+
+// Choice is a profile's preferred source of a title; every field is optional.
+type Choice struct {
+	Kind     string `json:"kind,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Voice    string `json:"voice,omitempty"`
+	Lang     string `json:"lang,omitempty"`
+	Quality  string `json:"quality,omitempty"`
 }

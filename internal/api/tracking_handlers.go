@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ const (
 	feedDays        = 14               // its default window
 	feedMaxDays     = 90               // its widest window
 	calendarMaxDays = 42               // to - from of /api/tracking/calendar
-	onDemandBudget  = 15 * time.Second // an untracked title's refresh on its episodes page
+	onDemandBudget  = 15 * time.Second // an untracked title's refresh on its episodes page and choice routes
 	onDemandFresh   = 6 * time.Hour    // an untracked title refreshed this recently is not fetched again
 )
 
@@ -35,6 +36,8 @@ func mountTracking(r chi.Router, h *lib) {
 	r.Get("/api/tracking/feed", h.trackingFeed)
 	r.Get("/api/tracking/calendar", h.trackingCalendar)
 	r.Get("/api/tracking/{kind}/{tmdbId}/episodes", h.trackingEpisodes)
+	r.Get("/api/tracking/{kind}/{tmdbId}/choice", h.getChoice)
+	r.Put("/api/tracking/{kind}/{tmdbId}/choice", h.putChoice)
 }
 
 type trackTitleOut struct {
@@ -55,12 +58,13 @@ type markOut struct {
 }
 
 type sourceOut struct {
-	Kind      string    `json:"kind"`
-	Ref       string    `json:"ref"`
-	Provider  string    `json:"provider,omitempty"`
-	Quality   string    `json:"quality,omitempty"`
-	Labels    []string  `json:"labels"`
-	FirstSeen time.Time `json:"firstSeen"`
+	Kind      string              `json:"kind"`
+	Ref       string              `json:"ref"`
+	Provider  string              `json:"provider,omitempty"`
+	Quality   string              `json:"quality,omitempty"`
+	Labels    []string            `json:"labels"`
+	FirstSeen time.Time           `json:"firstSeen"`
+	Meta      tracking.SourceMeta `json:"meta"`
 }
 
 type feedItemOut struct {
@@ -172,8 +176,10 @@ func titleParams(w http.ResponseWriter, r *http.Request) (string, int64, bool) {
 
 // ensureFresh returns the title (created, unmarked, when absent) after a
 // refresh within onDemandBudget when nobody tracks it and it was not
-// refreshed in onDemandFresh (or when force). A failed refresh is logged:
-// the stored state is served.
+// refreshed in onDemandFresh (or when force). Concurrent callers for one
+// title share one refresh (h.refreshes); it runs to its budget even when the
+// request that started it goes away. A failed refresh is logged: the stored
+// state is served.
 func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, poster string, force bool) (tracking.Title, error) {
 	st := h.Tracking.Store
 	t, err := st.EnsureTitle(ctx, kind, tmdbID, name, poster)
@@ -192,13 +198,23 @@ func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, 
 			return t, nil // the refresher keeps it
 		}
 	}
-	rctx, cancel := context.WithTimeout(ctx, onDemandBudget)
-	defer cancel()
-	if err := h.Tracking.Refresh(rctx, t.ID); err != nil {
-		if ctx.Err() != nil {
-			return t, ctx.Err()
+	key := kind + "/" + strconv.FormatInt(tmdbID, 10)
+	done := h.refreshes.DoChan(key, func() (any, error) {
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), onDemandBudget)
+		defer cancel()
+		// a flight that ended after this caller's check above refreshed it
+		if now, _, err := st.TitleByID(rctx, t.ID); err == nil && !force && now.Refreshed.After(t.Refreshed) {
+			return nil, nil
 		}
-		log.Printf("tracking: on-demand refresh %s %d: %v", kind, tmdbID, err)
+		if err := h.Tracking.Refresh(rctx, t.ID); err != nil {
+			log.Printf("tracking: on-demand refresh %s %d: %v", kind, tmdbID, err)
+		}
+		return nil, nil
+	})
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return t, ctx.Err()
 	}
 	t, _, err = st.TitleByID(ctx, t.ID)
 	return t, err
@@ -528,31 +544,45 @@ func (h *lib) trackingCalendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"days": out})
 }
 
+// sourceKindsFor is the source kinds the caller may be shown: a library-only
+// server and a kid have the library's alone (a kid's every other play and
+// download route is nonKid); «Смотреть онлайн» rows need the profile's
+// canWatchOnline.
+func (h *lib) sourceKindsFor(ctx context.Context, u auth.User) map[string]bool {
+	if h.LibraryOnly || u.IsKid {
+		return map[string]bool{"library": true}
+	}
+	k := map[string]bool{"library": true, "pinned": true, "torrent": true}
+	if newMeCaps(h.Deps).of(ctx, u).onlineAllowed() {
+		k["online"] = true
+	}
+	return k
+}
+
+// trackingEpisodes serves GET /api/tracking/{kind}/{tmdbId}/episodes, the
+// apps' contract:
+//
+//	{title, episodes: [{season, number, name, airDate,
+//	    watched: bool, positionSec?: int, new: bool,
+//	    sources: [{kind, ref, provider?, quality?, labels[], firstSeen,
+//	               meta: SourceMeta}]}]}
+//
+// Sources are those the caller may use (sourceKindsFor). meta is
+// tracking.SourceMeta (itemId and fileId play a library row; ref of a
+// library row is "item:<id>"). watched and positionSec merge the profile's
+// WatchStates (watched if any says so, the largest position). new: the
+// episode is unwatched, has a source other than the library's, and is news
+// by the feed's rule (tracking.IsNews over its earliest source of any kind,
+// since the feed's default window, feedDays). 404 when the rating gate
+// hides the title.
 func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
-	ctx, u := r.Context(), userOf(r)
+	ctx := r.Context()
 	kind, tmdbID, ok := titleParams(w, r)
 	if !ok {
 		return
 	}
-	var t tracking.Title
-	var err error
-	if h.Tracking.Skeleton != nil {
-		t, err = h.ensureFresh(ctx, kind, tmdbID, "", "", false)
-	} else {
-		t, err = h.Tracking.Store.EnsureTitle(ctx, kind, tmdbID, "", "")
-	}
-	if err != nil {
-		internalErr(w, r, "tracking episodes", err)
-		return
-	}
-	g := h.gate(u)
-	res, err := g.check(ctx, t)
-	if err != nil {
-		internalErr(w, r, "tracking episodes gate", err)
-		return
-	}
-	if !res.ok {
-		writeErr(w, r, http.StatusNotFound, "Не найдено")
+	t, res, ok := h.gatedTitle(w, r, kind, tmdbID)
+	if !ok {
 		return
 	}
 	eps, err := h.Tracking.Store.Episodes(ctx, t.ID)
@@ -565,31 +595,88 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "tracking sources", err)
 		return
 	}
-	bySE := map[[2]int][]sourceOut{}
+	u := userOf(r)
+	states, err := tracking.MergeWatchStates(ctx, h.Tracking.WatchStates, u.ID, kind, tmdbID)
+	if err != nil {
+		internalErr(w, r, "tracking watch state", err)
+		return
+	}
+	kinds := h.sourceKindsFor(ctx, u)
+	since := time.Now().AddDate(0, 0, -feedDays)
+	first := map[[2]int]time.Time{} // every kind's, as the feed counts
 	for _, s := range srcs {
+		k := [2]int{s.Season, s.Episode}
+		if f, ok := first[k]; !ok || s.FirstSeen.Before(f) {
+			first[k] = s.FirstSeen
+		}
+	}
+	type epOut struct {
+		Season      int         `json:"season"`
+		Number      int         `json:"number"`
+		Name        string      `json:"name"`
+		AirDate     string      `json:"airDate"`
+		Watched     bool        `json:"watched"`
+		PositionSec int         `json:"positionSec,omitempty"`
+		New         bool        `json:"new"`
+		Sources     []sourceOut `json:"sources"`
+	}
+	byKey := map[[2]int]*epOut{}
+	out := make([]*epOut, 0, len(eps))
+	add := func(season, number int, name, airDate string) *epOut {
+		st := states[[2]int{season, number}]
+		e := &epOut{Season: season, Number: number, Name: name, AirDate: airDate,
+			Watched: st.Watched, PositionSec: st.PositionSec, Sources: []sourceOut{}}
+		out = append(out, e)
+		byKey[[2]int{season, number}] = e
+		return e
+	}
+	for _, e := range eps {
+		add(e.Season, e.Number, e.Name, e.AirDate)
+	}
+	extra := false
+	for _, s := range srcs {
+		if !kinds[s.Kind] {
+			continue
+		}
+		e := byKey[[2]int{s.Season, s.Episode}]
+		if e == nil {
+			if s.Kind != "library" {
+				continue
+			}
+			// a file the episode list lacks (a special, absolute
+			// numbering, a list not refreshed yet): still an episode
+			e = add(s.Season, s.Episode, h.libraryEpisodeName(ctx, s.Meta.ItemID), "")
+			extra = true
+		}
 		labels := s.Labels
 		if labels == nil {
 			labels = []string{}
 		}
-		k := [2]int{s.Season, s.Episode}
-		bySE[k] = append(bySE[k], sourceOut{Kind: s.Kind, Ref: s.Ref, Provider: s.Provider, Quality: s.Quality, Labels: labels, FirstSeen: s.FirstSeen})
-	}
-	type epOut struct {
-		Season  int         `json:"season"`
-		Number  int         `json:"number"`
-		Name    string      `json:"name"`
-		AirDate string      `json:"airDate"`
-		Sources []sourceOut `json:"sources"`
-	}
-	out := make([]epOut, 0, len(eps))
-	for _, e := range eps {
-		s := bySE[[2]int{e.Season, e.Number}]
-		if s == nil {
-			s = []sourceOut{}
+		e.Sources = append(e.Sources, sourceOut{Kind: s.Kind, Ref: s.Ref, Provider: s.Provider, Quality: s.Quality,
+			Labels: labels, FirstSeen: s.FirstSeen, Meta: s.Meta})
+		if s.Kind != "library" && !e.Watched && tracking.IsNews(kind, e.AirDate, first[[2]int{s.Season, s.Episode}], since) {
+			e.New = true
 		}
-		out = append(out, epOut{e.Season, e.Number, e.Name, e.AirDate, s})
+	}
+	if extra {
+		sort.SliceStable(out, func(i, j int) bool {
+			a, b := out[i], out[j]
+			return a.Season < b.Season || a.Season == b.Season && a.Number < b.Number
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"title": titleJSON(t, res.item), "episodes": out})
+}
+
+// libraryEpisodeName is the name of a library episode item ("" when unknown).
+func (h *lib) libraryEpisodeName(ctx context.Context, itemID int64) string {
+	if itemID <= 0 || h.Library == nil {
+		return ""
+	}
+	it, err := h.Library.Item(ctx, itemID)
+	if err != nil {
+		return ""
+	}
+	return it.Title
 }
 
 // trackedShelf is «Вышло новое»: one card per title of the profile's feed
@@ -667,4 +754,88 @@ func (h *lib) watchlistToMark(ctx context.Context, userID int64, it library.Item
 	}
 	h.Tracking.Kick(t.ID)
 	return nil
+}
+
+// gatedTitle returns the title (created unmarked when absent; refreshed on
+// demand by ensureFresh when a TMDB skeleton is set) and its rating gate
+// result. The gate reads
+// the title's stored cert, which a refresh fills, so the episodes and the
+// choice routes go through here to agree on who may see the title. false: the response
+// (404 or 500) is written.
+func (h *lib) gatedTitle(w http.ResponseWriter, r *http.Request, kind string, tmdbID int64) (tracking.Title, gateResult, bool) {
+	ctx := r.Context()
+	var t tracking.Title
+	var err error
+	if h.Tracking.Skeleton != nil {
+		t, err = h.ensureFresh(ctx, kind, tmdbID, "", "", false)
+	} else {
+		t, err = h.Tracking.Store.EnsureTitle(ctx, kind, tmdbID, "", "")
+	}
+	if err != nil {
+		internalErr(w, r, "tracking title", err)
+		return t, gateResult{}, false
+	}
+	res, err := h.gate(userOf(r)).check(ctx, t)
+	if err != nil {
+		internalErr(w, r, "tracking title gate", err)
+		return t, gateResult{}, false
+	}
+	if !res.ok {
+		writeErr(w, r, http.StatusNotFound, "Не найдено")
+		return t, gateResult{}, false
+	}
+	return t, res, true
+}
+
+// getChoice serves GET /api/tracking/{kind}/{tmdbId}/choice: the profile's
+// source choice for the title as {"choice": {kind, provider, voice, lang,
+// quality}} (fields omitted when empty), or {"choice": null} when none was
+// made. 404 when the rating gate hides the title.
+func (h *lib) getChoice(w http.ResponseWriter, r *http.Request) {
+	kind, tmdbID, ok := titleParams(w, r)
+	if !ok {
+		return
+	}
+	if _, _, ok := h.gatedTitle(w, r, kind, tmdbID); !ok {
+		return
+	}
+	c, found, err := h.Tracking.Store.Choice(r.Context(), userOf(r).ID, kind, tmdbID)
+	if err != nil {
+		internalErr(w, r, "tracking choice", err)
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusOK, map[string]any{"choice": nil})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"choice": c})
+}
+
+// putChoice serves PUT /api/tracking/{kind}/{tmdbId}/choice. The body is a
+// Choice {kind, provider, voice, lang, quality}, every field optional; kind
+// is one of library|pinned|torrent|online or empty, else 400. 204 on
+// success, 404 when the rating gate hides the title.
+func (h *lib) putChoice(w http.ResponseWriter, r *http.Request) {
+	kind, tmdbID, ok := titleParams(w, r)
+	if !ok {
+		return
+	}
+	var in tracking.Choice
+	if !decode(w, r, &in) {
+		return
+	}
+	switch in.Kind {
+	case "", "library", "pinned", "torrent", "online":
+	default:
+		writeErr(w, r, http.StatusBadRequest, "Неизвестный тип источника")
+		return
+	}
+	if _, _, ok := h.gatedTitle(w, r, kind, tmdbID); !ok {
+		return
+	}
+	if err := h.Tracking.Store.SetChoice(r.Context(), userOf(r).ID, kind, tmdbID, in, time.Now()); err != nil {
+		internalErr(w, r, "tracking choice", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

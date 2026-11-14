@@ -92,7 +92,8 @@ func TestTMDBSkeletonMovie(t *testing.T) {
 
 type fakeLibrary struct {
 	items map[string]library.Item
-	have  map[[2]int]bool
+	files map[[2]int]library.EpisodeFile
+	movie []library.File
 }
 
 func (f *fakeLibrary) ItemByTMDB(_ context.Context, kind string, _ int64) (library.Item, error) {
@@ -103,25 +104,30 @@ func (f *fakeLibrary) ItemByTMDB(_ context.Context, kind string, _ int64) (libra
 	return it, nil
 }
 
-func (f *fakeLibrary) HaveEpisodes(context.Context, int64) (map[[2]int]bool, error) {
-	return f.have, nil
+func (f *fakeLibrary) EpisodeFiles(context.Context, int64) (map[[2]int]library.EpisodeFile, error) {
+	return f.files, nil
 }
+
+func (f *fakeLibrary) FilesOf(context.Context, int64) ([]library.File, error) { return f.movie, nil }
 
 func TestLibraryScanner(t *testing.T) {
 	ctx := context.Background()
 	f := &fakeLibrary{items: map[string]library.Item{"series": {ID: 11}, "movie": {ID: 12}},
-		have: map[[2]int]bool{{1, 2}: true, {1, 1}: true}}
+		files: map[[2]int]library.EpisodeFile{{1, 2}: {ItemID: 22, FileID: 32, Resolution: 720}, {1, 1}: {ItemID: 21, FileID: 31, Resolution: 1080}},
+		movie: []library.File{{ID: 40, ProbeJSON: `{"Video":{"Width":3840,"Height":2160}}`}}}
 	sc := NewLibraryScanner(f)
 	if sc.Kind() != "library" {
 		t.Fatal(sc.Kind())
 	}
 	got, err := sc.Scan(ctx, Title{Kind: "series", TMDBID: 1}, nil)
-	want := []Source{{Season: 1, Episode: 1, Kind: "library", Ref: "11"}, {Season: 1, Episode: 2, Kind: "library", Ref: "11"}}
+	want := []Source{
+		{Season: 1, Episode: 1, Kind: "library", Ref: "item:21", Quality: "1080p", Meta: SourceMeta{ItemID: 21, FileID: 31}},
+		{Season: 1, Episode: 2, Kind: "library", Ref: "item:22", Quality: "720p", Meta: SourceMeta{ItemID: 22, FileID: 32}}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("series %+v %v", got, err)
 	}
 	got, err = sc.Scan(ctx, Title{Kind: "movie", TMDBID: 1}, nil)
-	if err != nil || !reflect.DeepEqual(got, []Source{{Kind: "library", Ref: "12"}}) {
+	if err != nil || !reflect.DeepEqual(got, []Source{{Kind: "library", Ref: "item:12", Quality: "2160p", Meta: SourceMeta{ItemID: 12, FileID: 40}}}) {
 		t.Fatalf("movie %+v %v", got, err)
 	}
 	f.items = nil

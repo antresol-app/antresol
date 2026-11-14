@@ -1,0 +1,21 @@
+// Russian source strings (the episode guide: sources of an episode, the source picker).
+export default {
+  'episodes.guide': 'Серии',
+  'episodes.new': 'новое',
+  'episodes.watched': 'просмотрено',
+  'episodes.progress': 'продолжить с {time}',
+  'episodes.upcoming': 'выйдет {date}',
+  'episodes.noSources': 'нет источников',
+  'episodes.choose': 'Выбрать источник',
+  'episodes.moreTags': '+{n}',
+  'episodes.kind.library': 'Диск',
+  'episodes.kind.pinned': 'Закреплённая',
+  'episodes.kind.online': 'Онлайн',
+  'episodes.kind.torrent': 'Торрент',
+  'episodes.sheet.title': 'Серия {n} · {name}',
+  'episodes.sheet.otherLang': 'Другое',
+  'episodes.sheet.subs': 'Субтитры',
+  'episodes.sheet.other': 'Другие источники…',
+  'episodes.sheet.download': 'Скачать серию',
+  'episodes.sheet.toDevice': 'На устройство',
+}

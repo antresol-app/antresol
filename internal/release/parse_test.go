@@ -109,3 +109,22 @@ func TestParseSubs(t *testing.T) {
 		}
 	}
 }
+
+func TestAudioLang(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"dub", "Дюна (2024) WEB-DL 2160p | Дубляж", "ru"},
+		{"mvo", "Show S01 1080p MVO", "ru"},
+		{"studio", "Show S01 1080p | LostFilm", "ru"},
+		{"original", "Show S01 1080p Original", ""},
+		{"plain", "Show.S01.1080p.WEB-DL", ""},
+		{"eng tag", "Show.S01.1080p.ENG", "en"},
+		{"jap tag", "Show S01 1080p JAP + Sub", "ja"},
+		{"eng only as subs", "Show S01 1080p MVO + Sub ENG", "ru"},
+		{"tag beats dub", "Show S01 1080p Dub ENG", "en"},
+	}
+	for _, c := range cases {
+		if got := AudioLang(c.in, Parse(c.in)); got != c.want {
+			t.Errorf("%s: AudioLang(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}

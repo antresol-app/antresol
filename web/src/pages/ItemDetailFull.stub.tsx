@@ -3,7 +3,7 @@
 // (tsconfig moduleSuffixes, vite.config.ts resolve.extensions). Same exports
 // and types; the core build never reaches them (__LIBRARY_EDITION__).
 import type { ReactNode } from 'react'
-import type { FollowRef, ItemDetail as Detail, KidRequestState, TitleInfo } from '../api/types'
+import type { FollowRef, ItemDetail as Detail, KidRequestState, SourceChoice, TitleEpisode, TitleInfo } from '../api/types'
 import type { WatchWay } from '../components/WatchButton'
 
 const absent = (): never => {
@@ -59,6 +59,7 @@ export function TitleActions(_props: {
   follow?: ReactNode
   addSeason?: boolean
   kidRequest?: KidRequestState
+  guide?: { episodes: TitleEpisode[]; choice: SourceChoice | null } | null
 }) {
   return null
 }

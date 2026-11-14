@@ -2038,3 +2038,60 @@ export interface CalendarDay {
   date: string
   items: TrackingItem[]
 }
+
+// --- Ongoing tracking: a title's episodes with their sources, and the profile's source choice ---
+
+/** What a source offers beyond provider and quality (server tracking.SourceMeta). */
+export interface SourceMeta {
+  itemId?: number
+  fileId?: number
+  sourceId?: string
+  /** online: balancer id */
+  providerId?: string
+  voice?: string
+  /** audio language, ISO 639-1; absent = unknown */
+  lang?: string
+  /** Dub | MVO | AVO | Original */
+  audio?: string
+  studios?: string[]
+  subs?: string[]
+  fileIndex?: number
+}
+
+export type SourceKind = 'library' | 'pinned' | 'torrent' | 'online'
+
+export interface EpisodeSource {
+  kind: SourceKind
+  ref: string
+  /** display name of the provider */
+  provider?: string
+  quality?: string
+  labels: string[]
+  firstSeen: string
+  meta: SourceMeta
+}
+
+export interface TitleEpisode {
+  season: number
+  number: number
+  name: string
+  airDate: string
+  watched: boolean
+  positionSec?: number
+  new: boolean
+  sources: EpisodeSource[]
+}
+
+export interface TitleEpisodes {
+  title: { kind: string; tmdbId: number; name: string; poster: string; status: string; itemId?: number }
+  episodes: TitleEpisode[]
+}
+
+/** A profile's preferred source of a title; every field is optional. */
+export interface SourceChoice {
+  kind?: SourceKind
+  provider?: string
+  voice?: string
+  lang?: string
+  quality?: string
+}

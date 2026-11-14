@@ -5,7 +5,7 @@ import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, downloadUrl, getItem, getTitle, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
-import type { Episode, ItemDetail as Detail, MediaFile, TitleInfo } from '../api/types'
+import type { Episode, ItemDetail as Detail, MediaFile, SourceChoice, TitleEpisode, TitleInfo } from '../api/types'
 import { MarkButton } from '../components/MarkButton'
 import { ActionBar, episodeToPlay, type PlayOptions } from '../components/ActionBar'
 import type { WatchWay } from '../components/WatchButton'
@@ -18,6 +18,7 @@ import { VoiceOverSheet } from '../components/VoiceOverSheet'
 // way, adding seasons, the pinned release (not in the core build: see docs/build-tags.md)
 import { AddSeason, FollowButton, followTarget, fromTitle, OnlineWay, PinnedPanel, TitleActions } from './ItemDetailFull'
 import { EpisodeList, episodesCount } from '../components/EpisodeList'
+import { EpisodeGuide } from '../components/episodes/EpisodeGuide'
 import { FamilyProgress, useFamily, type FamilyKind } from '../components/FamilyProgress'
 import { Icon } from '../components/Icon'
 import { useTrimmedLogo } from '../components/useTrimmedImage'
@@ -31,6 +32,9 @@ import { Rail } from '../components/Rail'
 import { RelatedShelves, useRelated } from '../components/RelatedShelves'
 import styles from './ItemDetail.module.css'
 import { locale, t as tr, useT, type Key } from '../i18n'
+
+/** The episode guide of a series: undefined while it loads, null when the server has none. */
+type Guide = { episodes: TitleEpisode[]; choice: SourceChoice | null } | null | undefined
 
 type State = { status: 'loading' } | { status: 'error'; message: string; notFound: boolean; forbidden?: boolean } | { status: 'ready'; item: Detail }
 
@@ -82,12 +86,14 @@ function subtitleFile(it: Detail): MediaFile | undefined {
 }
 
 /** Starts a browser download of an episode's file. */
-async function downloadEpisode(e: Episode) {
-  const it = await getItem(e.id)
-  const f = it.files[0]
-  if (!f) throw new Error('no file')
+const downloadEpisode = (e: Episode) => downloadItemFile(e.id, 0)
+
+/** Starts a browser download of a file of an item (fileId 0: its first file). */
+async function downloadItemFile(itemId: number, fileId: number) {
+  const id = fileId || (await getItem(itemId)).files[0]?.id
+  if (!id) throw new Error('no file')
   const a = document.createElement('a')
-  a.href = downloadUrl(f.id)
+  a.href = downloadUrl(id)
   a.download = ''
   document.body.append(a)
   a.click()
@@ -130,6 +136,7 @@ export function ItemDetail() {
   const [addingSeason, setAddingSeason] = useState(false)
   const [findingSubs, setFindingSubs] = useState(false)
   const [findingVoices, setFindingVoices] = useState(false)
+  const [guide, setGuide] = useState<Guide>(undefined)
   const abortRef = useRef<AbortController | null>(null)
   const autoplay = params.get('play') === '1'
 
@@ -166,6 +173,9 @@ export function ItemDetail() {
     },
     [id, isTitle, tmdbKind, tmdbId, navigate, user?.isKid],
   )
+
+  // a new title: its guide is not known yet
+  useEffect(() => setGuide(undefined), [id, tmdbKind, tmdbId])
 
   useEffect(() => {
     if (autoplay) return
@@ -234,6 +244,11 @@ export function ItemDetail() {
   const meta = metaText(it)
   const q = quality(it)
   const multiPart = isMultiPart(it.files)
+  // a series with a TMDB id: the episode guide (every source of every
+  // episode) where the episode tiles were; the tiles stay when it has none
+  const guideTmdb = it.kind === 'series' ? (isTitle ? tmdbId : (it.tmdbId ?? 0)) : 0
+  // the tile rail stays until the guide has episodes (its load can be an on-demand refresh of seconds)
+  const showTiles = isShow && it.seasons.length > 0 && (guideTmdb === 0 || !guide)
   // A series on the server: missing and new seasons come through the same
   // per-season flow as a title that is not on the server.
   // (a library-only server has neither «Найти и добавить» nor «Следить»)
@@ -384,6 +399,7 @@ export function ItemDetail() {
               profileId={user?.id ?? 0}
               canWatchOnline={Boolean(user?.canWatchOnline)}
               follow={followButton}
+              guide={guide}
             />
           ) : (
             <>
@@ -426,7 +442,20 @@ export function ItemDetail() {
             {problem}
           </p>
         )}
-        {isShow && it.seasons.length > 0 && (
+        {guideTmdb > 0 && (
+          <EpisodeGuide key={`${it.kind}-${guideTmdb}`} kind="series" tmdbId={guideTmdb} title={it.title} poster={it.poster} initialSeason={next?.seasonNo} onLoaded={setGuide}
+            // a kid whose video is limited does not download («Экранное время»)
+            onDownloadLibrary={
+              limits.video
+                ? undefined
+                : (itemId, fileId) => {
+                    setProblem('')
+                    downloadItemFile(itemId, fileId).catch(() => setProblem(t('item.downloadEpisodeFailed')))
+                  }
+            }
+          />
+        )}
+        {showTiles && (
           <EpisodeList
             key={it.id}
             seasons={it.seasons}

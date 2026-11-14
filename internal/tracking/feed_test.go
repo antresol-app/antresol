@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/progress"
 )
 
 // feedFixture: a series marked watching by u with two episodes that got a
@@ -264,5 +265,48 @@ func TestWatchlistedLibraryTitleIsTracked(t *testing.T) {
 	s.DB.Exec(`DELETE FROM watchlist`)
 	if tracked, _ := s.Tracked(ctx); len(tracked) != 0 {
 		t.Fatalf("tracked %+v", tracked)
+	}
+}
+
+type fakeStateProg struct{ entries []progress.Entry }
+
+func (f fakeStateProg) Of(context.Context, []int64, []int64) ([]progress.Entry, error) {
+	return f.entries, nil
+}
+
+func TestLibraryWatchState(t *testing.T) {
+	lib := fakeWatchLib{items: map[int64][]library.Item{
+		1: {{ID: 2, Kind: library.KindSeason, SeasonNo: 1}},
+		2: {{ID: 3, Kind: library.KindEpisode, EpisodeNo: 1}, {ID: 4, Kind: library.KindEpisode, EpisodeNo: 2}},
+	}}
+	w := LibraryWatchState(lib, fakeStateProg{entries: []progress.Entry{
+		{UserID: 1, ItemID: 3, PositionMs: 61500},
+		{UserID: 1, ItemID: 4, PositionMs: 99000, Finished: true}}})
+	got, err := w(context.Background(), 1, "series", 7)
+	if err != nil || len(got) != 2 || got[[2]int{1, 1}] != (WatchState{PositionSec: 61}) || got[[2]int{1, 2}] != (WatchState{Watched: true}) {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got, err = w(context.Background(), 1, "series", 99); err != nil || len(got) != 0 {
+		t.Fatalf("absent %v %v", got, err)
+	}
+}
+
+func TestIsNews(t *testing.T) {
+	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		kind, aired string
+		first       time.Time
+		want        bool
+	}{
+		{"series", "2026-02-20", since.Add(time.Hour), true},
+		{"series", "", since.Add(time.Hour), true},
+		{"series", "2026-01-01", since.Add(time.Hour), false}, // aired over mailMaxAge before since
+		{"movie", "2020-01-01", since.Add(time.Hour), true},
+		{"series", "2026-02-20", since.Add(-time.Hour), false},
+		{"series", "2026-02-20", since, true},
+	} {
+		if got := IsNews(c.kind, c.aired, c.first, since); got != c.want {
+			t.Errorf("IsNews(%q, %q, %v) = %v", c.kind, c.aired, c.first, got)
+		}
 	}
 }

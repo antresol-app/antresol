@@ -1,0 +1,77 @@
+/* The episode guide and its source sheet: System Settings rows (ui/List) with
+   a main button and a trailing ▾, badges (ui/Badge), nothing of its own. */
+/* the page's sections keep to its gutter (ItemDetail .sectionTitle, EpisodeList) */
+.guide {
+  padding: 0 var(--gutter);
+}
+.row {
+  composes: row from '../../ui/List.module.css';
+}
+.main {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  min-height: var(--control-h-lg);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.main:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.static {
+  cursor: default;
+}
+.number {
+  composes: hint from '../../ui/List.module.css';
+  flex: none;
+  min-width: 3ch;
+  margin: 0;
+  text-align: right;
+}
+.text {
+  composes: text from '../../ui/List.module.css';
+}
+.label {
+  composes: label from '../../ui/List.module.css';
+}
+.muted .label {
+  color: var(--label-2);
+}
+.hint {
+  composes: hint from '../../ui/List.module.css';
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-1h);
+}
+.dub {
+  composes: hint from '../../ui/List.module.css';
+  list-style: none;
+  margin: 0;
+  padding: var(--s-2) var(--s-4) var(--s-1);
+}
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-xs);
+  color: var(--accent);
+}
+.check > svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+.pick {
+  composes: linkButton from '../../ui/List.module.css';
+}
+.pickRow {
+  composes: row link from '../../ui/List.module.css';
+}

@@ -74,7 +74,9 @@ import type {
   ScreenStatus,
   SearchResult,
   SetupState,
+  SourceChoice,
   SubtitleResult,
+  TitleEpisodes,
   User,
   AISettings,
 } from './types'
@@ -310,6 +312,20 @@ export const onlineStatus = (signal?: AbortSignal) => request<OnlineStatus>('GET
 // --- Acquisition (not available to kid profiles; the rest: ./clientFull) ---
 export const getTitle = (kind: string, tmdbId: number, signal?: AbortSignal) =>
   request<TitleInfo>('GET', `/api/discover/${encodeURIComponent(kind)}/${tmdbId}`, undefined, signal)
+
+// --- Ongoing tracking: a title's episodes with sources, and the profile's source choice ---
+const trackingPath = (kind: string, tmdbId: number, tail: string) => `/api/tracking/${encodeURIComponent(kind)}/${tmdbId}/${tail}`
+/** The title's episodes with their sources; null when the server hides the title (404). */
+export const getTitleEpisodes = (kind: string, tmdbId: number, signal?: AbortSignal) =>
+  request<TitleEpisodes>('GET', trackingPath(kind, tmdbId, 'episodes'), undefined, signal).catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  })
+/** The profile's source choice for the title; null when none was made. */
+export const getSourceChoice = (kind: string, tmdbId: number, signal?: AbortSignal) =>
+  request<{ choice: SourceChoice | null }>('GET', trackingPath(kind, tmdbId, 'choice'), undefined, signal).then((r) => r.choice)
+export const putSourceChoice = (kind: string, tmdbId: number, choice: SourceChoice) =>
+  request<void>('PUT', trackingPath(kind, tmdbId, 'choice'), choice)
 
 // --- «Попросить»: a kid asks, an admin approves (downloads) or declines ---
 /** What a kid asks for: a TMDB title by id, an album or book as the catalog showed it. */
