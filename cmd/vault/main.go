@@ -1,8 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,10 +15,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/accounts"
+	"github.com/antresol-app/antresol/internal/accounts/shikimori"
+	"github.com/antresol-app/antresol/internal/animemap"
 	"github.com/antresol-app/antresol/internal/api"
 	"github.com/antresol-app/antresol/internal/audioserve"
 	"github.com/antresol-app/antresol/internal/auth"
@@ -383,6 +389,12 @@ func run() error {
 		tracker.Skeleton = tracking.NewTMDBSkeleton(metaSrc.TMDB)
 	}
 	ext.trackingHooks(tracker)
+	// external accounts (Shikimori lists into marks, local changes and
+	// watched episodes pushed back) and the anime map they need
+	accts, err := newAccounts(ctx, database, trackStore, tracker, metaSrc.TMDB, repo, progStore, cfg.PublicURL)
+	if err != nil {
+		return err
+	}
 	jobs.AfterScan = func(ctx context.Context) {
 		ext.afterScan(ctx)
 		// new episodes and titles for the letters (enriched by now)
@@ -439,6 +451,7 @@ func run() error {
 		Trickplay:    trickWorker,
 		Channels:     chans,
 		IPTV:         cfg.IPTV,
+		Accounts:     accts.routes,
 	}
 	// external IPTV playlists and guides in «ТВ» (added by an admin);
 	// their secrets sealed with the server's key
@@ -509,7 +522,7 @@ func run() error {
 	// the port those apps expect (VAULT_JELLYFIN_LISTEN, "off": none).
 	jellyfinServer := &jellyfin.Server{Users: users, Tokens: auth.NewAppTokens(database), Network: network, Throttle: throttle,
 		DB: database, Version: cfg.JellyfinVersion, Log: slog.Default(),
-		Library: repo, Progress: progress.New(database), ImageDir: filepath.Join(cfg.DataDir, "images"), DataDir: cfg.DataDir}
+		Library: repo, Progress: progStore, ImageDir: filepath.Join(cfg.DataDir, "images"), DataDir: cfg.DataDir}
 	if related != nil {
 		jellyfinServer.Similar = related
 	}
@@ -579,6 +592,7 @@ func run() error {
 	}
 	wg.Add(1)
 	go func() { defer wg.Done(); playlists.Run(ctx) }() // (the sources build's loops start below, not this one)
+	accts.start(ctx, &wg)
 	ext.start(ctx, &wg)
 
 	errc := make(chan error, len(servers))
@@ -666,4 +680,282 @@ func shutdownAll(servers []*http.Server, grace time.Duration) error {
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// --- external accounts: the one place internal/accounts and
+// internal/animemap meet the core (adapters over tracking and TMDB) ---
+
+const defaultAnimeMapURL = "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json"
+
+// accountsWiring is what the server gets from the accounts packages: the
+// HTTP routes and the background loops.
+type accountsWiring struct {
+	routes api.AccountRoutes
+	start  func(ctx context.Context, wg *sync.WaitGroup)
+}
+
+// newAccounts builds the anime map, the Shikimori sync (pull, outbox push,
+// OAuth) and its routes, and subscribes the sync to the tracking store's
+// mark changes and the progress store's watched changes.
+func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, tracker *tracking.Service, tm *tmdb.Client,
+	repo *library.Repo, prog *progress.Store, publicURL string) (*accountsWiring, error) {
+	keyHex, err := auth.LoadOrCreateSetting(ctx, database, "accounts_token_key", 32)
+	if err != nil {
+		return nil, err
+	}
+	key, err := hex.DecodeString(keyHex)
+	if err != nil || len(key) != 32 {
+		return nil, errors.New("accounts token key: malformed setting")
+	}
+	log := slog.Default().With("component", "accounts")
+	amap := &animemap.Map{DB: database, URL: cmp.Or(os.Getenv("VAULT_ANIME_MAP_URL"), defaultAnimeMapURL),
+		Log: slog.Default().With("component", "animemap")}
+	if tm != nil {
+		amap.Search = tmdbAnimeSearch{tm}
+	}
+	shiki := shikimoriAccount{shikimori.New(cmp.Or(os.Getenv("VAULT_SHIKIMORI_URL"), shikimori.DefaultBase), nil)}
+	store := &accounts.Store{DB: database, Key: key}
+	syncer := &accounts.Syncer{Accounts: store, Tracking: accountTracker{trackStore},
+		Remote: shikimoriRemote{shiki.c}, Map: amap, Kick: tracker.Kick, Log: log, Writer: shiki,
+		OAuth: &accounts.OAuth{Store: store, PublicURL: publicURL,
+			EnvClientID: os.Getenv("VAULT_SHIKIMORI_CLIENT_ID"), EnvClientSecret: os.Getenv("VAULT_SHIKIMORI_CLIENT_SECRET")},
+		Watched: func(ctx context.Context, uid int64, ref accounts.TitleRef) (map[[2]int]bool, error) {
+			w := tracker.WatchedBy()
+			t, ok, err := trackStore.TitleByID(ctx, ref.ID)
+			if w == nil || err != nil || !ok {
+				return nil, err
+			}
+			return w(ctx, uid, t)
+		},
+		Episodes: func(ctx context.Context, titleID int64) ([]accounts.Episode, error) {
+			eps, err := trackStore.Episodes(ctx, titleID)
+			out := make([]accounts.Episode, 0, len(eps))
+			for _, e := range eps {
+				out = append(out, accounts.Episode{Season: e.Season, Number: e.Number, AirDate: e.AirDate})
+			}
+			return out, err
+		}}
+	syncer.Push = syncer.PushOne
+	trackStore.OnMarkChanged = syncer.MarkChanged
+	prog.OnWatchedChange = func(ctx context.Context, uid, itemID int64) {
+		if tid, ok := trackedTitleOfItem(ctx, repo, trackStore, itemID); ok {
+			syncer.EpisodesChanged(ctx, uid, tid)
+		}
+	}
+	acctAPI := &accounts.API{Sync: syncer, Account: shiki, Log: log, Localize: i18n.Localize,
+		Viewer: func(r *http.Request) (accounts.Viewer, bool) {
+			u, ok := auth.UserFrom(r.Context())
+			return accounts.Viewer{ID: u.ID, IsKid: u.IsKid, IsAdmin: u.IsAdmin}, ok
+		}}
+	return &accountsWiring{routes: api.AccountRoutes{API: acctAPI.Routes, Browser: acctAPI.BrowserRoutes}, start: func(ctx context.Context, wg *sync.WaitGroup) {
+		wg.Add(2)
+		go func() { defer wg.Done(); amap.Run(ctx) }()
+		go func() { defer wg.Done(); syncer.Run(ctx) }()
+	}}, nil
+}
+
+// trackedTitleOfItem is the tracked title of a library movie or episode
+// (its series), if one is tracked.
+func trackedTitleOfItem(ctx context.Context, repo *library.Repo, st *tracking.Store, itemID int64) (int64, bool) {
+	it, err := repo.Item(ctx, itemID)
+	if err != nil {
+		return 0, false
+	}
+	kind := "movie"
+	if it.Kind == library.KindEpisode {
+		season, err := repo.Item(ctx, it.ParentID)
+		if err != nil {
+			return 0, false
+		}
+		if it, err = repo.Item(ctx, season.ParentID); err != nil || it.Kind != library.KindSeries {
+			return 0, false
+		}
+		kind = "series"
+	} else if it.Kind != library.KindMovie {
+		return 0, false
+	}
+	if it.TmdbID == 0 {
+		return 0, false
+	}
+	t, ok, err := st.TitleByTMDB(ctx, kind, it.TmdbID)
+	return t.ID, err == nil && ok
+}
+
+// accountTracker is accounts.Tracker over the tracking store.
+type accountTracker struct{ st *tracking.Store }
+
+func accountTitle(t tracking.Title) accounts.TitleRef {
+	r := accounts.TitleRef{ID: t.ID, Kind: t.Kind, TMDBID: t.TMDBID}
+	if t.ShikimoriID != nil {
+		r.ShikimoriID = *t.ShikimoriID
+	}
+	return r
+}
+
+func (a accountTracker) EnsureTitle(ctx context.Context, kind string, tmdbID int64, name string) (accounts.TitleRef, error) {
+	t, err := a.st.EnsureTitle(ctx, kind, tmdbID, name, "")
+	return accountTitle(t), err
+}
+
+func (a accountTracker) Title(ctx context.Context, id int64) (accounts.TitleRef, bool, error) {
+	t, ok, err := a.st.TitleByID(ctx, id)
+	return accountTitle(t), ok, err
+}
+
+func (a accountTracker) SetShikimoriID(ctx context.Context, titleID, shikimoriID, anidbID int64) error {
+	var an *int64
+	if anidbID > 0 {
+		an = &anidbID
+	}
+	return a.st.SetExternalIDs(ctx, titleID, &shikimoriID, nil, an)
+}
+
+func (a accountTracker) Marks(ctx context.Context, uid int64) ([]accounts.Mark, error) {
+	ms, err := a.st.Marks(ctx, uid)
+	out := make([]accounts.Mark, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, accounts.Mark{UserID: m.UserID, TitleID: m.TitleID, State: string(m.State), Score: m.Score,
+			UpdatedAt: m.UpdatedAt, Origin: m.Origin})
+	}
+	return out, err
+}
+
+func (a accountTracker) Mark(ctx context.Context, uid, titleID int64) (accounts.Mark, bool, error) {
+	ms, err := a.Marks(ctx, uid)
+	for _, m := range ms {
+		if m.TitleID == titleID {
+			return m, true, err
+		}
+	}
+	return accounts.Mark{}, false, err
+}
+
+func (a accountTracker) SetMark(ctx context.Context, m accounts.Mark) error {
+	return a.st.SetMark(ctx, tracking.Mark{UserID: m.UserID, TitleID: m.TitleID, State: tracking.MarkState(m.State),
+		Score: m.Score, UpdatedAt: m.UpdatedAt, Origin: m.Origin})
+}
+
+func (a accountTracker) DeleteMark(ctx context.Context, uid, titleID int64, origin string) error {
+	return a.st.DeleteMarkFrom(ctx, uid, titleID, origin)
+}
+
+// shikimoriRemote is accounts.Remote over the Shikimori client.
+type shikimoriRemote struct{ c *shikimori.Client }
+
+func (r shikimoriRemote) AnimeRates(ctx context.Context, userID int64, access string) ([]accounts.RemoteRate, error) {
+	rs, err := r.c.AnimeRates(ctx, userID, access)
+	switch {
+	case errors.Is(err, shikimori.ErrUnauthorized):
+		return nil, accounts.ErrRemoteUnauthorized
+	case errors.Is(err, shikimori.ErrForbidden):
+		return nil, accounts.ErrRemoteForbidden
+	case errors.Is(err, shikimori.ErrNotFound):
+		return nil, accounts.ErrRemoteNotFound
+	case err != nil:
+		return nil, err
+	}
+	out := make([]accounts.RemoteRate, 0, len(rs))
+	for _, x := range rs {
+		out = append(out, accounts.RemoteRate{ID: x.ID, Status: x.Status, Score: x.Score, Episodes: x.Episodes, UpdatedAt: x.UpdatedAt,
+			Anime: accounts.RemoteAnime{ID: x.Anime.ID, Name: x.Anime.Name, Russian: x.Anime.Russian, Kind: x.Anime.Kind, AiredOn: x.Anime.AiredOn,
+				Episodes: x.Anime.Episodes, Status: x.Anime.Status}})
+	}
+	return out, nil
+}
+
+// shikimoriAccount is accounts.Account and accounts.Writer over the
+// Shikimori client (the OAuth client of each call from accounts.OAuth).
+type shikimoriAccount struct{ c *shikimori.Client }
+
+// accountErr maps the client's errors to the accounts package's.
+func accountErr(err error) error {
+	switch {
+	case errors.Is(err, shikimori.ErrUnauthorized):
+		return accounts.ErrRemoteUnauthorized
+	case errors.Is(err, shikimori.ErrNotFound):
+		return accounts.ErrRemoteNotFound
+	}
+	return err
+}
+
+func (s shikimoriAccount) with(c accounts.OAuthClient) *shikimori.Client {
+	cl := *s.c
+	cl.ClientID, cl.ClientSecret, cl.RedirectURI = c.ID, c.Secret, c.RedirectURI
+	return &cl
+}
+
+func (s shikimoriAccount) UserByNick(ctx context.Context, nick string) (accounts.RemoteUser, error) {
+	u, err := s.c.UserByNick(ctx, nick)
+	return accounts.RemoteUser{ID: u.ID, Nickname: u.Nickname}, accountErr(err)
+}
+
+func (s shikimoriAccount) AuthorizeURL(c accounts.OAuthClient, state string) string {
+	return s.with(c).AuthorizeURL(state)
+}
+
+func (s shikimoriAccount) Exchange(ctx context.Context, c accounts.OAuthClient, code string) (accounts.Tokens, error) {
+	t, err := s.with(c).Exchange(ctx, code)
+	return t, accountErr(err)
+}
+
+func (s shikimoriAccount) Whoami(ctx context.Context, access string) (accounts.RemoteUser, error) {
+	u, err := s.c.Whoami(ctx, access)
+	return accounts.RemoteUser{ID: u.ID, Nickname: u.Nickname}, accountErr(err)
+}
+
+func (s shikimoriAccount) Refresh(ctx context.Context, c accounts.OAuthClient, refresh string) (accounts.Tokens, error) {
+	t, err := s.with(c).Refresh(ctx, refresh)
+	return t, accountErr(err)
+}
+
+func rateInput(w accounts.RateWrite) shikimori.RateInput {
+	return shikimori.RateInput{Status: w.Status, Score: w.Score, Episodes: w.Episodes}
+}
+
+func (s shikimoriAccount) CreateRate(ctx context.Context, access string, userID, animeID int64, w accounts.RateWrite) (accounts.RateWritten, error) {
+	r, err := s.c.CreateRate(ctx, access, userID, animeID, rateInput(w))
+	return accounts.RateWritten{ID: r.ID, UpdatedAt: r.UpdatedAt}, accountErr(err)
+}
+
+func (s shikimoriAccount) UpdateRate(ctx context.Context, access string, rateID int64, w accounts.RateWrite) (accounts.RateWritten, error) {
+	r, err := s.c.UpdateRate(ctx, access, rateID, rateInput(w))
+	return accounts.RateWritten{ID: r.ID, UpdatedAt: r.UpdatedAt}, accountErr(err)
+}
+
+func (s shikimoriAccount) DeleteRate(ctx context.Context, access string, rateID int64) error {
+	return accountErr(s.c.DeleteRate(ctx, access, rateID))
+}
+
+func (s shikimoriAccount) AnimeEpisodes(ctx context.Context, animeID int64) (int, error) {
+	a, err := s.c.Anime(ctx, animeID)
+	return a.Episodes, accountErr(err)
+}
+
+func (s shikimoriAccount) RateUpdatedAt(ctx context.Context, access string, rateID int64) (time.Time, error) {
+	r, err := s.c.UserRate(ctx, access, rateID)
+	return r.UpdatedAt, accountErr(err)
+}
+
+// tmdbAnimeSearch is animemap.Searcher over the TMDB client.
+type tmdbAnimeSearch struct{ c *tmdb.Client }
+
+const tmdbGenreAnimation = 16
+
+func animeCandidates(rs []tmdb.Result) []animemap.Candidate {
+	out := make([]animemap.Candidate, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, animemap.Candidate{TMDBID: int64(r.ID), Name: r.Title, OriginalName: r.OriginalTitle, Year: r.Year,
+			Animation: slices.Contains(r.GenreIDs, tmdbGenreAnimation), OriginalLanguage: r.OriginalLanguage})
+	}
+	return out
+}
+
+func (s tmdbAnimeSearch) SearchTV(ctx context.Context, q string, year int) ([]animemap.Candidate, error) {
+	rs, err := s.c.SearchTV(ctx, q, year)
+	return animeCandidates(rs), err
+}
+
+func (s tmdbAnimeSearch) SearchMovie(ctx context.Context, q string, year int) ([]animemap.Candidate, error) {
+	rs, err := s.c.SearchMovie(ctx, q, year)
+	return animeCandidates(rs), err
 }

@@ -2,7 +2,9 @@
 // pages never call fetch directly.
 import type {
   About,
+  AccountsState,
   CalendarDay,
+  ShikimoriAdminSettings,
   MarkState,
   TitleMark,
   Annotation,
@@ -649,3 +651,14 @@ export const deleteMark = (kind: 'series' | 'movie', tmdbId: number) => request<
 /** What comes out between two dates (YYYY-MM-DD, at most 42 days apart) of the titles this profile marked. */
 export const getTrackingCalendar = (from: string, to: string, signal?: AbortSignal) =>
   request<{ days: CalendarDay[] }>('GET', `/api/tracking/calendar${qs({ from, to })}`, undefined, signal).then((r) => r.days)
+
+// --- accounts: the profile's Shikimori link (404 when the server has no accounts) ---
+export const getAccounts = (signal?: AbortSignal) => request<AccountsState>('GET', '/api/accounts', undefined, signal)
+export const linkShikimori = (nickname: string) => request<AccountsState>('PUT', '/api/accounts/shikimori', { nickname }).then((r) => r.shikimori)
+export const unlinkShikimori = () => request<void>('DELETE', '/api/accounts/shikimori')
+/** enable: the sign-in address to open; disable: nothing. */
+export const setShikimoriWrite = (enable: boolean) => request<{ authorizeUrl?: string } | void>('POST', '/api/accounts/shikimori/write', { enable })
+/** The write-back prompt was shown (the server shows it once per profile). */
+export const markShikimoriAsked = () => request<void>('POST', '/api/accounts/shikimori/asked')
+export const getShikimoriAdmin = (signal?: AbortSignal) => request<ShikimoriAdminSettings>('GET', '/api/accounts/admin/shikimori', undefined, signal)
+export const putShikimoriAdmin = (clientId: string, clientSecret: string) => request<void>('PUT', '/api/accounts/admin/shikimori', { clientId, clientSecret })

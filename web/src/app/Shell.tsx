@@ -7,6 +7,7 @@ import { useActiveDownloads } from '../components/DownloadsBadge'
 import { MiniPlayer } from '../player/MiniPlayer'
 import { AudioScreenStop } from '../player/AudioScreenStop'
 import { NowPlaying } from '../player/NowPlaying'
+import { WritePrompt } from '../components/accounts/WritePrompt'
 import { Notice } from '../components/Notice'
 import { useAudioSelect } from '../player/audio/useAudio'
 import { useSession } from '../state/session'
@@ -61,6 +62,7 @@ export function Shell() {
       <MiniPlayer onExpand={openFull} />
       <NowPlaying open={full} onClose={closeFull} />
       <Notice />
+      <WritePrompt />
       <AudioScreenStop />
     </>
   )

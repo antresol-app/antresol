@@ -25,6 +25,7 @@ import type { IconName } from '../../components/Icon'
 import { Navigate, NavLink, useNavigate, useParams } from 'react-router'
 import { NumberField } from '../../ui/NumberField'
 import { t, useT } from '../../i18n'
+import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
@@ -513,6 +514,8 @@ export function Settings() {
       )}
 
       {at('ai') && <AISettingsSection ai={values.ai} keySet={values.aiKeySet ?? false} fromEnv={values.aiFromEnv} onChange={(ai) => change({ ai })} />}
+
+      {at('library') && <ShikimoriAdmin />}
 
       {at('library') && (
         <GroupedSection title={t('settings.rescanGroup')}>

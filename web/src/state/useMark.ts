@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { deleteMark, getMark, putMark } from '../api/client'
 import type { MarkState, TitleMark } from '../api/types'
+import { promptAfterMark } from './writePrompt'
 
 /** `title`: the name and poster sent with a new mark of a title off the library. */
 export function useMark(kind: 'series' | 'movie', tmdbId: number, title?: { name?: string; poster?: string }) {
@@ -23,7 +24,13 @@ export function useMark(kind: 'series' | 'movie', tmdbId: number, title?: { name
   const set = useCallback(
     (state: MarkState) => {
       setFailed(false)
-      putMark(kind, tmdbId, state, { name, poster }).then(setMark, () => setFailed(true))
+      putMark(kind, tmdbId, state, { name, poster }).then(
+        (m) => {
+          setMark(m)
+          void promptAfterMark() // the one-time «Отмечать и на Shikimori?»
+        },
+        () => setFailed(true),
+      )
     },
     [kind, tmdbId, name, poster],
   )

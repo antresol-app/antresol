@@ -240,3 +240,14 @@ func TestLookupLanguage(t *testing.T) {
 		t.Error("ContextLanguage")
 	}
 }
+
+func TestSearchCarriesGenresAndLanguage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"results":[{"id":5,"name":"Show","genre_ids":[16,10759],"original_language":"ja"}]}`))
+	}))
+	defer srv.Close()
+	rs, err := (&Client{BaseURL: srv.URL}).SearchTV(context.Background(), "x", 0)
+	if err != nil || len(rs) != 1 || len(rs[0].GenreIDs) != 2 || rs[0].GenreIDs[0] != 16 || rs[0].OriginalLanguage != "ja" {
+		t.Fatalf("%+v %v", rs, err)
+	}
+}

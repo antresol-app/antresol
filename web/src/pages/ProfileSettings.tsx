@@ -5,16 +5,19 @@
 // «Управление → Настройки сервера». A kid's sound and mail are the admin's
 // (Профили), as «Скрывать прогресс» is.
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { updateMe } from '../api/client'
 import { APP_NAME } from '../brand'
 import { AboutSheet } from '../components/AboutSheet'
+import { ShikimoriAccount } from '../components/accounts/ShikimoriAccount'
 import { AppPasswordSheet } from '../components/AppPasswordSheet'
 import { DevicesSheet } from '../components/DevicesSheet'
 import { NotifySheet } from '../components/NotifySheet'
 import { PlaybackPrefsSheet } from '../components/PlaybackPrefsSheet'
-import { getLanguagePref, useLang, useT, type LangPref } from '../i18n'
+import { getLanguagePref, useLang, useT, type Key, type LangPref } from '../i18n'
 import { offlineSupported } from '../offline/store'
+import { showNotice } from '../state/notice'
+import { resetAccounts } from '../state/accounts'
 import { session, useSession } from '../state/session'
 import { chooseInterfaceLanguage } from '../state/uiLanguage'
 import { GroupedSection, ListLinkRow, ListRow } from '../ui/List'
@@ -33,6 +36,17 @@ export function ProfileSettings() {
   const [open, setOpen] = useState<Open>('')
   const [pref, setPref] = useState<LangPref>(getLanguagePref)
   const [hideFailed, setHideFailed] = useState(false)
+  const [params, setParams] = useSearchParams()
+
+  // back from Shikimori's sign-in (the server's redirect): say how it went, clear the address
+  useEffect(() => {
+    if (params.get('account') !== 'shikimori') return
+    const error = params.get('error')
+    const known = ['session', 'state', 'denied', 'exchange', 'account']
+    resetAccounts() // the link's state changed on the server
+    showNotice(error ? t(`acct.err.${known.includes(error) ? error : 'exchange'}` as Key) : t('acct.ok'), 5000)
+    setParams({}, { replace: true })
+  }, [params, setParams, t])
 
   useEffect(() => {
     document.title = `${t('common.settings')} — ${APP_NAME}`
@@ -91,6 +105,8 @@ export function ProfileSettings() {
             <ListLinkRow icon="send" tint="var(--red)" label={t('prefs.notify')} onOpen={() => setOpen('notify')} />
           </GroupedSection>
         )}
+
+        {adult && <ShikimoriAccount />}
 
         <GroupedSection title={t('prefs.apps')}>
           <ListLinkRow icon="lock" tint="var(--gray)" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />

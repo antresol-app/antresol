@@ -201,6 +201,10 @@ type Deps struct {
 	// nil: none. Needs Channels.
 	ExtIPTV *iptv.Service
 
+	// Accounts are the external-accounts routes (/api/accounts…); zero:
+	// none.
+	Accounts AccountRoutes
+
 	// fullDeps are the sources build's own dependencies (deps_full.go); an
 	// empty struct in the core build. Set them by name: deps.Acquire.
 	fullDeps
@@ -355,6 +359,9 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			r.Use(guard.Require)
 			mountImport(r, deps)
 		})
+	}
+	if deps.Sessions != nil {
+		mountAccounts(r, guard, deps.Accounts)
 	}
 	// the sources build's own routes (none in the core build)
 	mountFull(r, deps, guard, h)

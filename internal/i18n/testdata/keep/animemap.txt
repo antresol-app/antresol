@@ -1,0 +1,2 @@
+# group "animemap": Russian kept on purpose
+internal/animemap/map.go: (?i)(\s([2-9]|1\d)\s*$|season\s*([2-9]|1\d)\s*$|\b\d+(st|nd|rd|th)\s+season\s*$|\s(ii|iii|iv|v|vi|vii|viii|ix|x)\s*$|\b\d+\s*сезон|(второй|третий|четв[её]ртый|пятый)\s+сезон)  # sequel-title regex matched in Russian anime names (matching data, not shown)

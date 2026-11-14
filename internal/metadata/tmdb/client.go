@@ -118,6 +118,9 @@ type Result struct {
 	Poster        string // TMDB path ("" = none)
 	// Adult: TMDB marks it adult content (never shown in «Найти и добавить»).
 	Adult bool
+	// GenreIDs: TMDB's genre ids (16 = Animation); OriginalLanguage: ISO 639-1.
+	GenreIDs         []int
+	OriginalLanguage string
 }
 
 type Person struct {
@@ -277,6 +280,8 @@ type rawResults struct {
 		Overview      string `json:"overview"`
 		PosterPath    string `json:"poster_path"`
 		Adult         bool   `json:"adult"`
+		GenreIDs      []int  `json:"genre_ids"`
+		OrigLanguage  string `json:"original_language"`
 	} `json:"results"`
 }
 
@@ -306,6 +311,7 @@ func (c *Client) search(ctx context.Context, kind, q string, year int) ([]Result
 		out = append(out, Result{
 			ID: r.ID, Title: first(r.Title, r.Name), OriginalTitle: first(r.OriginalTitle, r.OriginalName),
 			Year: yearOf(first(r.ReleaseDate, r.FirstAirDate)), Overview: r.Overview, Poster: r.PosterPath, Adult: r.Adult,
+			GenreIDs: r.GenreIDs, OriginalLanguage: r.OrigLanguage,
 		})
 	}
 	return out, nil

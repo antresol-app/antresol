@@ -150,3 +150,26 @@ describe('ProfileMenu', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/settings')
   })
 })
+
+describe('back from Shikimori sign-in', () => {
+  it('says how it went and clears the query', async () => {
+    const { Notice } = await import('../../components/Notice')
+    serve(adult)
+    await session.login(adult.id)
+    render(
+      <MemoryRouter initialEntries={['/settings?account=shikimori&error=denied']}>
+        <Notice />
+        <Routes>
+          <Route path="/settings" element={<ProfileSettings />} />
+        </Routes>
+        <Search />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Доступ на Shikimori не разрешён.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^$/))
+  })
+})
+
+function Search() {
+  return <span data-testid="search">{useLocation().search}</span>
+}

@@ -487,3 +487,31 @@ func TestUnwatchedTombstoneCascade(t *testing.T) {
 		t.Fatalf("tombstone outlived its item: %d", n)
 	}
 }
+
+// TestOnWatchedChange: the hook hears a position newly reaching the watched
+// mark and every explicit mark, not every later report.
+func TestOnWatchedChange(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	u, m := e.user("a"), e.movie("M")
+	var heard []int64
+	e.s.OnWatchedChange = func(_ context.Context, uid, item int64) {
+		if uid != u {
+			t.Errorf("user %d", uid)
+		}
+		heard = append(heard, item)
+	}
+	e.must(e.s.PlayedAt(ctx, u, m, 10_000, 100_000, time.Time{})) // not watched yet
+	e.must(e.s.PlayedAt(ctx, u, m, 93_000, 100_000, time.Time{})) // reaches 92%
+	e.must(e.s.PlayedAt(ctx, u, m, 99_000, 100_000, time.Time{})) // already watched
+	e.must(e.s.Save(ctx, u, m, 99_500, 100_000))                  // likewise
+	if len(heard) != 1 {
+		t.Fatalf("heard %v after reports", heard)
+	}
+	e.must(e.s.MarkWatched(ctx, u, m, false))
+	e.must(e.s.Save(ctx, u, m, 95_000, 100_000)) // watched again by a position
+	e.must(e.s.MarkWatched(ctx, u, m, true))
+	if len(heard) != 4 {
+		t.Fatalf("heard %v", heard)
+	}
+}

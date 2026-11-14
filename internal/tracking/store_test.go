@@ -286,3 +286,54 @@ func TestUpsertSourcesKeepsFirstSeenOnRefChange(t *testing.T) {
 		t.Fatalf("added %+v", added)
 	}
 }
+
+func TestSetExternalIDsOnlyOverwritesGiven(t *testing.T) {
+	s, ctx := newStore(t), context.Background()
+	a, err := s.EnsureTitle(ctx, "series", 100, "Show", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := func(v int64) *int64 { return &v }
+	if err := s.SetExternalIDs(ctx, a.ID, i(11), i(22), i(33)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetExternalIDs(ctx, a.ID, i(44), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.TitleByShikimori(ctx, 44)
+	if err != nil || !ok || got.ID != a.ID {
+		t.Fatalf("got=%+v ok=%v err=%v", got, ok, err)
+	}
+	if got.MyShowsID == nil || *got.MyShowsID != 22 || got.AniDBID == nil || *got.AniDBID != 33 {
+		t.Fatalf("others clobbered: %+v", got)
+	}
+	if _, ok, _ := s.TitleByShikimori(ctx, 11); ok {
+		t.Fatal("old shikimori id still resolves")
+	}
+}
+
+func TestOnMarkChangedReportsOrigin(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	u := addUser(t, s, "u")
+	ti, err := s.EnsureTitle(ctx, "series", 1, "x", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	s.OnMarkChanged = func(_ context.Context, uid, tid int64, origin string) {
+		if uid != u || tid != ti.ID {
+			t.Errorf("uid %d tid %d", uid, tid)
+		}
+		got = append(got, origin)
+	}
+	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Planned})
+	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Watching, Origin: "shikimori"})
+	s.DeleteMark(ctx, u, ti.ID)
+	s.DeleteMark(ctx, u, ti.ID) // no mark: no change
+	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Planned})
+	s.DeleteMarkFrom(ctx, u, ti.ID, "shikimori")
+	if want := []string{"antresol", "shikimori", "antresol", "antresol", "shikimori"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}

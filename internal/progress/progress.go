@@ -97,6 +97,18 @@ const readFinished = 0.98
 type Store struct {
 	db  *sql.DB
 	Now func() time.Time // overridable in tests
+	// OnWatchedChange, when set, is called after a write that may have
+	// changed whether an item counts as watched: a position reaching the
+	// watched mark for the first time, and every «watched» / «unwatched»
+	// mark. Any caller, any client.
+	OnWatchedChange func(ctx context.Context, userID, itemID int64)
+}
+
+// finishedBefore: the item already counts as watched for the user.
+func (s *Store) finishedBefore(ctx context.Context, userID, itemID int64) bool {
+	var fin int
+	err := s.db.QueryRowContext(ctx, `SELECT finished FROM progress WHERE user_id=? AND item_id=?`, userID, itemID).Scan(&fin)
+	return err == nil && fin != 0
 }
 
 func New(d *sql.DB) *Store { return &Store{db: d, Now: time.Now} }
@@ -225,8 +237,15 @@ func (s *Store) upsert(ctx context.Context, userID, itemID, posMs, durMs int64, 
 		at = now
 	}
 	ts := at.UTC().Format(tsLayout)
+	// a position that newly reaches the watched mark is announced
+	notify := s.OnWatchedChange != nil && fin == 1 && !s.finishedBefore(ctx, userID, itemID)
 	if rate <= 0 {
-		_, err := s.db.ExecContext(ctx, upsertSQL, userID, itemID, posMs, durMs, fin, ts, locator, userID, itemID, ts)
+		res, err := s.db.ExecContext(ctx, upsertSQL, userID, itemID, posMs, durMs, fin, ts, locator, userID, itemID, ts)
+		if err == nil && notify {
+			if n, _ := res.RowsAffected(); n > 0 {
+				s.OnWatchedChange(ctx, userID, itemID)
+			}
+		}
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -263,7 +282,13 @@ func (s *Store) upsert(ctx context.Context, userID, itemID, posMs, durMs int64, 
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if notify {
+		s.OnWatchedChange(ctx, userID, itemID)
+	}
+	return nil
 }
 
 // Get returns the user's progress for an item, or ErrNotFound.
@@ -298,6 +323,9 @@ func (s *Store) MarkWatchedAt(ctx context.Context, userID, itemID int64, watched
 		  ON CONFLICT(user_id,item_id) DO UPDATE SET position_ms=progress.duration_ms, finished=1, updated_at=excluded.updated_at
 		  WHERE progress.updated_at <= excluded.updated_at`,
 			userID, itemID, ts, userID, itemID, ts)
+		if err == nil && s.OnWatchedChange != nil {
+			s.OnWatchedChange(ctx, userID, itemID)
+		}
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -313,7 +341,13 @@ func (s *Store) MarkWatchedAt(ctx context.Context, userID, itemID int64, watched
 		userID, itemID, ts); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.OnWatchedChange != nil {
+		s.OnWatchedChange(ctx, userID, itemID)
+	}
+	return nil
 }
 
 // ClearedAt is when the item was last marked unwatched (ok false: never).

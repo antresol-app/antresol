@@ -15,6 +15,16 @@ type Store struct {
 	// ExtraTracked returns additional title IDs to treat as tracked
 	// (nil = none).
 	ExtraTracked func(ctx context.Context) ([]int64, error)
+	// OnMarkChanged, when set, is called after every successful mark write
+	// (SetMark) or removal (DeleteMark, DeleteMarkFrom) with the change's
+	// origin (antresol | shikimori | ...).
+	OnMarkChanged func(ctx context.Context, userID, titleID int64, origin string)
+}
+
+func (s *Store) markChanged(ctx context.Context, userID, titleID int64, origin string) {
+	if s.OnMarkChanged != nil {
+		s.OnMarkChanged(ctx, userID, titleID, origin)
+	}
 }
 
 const titleCols = `id, kind, tmdb_id, shikimori_id, myshows_id, anidb_id, imdb_id, name, poster, status, cert, next_check, refreshed_at`
@@ -93,6 +103,28 @@ func (s *Store) EnsureTitle(ctx context.Context, kind string, tmdbID int64, name
 	return t, nil
 }
 
+// SetExternalIDs stores cross-reference ids; only non-nil ones overwrite.
+func (s *Store) SetExternalIDs(ctx context.Context, titleID int64, shikimori, myshows, anidb *int64) error {
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE tracked_titles SET shikimori_id=COALESCE(?, shikimori_id),
+		   myshows_id=COALESCE(?, myshows_id), anidb_id=COALESCE(?, anidb_id) WHERE id=?`,
+		shikimori, myshows, anidb, titleID)
+	return err
+}
+
+// TitleByShikimori looks a title up by its Shikimori id.
+func (s *Store) TitleByShikimori(ctx context.Context, id int64) (Title, bool, error) {
+	t, err := scanTitle(s.DB.QueryRowContext(ctx,
+		`SELECT `+titleCols+` FROM tracked_titles WHERE shikimori_id=? ORDER BY id LIMIT 1`, id))
+	if err == sql.ErrNoRows {
+		return Title{}, false, nil
+	}
+	if err != nil {
+		return Title{}, false, err
+	}
+	return t, true, nil
+}
+
 // TitleByTMDB looks a title up by kind and TMDB id.
 func (s *Store) TitleByTMDB(ctx context.Context, kind string, tmdbID int64) (Title, bool, error) {
 	t, err := scanTitle(s.DB.QueryRowContext(ctx,
@@ -125,13 +157,29 @@ func (s *Store) SetMark(ctx context.Context, m Mark) error {
 		 ON CONFLICT(user_id, title_id) DO UPDATE SET state=excluded.state, score=excluded.score,
 		   origin=excluded.origin, updated_at=excluded.updated_at`,
 		m.UserID, m.TitleID, string(m.State), score, origin, at.UTC().Format(time.RFC3339))
-	return err
+	if err != nil {
+		return err
+	}
+	s.markChanged(ctx, m.UserID, m.TitleID, origin)
+	return nil
 }
 
-// DeleteMark removes a profile's mark on a title.
+// DeleteMark removes a profile's mark on a title (a change made in Antresol).
 func (s *Store) DeleteMark(ctx context.Context, userID, titleID int64) error {
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM title_marks WHERE user_id=? AND title_id=?`, userID, titleID)
-	return err
+	return s.DeleteMarkFrom(ctx, userID, titleID, "antresol")
+}
+
+// DeleteMarkFrom removes a profile's mark on a title; origin says where the
+// removal came from. Removing no mark reports no change.
+func (s *Store) DeleteMarkFrom(ctx context.Context, userID, titleID int64, origin string) error {
+	r, err := s.DB.ExecContext(ctx, `DELETE FROM title_marks WHERE user_id=? AND title_id=?`, userID, titleID)
+	if err != nil {
+		return err
+	}
+	if n, _ := r.RowsAffected(); n > 0 {
+		s.markChanged(ctx, userID, titleID, origin)
+	}
+	return nil
 }
 
 // Marks lists a profile's marks, optionally limited to the given states.

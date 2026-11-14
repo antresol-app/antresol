@@ -2095,3 +2095,34 @@ export interface SourceChoice {
   lang?: string
   quality?: string
 }
+
+// --- accounts: the profile's Shikimori link ---
+export type ShikimoriStatus = 'ok' | 'private' | 'not_found' | 'error' | 'relogin'
+export type ShikimoriWriteState = 'unasked' | 'asked' | 'enabled' | 'declined'
+
+/** GET /api/accounts → shikimori. */
+export interface ShikimoriState {
+  linked: boolean
+  nickname: string
+  status: ShikimoriStatus
+  /** The last sync error, in the viewer's language. */
+  lastError: string
+  lastSync: string | null
+  writeState: ShikimoriWriteState
+  /** An OAuth client is configured and the public URL is https. */
+  canWrite: boolean
+  /** Remote entries that were not found in TMDB. */
+  unmapped: number
+}
+export interface AccountsState {
+  shikimori: ShikimoriState
+}
+
+/** The server's Shikimori OAuth client (admin); the secret is never returned. */
+export interface ShikimoriAdminSettings {
+  clientId: string
+  hasSecret: boolean
+  fromEnv: boolean
+  redirectUri: string
+  scope: string
+}
