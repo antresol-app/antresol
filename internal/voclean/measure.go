@@ -573,6 +573,10 @@ func drop(b []float32, frames, ch int) ([]float32, int) {
 	return b[k*ch:], frames - k
 }
 
+// monoSide: a stereo voice-over whose side (L−R) holds less than this share
+// of its mid's energy (−20 dB) is mono in two channels.
+const monoSide = 0.01
+
 // downmixLR: the stereo downmix of a 5.1 or 7.1 frame (FL FR FC LFE BL
 // BR [SL SR]): each front with the centre and its surrounds at −3 dB, the
 // LFE left out (ffmpeg's and the usual broadcast downmix).
@@ -673,6 +677,13 @@ func residuals(ctx context.Context, ffmpeg string, in Input, pairs []Pair, act, 
 			}
 			res[k][c] = math.Sqrt(max(r, 0) / a.xx[c])
 		}
+		// a stereo voice-over that is mono in both channels (TV voice-overs
+		// often are) has no side to check: its side is noise, the fronts'
+		// check says nothing — the dialogue and lag checks decide
+		mono := stereoOver(pairs[act[k]]) && a.xx[0] < monoSide*a.xx[2]
+		if mono {
+			res[k][0], res[k][1] = 0, 0
+		}
 		var nc int
 		for c := range 2 {
 			if a.yy[c] > 0 {
@@ -682,6 +693,11 @@ func residuals(ctx context.Context, ffmpeg string, in Input, pairs []Pair, act, 
 		}
 		if nc > 0 {
 			gains[k] /= float64(nc)
+		}
+		if mono && a.yy[2] > 0 {
+			// the level the original is mixed at, from the mid (the voice
+			// in it makes it a little high: the bound only gets looser)
+			gains[k] = a.xy[2] / a.yy[2]
 		}
 		dls[k] = a.dlg.out
 	}

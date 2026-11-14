@@ -11,6 +11,12 @@ import (
 // middle of both channels. dub: the original's dialogue left out (the M&E
 // bed only), as a dub has it.
 func voiceOverStereo(orig [][]float32, delay int, dub bool) [][]float32 {
+	return voiceOverStereoMix(orig, delay, dub, false)
+}
+
+// voiceOverStereoMix: mono — the left and the right the same (their mid),
+// as TV voice-overs often are.
+func voiceOverStereoMix(orig [][]float32, delay int, dub, mono bool) [][]float32 {
 	n := len(orig[0])
 	vo := [][]float32{make([]float32, n), make([]float32, n)}
 	f := make([]float32, len(orig))
@@ -27,6 +33,9 @@ func voiceOverStereo(orig [][]float32, delay int, dub bool) [][]float32 {
 		}
 		l, r := downmixLR(f)
 		g := 0.3 + 0.25*float64(i)/float64(n)
+		if mono {
+			l, r = (l+r)/2, (l+r)/2
+		}
 		vo[0][i], vo[1][i] = float32(g*l), float32(g*r)
 		if voiceOn(i) {
 			v := float32(0.7071 * russian(i))
@@ -112,5 +121,33 @@ func TestCleanStereoOver51(t *testing.T) {
 		if lv := levelDB(got[c][a:b], vo[c][a:b]); lv < -6 {
 			t.Errorf("%s: voice lost: %.1f dB", name, lv)
 		}
+	}
+}
+
+// A mono voice-over in two channels: measured by its dialogue and lag,
+// cleaned the same way; its mono dub is still refused.
+func TestStereoMonoVoiceOver(t *testing.T) {
+	ff := ffmpegPath(t)
+	orig := original51(testSeconds*sr, 34)
+	vo := voiceOverStereoMix(orig, 0, false, true)
+	path := muxTracks(t, ff, vo, orig)
+	m := eligible1(t, ff, path, pair(2, 6), testSeconds*1000)
+	if !m.Eligible {
+		t.Fatalf("a mono voice-over over a 5.1 original: %+v", m)
+	}
+	out := filepath.Join(t.TempDir(), "out.mka")
+	cleanPCM(t, ff, Input{Path: path, DurationMs: testSeconds * 1000}, Job{Pair: pair(2, 6), LagMs: m.LagMs, GainCap: GainCap(m.FrontGain), Out: out})
+	got := decodeAll(t, ff, out, 0, 2)
+	eng := make([]float32, len(orig[0]))
+	for i := range eng {
+		eng[i] = float32(english(i))
+	}
+	a, b := int(8.5*sr), int(11.5*sr)
+	if left := math.Abs(corr(got[0][a:b], eng[a:b])) * rms(got[0][a:b]) / rms(vo[0][a:b]); left >= 0.02 {
+		t.Errorf("mono: the English is still there: %.4f", left)
+	}
+	dub := muxTracks(t, ff, voiceOverStereoMix(orig, 0, true, true), orig)
+	if m := eligible1(t, ff, dub, pair(2, 6), testSeconds*1000); m.Eligible {
+		t.Fatalf("a mono dub taken for a voice-over: %+v", m)
 	}
 }
