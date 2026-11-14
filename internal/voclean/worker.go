@@ -67,7 +67,8 @@ var errDiskFull = errors.New("voclean: disk full")
 // download goes ahead of the backlog): first the files of what a profile
 // is watching (its «Продолжить» entry, the episode after it), then the
 // newest. Every Russian voice-over (or a track named after a known
-// studio) laid over the file's English track of its layout is cleaned,
+// studio) laid over the file's original (English first, else another
+// language; of its layout, or a stereo one over a 5.1 or 7.1 original) is cleaned,
 // the household's favourite studios first, all of a file's from one read.
 // The ffmpeg children run at the lowest CPU and I/O priority; files
 // added within 48 h and next episodes run even while something plays,
@@ -858,26 +859,39 @@ func (w *Worker) probeTrack(ctx context.Context, path string) (media.AudioStream
 
 // voiceOvers picks a file's voice-overs to clean, each with its original:
 // each Russian track (or an untagged one titled after a known studio), the
-// favourite studios first, then by stream; its original is the first
-// English track of its layout, else the first English track (measured:
-// not eligible, the layouts differ).
+// favourite studios first, then by stream. Its original is a track of
+// another known language, English first (a film made in another language
+// has its own): of its layout, or for a stereo voice-over a 5.1 or 7.1 one
+// (stereoOver: cleaned from its centre), else the first (measured: not
+// eligible, the layouts differ).
 func voiceOvers(audio []media.AudioStream, studios []string) []track {
-	var english []media.AudioStream
+	var english, other []media.AudioStream
 	for _, a := range audio {
-		if langIs(a.Lang, "eng", "en", "english") {
+		switch {
+		case langIs(a.Lang, "eng", "en", "english"):
 			english = append(english, a)
+		case !langIs(a.Lang, "rus", "ru", "russian") && !langIs(a.Lang, "", "und", "mul", "zxx"):
+			other = append(other, a)
 		}
 	}
-	if len(english) == 0 {
+	foreign := append(english, other...)
+	if len(foreign) == 0 {
 		return nil
 	}
 	originalOf := func(vo media.AudioStream) media.AudioStream {
-		for _, e := range english {
+		if vo.Channels == 2 {
+			for _, e := range foreign {
+				if hasCentre(e.Channels) {
+					return e
+				}
+			}
+		}
+		for _, e := range foreign {
 			if e.Channels == vo.Channels {
 				return e
 			}
 		}
-		return english[0]
+		return foreign[0]
 	}
 	keys := make([]string, len(studios))
 	for i, s := range studios {

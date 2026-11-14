@@ -92,7 +92,7 @@ func (l *LLM) suggest(ctx context.Context, text string, v Vocabulary) (Suggestio
 		msgs = append(msgs, map[string]string{"role": "user", "content": s[0]}, map[string]string{"role": "assistant", "content": s[1]})
 	}
 	msgs = append(msgs, map[string]string{"role": "user", "content": text})
-	content, err := l.chat(ctx, msgs)
+	content, err := l.chat(ctx, msgs, true)
 	if err != nil {
 		return Suggestion{}, err
 	}
@@ -105,18 +105,24 @@ func (l *LLM) suggest(ctx context.Context, text string, v Vocabulary) (Suggestio
 }
 
 // chat sends the messages and returns the answer's text.
-func (l *LLM) chat(ctx context.Context, msgs []map[string]string) (string, error) {
+func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (string, error) {
 	var body map[string]any
 	path := "/api/chat"
 	if l.openAI() {
 		path = "/chat/completions"
-		body = map[string]any{"model": l.Model, "messages": msgs, "temperature": 0, "response_format": map[string]string{"type": "json_object"}}
+		body = map[string]any{"model": l.Model, "messages": msgs, "temperature": 0}
+		if asJSON {
+			body["response_format"] = map[string]string{"type": "json_object"}
+		}
 	} else {
 		opts := map[string]any{"temperature": 0}
 		if l.Threads > 0 {
 			opts["num_thread"] = l.Threads
 		}
-		body = map[string]any{"model": l.Model, "messages": msgs, "stream": false, "think": false, "format": "json", "options": opts, "keep_alive": "2m"}
+		body = map[string]any{"model": l.Model, "messages": msgs, "stream": false, "think": false, "options": opts, "keep_alive": "2m"}
+		if asJSON {
+			body["format"] = "json"
+		}
 	}
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, l.URL+path, bytes.NewReader(b))
@@ -138,7 +144,11 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string) (string, error
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llm: %s", resp.Status)
+		detail := strings.TrimSpace(string(raw))
+		if r := []rune(detail); len(r) > 200 {
+			detail = string(r[:200]) + "…"
+		}
+		return "", fmt.Errorf("llm: %s %s", resp.Status, detail)
 	}
 	var out struct {
 		Message struct {
@@ -160,6 +170,21 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string) (string, error
 		return "", errors.New("llm: empty answer")
 	}
 	return out.Message.Content, nil
+}
+
+// Ping asks a one-word question (the settings' «Проверить»): the answer,
+// or why there is none (a provider's own words, cut short).
+func (l *LLM) Ping(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, l.timeout())
+	defer cancel()
+	out, err := l.chat(ctx, []map[string]string{{"role": "user", "content": "Reply with the single word: ok"}}, false)
+	if err != nil {
+		return "", err
+	}
+	if r := []rune(strings.TrimSpace(out)); len(r) > 80 {
+		out = string(r[:80]) + "…"
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // jsonPart: the object in an answer that wrapped it in prose or a code fence.

@@ -34,6 +34,15 @@ func (h *lib) chosenUILanguage(ctx context.Context, uid int64) (string, error) {
 	return l, err
 }
 
+// uiLanguageIfAny is the language profile uid chose ("" with none, or
+// on a server without the store).
+func (h *lib) uiLanguageIfAny(ctx context.Context, uid int64) (string, error) {
+	if h.DB == nil {
+		return "", nil
+	}
+	return h.chosenUILanguage(ctx, uid)
+}
+
 // effectiveUILanguage is the language the apps show profile uid in.
 func (h *lib) effectiveUILanguage(ctx context.Context, uid int64) (chosen, effective string, err error) {
 	chosen, err = h.chosenUILanguage(ctx, uid)

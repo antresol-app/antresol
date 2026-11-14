@@ -147,10 +147,19 @@ type window struct {
 // both channels takes the music and effects with the English).
 func hasCentre(ch int) bool { return ch == 6 || ch == 8 }
 
+// stereoOver: a stereo voice-over over a 5.1 or 7.1 original — its left
+// and right hold the original's centre (the dialogue) mixed down, cleaned
+// by subtracting that centre from both (NewSubtractor2, the fronts fitted
+// alongside); measured on its mid (L+R) and side (L−R) against the
+// original's stereo downmix.
+func stereoOver(p Pair) bool { return p.Vo.Channels == 2 && hasCentre(p.Orig.Channels) }
+
 // layoutWhy says why a pair cannot be cleaned by its layouts ("" if it
 // can).
 func layoutWhy(p Pair) string {
 	switch {
+	case stereoOver(p):
+		return ""
 	case p.Vo.Channels != p.Orig.Channels:
 		return fmt.Sprintf("layouts differ: %d and %d channels", p.Vo.Channels, p.Orig.Channels)
 	case p.Vo.Channels == 2:
@@ -445,7 +454,7 @@ func downmixes(ctx context.Context, ffmpeg string, in Input, srcs []source, star
 			any = any || n > 0
 			for i := range n {
 				var v float32
-				for c := range front {
+				for c := range min(front, s.ch) {
 					v += bufs[k][i*s.ch+c]
 				}
 				out[k] = append(out[k], v)
@@ -564,6 +573,20 @@ func drop(b []float32, frames, ch int) ([]float32, int) {
 	return b[k*ch:], frames - k
 }
 
+// downmixLR: the stereo downmix of a 5.1 or 7.1 frame (FL FR FC LFE BL
+// BR [SL SR]): each front with the centre and its surrounds at −3 dB, the
+// LFE left out (ffmpeg's and the usual broadcast downmix).
+func downmixLR(f []float32) (l, r float64) {
+	const h = 0.7071
+	l = float64(f[0]) + h*float64(f[2]) + h*float64(f[4])
+	r = float64(f[1]) + h*float64(f[2]) + h*float64(f[5])
+	if len(f) >= 8 {
+		l += h * float64(f[6])
+		r += h * float64(f[7])
+	}
+	return l, r
+}
+
 // residuals streams the window once for the pairs act at their lags:
 // per pair and FL FR FC, rms(x − g·y)/rms(x) with g the least-squares
 // gain of the original's channel y in the voice-over's x; and the
@@ -606,14 +629,29 @@ func residuals(ctx context.Context, ffmpeg string, in Input, pairs []Pair, act, 
 			v, o := pos[k][0], pos[k][1]
 			vo, or, n := a.al.push(bufs[v][:ns[v]*srcs[v].ch], bufs[o][:ns[o]*srcs[o].ch])
 			vc, oc := srcs[v].ch, srcs[o].ch
+			stereo := stereoOver(pairs[act[k]])
 			for i := range n {
-				for c := range 3 {
-					x, y := float64(vo[i*vc+c]), float64(or[i*oc+c])
-					a.xy[c] += x * y
-					a.yy[c] += y * y
-					a.xx[c] += x * x
+				vf, of := vo[i*vc:(i+1)*vc], or[i*oc:(i+1)*oc]
+				var x, y [3]float64
+				voCentre := vf[min(2, vc-1)]
+				if stereo {
+					// side (twice: the fronts' check) and mid of the voice-over
+					// against the original's stereo downmix
+					l, r := downmixLR(of)
+					x = [3]float64{float64(vf[0] - vf[1]), float64(vf[0] - vf[1]), float64(vf[0] + vf[1])}
+					y = [3]float64{l - r, l - r, l + r}
+					voCentre = (vf[0] + vf[1]) / 2
+				} else {
+					for c := range 3 {
+						x[c], y[c] = float64(vf[c]), float64(of[c])
+					}
 				}
-				a.dlg.push(vo[i*vc+2], or[i*oc+2], or[i*oc], or[i*oc+1])
+				for c := range 3 {
+					a.xy[c] += x[c] * y[c]
+					a.yy[c] += y[c] * y[c]
+					a.xx[c] += x[c] * x[c]
+				}
+				a.dlg.push(voCentre, of[2], of[0], of[1])
 			}
 		}
 	}

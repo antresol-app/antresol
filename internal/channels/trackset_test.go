@@ -222,6 +222,10 @@ func TestLabelsOnlyWhatTheProgrammeHas(t *testing.T) {
 		"a2|Кураж-Бамбей|Русский — Кураж-Бамбей (внешняя)|ru a3|Оригинал (English)|Оригинал (English)|en s0|Русские|Русские — Notabenoid|ru" {
 		t.Fatalf("%s", got)
 	}
+	// the cleaned voice-over names its own voice-over's rendition (one voice, a switch in the players)
+	if a[1].CleanedOf != "LostFilm" || a[0].CleanedOf != "" {
+		t.Fatalf("cleaned of: %+v", a)
+	}
 	// a subtitle title that only names its language is not repeated
 	tr = Plan(media.ProbeResult{Subs: []media.SubStream{{Index: 1, Codec: "subrip", Lang: "ukr", Title: "Українські"},
 		{Index: 2, Codec: "subrip", Lang: "eng", Title: "English"}, {Index: 3, Codec: "subrip", Lang: "eng", Title: "English (SDH)"}}}, nil, nil, PlanOptions{})

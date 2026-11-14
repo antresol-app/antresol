@@ -61,6 +61,10 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 	if deps.Channels.DataDir == "" {
 		deps.Channels.DataDir = deps.DataDir
 	}
+	if deps.Channels.LLMSource == nil && deps.DB != nil {
+		// «ИИ-помощник» of the server settings over VAULT_LLM_*
+		deps.Channels.LLMSource = llmSource(deps.DB, deps.SettingsDefaults, deps.Channels.LLM)
+	}
 	return &channelsAPI{svc: deps.Channels, ext: deps.ExtIPTV, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
 		users: deps.Users, screen: deps.ScreenTime, dataDir: deps.DataDir, cards: cards}
 }
@@ -149,6 +153,8 @@ type trackJSON struct {
 	Name  string `json:"name"`
 	Label string `json:"label"`
 	Lang  string `json:"lang"`
+	// CleanedOf: the voice-over this one is the cleaned version of (its name)
+	CleanedOf string `json:"cleanedOf,omitempty"`
 }
 
 type channelJSON struct {
@@ -276,7 +282,7 @@ func (a *channelsAPI) withTracks(ctx context.Context, ch int64, ps []programJSON
 		}
 		p.Audio, p.Subtitles = make([]trackJSON, 0, len(audio)), make([]trackJSON, 0, len(subs))
 		for _, l := range audio {
-			p.Audio = append(p.Audio, trackJSON{Slot: l.Slot, Name: l.Name, Label: l.Label, Lang: l.Lang})
+			p.Audio = append(p.Audio, trackJSON{Slot: l.Slot, Name: l.Name, Label: l.Label, Lang: l.Lang, CleanedOf: l.CleanedOf})
 		}
 		for _, l := range subs {
 			p.Subtitles = append(p.Subtitles, trackJSON{Slot: l.Slot, Name: l.Name, Label: l.Label, Lang: l.Lang})
@@ -531,7 +537,7 @@ func (a *channelsAPI) options(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"genres": gs, "decades": ds, "titles": titles, "profiles": profiles,
 		"extrasAvailable": !u.IsKid && a.svc.ExtrasReady(ctx),
 		"countries":       countries, "languages": languages, "keywords": keywords, "yearMin": yearMin, "yearMax": yearMax,
-		"aiAvailable": a.svc.LLM != nil})
+		"aiAvailable": a.svc.Model(ctx) != nil})
 }
 
 type channelBody struct {

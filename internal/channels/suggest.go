@@ -60,10 +60,10 @@ func (s *Service) Suggest(ctx context.Context, text string, vocab Vocabulary) Su
 	}
 	out := suggestWords(text)
 	out.Via = "words"
-	if s.LLM != nil && text != "" {
-		ctx, cancel := context.WithTimeout(ctx, s.LLM.timeout())
+	if l := s.Model(ctx); l != nil && text != "" {
+		ctx, cancel := context.WithTimeout(ctx, l.timeout())
 		defer cancel()
-		if ai, err := s.LLM.suggest(ctx, text, vocab); err == nil {
+		if ai, err := l.suggest(ctx, text, vocab); err == nil {
 			out = mergeSuggestion(out, ai)
 			out.Via = "ai"
 		}

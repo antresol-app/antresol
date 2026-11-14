@@ -1161,6 +1161,17 @@ export interface Settings {
   mail?: MailSettings
   /** A mail password is stored (response only). */
   mailPasswordSet?: boolean
+  /** «ИИ-помощник»: the model «Опишите канал» asks (the key is write-only). */
+  ai?: AISettings
+  aiKeySet?: boolean
+  /** None set here, but the server has its own (VAULT_LLM_*): its model. */
+  aiFromEnv?: string
+}
+
+export interface AISettings {
+  url: string
+  model: string
+  key?: string
 }
 
 export interface MailSettings {

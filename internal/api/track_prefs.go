@@ -54,6 +54,17 @@ type playbackPrefs struct {
 	Custom bool `json:"custom"`
 }
 
+// firstLang is langs with l first (added when it is not among them).
+func firstLang(langs []string, l string) []string {
+	out := []string{l}
+	for _, x := range langs {
+		if primaryLang(x) != l {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
 // subtitleOffsetMax: «Субтитры раньше / позже» goes no further than ±60 s
 // (a track off by more is another release's, not a late one).
 const subtitleOffsetMax = 60_000
@@ -64,7 +75,9 @@ const subtitleOffsetGrid = 50
 // trackTitleMax: a remembered track's title is at most this many characters.
 const trackTitleMax = 200
 
-// prefsFor is uid's defaults, the household's «Языки» when it has none.
+// prefsFor is uid's defaults, the household's «Языки» when it has none —
+// with the profile's interface language first (what it reads it watches
+// in; «Как в системе» is the device's, which the apps put first themselves).
 func (h *lib) prefsFor(ctx context.Context, uid int64) (playbackPrefs, error) {
 	cleaned, err := h.Library.PreferCleaned(ctx, uid)
 	if err != nil {
@@ -81,6 +94,9 @@ func (h *lib) prefsFor(ctx context.Context, uid int64) (playbackPrefs, error) {
 	langs := h.myLanguages(ctx)
 	if len(langs) == 0 {
 		langs = defaultLanguages
+	}
+	if ui, err := h.uiLanguageIfAny(ctx, uid); err == nil && ui != "" {
+		langs = firstLang(langs, ui)
 	}
 	return playbackPrefs{PlaybackPrefs: library.PlaybackPrefs{
 		AudioLangs: slices.Clone(langs), SubMode: "off", SubLangs: slices.Clone(langs),

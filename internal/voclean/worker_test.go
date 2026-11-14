@@ -74,7 +74,7 @@ func newWFix(t *testing.T) *wfix {
 			for _, p := range pairs {
 				k := fx.key(in.Path, p.Vo.Index)
 				fx.record("measure " + k)
-				if p.Orig.Lang != "eng" {
+				if p.Orig.Lang == "rus" || p.Orig.Lang == "" { // an original is of another known language
 					t.Errorf("%s: original %+v", k, p.Orig)
 				}
 				if fx.notEligible[k] {
@@ -469,9 +469,28 @@ func TestWorkerOriginalOfSameLayout(t *testing.T) {
 		return inner(ctx, in, pairs)
 	}
 	fx.pass()
-	// 5.1 against the 5.1 English; stereo against the stereo one; 7.1
-	// with no 7.1 English: the first English (measured: not eligible)
-	if want := map[int]int{3: 2, 4: 1, 5: 1}; !reflect.DeepEqual(origs, want) {
+	// 5.1 against the 5.1 English; stereo against the 5.1 one too (cleaned
+	// from its centre); 7.1 with no 7.1 English: the first English
+	// (measured: not eligible)
+	if want := map[int]int{3: 2, 4: 2, 5: 1}; !reflect.DeepEqual(origs, want) {
+		t.Fatalf("originals %v, want %v", origs, want)
+	}
+}
+
+// A film made in another language: its own track is the original.
+func TestWorkerOriginalInAnotherLanguage(t *testing.T) {
+	fx := newWFix(t)
+	fx.file("m", fx.item("movie", 0, "M", 1, 0, 0), probeOf("fre:", "rus:LostFilm:2", "und:"))
+	origs := map[int]int{}
+	inner := fx.w.Eligible
+	fx.w.Eligible = func(ctx context.Context, in Input, pairs []Pair) ([]Measure, error) {
+		for _, p := range pairs {
+			origs[p.Vo.Index] = p.Orig.Index
+		}
+		return inner(ctx, in, pairs)
+	}
+	fx.pass()
+	if want := map[int]int{2: 1}; !reflect.DeepEqual(origs, want) {
 		t.Fatalf("originals %v, want %v", origs, want)
 	}
 }

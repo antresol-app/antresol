@@ -181,4 +181,6 @@ export default {
 
   // the sources build's, but named by core code (were in ./full.ts)
   'vo.find': 'Find Voice-Over…',
+  'player.track.cleanedToggle': 'Clean voice-over',
+  'player.track.cleanedToggleHint': 'Without the original speech under it',
 } satisfies EnOf<typeof ru>

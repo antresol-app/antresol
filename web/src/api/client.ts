@@ -76,6 +76,7 @@ import type {
   SetupState,
   SubtitleResult,
   User,
+  AISettings,
 } from './types'
 
 import { getLanguage, t } from '../i18n'
@@ -407,6 +408,8 @@ export const trickplaySheetUrl = (fileId: number, ix: TrickplayIndex, n: number)
 
 export const getSettings = (signal?: AbortSignal) => request<Settings>('GET', '/api/settings', undefined, signal)
 export const saveSettings = (s: Settings) => request<Settings>('PUT', '/api/settings', s)
+/** «Проверить» of «ИИ-помощник»: one short question to the model (nothing is saved; an empty key: the stored one). */
+export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string }>('POST', '/api/settings/ai/test', ai)
 
 // Subtitles (admin): OpenSubtitles search for one video file.
 export const searchSubtitles = (fileId: number, lang: 'ru' | 'en', signal?: AbortSignal) =>

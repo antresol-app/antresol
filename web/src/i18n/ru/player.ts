@@ -183,4 +183,6 @@ export default {
 
   // the sources build's, but named by core code (were in ./full.ts)
   'vo.find': 'Найти озвучку…',
+  'player.track.cleanedToggle': 'Очищенный перевод',
+  'player.track.cleanedToggleHint': 'Без оригинальной речи под переводом',
 } as const

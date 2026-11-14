@@ -19,54 +19,58 @@ const prefs = (p: Partial<PlaybackPrefs> = {}): PlaybackPrefs => ({
   audioLangs: ['ru', 'en'], subMode: 'off', subLangs: [], subSize: 'm', subBackground: 'translucent', custom: true, ...p,
 })
 
-const openMenu = async () => {
-  render(<TrackMenu audio={audio} audioIndex={2} subtitles={[]} subIndex={-1} onAudio={vi.fn()} onSubtitle={vi.fn()} />)
+const openMenu = async (audioIndex = 2, onAudio = vi.fn()) => {
+  render(<TrackMenu audio={audio} audioIndex={audioIndex} subtitles={[]} subIndex={-1} onAudio={onAudio} onSubtitle={vi.fn()} />)
   await userEvent.click(screen.getByRole('button', { name: /Аудио и субтитры|Audio & Subtitles/i }))
   return screen.findByRole('menu')
 }
 
-describe('a cleaned voice-over in the track menu', () => {
+describe('«Очищенный перевод» in the track menu', () => {
   afterEach(() => act(() => setLanguagePref('ru')))
 
-  it('is «Русский · LostFilm» with the capsule «Очищено», named for VoiceOver', async () => {
-    const menu = await openMenu()
-    const cleaned = within(menu).getByRole('menuitemradio', { name: 'Русский, LostFilm, очищено от оригинальной речи, 5.1' })
-    expect(cleaned).toHaveTextContent('Русский')
-    expect(cleaned).toHaveTextContent('LostFilm · 5.1')
-    const badge = within(cleaned).getByText('Очищено')
-    expect(badge).toHaveAttribute('aria-hidden', 'true')
-    expect(badge).toHaveAttribute('title', 'Без оригинальной речи под закадровым переводом · способ: вычитание')
-    // the studio's own track stays, without the badge
-    const studio = within(menu).getByRole('menuitemradio', { name: /^Русский/, checked: true })
-    expect(studio).not.toHaveTextContent('Очищено')
-    expect(studio).toHaveTextContent('LostFilm · 5.1')
+  it('the cleaned version is a switch under the list, not a row of its own', async () => {
+    const onAudio = vi.fn()
+    const menu = await openMenu(2, onAudio)
+    const group = within(menu).getByRole('group', { name: 'Аудио' })
+    const rows = within(group).getAllByRole('menuitemradio')
+    expect(rows.map((el) => el.textContent)).toEqual([expect.stringMatching(/^Английский/), expect.stringMatching(/^Русский.*LostFilm/)])
+    expect(within(group).queryByText('Очищено')).toBeNull()
+    const sw = within(group).getByRole('menuitemcheckbox', { name: /Очищенный перевод/ })
+    expect(sw).toHaveAttribute('aria-checked', 'false')
+    expect(sw).toHaveTextContent('Без оригинальной речи под переводом')
+    await userEvent.click(sw)
+    expect(onAudio).toHaveBeenCalledWith(2000)
   })
 
-  it('says “Cleaned” in English', async () => {
+  it('on: the studio stays the chosen row; the switch turns it back off', async () => {
+    const onAudio = vi.fn()
+    const menu = await openMenu(2000, onAudio)
+    expect(within(menu).getByRole('menuitemradio', { name: /^Русский/, checked: true })).toHaveTextContent('LostFilm')
+    const sw = within(menu).getByRole('menuitemcheckbox', { name: /Очищенный перевод/ })
+    expect(sw).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(sw)
+    expect(onAudio).toHaveBeenCalledWith(2)
+  })
+
+  it('no switch for a voice-over without a cleaned version', async () => {
+    const menu = await openMenu(1)
+    expect(within(menu).queryByRole('menuitemcheckbox', { name: /Очищенный перевод/ })).toBeNull()
+  })
+
+  it('says “Clean voice-over” in English', async () => {
     act(() => setLanguagePref('en'))
     const menu = await openMenu()
-    const cleaned = within(menu).getByRole('menuitemradio', { name: 'Russian, LostFilm, cleaned of the original speech, 5.1' })
-    expect(within(cleaned).getByText('Cleaned')).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitemcheckbox', { name: /Clean voice-over/ })).toBeInTheDocument()
   })
 })
 
-describe('the order of the audio menu', () => {
-  it('lists a cleaned track right under its studio track', async () => {
-    const tracks: Track[] = [
-      { index: 1, codec: 'eac3', lang: 'rus', title: 'LostFilm', channels: 6, default: true },
-      { index: 2, codec: 'eac3', lang: 'eng', title: '', channels: 6, default: false },
-      { ...audio[2]!, cleanedFrom: 1 },
-    ]
+describe('a cleaned track without its source', () => {
+  it('stays a row with the «Очищено» capsule', async () => {
+    const tracks: Track[] = [audio[0]!, { ...audio[2]!, cleanedFrom: 9 }]
     render(<TrackMenu audio={tracks} audioIndex={1} subtitles={[]} subIndex={-1} onAudio={vi.fn()} onSubtitle={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /Аудио и субтитры|Audio & Subtitles/i }))
     const menu = await screen.findByRole('menu')
-    const group = within(menu).getByRole('group', { name: 'Аудио' })
-    const items = within(group).getAllByRole('menuitemradio')
-    expect(items.map((el) => el.getAttribute('aria-label') ?? el.textContent)).toEqual([
-      expect.stringMatching(/^Русский/),
-      'Русский, LostFilm, очищено от оригинальной речи, 5.1',
-      expect.stringMatching(/^Английский/),
-    ])
+    expect(within(menu).getByRole('menuitemradio', { name: 'Русский, LostFilm, очищено от оригинальной речи, 5.1' })).toBeInTheDocument()
   })
 })
 

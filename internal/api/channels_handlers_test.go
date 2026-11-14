@@ -339,8 +339,8 @@ func TestChannelsProgrammeTracks(t *testing.T) {
 	got := fmt.Sprint(one.Audio, one.Subtitles)
 	// the renditions of the set the channel would have now (its next 48 h:
 	// Два has no probe, nothing known), named as the master names them
-	want := "[{a0 LostFilm Русский — LostFilm ru} {a1 Кураж-Бамбей Русский — Кураж-Бамбей (внешняя) ru} {a2 Оригинал (Français) Оригинал (Français) fr} {a3 English English en}] " +
-		"[{s0 Русские Русские ru} {s1 English English en}]"
+	want := "[{a0 LostFilm Русский — LostFilm ru } {a1 Кураж-Бамбей Русский — Кураж-Бамбей (внешняя) ru } {a2 Оригинал (Français) Оригинал (Français) fr } {a3 English English en }] " +
+		"[{s0 Русские Русские ru } {s1 English English en }]"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -482,7 +482,7 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 		var l struct{ Channels []channelJSON }
 		json.Unmarshal(e.do("GET", "/api/channels", "", e.admin).Body.Bytes(), &l)
 		if now := l.Channels[0].Now; now == nil || fmt.Sprint(now.Audio, now.Subtitles) !=
-			"[{a0 Русский Русский ru} {a1 Оригинал (English) Оригинал (English) en}] [{s0 Русские Русские ru}]" ||
+			"[{a0 Русский Русский ru } {a1 Оригинал (English) Оригинал (English) en }] [{s0 Русские Русские ru }]" ||
 			!strings.Contains(master, `NAME="Русский",LANGUAGE="ru",DEFAULT=YES`) || !strings.Contains(master, `NAME="Оригинал (English)",LANGUAGE="en"`) {
 			t.Fatalf("on air %+v\n%s", now, master)
 		}

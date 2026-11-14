@@ -4,6 +4,11 @@ package i18n
 func init() {
 	Register(EN, map[string]string{
 		"Укажите название канала":                              "Enter the channel’s name",
+		"Укажите адрес модели":                                 "Enter the model’s address",
+		"Укажите модель":                                       "Enter the model",
+		"Слишком длинное название модели":                      "The model’s name is too long",
+		"Неверный ключ":                                        "Invalid key",
+		"Адрес модели — http:// или https://":                  "The model’s address is http:// or https://",
 		"Опишите, что показывать":                              "Describe what to show",
 		"Слишком длинное название":                             "The name is too long",
 		"Номер канала — от 1 до 99999":                         "The channel number is 1 to 99999",

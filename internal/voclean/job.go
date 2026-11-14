@@ -21,11 +21,14 @@ const TitleSuffix = " (очищено)"
 // centre: the voice channel of 5.1 and 7.1 (FL FR FC …).
 const centre = 2
 
-// encodeCodec: E-AC3 448 kb/s for 5.1; 7.1 (beyond ffmpeg's E-AC3
+// encodeCodec: E-AC3 448 kb/s for 5.1 (224 for stereo); 7.1 (beyond ffmpeg's E-AC3
 // encoder) as AAC 768 kb/s.
 func encodeCodec(ch int) []string {
-	if ch == 8 {
+	switch ch {
+	case 8:
 		return []string{"-c:a", "aac", "-b:a", "768k"}
+	case 2:
+		return []string{"-c:a", "eac3", "-b:a", "224k"}
 	}
 	return []string{"-c:a", "eac3", "-b:a", "448k"}
 }
@@ -66,12 +69,19 @@ type cleanJob struct {
 	or      []float32 // the original's centre, queued for the lag
 	dropOr  int
 	sub     *Subtractor
-	cv, co  []float32
-	pending []float32
-	enc     *encoder
-	ended   bool
-	tmp     string
-	err     error
+	// stereo (stereoOver): the right channel's subtractor and the
+	// original's fronts queued beside its centre (or); sub cleans the left
+	stereo     bool
+	subR       *Subtractor
+	orL, orR   []float32
+	cl, cr     []float32 // the fronts' blocks
+	outL, outR []float32 // cleaned left and right not yet emitted
+	cv, co     []float32
+	pending    []float32
+	enc        *encoder
+	ended      bool
+	tmp        string
+	err        error
 }
 
 // fail ends a job: its encoder killed, its temp file removed.
@@ -99,6 +109,12 @@ func clean(ctx context.Context, ffmpeg string, in Input, jobs []Job, codec func(
 		}
 		c := &cleanJob{Job: j, ch: j.Vo.Channels, och: j.Orig.Channels,
 			sub: NewSubtractor(rate), cv: make([]float32, readFrames), co: make([]float32, readFrames), tmp: j.Out + ".tmp"}
+		if stereoOver(j.Pair) {
+			c.stereo = true
+			c.sub, c.subR = NewSubtractor2(rate), NewSubtractor2(rate)
+			c.subR.SetGainCap(j.GainCap)
+			c.cl, c.cr = make([]float32, readFrames), make([]float32, readFrames)
+		}
 		c.sub.SetGainCap(j.GainCap)
 		// vo[t] pairs with orig[t − lag]: a late voice-over gets zeros of
 		// the original first, an early one drops its head
@@ -217,9 +233,16 @@ func (c *cleanJob) step(vb, ob []float32) error {
 	c.dropOr -= skip
 	for i := skip; i < no; i++ {
 		c.or = append(c.or, ob[i*c.och+centre])
+		if c.stereo {
+			c.orL = append(c.orL, ob[i*c.och])
+			c.orR = append(c.orR, ob[i*c.och+1])
+		}
 	}
 	if nv == 0 {
 		return c.finish()
+	}
+	if c.stereo {
+		return c.stepStereo(vb, nv)
 	}
 	for i := range nv {
 		c.cv[i] = vb[i*c.ch+centre]
@@ -234,12 +257,59 @@ func (c *cleanJob) step(vb, ob []float32) error {
 	return c.emit(c.sub.Process(c.cv[:nv], c.co[:nv]))
 }
 
+// stepStereo: the left and the right each have the original's centre
+// subtracted, fitted together with the original's front of their side.
+func (c *cleanJob) stepStereo(vb []float32, nv int) error {
+	vl, vr := c.cv[:nv], make([]float32, nv)
+	for i := range nv {
+		vl[i], vr[i] = vb[i*2], vb[i*2+1]
+		if i < len(c.or) {
+			c.co[i], c.cl[i], c.cr[i] = c.or[i], c.orL[i], c.orR[i]
+		} else {
+			c.co[i], c.cl[i], c.cr[i] = 0, 0, 0 // the original ended first
+		}
+	}
+	k := min(nv, len(c.or))
+	c.or = c.or[:copy(c.or, c.or[k:])]
+	c.orL = c.orL[:copy(c.orL, c.orL[k:])]
+	c.orR = c.orR[:copy(c.orR, c.orR[k:])]
+	c.pending = append(c.pending, vb...)
+	l := c.sub.Process2(vl, c.co[:nv], c.cl[:nv])
+	r := c.subR.Process2(vr, c.co[:nv], c.cr[:nv])
+	return c.emitStereo(l, r)
+}
+
+// emitStereo writes the frames whose left and right are both cleaned.
+func (c *cleanJob) emitStereo(l, r []float32) error {
+	c.outL, c.outR = append(c.outL, l...), append(c.outR, r...)
+	m := min(len(c.outL), len(c.outR))
+	p := c.pending[:m*2]
+	for i := range m {
+		p[i*2], p[i*2+1] = min(max(c.outL[i], -1), 1), min(max(c.outR[i], -1), 1)
+	}
+	if err := c.enc.write(p); err != nil {
+		return err
+	}
+	c.pending = c.pending[:copy(c.pending, c.pending[m*2:])]
+	c.outL, c.outR = c.outL[:copy(c.outL, c.outL[m:])], c.outR[:copy(c.outR, c.outR[m:])]
+	return nil
+}
+
 // finish flushes the voice-over at its end (once).
 func (c *cleanJob) finish() error {
 	if c.ended {
 		return nil
 	}
 	c.ended = true
+	if c.stereo {
+		if err := c.emitStereo(c.sub.Flush(), c.subR.Flush()); err != nil {
+			return err
+		}
+		if len(c.pending) != 0 {
+			return errors.New("voclean: output shorter than the voice-over")
+		}
+		return nil
+	}
 	if err := c.emit(c.sub.Flush()); err != nil {
 		return err
 	}
@@ -279,8 +349,11 @@ type encoder struct {
 
 func startEncoder(ctx context.Context, ffmpeg string, ch int, codec []string, lang, title, out string) (*encoder, error) {
 	layout := "5.1(side)"
-	if ch == 8 {
+	switch ch {
+	case 8:
 		layout = "7.1"
+	case 2:
+		layout = "stereo"
 	}
 	args := []string{"-hide_banner", "-nostats", "-loglevel", "error", "-protocol_whitelist", "pipe,file",
 		"-f", "f32le", "-ar", strconv.Itoa(rate), "-ch_layout", layout, "-i", "pipe:0", "-map", "0:a"}

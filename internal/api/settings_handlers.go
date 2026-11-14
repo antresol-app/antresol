@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/antresol-app/antresol/internal/channels"
 	"net/http"
 	"reflect"
 	"strings"
@@ -53,6 +54,9 @@ type AppSettings struct {
 	// TrickplayBudgetGB is «Место для превью»: the most the previews take
 	// (the least recently viewed go first); 10 GB by default.
 	TrickplayBudgetGB int `json:"trickplayBudgetGB"`
+	// AI is «ИИ-помощник» (ai_settings.go): the language model «Опишите
+	// канал» asks; empty: the server's VAULT_LLM_* or none.
+	AI AISettings `json:"ai"`
 }
 
 // defaultTrickplayBudgetGB: «Место для превью» when unset.
@@ -269,6 +273,10 @@ type settingsView struct {
 	// MailPasswordSet: a mail password is stored (response only; the password
 	// itself is never sent back).
 	MailPasswordSet bool `json:"mailPasswordSet"`
+	// AIKeySet: an API key of «ИИ-помощник» is stored (response only);
+	// AIFromEnv: none is set here but the server has VAULT_LLM_* (its model)
+	AIKeySet  bool   `json:"aiKeySet"`
+	AIFromEnv string `json:"aiFromEnv,omitempty"`
 }
 
 type settingsAPI struct {
@@ -293,6 +301,7 @@ func mountSettings(r chi.Router, s *settingsAPI) {
 		r.Use(auth.RequireAdmin)
 		r.Get("/api/settings", s.get)
 		r.Put("/api/settings", s.put)
+		r.Post("/api/settings/ai/test", s.testAI)
 	})
 }
 
@@ -309,6 +318,13 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	v.MailPasswordSet = app.Mail.Password != ""
 	v.Mail = app.Mail.normalized()
 	v.Mail.Password = ""
+	v.AIKeySet = app.AI.Key != ""
+	v.AI.Key = ""
+	if app.AI.URL == "" {
+		if env := channels.LLMFromEnv(); env != nil {
+			v.AIFromEnv = env.Model
+		}
+	}
 	if v.Studios, err = s.prefs.Studios(ctx); err != nil {
 		return settingsView{}, err
 	}
@@ -355,7 +371,7 @@ func (v settingsView) validate() string {
 	if msg := v.Mail.validate(); msg != "" {
 		return msg
 	}
-	return ""
+	return v.AI.validate()
 }
 
 // fitLanguages makes every language choice a subset of Languages in its
@@ -402,6 +418,8 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	if v.Mail.Username == "" {
 		v.Mail.Password = ""
 	}
+	// the same for the AI key; no address means no model, and no key left
+	v.AI = v.AI.merged(stored.AI)
 	if msg := v.validate(); msg != "" {
 		writeErr(w, r, http.StatusBadRequest, msg)
 		return

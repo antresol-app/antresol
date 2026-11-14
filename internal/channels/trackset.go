@@ -296,6 +296,10 @@ func (t Tracks) audioFor(key string) AudioSource {
 // language.
 type TrackLabel struct {
 	Slot, Name, Label, Lang string
+	// CleanedOf: a cleaned voice-over's own rendition (its NAME) when the
+	// programme has it too ("" otherwise) — players show the pair as one
+	// voice with «Очищенный перевод» on or off.
+	CleanedOf string
 }
 
 // Labels are the renditions of set the programme has its own track for,
@@ -311,6 +315,14 @@ func (t Tracks) Labels(set TrackSet, lang string) (audio, subs []TrackLabel) {
 		}
 		a := t.Audio[k]
 		l := TrackLabel{Slot: "a" + strconv.Itoa(n), Name: r.Name, Lang: bcp47(a.Lang)}
+		if a.Cleaned {
+			base := strings.TrimSuffix(a.Key, cleanSuffix)
+			if slices.ContainsFunc(t.Audio, func(x AudioTrack) bool { return x.Key == base }) {
+				if b := slices.IndexFunc(set.Audio, func(x Rendition) bool { return x.Key == base }); b >= 0 {
+					l.CleanedOf = set.Audio[b].Name
+				}
+			}
+		}
 		voice := voiceKind(lang, a.Voice)
 		switch {
 		case a.Lang == "ru" && voice == "":

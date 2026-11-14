@@ -6,7 +6,7 @@
 import type { ChannelTrack } from '../../api/channels'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
-import { Menu, MenuHeading, MenuItem } from '../../ui/Menu'
+import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../../ui/Menu'
 import styles from './LivePlayer.module.css'
 
 export interface LiveTrackMenuProps {
@@ -24,6 +24,14 @@ export interface LiveTrackMenuProps {
 export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, onSubtitles, onOpenChange }: LiveTrackMenuProps) {
   const t = useT()
   const unknown = audio === undefined && subtitles === undefined
+  // a cleaned voice-over is its voice-over with «Очищенный перевод» on (the film player's switch)
+  const all = audio ?? []
+  const current = all.find((a) => a.name === audioName)
+  const cleanedOn = Boolean(current?.cleanedOf)
+  const baseName = current?.cleanedOf ?? audioName
+  const twinOf = (name: string | undefined) => all.find((a) => a.cleanedOf !== undefined && a.cleanedOf === name)
+  const rows = all.filter((a) => !a.cleanedOf)
+  const twin = twinOf(baseName)
   return (
     <Menu
       label={t('tv.tracks')}
@@ -44,19 +52,36 @@ export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, 
             {audio && audio.length > 0 && (
               <div role="group" aria-label={t('common.audio')} className={styles.trackGroup}>
                 <MenuHeading>{t('common.audio')}</MenuHeading>
-                {audio.length === 1 && <MenuItem label={audio[0]?.label ?? ''} checked />}
-                {audio.length > 1 &&
-                  audio.map((a) => (
+                {rows.length === 1 && <MenuItem label={rows[0]?.label ?? ''} checked />}
+                {rows.length > 1 &&
+                  rows.map((a) => (
                     <MenuItem
                       key={a.name}
                       label={a.label}
-                      checked={a.name === audioName}
+                      checked={a.name === baseName}
                       onSelect={() => {
                         close()
-                        onAudio(a)
+                        // another voice keeps «Очищенный перевод» on where it has it
+                        onAudio((cleanedOn && twinOf(a.name)) || a)
                       }}
                     />
                   ))}
+                {twin && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem
+                      label={t('player.track.cleanedToggle')}
+                      detail={t('player.track.cleanedToggleHint')}
+                      checked={cleanedOn}
+                      multi
+                      onSelect={() => {
+                        close()
+                        const base = rows.find((a) => a.name === baseName)
+                        onAudio(cleanedOn ? (base ?? twin) : twin)
+                      }}
+                    />
+                  </>
+                )}
               </div>
             )}
             <div role="group" aria-label={t('common.subtitles')} className={styles.trackGroup}>

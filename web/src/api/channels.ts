@@ -45,6 +45,8 @@ export interface ChannelTrack {
   label: string
   /** BCP 47 / ISO 639 of the track ("" unknown). */
   lang: string
+  /** A cleaned voice-over: the NAME of the voice-over it is the cleaned version of (in this programme). */
+  cleanedOf?: string
 }
 
 export interface ChannelProgram {

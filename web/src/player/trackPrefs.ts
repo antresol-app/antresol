@@ -3,6 +3,7 @@
 // «TVShows»), this device's last choice (only while the profile keeps the
 // household's defaults), the profile's languages («Звук и субтитры»), and
 // the file's own default. The app has the same rules (TrackPrefs.swift).
+import { getLanguage } from '../i18n'
 import type { PlaybackPrefs, SubTrack, Track, TrackChoice, TrackPrefs } from '../api/types'
 import { langCode, langKey } from './timeline'
 
@@ -163,14 +164,24 @@ export const offsetCueTime = (t: number, offsetMs: number) => t - offsetMs / 100
 export const choiceOf = (t: { lang: string; title: string; kind?: string }): TrackChoice =>
   t.kind === 'cleaned' ? { lang: t.lang, title: t.title, kind: 'cleaned' } : { lang: t.lang, title: t.title }
 
-/** A playback-prefs answer as the player uses it; null when it is not one (an older server, a stub). */
+/** The list with `lang` first (added when missing). */
+const langFirst = <T extends string>(list: T[], lang: T): T[] => [lang, ...list.filter((l) => l.split('-')[0] !== lang)]
+
+/**
+ * A playback-prefs answer as the player uses it; null when it is not one
+ * (an older server, a stub). The household's defaults (not the profile's
+ * own) put the interface's language first: what one reads, one watches in
+ * — «Как в системе» too, which the server cannot know.
+ */
 export function asPrefs(x: unknown): PlaybackPrefs | null {
   const p = x as Partial<PlaybackPrefs> | null
   if (!p || typeof p !== 'object' || !Array.isArray(p.audioLangs) || typeof p.subMode !== 'string') return null
+  const ui = getLanguage() as PlaybackPrefs['audioLangs'][number]
+  const subs = Array.isArray(p.subLangs) ? p.subLangs : []
   return {
-    audioLangs: p.audioLangs,
+    audioLangs: p.custom ? p.audioLangs : langFirst(p.audioLangs, ui),
     subMode: p.subMode,
-    subLangs: Array.isArray(p.subLangs) ? p.subLangs : [],
+    subLangs: p.custom || subs.length === 0 ? subs : langFirst(subs, ui),
     subSize: p.subSize ?? 'm',
     subBackground: p.subBackground ?? 'translucent',
     custom: Boolean(p.custom),

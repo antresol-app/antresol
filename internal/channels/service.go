@@ -17,7 +17,10 @@ import (
 // generated channels kept in step with the library and the live encoder.
 type Service struct {
 	// LLM helps Suggest read a sentence (VAULT_LLM_URL); nil: the words alone.
-	LLM       *LLM
+	LLM *LLM
+	// LLMSource, when set, is asked instead of LLM (the admin's «ИИ-помощник»
+	// settings over the environment's)
+	LLMSource func(context.Context) *LLM
 	Store     *Store
 	Builder   *Builder
 	Generator *Generator
@@ -71,6 +74,14 @@ func New(db *sql.DB, live *Live) *Service {
 func (s *Service) SetRoots(roots []Root) {
 	s.Builder.Catalog.Roots = roots
 	s.Generator.Catalog.Roots = roots
+}
+
+// Model is the language model Suggest asks now (nil: none).
+func (s *Service) Model(ctx context.Context) *LLM {
+	if s.LLMSource != nil {
+		return s.LLMSource(ctx)
+	}
+	return s.LLM
 }
 
 func (s *Service) init() {

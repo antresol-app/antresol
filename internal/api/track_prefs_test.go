@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"testing"
@@ -222,5 +223,24 @@ func TestTrackPrefsHiddenItem(t *testing.T) {
 	}
 	if w := e.do("PUT", "/api/files/"+itoa(file)+"/subtitle-offset", `{"offsetMs":250}`, kid); w.Code != http.StatusNotFound {
 		t.Fatalf("offset: %d", w.Code)
+	}
+}
+
+// The household's defaults put the profile's interface language first.
+func TestPlaybackPrefsFollowInterfaceLanguage(t *testing.T) {
+	e := newLibEnvWith(t, func(d *Deps, db *sql.DB) { d.DB = db })
+	// english's defaults put the profile's interface language first
+	if w := e.do("PUT", "/api/me/ui-language", `{"language":"en"}`, e.admin); w.Code >= 300 {
+		t.Fatalf("ui language: %d %s", w.Code, w.Body)
+	}
+	if p := e.prefsOf("/api/me/playback-prefs", e.admin); p.Custom || strings.Join(p.AudioLangs, ",") != "en,ru" || strings.Join(p.SubLangs, ",") != "en,ru" {
+		t.Fatalf("english interface: %+v", p)
+	}
+	// a language the household lacks is added first
+	if w := e.do("PUT", "/api/me/ui-language", `{"language":"ru"}`, e.admin); w.Code >= 300 {
+		t.Fatal(w.Body)
+	}
+	if p := e.prefsOf("/api/me/playback-prefs", e.admin); strings.Join(p.AudioLangs, ",") != "ru,en" {
+		t.Fatalf("russian interface: %+v", p)
 	}
 }

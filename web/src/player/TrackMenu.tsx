@@ -35,8 +35,18 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
   const offsetId = useId()
   const step = offsetSeconds(OFFSET_STEP_MS, loc).replace(/^\+/, '')
   const findVoices = !__LIBRARY_EDITION__ && onFindVoiceOvers
+  // a cleaned voice-over is not a row of its own: «Очищенный перевод» under
+  // the list turns it on for the chosen voice-over (as Apple's «Усиление
+  // речи» is a switch, not a track)
+  const twinOf = (base: number) => audio.find((c) => c.kind === 'cleaned' && c.cleanedFrom === base)
+  const current = audio.find((x) => x.index === audioIndex)
+  const hasBase = (c: Track) => c.kind === 'cleaned' && audio.some((s) => s.index === c.cleanedFrom && s.kind !== 'cleaned')
+  const base = current && hasBase(current) ? current.cleanedFrom! : audioIndex
+  const cleanedOn = Boolean(current && hasBase(current))
+  const twin = twinOf(base)
+  const rows = audioMenuOrder(audio).filter(({ tr }) => !hasBase(tr))
   // one track and «Найти озвучку…»: the column shows to offer it
-  const showAudio = audio.length > 1 || Boolean(findVoices)
+  const showAudio = rows.length > 1 || Boolean(twin) || Boolean(findVoices)
   return (
     <Menu
       label={t('player.tracks.title')}
@@ -54,7 +64,7 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
           {showAudio && (
             <div role="group" aria-label={t('common.audio')} className={styles.group}>
               <MenuHeading>{t('common.audio')}</MenuHeading>
-              {audioMenuOrder(audio).map(({ tr, i }) => {
+              {rows.map(({ tr, i }) => {
                 const l = audioLabel(tr, i)
                 return (
                   <MenuItem
@@ -63,14 +73,31 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
                     detail={l.detail}
                     badge={l.cleaned && { text: l.cleaned.badge, title: l.cleaned.hint }}
                     ariaLabel={l.cleaned?.aria}
-                    checked={tr.index === audioIndex}
+                    checked={tr.index === base}
                     onSelect={() => {
                       close()
-                      if (tr.index !== audioIndex) onAudio(tr.index)
+                      // another voice-over keeps «Очищенный перевод» on where it has one
+                      const next = cleanedOn ? (twinOf(tr.index)?.index ?? tr.index) : tr.index
+                      if (next !== audioIndex) onAudio(next)
                     }}
                   />
                 )
               })}
+              {twin && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem
+                    label={t('player.track.cleanedToggle')}
+                    detail={t('player.track.cleanedToggleHint')}
+                    checked={cleanedOn}
+                    multi
+                    onSelect={() => {
+                      close()
+                      onAudio(cleanedOn ? base : twin.index)
+                    }}
+                  />
+                </>
+              )}
               {findVoices && (
                 <>
                   <MenuSeparator />

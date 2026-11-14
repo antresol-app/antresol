@@ -51,3 +51,10 @@
     margin-block: calc(-1 * var(--s-3));
   }
 }
+
+/* «ИИ-помощник»: the address, the model and the key */
+.aiFields {
+  display: grid;
+  gap: var(--s-3);
+  width: 100%;
+}

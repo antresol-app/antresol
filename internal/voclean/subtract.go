@@ -38,6 +38,10 @@ const (
 type frame struct {
 	x, y     []complex128
 	num, den []float64
+	// the second reference (Subtractor2): its spectrum and the band sums
+	// Re Σ X·Ȳ2, Σ |Y2|², Re Σ Y·Ȳ2
+	y2              []complex128
+	num2, den2, y12 []float64
 }
 
 // Subtractor removes a reference (the original) from a signal that holds
@@ -63,6 +67,11 @@ type Subtractor struct {
 	z            []complex128 // FFT scratch
 	in, out      int64        // samples taken, samples emitted
 	gainCap      float64      // the fitted gain's upper bound (gainMax unless set)
+	// two: a second reference (NewSubtractor2) fitted together with the
+	// first, only the first subtracted
+	two    bool
+	bufOr2 []float64
+	z2     []complex128
 }
 
 // GainCap returns the upper bound of the fitted gain for a voice-over whose
@@ -108,6 +117,39 @@ func NewSubtractor(sampleRate int) *Subtractor {
 	return s
 }
 
+// NewSubtractor2 returns a Subtractor that fits two references together
+// and subtracts only the first: a stereo voice-over over a 5.1 original,
+// whose left channel holds the original's centre (the dialogue, to go)
+// and its left front (music and effects, to stay) — fitted alone, the
+// centre would take the part of the front it correlates with. Process2
+// feeds it.
+func NewSubtractor2(sampleRate int) *Subtractor {
+	s := NewSubtractor(sampleRate)
+	s.two = true
+	s.bufOr2 = make([]float64, s.n)
+	s.z2 = make([]complex128, s.n)
+	nb := len(s.edges) - 1
+	for i := range s.ring {
+		s.ring[i].y2 = make([]complex128, s.n/2+1)
+		s.ring[i].num2, s.ring[i].den2, s.ring[i].y12 = make([]float64, nb), make([]float64, nb), make([]float64, nb)
+	}
+	return s
+}
+
+// Process2 is Process with the second reference (NewSubtractor2).
+func (s *Subtractor) Process2(vo, orig, orig2 []float32) []float32 {
+	if len(vo) != len(orig) || len(vo) != len(orig2) {
+		panic("voclean: Process2: blocks of different lengths")
+	}
+	s.in += int64(len(vo))
+	out := make([]float32, 0, len(vo)+s.hop)
+	for i := range vo {
+		s.bufOr2[s.fill] = float64(orig2[i])
+		out = s.push(float64(vo[i]), float64(orig[i]), out)
+	}
+	return out
+}
+
 // bandEdges: numpy's unique(round(geomspace(1, bins, nb+1))) with the
 // first edge 0.
 func bandEdges(bins, nb int) []int {
@@ -147,6 +189,9 @@ func (s *Subtractor) Flush() []float32 {
 	// zeros past the end: frames of zeros add nothing to the gain sums, so
 	// the last frames' windows are simply cut at the end
 	for s.out < s.in {
+		if s.two {
+			s.bufOr2[s.fill] = 0
+		}
 		out = s.push(0, 0, out)
 	}
 	return out
@@ -161,6 +206,9 @@ func (s *Subtractor) push(vo, orig float64, out []float32) []float32 {
 	s.analyse()
 	copy(s.bufVo, s.bufVo[s.hop:])
 	copy(s.bufOr, s.bufOr[s.hop:])
+	if s.two {
+		copy(s.bufOr2, s.bufOr2[s.hop:])
+	}
 	s.fill = s.n - s.hop
 	if k := s.analysed - 1 - s.ahead; k >= 0 {
 		out = s.synthesise(k, out)
@@ -194,7 +242,40 @@ func (s *Subtractor) analyse() {
 		}
 		fr.num[b], fr.den[b] = num, den
 	}
+	if s.two {
+		for i := range n {
+			s.z2[i] = complex(s.window[i]*s.bufOr2[i], 0)
+		}
+		s.f.Transform(s.z2, false)
+		copy(fr.y2, s.z2[:n/2+1])
+		for b := range fr.num2 {
+			var num2, den2, y12 float64
+			for k := s.edges[b]; k < s.edges[b+1]; k++ {
+				x, y, y2 := fr.x[k], fr.y[k], fr.y2[k]
+				num2 += real(x)*real(y2) + imag(x)*imag(y2)
+				den2 += real(y2)*real(y2) + imag(y2)*imag(y2)
+				y12 += real(y)*real(y2) + imag(y)*imag(y2)
+			}
+			fr.num2[b], fr.den2[b], fr.y12[b] = num2, den2, y12
+		}
+	}
 	s.analysed++
+}
+
+// gainOf fits the band's gain of the (first) reference over the window's
+// sums: alone, or together with the second reference (2×2 least squares,
+// a little ridge so a reference silent in the band does not blow it up;
+// near-collinear references fall back to the first alone).
+func (s *Subtractor) gainOf(num, den, num2, den2, y12 float64) float64 {
+	g := num / max(den, denFloor)
+	if s.two {
+		r := 1e-3 * (den + den2)
+		a, d := den+r, den2+r
+		if det := a*d - y12*y12; det > 1e-6*a*d && det > 0 {
+			g = (num*d - num2*y12) / det
+		}
+	}
+	return min(max(g, 0), s.gainCap)
 }
 
 // synthesise subtracts the fitted original from frame k, overlap-adds it
@@ -204,13 +285,18 @@ func (s *Subtractor) synthesise(k int, out []float32) []float32 {
 	lo, hi := max(k-s.back, 0), min(k+s.ahead, s.analysed-1)
 	fr := &s.ring[k%len(s.ring)]
 	for b := range fr.num {
-		var num, den float64
+		var num, den, num2, den2, y12 float64
 		for j := lo; j <= hi; j++ {
 			o := &s.ring[j%len(s.ring)]
 			num += o.num[b]
 			den += o.den[b]
+			if s.two {
+				num2 += o.num2[b]
+				den2 += o.den2[b]
+				y12 += o.y12[b]
+			}
 		}
-		g := min(max(num/max(den, denFloor), 0), s.gainCap)
+		g := s.gainOf(num, den, num2, den2, y12)
 		for i := s.edges[b]; i < s.edges[b+1]; i++ {
 			s.z[i] = fr.x[i] - complex(g, 0)*fr.y[i]
 		}
@@ -240,9 +326,9 @@ func (s *Subtractor) synthesise(k int, out []float32) []float32 {
 // bufferedCap: the values the Subtractor keeps between calls (tests: it
 // must not grow with the stream).
 func (s *Subtractor) bufferedCap() int {
-	c := cap(s.bufVo) + cap(s.bufOr) + cap(s.acc) + 2*cap(s.z) + cap(s.ring)
+	c := cap(s.bufVo) + cap(s.bufOr) + cap(s.acc) + 2*cap(s.z) + cap(s.ring) + cap(s.bufOr2) + 2*cap(s.z2)
 	for _, f := range s.ring {
-		c += 2*cap(f.x) + 2*cap(f.y) + cap(f.num) + cap(f.den)
+		c += 2*cap(f.x) + 2*cap(f.y) + cap(f.num) + cap(f.den) + 2*cap(f.y2) + cap(f.num2) + cap(f.den2) + cap(f.y12)
 	}
 	return c
 }
