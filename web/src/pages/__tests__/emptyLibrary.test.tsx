@@ -39,7 +39,7 @@ describe('core build: an empty library', () => {
     await renderEmpty(page, admin)
     expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
     const link = screen.getByRole('link', { name: 'Пересканировать в настройках' })
-    expect(link).toHaveAttribute('href', '/manage/settings#rescan')
+    expect(link).toHaveAttribute('href', '/manage/settings/library#rescan')
     expect(document.querySelector('a[href^="/search"]')).toBeNull()
   })
 

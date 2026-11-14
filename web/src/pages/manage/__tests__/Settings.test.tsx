@@ -159,7 +159,7 @@ describe('Настройки: любимые озвучки', () => {
 })
 
 // RescanLink: the empty pages of the core build land on the last row of the page.
-describe('Настройки: /manage/settings#rescan', () => {
+describe('Настройки: /manage/settings/library#rescan', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     window.location.hash = ''
