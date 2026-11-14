@@ -51,7 +51,10 @@ type Config struct {
 	OpenSubtitlesPassword string // VAULT_OPENSUBTITLES_PASSWORD
 	OpenSubtitlesURL      string // VAULT_OPENSUBTITLES_BASEURL
 	FFmpeg, FFprobe       string
-	HWAccel               string // auto|qsv|videotoolbox|none
+	HWAccel               string // auto|qsv|vaapi|nvenc|videotoolbox|none
+	// HWAccelDevice is the DRM render node of vaapi (VAULT_HWACCEL_DEVICE;
+	// "": the first /dev/dri/renderD*).
+	HWAccelDevice string
 	// TranscodeDir holds HLS session segments (VAULT_TRANSCODE_DIR; a
 	// relative path is under MediaRoot; default DataDir/hls). Point it at
 	// the media disk: a session keeps minutes of video there.
@@ -239,6 +242,7 @@ func Load() (Config, error) {
 		FFmpeg:                env("VAULT_FFMPEG", "ffmpeg"),
 		FFprobe:               env("VAULT_FFPROBE", "ffprobe"),
 		HWAccel:               env("VAULT_HWACCEL", "auto"),
+		HWAccelDevice:         env("VAULT_HWACCEL_DEVICE", ""),
 	}
 	if c.MediaRoot == "" {
 		c.MediaRoot = defaultMediaRoot(statDir)
@@ -361,7 +365,7 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("VAULT_SEGMENTS_ONLINE: unknown value %q", v)
 	}
 	switch c.HWAccel {
-	case "auto", "qsv", "videotoolbox", "none":
+	case "auto", "qsv", "vaapi", "nvenc", "videotoolbox", "none":
 	default:
 		return c, fmt.Errorf("VAULT_HWACCEL: unknown value %q", c.HWAccel)
 	}

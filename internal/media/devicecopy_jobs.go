@@ -86,7 +86,9 @@ type DeviceCopies struct {
 	PerUserLimit int
 	KeepRecent   time.Duration
 	FFmpeg, HW   string
-	Now          func() time.Time
+	// Accel, when set, replaces HW: the hardware settings when a copy runs
+	Accel *Accel
+	Now   func() time.Time
 	// Run runs ffmpeg with args, reporting out_time_us; nil: FFmpeg (tests).
 	Run func(ctx context.Context, args []string, progress func(outTimeUs int64)) error
 	// FreeBytes is the free space of dir; nil: the filesystem's (tests).
@@ -471,9 +473,18 @@ func (c *DeviceCopies) runJob(j *copyJob) {
 		return
 	}
 	part := filepath.Join(c.Dir, j.id+".part.mp4")
-	err := c.ffmpeg(j, c.HW, part)
-	if err != nil && c.ctx.Err() == nil && !j.plan.VideoCopy && (c.HW == "qsv" || c.HW == "videotoolbox") {
-		log.Printf("media: device copy %s: %s ffmpeg failed, retrying in software: %v", j.id, c.HW, err)
+	hw := c.HW
+	if c.Accel != nil {
+		hw = c.Accel.Mode()
+	}
+	j.plan.Tonemap = c.Accel.Tonemap(hw, j.plan.HDRTransfer, !j.plan.VideoCopy &&
+		(hw == HWQSV && qsvDecodable(j.plan.VideoCodec, j.plan.SourcePixFmt) || hw == HWVAAPI && vaapiDecodable(j.plan.VideoCodec, j.plan.SourcePixFmt)))
+	err := c.ffmpeg(j, hw, part)
+	if err != nil && c.ctx.Err() == nil && !j.plan.VideoCopy && IsHW(hw) {
+		log.Printf("media: device copy %s: %s ffmpeg failed, retrying in software: %v", j.id, hw, err)
+		if j.plan.Tonemap == "gpu" {
+			j.plan.Tonemap = c.Accel.Tonemap(HWNone, j.plan.HDRTransfer, false)
+		}
 		err = c.ffmpeg(j, "none", part)
 	}
 	if err != nil {

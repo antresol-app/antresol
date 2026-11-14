@@ -146,16 +146,31 @@ func run() error {
 		}})
 	jobs.Enrichers, jobs.SlowEnrichers = metaSrc.Fast, metaSrc.Slow
 
-	hw := media.DetectHW(cfg.HWAccel)
+	// the transcodes' GPU: auto tries the machine's with a test encode
+	// each; «Настройки сервера → Перекодирование» overrides VAULT_HWACCEL*
+	// (stored, applied at once to new sessions)
+	accel := &media.Accel{FFmpeg: cfg.FFmpeg}
+	hwDefaults := media.AccelConfig{Mode: cfg.HWAccel, Device: cfg.HWAccelDevice, Tonemap: true, HEVC: true}
+	hwCfg, _, err := api.LoadTranscodingSettings(ctx, database, hwDefaults)
+	if err != nil {
+		log.Printf("transcoding settings: %v (using VAULT_HWACCEL)", err)
+	}
+	hwStatus := accel.Apply(ctx, hwCfg, false)
+	hw := hwStatus.Mode
+	for _, p := range hwStatus.Probes {
+		if !p.OK {
+			log.Printf("media: hardware test encode %s failed: %s", p.Mode, p.Error)
+		}
+	}
 	// Session segments live in VAULT_TRANSCODE_DIR (the media disk in
 	// compose, not the config volume); dirs left by a crash are wiped here.
 	// Audio transcodes have their own 4 slots (not HLS's); Subsonic shares them.
 	audioTr := &media.AudioTranscoder{FFmpeg: cfg.FFmpeg, Limit: 4}
-	hls := &media.HLSManager{FFmpeg: cfg.FFmpeg, WorkDir: cfg.TranscodeDir, HW: hw, MaxBytes: cfg.TranscodeMaxBytes}
+	hls := &media.HLSManager{FFmpeg: cfg.FFmpeg, WorkDir: cfg.TranscodeDir, HW: hw, Accel: accel, MaxBytes: cfg.TranscodeMaxBytes}
 	defer hls.Close()
 	// The native app's offline copies (MP4) and comic page zips; copies run
 	// one at a time, beside the HLS segments on the media disk by default.
-	deviceCopies := &media.DeviceCopies{Dir: cfg.DeviceCopyDir, MaxBytes: cfg.DeviceCopyMaxBytes, FFmpeg: cfg.FFmpeg, HW: hw}
+	deviceCopies := &media.DeviceCopies{Dir: cfg.DeviceCopyDir, MaxBytes: cfg.DeviceCopyMaxBytes, FFmpeg: cfg.FFmpeg, HW: hw, Accel: accel}
 	deviceCopies.Start() // deletes partial copies left by a crash
 	defer deviceCopies.Close()
 
@@ -365,7 +380,7 @@ func run() error {
 	// sessions on the media disk; schedules kept 48 h ahead
 	var live *channels.Live
 	if cfg.ChannelsMax > 0 {
-		live = &channels.Live{FFmpeg: cfg.FFmpeg, HW: hw, Dir: filepath.Join(cfg.TranscodeDir, "live"), Max: cfg.ChannelsMax}
+		live = &channels.Live{FFmpeg: cfg.FFmpeg, HW: hw, Accel: accel, Dir: filepath.Join(cfg.TranscodeDir, "live"), Max: cfg.ChannelsMax}
 		defer live.Close()
 	}
 	chans = channels.New(database, live)
@@ -431,6 +446,7 @@ func run() error {
 	// and Jellyfin (the day is the server's, TZ)
 	screenTime := screentime.New(database)
 	deps := api.Deps{
+		Accel: accel, TranscodingDefaults: hwDefaults,
 		ScreenTime: screenTime,
 		Users:      users, Sessions: sessions, Network: network, Throttle: throttle,
 		MediaKeys: auth.NewMediaKeys(mkSecret, sessions),
@@ -601,7 +617,7 @@ func run() error {
 	errc := make(chan error, len(servers))
 	for i, s := range servers {
 		if i == 0 {
-			log.Printf("%s %s listening on %s (hw: %s)", serverName, version.Version, s.Addr, hw)
+			log.Printf("%s %s listening on %s (hw: %s)", serverName, version.Version, s.Addr, accel.Mode())
 		}
 		// the Jellyfin listener is optional: a port it cannot open (taken
 		// by a Jellyfin still running) never stops Vault

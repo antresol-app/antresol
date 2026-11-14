@@ -14,6 +14,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/lang"
+	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/releaseprefs"
 	"github.com/antresol-app/antresol/internal/subtitles"
 	"github.com/go-chi/chi/v5"
@@ -277,6 +278,9 @@ type settingsView struct {
 	// AIFromEnv: none is set here but the server has VAULT_LLM_* (its model)
 	AIKeySet  bool   `json:"aiKeySet"`
 	AIFromEnv string `json:"aiFromEnv,omitempty"`
+	// TranscodingName: what transcodes video now («Перекодирование»'s
+	// summary; response only, the settings are /api/settings/transcoding)
+	TranscodingName string `json:"transcodingName,omitempty"`
 }
 
 type settingsAPI struct {
@@ -289,11 +293,13 @@ type settingsAPI struct {
 	prefs releaseprefs.Store
 	// settingsFull: where the sources build keeps release preferences
 	settingsFull
+	// accel: the transcodes' hardware (the summary of «Перекодирование»)
+	accel *media.Accel
 }
 
 func newSettingsAPI(deps Deps) *settingsAPI {
 	return &settingsAPI{db: deps.DB, defaults: deps.SettingsDefaults, apply: deps.ApplySettings,
-		subtitles: deps.Subtitles != nil, prefs: releaseprefs.Store{DB: deps.DB}, settingsFull: newSettingsFull(deps)}
+		subtitles: deps.Subtitles != nil, prefs: releaseprefs.Store{DB: deps.DB}, settingsFull: newSettingsFull(deps), accel: deps.Accel}
 }
 
 func mountSettings(r chi.Router, s *settingsAPI) {
@@ -324,6 +330,9 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 		if env := channels.LLMFromEnv(); env != nil {
 			v.AIFromEnv = env.Model
 		}
+	}
+	if s.accel != nil {
+		v.TranscodingName = media.HWName(s.accel.Mode())
 	}
 	if v.Studios, err = s.prefs.Studios(ctx); err != nil {
 		return settingsView{}, err

@@ -177,14 +177,6 @@ func TestParseProbe(t *testing.T) {
 	}
 }
 
-func TestDetectHWExplicit(t *testing.T) {
-	for _, v := range []string{"qsv", "videotoolbox", "none"} {
-		if got := DetectHW(v); got != v {
-			t.Errorf("DetectHW(%q)=%q", v, got)
-		}
-	}
-}
-
 func mkv(v VideoStream, a AudioStream) ProbeResult {
 	a.Index, a.Default = 1, true
 	return ProbeResult{Container: "mkv", Video: &v, Audio: []AudioStream{a}}
@@ -268,13 +260,6 @@ func TestBuildArgsMaxBitrateEvenHeight(t *testing.T) {
 	q := strings.Join(BuildArgs("qsv", "in", d, 0, "/w"), " ")
 	if !strings.Contains(q, "vpp_qsv=w=trunc(oh*a/2)*2:h=720") {
 		t.Fatal(q)
-	}
-}
-
-func TestDetectHWUnknownFallsBackToAuto(t *testing.T) {
-	got := DetectHW("bogus")
-	if got != DetectHW("auto") || (got != "qsv" && got != "videotoolbox" && got != "none") {
-		t.Fatalf("got %q", got)
 	}
 }
 

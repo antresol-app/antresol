@@ -91,6 +91,11 @@ export function Stats() {
           </div>
 
           <p className={styles.libraryLine}>{libraryLine(data.counts)}</p>
+          {data.transcoding && (
+            <p className={styles.libraryLine}>
+              {data.transcoding.mode === 'none' ? t('stats.transcoding.cpu') : t('stats.transcoding.gpu', { name: data.transcoding.name })}
+            </p>
+          )}
 
           {data.disk.total > 0 && (
             <Card>

@@ -57,6 +57,9 @@ type DeviceCopyPlan struct {
 	ExternalSubs    []ExternalSub
 	DurationMs      int64
 	Reason          string
+	// HDRTransfer: Decision.HDRTransfer; Tonemap: Decision.Tonemap (set
+	// when the copy runs, by the hardware settings).
+	HDRTransfer, Tonemap string
 }
 
 // PlanDeviceCopy decides a device copy of p: the video is copied when it
@@ -70,6 +73,7 @@ func PlanDeviceCopy(p ProbeResult, ext []ExternalSub, maxHeight int, maxBitrate 
 	var reasons []string
 	if v := p.Video; v != nil {
 		pl.VideoCodec, pl.SourcePixFmt, pl.SourceHeight = v.Codec, v.PixFmt, v.Height
+		pl.HDRTransfer = v.HDRTransfer()
 		c := normCodec(v.Codec)
 		switch {
 		case !deviceVideoCopy[c]:
@@ -160,7 +164,12 @@ func subLang639_2(lang string) string {
 // the demuxer of their codec, CP1251 for files that are not UTF-8.
 func DeviceCopyArgs(hw, input string, pl DeviceCopyPlan, out string) []string {
 	a := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}
-	if !pl.VideoCopy {
+	if !pl.VideoCopy && pl.Tonemap == "cpu" && hw != HWNVENC {
+		a = append(a, hwDeviceArgs(hw)...) // the CPU tone-maps system frames
+	} else if !pl.VideoCopy {
+		if hw == HWQSV && pl.Tonemap == "gpu" {
+			a = append(a, qsvTonemapDevices()...)
+		}
 		a = append(a, videoDecodeArgs(hw, pl.VideoCodec, pl.SourcePixFmt)...)
 	}
 	opts, operand, err := InputArgs(input)
@@ -208,7 +217,8 @@ func DeviceCopyArgs(hw, input string, pl DeviceCopyPlan, out string) []string {
 			a = append(a, "-tag:v", "hvc1") // AVPlayer plays only hvc1-tagged HEVC
 		}
 	} else {
-		a = append(a, videoEncodeArgs(hw, pl.VideoCodec, pl.SourcePixFmt, pl.TargetHeight, pl.SourceHeight, pl.MaxBitrate)...)
+		a = append(a, encodeArgs(hw, encOpts{codec: pl.VideoCodec, pixFmt: pl.SourcePixFmt, h: pl.TargetHeight, sourceH: pl.SourceHeight,
+			maxBitrate: pl.MaxBitrate, tonemap: pl.Tonemap, transfer: pl.HDRTransfer})...)
 	}
 	if pl.AudioIndex >= 0 {
 		if pl.AudioCopy {

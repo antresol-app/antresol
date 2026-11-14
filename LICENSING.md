@@ -120,6 +120,13 @@ change.
 `third_party/` holds a patched copy of a Go module under its original
 licence (see the files there).
 
+The container image (`Dockerfile`) adds Debian packages to the binary:
+ffmpeg, its libraries and the GPU video drivers. Each keeps its own licence,
+in `/usr/share/doc/<package>/copyright` inside the image. On amd64 one
+comes from Debian's `non-free` component: `intel-media-va-driver-non-free`,
+Intel's VA-API driver (MIT; in non-free only because its prebuilt GPU
+kernels come without their source), which may be redistributed.
+
 ## The name and the logo
 
 The licences above cover code. They do not grant any right to the name

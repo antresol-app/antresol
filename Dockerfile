@@ -41,15 +41,29 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
  && scripts/check-library-edition.sh /out/vault
 
 # 3. Рантайм
+# GPU transcoding (README, "Hardware transcoding"): VA-API drivers for AMD
+# (mesa) and, on amd64, Intel (iHD with its prebuilt kernels, from Debian's
+# non-free component: MIT-licensed, non-free only because the kernels come
+# without their source; LICENSING.md), i965 for Intel before Broadwell
+# (libva picks iHD on newer ones) and the Intel Quick Sync runtime.
+# NVIDIA's driver comes from the host through the NVIDIA Container Toolkit.
 FROM debian:trixie-slim AS library
-RUN apt-get update \
+ARG TARGETARCH
+RUN set -eu; intel=; \
+    if [ "$TARGETARCH" = amd64 ]; then \
+      sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources; \
+      intel="intel-media-va-driver-non-free libmfx-gen1.2 i965-va-driver"; \
+    fi; \
+    apt-get update \
  && apt-get install -y --no-install-recommends \
-      ffmpeg vainfo ca-certificates tzdata curl \
+      ffmpeg mesa-va-drivers $intel vainfo ca-certificates tzdata curl \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -g 1000 vault \
  && useradd -u 1000 -g vault -G video -m -d /home/vault -s /usr/sbin/nologin vault \
  && mkdir -p /config && chown vault:vault /config
-ENV VAULT_DATA_DIR=/config
+# NVIDIA Container Toolkit: the driver libraries NVENC/NVDEC need
+ENV VAULT_DATA_DIR=/config \
+    NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 VOLUME /config
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8420/api/health || exit 1

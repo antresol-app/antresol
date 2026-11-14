@@ -40,7 +40,10 @@ type LiveInput struct {
 	// from the programme's start plus LiveSubOffset).
 	Subs []LiveSub
 	// The source video (from its probe; "" / 0 when unknown).
-	VideoCodec, PixFmt  string
+	VideoCodec, PixFmt string
+	// HDRTransfer, when set, tone-maps the picture (an HDR transfer:
+	// VideoStream.HDRTransfer) to SDR on the CPU.
+	HDRTransfer         string
 	SrcWidth, SrcHeight int
 	// Width×Height of the channel (default 1920×1080).
 	Width, Height int
@@ -141,7 +144,8 @@ func liveInputArgs(in LiveInput) []string {
 }
 
 // LiveArgs is the ffmpeg command line (without the binary) of one live
-// programme with the hardware mode hw ("qsv", "videotoolbox", "none"):
+// programme with the hardware mode hw ("qsv", "vaapi", "nvenc",
+// "videotoolbox", "none"):
 // the video encoded once, each audio output its own AAC encode (or a
 // copy), each subtitle output a WebVTT file.
 func LiveArgs(hw string, in LiveInput) []string {
@@ -162,10 +166,25 @@ func LiveArgs(hw string, in LiveInput) []string {
 	}
 	// The iGPU decodes and scales when it can and the picture's size is
 	// known (vpp_qsv needs the fitted size in numbers); else the CPU does.
-	gpu := hw == "qsv" && qsvDecodable(in.VideoCodec, in.PixFmt) && in.SrcWidth > 0 && in.SrcHeight > 0
+	// HDR tone-mapped (by the CPU, on system frames) when asked
+	sized := in.SrcWidth > 0 && in.SrcHeight > 0 && in.HDRTransfer == ""
+	gpu := hw == HWQSV && qsvDecodable(in.VideoCodec, in.PixFmt) && sized
+	vagpu := hw == HWVAAPI && vaapiDecodable(in.VideoCodec, in.PixFmt) && sized
+	swFit := func(w, h int, pad, pixFmt string) string {
+		if in.HDRTransfer != "" {
+			return cpuTonemap(in.HDRTransfer) + "," + swFit(w, h, pad, pixFmt)
+		}
+		return swFit(w, h, pad, pixFmt)
+	}
 	switch {
 	case gpu:
 		a = append(a, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+	case vagpu:
+		a = append(a, "-hwaccel", "vaapi", "-hwaccel_device", vaapiDevice(), "-hwaccel_output_format", "vaapi")
+	case hw == HWVAAPI:
+		a = append(a, hwDeviceArgs(hw)...)
+	case hw == HWNVENC:
+		a = append(a, "-hwaccel", "cuda")
 	case hw == "videotoolbox":
 		a = append(a, "-hwaccel", "videotoolbox")
 	}
@@ -246,6 +265,12 @@ func LiveArgs(hw string, in LiveInput) []string {
 		a = append(a, "-vf", fmt.Sprintf("vpp_qsv=w=%d:h=%d:format=nv12,hwdownload,format=nv12,%s", fw, fh, pad))
 	case hw == "qsv":
 		a = append(a, "-vf", swFit(w, h, pad, "nv12"))
+	case vagpu:
+		// scaled on the GPU, padded by the CPU, encoded on the GPU
+		fw, fh := fit(in.SrcWidth, in.SrcHeight, w, h)
+		a = append(a, "-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d:format=nv12,hwdownload,format=nv12,%s,hwupload", fw, fh, pad))
+	case hw == HWVAAPI:
+		a = append(a, "-vf", swFit(w, h, pad, "nv12")+",hwupload")
 	default:
 		a = append(a, "-vf", swFit(w, h, pad, "yuv420p"))
 	}
@@ -255,6 +280,16 @@ func LiveArgs(hw string, in LiveInput) []string {
 		a = append(a, "-fps_mode", "passthrough", "-c:v", "h264_qsv", "-low_power", "1", "-preset", "veryfast",
 			"-b:v", strconv.FormatInt(br, 10), "-maxrate", strconv.FormatInt(maxrate, 10),
 			"-bufsize", strconv.FormatInt(2*maxrate, 10), "-forced_idr", "1")
+	case HWVAAPI:
+		a = append(a, "-c:v", "h264_vaapi")
+		if vaapiLowPower() {
+			a = append(a, "-low_power", "1")
+		}
+		a = append(a, "-rc_mode", "VBR", "-b:v", strconv.FormatInt(br, 10), "-maxrate", strconv.FormatInt(maxrate, 10),
+			"-bufsize", strconv.FormatInt(2*maxrate, 10))
+	case HWNVENC:
+		a = append(a, "-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-b:v", strconv.FormatInt(br, 10),
+			"-maxrate", strconv.FormatInt(maxrate, 10), "-bufsize", strconv.FormatInt(2*maxrate, 10), "-forced-idr", "1")
 	case "videotoolbox":
 		a = append(a, "-c:v", "h264_videotoolbox", "-b:v", strconv.FormatInt(br, 10), "-profile:v", "high")
 	default:

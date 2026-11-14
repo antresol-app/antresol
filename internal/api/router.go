@@ -93,6 +93,13 @@ type Deps struct {
 	// /api/disk.
 	DiskUsage func() (disk.Usage, error)
 
+	// Accel holds the transcodes' hardware settings (the «transcoding»
+	// block of /api/stats, «Настройки сервера → Перекодирование» at
+	// /api/settings/transcoding*); nil: neither. TranscodingDefaults are
+	// its settings before any were saved (VAULT_HWACCEL*).
+	Accel               *media.Accel
+	TranscodingDefaults media.AccelConfig
+
 	// DB enables /api/stats* and /api/settings (admin).
 	DB *sql.DB
 	// SettingsDefaults are the settings before anything was saved;
@@ -350,6 +357,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			r.Use(guard.Require)
 			mountStats(r, newStats(deps, time.Now))
 			mountSettings(r, newSettingsAPI(deps))
+			mountTranscoding(r, deps)
 		})
 	}
 	if deps.Sessions != nil && deps.Users != nil && deps.MediaImport != nil {

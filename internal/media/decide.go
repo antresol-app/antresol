@@ -55,6 +55,17 @@ type Decision struct {
 	// raw constant-bitrate stream (zero: -ss, as a local file always is).
 	AudioInputByteSeek ByteSeek
 	Reason             string
+	// HDRTransfer is the source's HDR transfer ("smpte2084", "arib-std-b67";
+	// "" = SDR): a transcode, always SDR, tone-maps it when Tonemap says so.
+	HDRTransfer string
+	// HEVCClient: the client plays HEVC, so a transcode may encode HEVC.
+	HEVCClient bool
+	// Tonemap and OutHEVC are what the session's transcode does, set when
+	// it starts (HLSManager, by the hardware settings): Tonemap "gpu" or
+	// "cpu" tone-maps HDR to SDR there ("" = not at all); OutHEVC encodes
+	// HEVC (fMP4 segments) instead of H.264.
+	Tonemap string
+	OutHEVC bool
 }
 
 // tempoOn: a tempo other than none.
@@ -121,6 +132,7 @@ func Decide(p ProbeResult, c ClientCaps, audioIndex int) Decision {
 	if p.Video != nil {
 		v := p.Video
 		d.VideoCodec, d.SourceHeight, d.SourcePixFmt = v.Codec, v.Height, v.PixFmt
+		d.HDRTransfer, d.HEVCClient = v.HDRTransfer(), inList(c.VideoCodecs, "hevc")
 		if !inList(c.VideoCodecs, v.Codec) {
 			d.VideoCopy = false
 			reasons = append(reasons, i18n.TL(l, "видеокодек %s не поддерживается браузером", v.Codec))

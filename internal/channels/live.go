@@ -99,6 +99,8 @@ var (
 type Live struct {
 	FFmpeg string
 	HW     string
+	// Accel, when set, replaces HW: the hardware settings when a programme starts
+	Accel  *media.Accel
 	Dir    string
 	Source Source
 
@@ -706,8 +708,16 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, set TrackSet,
 		Width: l.Width, Height: l.Height, Bitrate: l.Bitrate,
 		TsOffset: tsOffset, StartNumber: seq, OutDir: c.dir, Playlist: "run.m3u8",
 	}
+	hw := l.HW
+	if l.Accel != nil {
+		hw = l.Accel.Mode()
+	}
 	if v := p.Probe.Video; v != nil {
 		in.VideoCodec, in.PixFmt, in.SrcWidth, in.SrcHeight = v.Codec, v.PixFmt, v.Width, v.Height
+		// HDR becomes SDR on the CPU (a live programme's GPU path does not tone-map)
+		if l.Accel.Tonemap(media.HWNone, v.HDRTransfer(), false) != "" {
+			in.HDRTransfer = v.HDRTransfer()
+		}
 	}
 	if l.ReadRate > 0 {
 		in.Throttle = media.Throttle{Rate: l.ReadRate, Burst: burst}
@@ -719,10 +729,10 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, set TrackSet,
 	} else if p.ExtraID != 0 {
 		return nil, false, errors.New("channels: a title outside the library without a stream")
 	}
-	segs, clean, err := l.encodeTracks(ctx, c, in, tr, set, seq, disc, l.HW)
-	if len(segs) == 0 && l.HW == "qsv" && ctx.Err() == nil {
-		// the iGPU refused (a codec it does not take): the CPU then
-		log.Printf("channels: channel %d: qsv failed (%v), retrying in software", c.id, err)
+	segs, clean, err := l.encodeTracks(ctx, c, in, tr, set, seq, disc, hw)
+	if len(segs) == 0 && gpuRetries(hw) && ctx.Err() == nil {
+		// the GPU refused (a codec it does not take): the CPU then
+		log.Printf("channels: channel %d: %s failed (%v), retrying in software", c.id, hw, err)
 		segs, clean, err = l.encodeTracks(ctx, c, in, tr, set, seq, disc, "none")
 	}
 	if len(segs) == 0 && ctx.Err() == nil {
@@ -730,14 +740,19 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, set TrackSet,
 			// an external voice-over or subtitle file ffmpeg could not read:
 			// the file's own tracks then
 			log.Printf("channels: channel %d: %s with its external tracks failed (%v), retrying without them", c.id, filepath.Base(p.Path), err)
-			hw := l.HW
-			if hw == "qsv" {
-				hw = "none"
+			if gpuRetries(hw) {
+				hw = media.HWNone
 			}
 			segs, clean, err = l.encodeTracks(ctx, c, in, own, set, seq, disc, hw)
 		}
 	}
 	return segs, clean, err
+}
+
+// gpuRetries: a programme the GPU of hw refuses is encoded again in
+// software (qsv, vaapi, nvenc; not videotoolbox, which takes any codec).
+func gpuRetries(hw string) bool {
+	return hw == media.HWQSV || hw == media.HWVAAPI || hw == media.HWNVENC
 }
 
 // ownOnly is t without external audio and subtitle files (changed: it

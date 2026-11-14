@@ -1,6 +1,8 @@
 // Typed client for the Vault HTTP API. Every endpoint has one function here;
 // pages never call fetch directly.
 import type {
+  TranscodingSettings,
+  TranscodingView,
   About,
   AccountsState,
   CalendarDay,
@@ -427,6 +429,9 @@ export const trickplaySheetUrl = (fileId: number, ix: TrickplayIndex, n: number)
 export const getSettings = (signal?: AbortSignal) => request<Settings>('GET', '/api/settings', undefined, signal)
 export const saveSettings = (s: Settings) => request<Settings>('PUT', '/api/settings', s)
 /** «Проверить» of «ИИ-помощник»: one short question to the model (nothing is saved; an empty key: the stored one). */
+export const getTranscoding = (signal?: AbortSignal) => request<TranscodingView>('GET', '/api/settings/transcoding', undefined, signal)
+export const saveTranscoding = (s: Partial<TranscodingSettings> & { reset?: boolean }) => request<TranscodingView>('PUT', '/api/settings/transcoding', s)
+export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
 export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string }>('POST', '/api/settings/ai/test', ai)
 
 // Subtitles (admin): OpenSubtitles search for one video file.

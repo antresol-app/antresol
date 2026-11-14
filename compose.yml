@@ -44,8 +44,22 @@ services:
       - antresol-config:/config
       # read-write: fetched subtitles, transcode segments, offline copies
       - ${MEDIA_DIR:-./media}:/media
-    # The image has no GPU video driver yet, so it decodes on the CPU; run the
-    # binary on the host for hardware decoding.
+    # Hardware transcoding (README, "Hardware transcoding"). Without a GPU
+    # the CPU transcodes. Intel or AMD: uncomment devices and group_add, and
+    # put the GID of your host's render group in group_add
+    # (`getent group render | cut -d: -f3`).
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "992"
+    # NVIDIA (with the NVIDIA Container Toolkit on the host): uncomment deploy.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
 volumes:
   antresol-config:

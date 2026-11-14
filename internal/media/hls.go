@@ -63,7 +63,10 @@ var (
 type HLSManager struct {
 	FFmpeg  string
 	WorkDir string
-	HW      string // "qsv" | "videotoolbox" | "none"
+	HW      string // "qsv" | "vaapi" | "nvenc" | "videotoolbox" | "none"
+	// Accel, when set, replaces HW: the hardware settings in effect when a
+	// session starts (mode, HDR tone mapping, HEVC output).
+	Accel *Accel
 
 	IdleTimeout   time.Duration
 	SweepInterval time.Duration
@@ -351,6 +354,12 @@ func (m *HLSManager) Start(ctx context.Context, o StartOptions) (string, error) 
 	if o.AudioIndex >= 0 {
 		d.AudioIndex = o.AudioIndex
 	}
+	// the hardware settings in effect now (a session keeps them)
+	hw := m.HW
+	if m.Accel != nil {
+		hw = m.Accel.Mode()
+		d = m.Accel.plan(hw, d)
+	}
 	if o.Replace != "" {
 		m.mu.Lock()
 		r := m.sessions[o.Replace]
@@ -424,7 +433,7 @@ func (m *HLSManager) Start(ctx context.Context, o StartOptions) (string, error) 
 		os.RemoveAll(dir)
 		return "", ErrBusy
 	}
-	if err := m.launchLocked(s, m.HW); err != nil {
+	if err := m.launchLocked(s, hw); err != nil {
 		os.RemoveAll(dir)
 		return "", err
 	}
@@ -549,11 +558,25 @@ func (m *HLSManager) Playlist(id string) (string, error) {
 				m.mu.Unlock()
 				return "", fmt.Errorf("media: ffmpeg exited without a playlist: %s", msg)
 			}
-			s.retried = true
-			log.Printf("media: hls %s: %s ffmpeg exited before the first segment, retrying in software: %s",
-				id, s.hw, s.stderr.String())
+			// the GPU's tone mapping refused the picture (tonemap_vaapi
+			// takes only HDR10 with mastering metadata): the same GPU with
+			// the CPU's tone mapping first, then software
+			hw, why := "none", "in software"
+			if s.d.Tonemap == "gpu" {
+				s.d.Tonemap = ""
+				if m.Accel.Tonemap(HWNone, s.d.HDRTransfer, false) == "cpu" {
+					s.d.Tonemap = "cpu"
+				}
+				hw, why = s.hw, "with the CPU's tone mapping"
+			} else {
+				s.retried = true
+				// software encodes H.264 (fMP4 segments stay)
+				s.d.OutHEVC = false
+			}
+			log.Printf("media: hls %s: %s ffmpeg exited before the first segment, retrying %s: %s",
+				id, s.hw, why, s.stderr.String())
 			cleanDir(s.dir)
-			err := m.launchLocked(s, "none")
+			err := m.launchLocked(s, hw)
 			m.mu.Unlock()
 			if err != nil {
 				return "", err
@@ -794,8 +817,16 @@ func BuildArgsThrottled(hw, input string, d Decision, startSec float64, outDir s
 	a := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}
 	transcode := !d.VideoCopy
 	burn := transcode && d.BurnSub > 0
-	if transcode && !burn { // overlay runs on system frames: no GPU decode
+	// overlay and the CPU's tone mapping run on system frames: no GPU decode
+	// (NVDEC hands back system frames anyway)
+	swFrames := burn || d.Tonemap == "cpu" && hw != HWNVENC
+	if transcode && !swFrames {
+		if hw == HWQSV && d.Tonemap == "gpu" {
+			a = append(a, qsvTonemapDevices()...)
+		}
 		a = append(a, videoDecodeArgs(hw, d.VideoCodec, d.SourcePixFmt)...)
+	} else if transcode {
+		a = append(a, hwDeviceArgs(hw)...) // the encoder's device
 	}
 	if startSec > 0 {
 		a = append(a, "-ss", strconv.FormatFloat(startSec, 'f', -1, 64))
@@ -853,7 +884,7 @@ func BuildArgsThrottled(hw, input string, d Decision, startSec float64, outDir s
 			a = append(a, "-tag:v", "hvc1")
 		}
 	} else {
-		enc := videoEncodeArgs(hw, d.VideoCodec, d.SourcePixFmt, d.TargetHeight, d.SourceHeight, d.MaxBitrate)
+		enc := encodeArgs(hw, encodeOpts(d, burn))
 		if burn {
 			enc = burnFilter(enc, d.BurnSub)
 		}
@@ -900,57 +931,194 @@ func BuildArgsThrottled(hw, input string, d Decision, startSec float64, outDir s
 }
 
 // videoDecodeArgs are the input options for decoding a transcode's source
-// on the GPU: qsv when the iGPU decodes the codec, videotoolbox on macOS.
+// on the GPU: qsv or vaapi when the GPU decodes the codec (the frames stay
+// on it), cuda for nvenc (NVDEC, frames back in system memory; ffmpeg
+// decodes in software what it cannot), videotoolbox on macOS. A vaapi
+// encode of software-decoded frames still needs its device.
 func videoDecodeArgs(hw, codec, pixFmt string) []string {
 	switch {
-	case hw == "qsv" && qsvDecodable(codec, pixFmt):
+	case hw == HWQSV && qsvDecodable(codec, pixFmt):
 		return []string{"-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}
-	case hw == "videotoolbox":
+	case hw == HWVAAPI && vaapiDecodable(codec, pixFmt):
+		return []string{"-hwaccel", "vaapi", "-hwaccel_device", vaapiDevice(), "-hwaccel_output_format", "vaapi"}
+	case hw == HWVAAPI:
+		return hwDeviceArgs(hw)
+	case hw == HWNVENC:
+		return []string{"-hwaccel", "cuda"}
+	case hw == HWVideoToolbox:
 		return []string{"-hwaccel", "videotoolbox"}
 	}
 	return nil
+}
+
+// qsvTonemapDevices map QSV frames to VA-API and back (qsvTonemap).
+func qsvTonemapDevices() []string {
+	return []string{"-init_hw_device", "vaapi=va:" + vaapiDevice(), "-init_hw_device", "qsv=qs@va", "-filter_hw_device", "qs"}
+}
+
+// qsvTonemap scales (h > 0) and tone-maps QSV frames with VA-API's filters
+// on the same GPU, and hands them back to the QSV encoder.
+func qsvTonemap(h int) string {
+	vf := "hwmap=derive_device=vaapi,"
+	if h > 0 {
+		vf += "scale_vaapi=w=-2:h=" + strconv.Itoa(h) + ","
+	}
+	return vf + vaapiTonemap + ",hwmap=derive_device=qsv,format=qsv"
+}
+
+// hwDeviceArgs open the encoder's device when the frames come from the
+// CPU (vaapi uploads them; the other encoders open their own).
+func hwDeviceArgs(hw string) []string {
+	if hw == HWVAAPI {
+		return []string{"-init_hw_device", "vaapi=va:" + vaapiDevice(), "-filter_hw_device", "va"}
+	}
+	return nil
+}
+
+// vaapiDecodable reports whether a VA-API GPU decodes the source (as
+// qsvDecodable, without AV1: Intel before Tiger Lake and AMD before RDNA2
+// have no AV1 decoder; the CPU decodes it, the GPU still encodes).
+func vaapiDecodable(codec, pixFmt string) bool {
+	return normCodec(codec) != "av1" && qsvDecodable(codec, pixFmt)
 }
 
 // videoEncodeArgs are the output options re-encoding the video to H.264
 // (filter, encoder, rate control) at targetHeight (0 = the source's),
 // capped by maxBitrate (0 = none). HLS and device copies share them.
 func videoEncodeArgs(hw, codec, pixFmt string, targetHeight, sourceHeight int, maxBitrate int64) []string {
-	qsvDecode := hw == "qsv" && qsvDecodable(codec, pixFmt)
+	return encodeArgs(hw, encOpts{codec: codec, pixFmt: pixFmt, h: targetHeight, sourceH: sourceHeight, maxBitrate: maxBitrate})
+}
+
+// encOpts describe a video re-encode: the source (codec, pixFmt, sourceH,
+// transfer: its HDR transfer), the output (h, maxBitrate, hevc), swFrames:
+// the frames reach the filter in system memory even when the GPU could
+// decode the source (a burned-in subtitle's overlay), tonemap: Decision.Tonemap.
+type encOpts struct {
+	codec, pixFmt     string
+	swFrames          bool
+	h, sourceH        int
+	maxBitrate        int64
+	tonemap, transfer string
+	hevc              bool
+}
+
+// encodeOpts are the encOpts of a decision's transcode.
+func encodeOpts(d Decision, swFrames bool) encOpts {
+	return encOpts{codec: d.VideoCodec, pixFmt: d.SourcePixFmt, swFrames: swFrames, h: d.TargetHeight, sourceH: d.SourceHeight,
+		maxBitrate: d.MaxBitrate, tonemap: d.Tonemap, transfer: d.HDRTransfer, hevc: d.OutHEVC}
+}
+
+// encodeArgs are videoEncodeArgs for o: HEVC instead of H.264 (hvc1-tagged,
+// for fMP4 segments) and HDR tone-mapped to SDR on the GPU or the CPU.
+func encodeArgs(hw string, o encOpts) []string {
+	cpuTM := o.tonemap == "cpu"
+	gpuTM := o.tonemap == "gpu"
+	qsvDecode := hw == HWQSV && qsvDecodable(o.codec, o.pixFmt) && !cpuTM
 	var a []string
-	h := targetHeight &^ 1 // encoders need even dimensions
+	h := o.h &^ 1 // encoders need even dimensions
 	rate := []string{}
-	if maxBitrate > 0 {
-		rate = []string{"-maxrate", strconv.FormatInt(maxBitrate, 10), "-bufsize", strconv.FormatInt(2*maxBitrate, 10)}
+	if o.maxBitrate > 0 {
+		rate = []string{"-maxrate", strconv.FormatInt(o.maxBitrate, 10), "-bufsize", strconv.FormatInt(2*o.maxBitrate, 10)}
+	}
+	// the CPU's chain: scaled, tone-mapped when asked, in pixFmt
+	sw := func(pixFmt string) string {
+		if cpuTM {
+			s := cpuTonemap(o.transfer) + ",format=" + pixFmt
+			if h > 0 {
+				s = "scale=-2:" + strconv.Itoa(h) + "," + s
+			}
+			return s
+		}
+		return scaleFilter(h, pixFmt)
+	}
+	enc := func(h264, hevc string) string {
+		if o.hevc {
+			return hevc
+		}
+		return h264
+	}
+	tag := func() {
+		if o.hevc {
+			a = append(a, "-tag:v", "hvc1") // AVPlayer plays only hvc1-tagged HEVC
+		}
 	}
 	switch hw {
 	case "qsv":
-		// Frames stay on the iGPU when it decoded them; vpp_qsv scales and
-		// converts 10-bit to nv12 (no tone mapping: HDR comes out washed
-		// out). Otherwise software decode feeds nv12 system frames.
-		vf := scaleFilter(h, "nv12")
+		// Frames stay on the iGPU when it decoded them; vpp_qsv scales,
+		// converts 10-bit to nv12 and tone-maps HDR when asked. Otherwise
+		// software decode feeds nv12 system frames.
+		vf := sw("nv12")
 		if qsvDecode {
 			vf = "vpp_qsv=format=nv12"
 			if h > 0 {
 				vf = "vpp_qsv=w=trunc(oh*a/2)*2:h=" + strconv.Itoa(h) + ":format=nv12"
 			}
+			if gpuTM {
+				// vpp_qsv's own tonemap=1 leaves the picture as it is (iHD,
+				// ffmpeg 7.1): the frames go to VA-API's tone mapping and back
+				vf = qsvTonemap(h)
+			}
 		}
 		// Alder Lake + iHD only opens the encoder in low-power (VDEnc)
 		// mode with bitrate or CQP rate control; ICQ (-global_quality) fails.
-		br, maxrate := qsvBitrate(h, sourceHeight, maxBitrate)
+		br, maxrate := qsvBitrate(h, o.sourceH, o.maxBitrate)
 		// passthrough: with vpp_qsv scaling the default CFR sync
 		// duplicated ~40 frames at the start (picture behind the sound).
-		a = append(a, "-vf", vf, "-fps_mode", "passthrough", "-c:v", "h264_qsv", "-low_power", "1", "-preset", "veryfast",
+		a = append(a, "-vf", vf, "-fps_mode", "passthrough", "-c:v", enc("h264_qsv", "hevc_qsv"))
+		if !o.hevc || encLowPower("hevc_qsv") {
+			a = append(a, "-low_power", "1")
+		}
+		a = append(a, "-preset", "veryfast",
 			"-b:v", strconv.FormatInt(br, 10), "-maxrate", strconv.FormatInt(maxrate, 10),
 			"-bufsize", strconv.FormatInt(2*maxrate, 10), "-forced_idr", "1")
+		tag()
+		rate = nil
+	case HWVAAPI:
+		// GPU-decoded frames are scaled (10-bit becomes nv12) and tone-mapped
+		// on the GPU; software frames are scaled (and tone-mapped) by the
+		// CPU and uploaded.
+		vf := sw("nv12") + ",hwupload"
+		if !o.swFrames && !cpuTM && vaapiDecodable(o.codec, o.pixFmt) {
+			switch {
+			case gpuTM && h > 0:
+				vf = "scale_vaapi=w=-2:h=" + strconv.Itoa(h) + "," + vaapiTonemap
+			case gpuTM:
+				vf = vaapiTonemap
+			case h > 0:
+				vf = "scale_vaapi=w=-2:h=" + strconv.Itoa(h) + ":format=nv12"
+			default:
+				vf = "scale_vaapi=format=nv12"
+			}
+		}
+		br, maxrate := qsvBitrate(h, o.sourceH, o.maxBitrate)
+		e := enc("h264_vaapi", "hevc_vaapi")
+		a = append(a, "-vf", vf, "-c:v", e)
+		if encLowPower(e) {
+			a = append(a, "-low_power", "1")
+		}
+		a = append(a, "-rc_mode", "VBR", "-b:v", strconv.FormatInt(br, 10), "-maxrate", strconv.FormatInt(maxrate, 10),
+			"-bufsize", strconv.FormatInt(2*maxrate, 10))
+		tag()
+		rate = nil
+	case HWNVENC:
+		// NVDEC hands back system frames: the CPU scales (and tone-maps),
+		// NVENC encodes; -forced-idr makes the forced segment keyframes IDR
+		br, maxrate := qsvBitrate(h, o.sourceH, o.maxBitrate)
+		a = append(a, "-vf", sw("yuv420p"), "-c:v", enc("h264_nvenc", "hevc_nvenc"), "-preset", "p4", "-rc", "vbr",
+			"-b:v", strconv.FormatInt(br, 10), "-maxrate", strconv.FormatInt(maxrate, 10),
+			"-bufsize", strconv.FormatInt(2*maxrate, 10), "-forced-idr", "1")
+		tag()
 		rate = nil
 	case "videotoolbox":
 		br := "6M"
-		if maxBitrate > 0 && maxBitrate < 6_000_000 {
-			br = strconv.FormatInt(maxBitrate, 10)
+		if o.maxBitrate > 0 && o.maxBitrate < 6_000_000 {
+			br = strconv.FormatInt(o.maxBitrate, 10)
 		}
-		a = append(a, "-vf", swFilter(h), "-c:v", "h264_videotoolbox", "-b:v", br)
+		a = append(a, "-vf", sw("yuv420p"), "-c:v", enc("h264_videotoolbox", "hevc_videotoolbox"), "-b:v", br)
+		tag()
 	default:
-		a = append(a, "-vf", swFilter(h), "-c:v", "libx264", "-preset", "veryfast",
+		// software: always H.264 (libx265 is too slow for live playback)
+		a = append(a, "-vf", sw("yuv420p"), "-c:v", "libx264", "-preset", "veryfast",
 			"-crf", "23", "-sc_threshold", "0")
 	}
 	return append(a, rate...)

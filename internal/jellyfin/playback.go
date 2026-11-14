@@ -277,6 +277,8 @@ func (s *Server) decide(r *http.Request, p media.ProbeResult, in PlaybackInfoDto
 	if d.Mode == "direct" { // HLS has no direct: copy both streams
 		d.Mode = "remux"
 	}
+	// Jellyfin clients ask for their transcode as MPEG-TS H.264: never HEVC
+	d.HEVCClient = false
 	return decision{d: d}, nil
 }
 

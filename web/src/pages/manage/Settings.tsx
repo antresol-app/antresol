@@ -27,6 +27,7 @@ import { NumberField } from '../../ui/NumberField'
 import { t, useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
+import { TranscodingSection } from './TranscodingSettings'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
@@ -67,11 +68,11 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
 }
 
 /** The screens of «Настройки сервера», in their order on its first screen. */
-export type SettingsGroup = 'library' | 'downloads' | 'watching' | 'music' | 'subtitles' | 'seeding' | 'kindle' | 'ai'
+export type SettingsGroup = 'library' | 'downloads' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'seeding' | 'kindle' | 'ai'
 
 interface GroupInfo {
   id: SettingsGroup
-  label: 'settings.group.library' | 'settings.group.downloads' | 'settings.watching' | 'common.music' | 'common.subtitles' | 'settings.seedingGroup' | 'settings.mailGroup' | 'settings.group.ai'
+  label: 'settings.group.library' | 'settings.group.downloads' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.seedingGroup' | 'settings.mailGroup' | 'settings.group.ai'
   icon: IconName
   tint: string
 }
@@ -82,6 +83,7 @@ export function settingsGroups(): GroupInfo[] {
     { id: 'library', label: 'settings.group.library', icon: 'film', tint: 'var(--blue)' },
     { id: 'downloads', label: 'settings.group.downloads', icon: 'download', tint: 'var(--green)', fullOnly: true },
     { id: 'watching', label: 'settings.watching', icon: 'play', tint: 'var(--indigo)' },
+    { id: 'transcoding', label: 'settings.group.transcoding', icon: 'speed', tint: 'var(--red)' },
     { id: 'music', label: 'common.music', icon: 'music', tint: 'var(--pink)' },
     { id: 'subtitles', label: 'common.subtitles', icon: 'captions', tint: 'var(--teal)' },
     { id: 'seeding', label: 'settings.seedingGroup', icon: 'arrowUp', tint: 'var(--cyan)', fullOnly: true },
@@ -106,6 +108,8 @@ function summary(id: SettingsGroup, v: Values): string {
       return v.subtitlesAvailable && v.autoSubtitles ? t('settings.summary.auto') : ''
     case 'kindle':
       return v.mail?.host && v.mail.from ? t('settings.summary.on') : t('settings.summary.off')
+    case 'transcoding':
+      return v.transcodingName === 'software' ? t('settings.tc.status.cpu') : (v.transcodingName ?? '')
     case 'ai':
       return v.ai?.url ? v.ai.model : v.aiFromEnv ? v.aiFromEnv : t('settings.summary.offAI')
     default:
@@ -512,6 +516,8 @@ export function Settings() {
           <MailRow values={values} saved={saved} error={error} onChange={(mail) => change({ mail })} />
         </GroupedSection>
       )}
+
+      {at('transcoding') && <TranscodingSection />}
 
       {at('ai') && <AISettingsSection ai={values.ai} keySet={values.aiKeySet ?? false} fromEnv={values.aiFromEnv} onChange={(ai) => change({ ai })} />}
 

@@ -1166,6 +1166,42 @@ export interface Settings {
   aiKeySet?: boolean
   /** None set here, but the server has its own (VAULT_LLM_*): its model. */
   aiFromEnv?: string
+  /** What transcodes video now («Перекодирование»'s summary; response only). */
+  transcodingName?: string
+}
+
+/** The hardware of video transcodes: VAULT_HWACCEL modes. */
+export type TranscodingMode = 'auto' | 'qsv' | 'vaapi' | 'nvenc' | 'videotoolbox' | 'none'
+
+/** «Настройки сервера → Перекодирование» (GET/PUT /api/settings/transcoding). */
+export interface TranscodingSettings {
+  mode: TranscodingMode
+  /** the render node of VA-API; "" = the first */
+  device: string
+  tonemap: boolean
+  hevc: boolean
+}
+
+export interface TranscodingView {
+  settings: TranscodingSettings
+  /** the server's own (VAULT_HWACCEL*) */
+  defaults: TranscodingSettings
+  /** changed here (else the defaults apply) */
+  custom: boolean
+  /** the machine's render nodes */
+  devices: string[]
+  /** what the settings resolved to, and each test encode */
+  status: {
+    mode: Exclude<TranscodingMode, 'auto'>
+    name: string
+    requested: string
+    device?: string
+    hevc: boolean
+    tonemapGpu: boolean
+    tonemapCpu: boolean
+    probes: { mode: string; ok: boolean; error?: string }[]
+    probedAt: string
+  }
 }
 
 export interface AISettings {
@@ -1189,6 +1225,8 @@ export interface Stats {
   counts: { movies: number; series: number; episodes: number; albums: number; tracks: number; books: number; audiobooks: number; comics: number }
   watchedByUser: { user: string; avatar: string; hours30d: number }[]
   topItems30d: { id: number; kind: CardKind; title: string; year?: number; poster: string; viewers: number; hours: number }[]
+  /** what re-encodes video: mode qsv, vaapi, nvenc, videotoolbox or none (the CPU) */
+  transcoding?: { mode: string; name: string; requested: string; device?: string }
   // the sources build's (none from the core build)
   seeding?: { count: number; uploadedTotal: number; ratio: number }
 }

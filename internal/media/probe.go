@@ -25,6 +25,21 @@ type VideoStream struct {
 	// CodecTag is ffprobe's codec_tag_string ("hvc1", "hev1", "avc1"…);
 	// "" in probe-cache rows made before it was recorded.
 	CodecTag string
+	// ColorTransfer is ffprobe's color_transfer ("smpte2084" = PQ,
+	// "arib-std-b67" = HLG, …); "" when unknown or in older cache rows.
+	ColorTransfer string `json:",omitempty"`
+}
+
+// HDRTransfer is the transfer of an HDR picture (PQ or HLG; PQ for a
+// cache row that knows only HDR), "" for SDR.
+func (v *VideoStream) HDRTransfer() string {
+	switch {
+	case v == nil || !v.HDR:
+		return ""
+	case v.ColorTransfer == "arib-std-b67":
+		return "arib-std-b67"
+	}
+	return "smpte2084"
 }
 
 type AudioStream struct {
@@ -154,6 +169,7 @@ func parseProbe(js []byte, path string) (ProbeResult, error) {
 				Codec: s.CodecName, Profile: s.Profile, Width: s.Width, Height: s.Height,
 				HDR:     s.ColorTransfer == "smpte2084" || s.ColorTransfer == "arib-std-b67",
 				BitRate: br, PixFmt: s.PixFmt, BitDepth: bitDepth(s.RawBits, s.PixFmt), CodecTag: s.CodecTag,
+				ColorTransfer: s.ColorTransfer,
 			}
 		case "audio":
 			a := AudioStream{Index: s.Index, Codec: s.CodecName, Lang: lang,

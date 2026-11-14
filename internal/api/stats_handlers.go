@@ -15,6 +15,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/disk"
 	"github.com/antresol-app/antresol/internal/files"
+	"github.com/antresol-app/antresol/internal/media"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,13 +25,14 @@ type stats struct {
 	files *files.Service // optional: disk categories and delete targets
 	// diskUsage (optional) gives the disk figures without the file browser.
 	diskUsage func() (disk.Usage, error)
+	accel     *media.Accel
 	now       func() time.Time
 	// statsFull: the sources build's sources (stats_full.go)
 	statsFull
 }
 
 func newStats(deps Deps, now func() time.Time) *stats {
-	s := &stats{db: deps.DB, files: deps.Files, diskUsage: deps.DiskUsage, now: now}
+	s := &stats{db: deps.DB, files: deps.Files, diskUsage: deps.DiskUsage, accel: deps.Accel, now: now}
 	s.statsFull = newStatsFull(deps)
 	return s
 }
@@ -83,8 +85,30 @@ type statsOverview struct {
 	Counts        statsCounts `json:"counts"`
 	WatchedByUser []userHours `json:"watchedByUser"`
 	TopItems30d   []topItem   `json:"topItems30d"`
+	// Transcoding: the video transcodes' hardware mode (omitted when unknown)
+	Transcoding *statsTranscoding `json:"transcoding,omitempty"`
 	// statsOverviewFull: the sources build's own blocks (stats_full.go)
 	statsOverviewFull
+}
+
+// statsTranscoding says what re-encodes video: mode is qsv, vaapi, nvenc,
+// videotoolbox or none (the CPU); requested is VAULT_HWACCEL.
+type statsTranscoding struct {
+	Mode      string `json:"mode"`
+	Name      string `json:"name"`
+	Requested string `json:"requested"`
+	Device    string `json:"device,omitempty"`
+}
+
+func (s *stats) transcoding() *statsTranscoding {
+	if s.accel == nil {
+		return nil
+	}
+	_, hw := s.accel.State()
+	if hw.Mode == "" {
+		return nil
+	}
+	return &statsTranscoding{Mode: hw.Mode, Name: media.HWName(hw.Mode), Requested: hw.Requested, Device: hw.Device}
 }
 
 // topOf maps an item to its movie or series (episode → season → series).
@@ -120,7 +144,7 @@ func (s *stats) fallbackDisk(d *statsDisk) {
 
 func (s *stats) overview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	out := statsOverview{Disk: s.disk(ctx), WatchedByUser: []userHours{}, TopItems30d: []topItem{}}
+	out := statsOverview{Disk: s.disk(ctx), WatchedByUser: []userHours{}, TopItems30d: []topItem{}, Transcoding: s.transcoding()}
 	var err error
 	if out.Counts, err = libraryCounts(ctx, s.db); err != nil {
 		internalErr(w, r, "stats counts", err)
