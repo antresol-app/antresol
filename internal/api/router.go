@@ -263,6 +263,10 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	if deps.Users != nil && deps.Sessions != nil {
 		mountAuth(r, deps.Users, guard, deps.Throttle, newMeCaps(deps), deps.LibraryOnly || libraryEdition, requestsOpen)
 	}
+	// sign-in on a TV by QR code (/api/auth/pair/*)
+	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
+		mountPairing(r, deps, guard, requestsOpen)
+	}
 	var h *lib
 	if deps.Sessions != nil && deps.Library != nil && deps.Progress != nil {
 		if deps.AudioTranscoder == nil {

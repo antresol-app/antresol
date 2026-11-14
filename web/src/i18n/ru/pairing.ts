@@ -1,0 +1,22 @@
+// Russian source strings (pairing group: sign-in on a TV by QR code, the page /pair).
+export default {
+  'pair.title': 'Вход на телевизоре',
+  'pair.lead': 'Телевизор показывает код. Подтвердите вход здесь, и он откроет выбранный профиль — без пароля на пульте.',
+  'pair.code': 'Код с экрана телевизора',
+  'pair.codeHint': '6 букв и цифр',
+  'pair.continue': 'Продолжить',
+  'pair.device': 'Устройство',
+  'pair.model': 'Модель',
+  'pair.profile': 'Профиль',
+  'pair.unnamed': 'Без названия',
+  'pair.remoteTitle': 'Устройство не в домашней сети',
+  'pair.remote': 'Подтверждайте, только если подключаете его сами.',
+  'pair.approve': 'Подтвердить вход',
+  'pair.deny': 'Отклонить',
+  'pair.approvedTitle': 'Вход подтверждён',
+  'pair.approved': 'Телевизор открывает профиль «{name}».',
+  'pair.deniedTitle': 'Вход отклонён',
+  'pair.denied': 'Если это ваш телевизор, он покажет новый код.',
+  'pair.failed': 'Не получилось. Попробуйте ещё раз.',
+  'pair.another': 'Ввести другой код',
+}

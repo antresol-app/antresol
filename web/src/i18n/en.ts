@@ -19,6 +19,7 @@ import channels from './en/channels'
 import iptv from './en/iptv'
 import tracking from './en/tracking'
 import episodes from './en/episodes'
+import pairing from './en/pairing'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -39,5 +40,6 @@ export const en: EnOf<typeof ru> = {
   ...iptv,
   ...tracking,
   ...episodes,
+  ...pairing,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

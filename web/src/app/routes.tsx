@@ -104,6 +104,8 @@ const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 
 const MyRequests = lazy(() => import('../pages/MyRequests'))
 // a profile's own «Настройки» (every profile)
 const ProfileSettings = lazy(() => import('../pages/ProfileSettings'))
+// «Вход на телевизоре» (/pair?code=…, the TV's QR code)
+const Pair = lazy(() => import('../pages/Pair'))
 
 // The reader (foliate-js, pdf.js; comics) loads only when a book is opened.
 const ReadRoute = lazy(() => import('../reader/ReadRoute').then((m) => ({ default: m.ReadRoute })))
@@ -187,6 +189,14 @@ export const routes: RouteObject[] = [
             element: (
               <ChunkBoundary>
                 <ProfileSettings />
+              </ChunkBoundary>
+            ),
+          },
+          {
+            path: 'pair',
+            element: (
+              <ChunkBoundary>
+                <Pair />
               </ChunkBoundary>
             ),
           },

@@ -22,6 +22,8 @@ services:
     stop_grace_period: 30s
     ports:
       - "8420:8420"
+      # discovery: the apps' probe for servers on the home network (README)
+      - "8420:8420/udp"
     env_file:
       - path: .env
         required: false

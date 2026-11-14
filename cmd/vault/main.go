@@ -594,6 +594,9 @@ func run() error {
 	go func() { defer wg.Done(); playlists.Run(ctx) }() // (the sources build's loops start below, not this one)
 	accts.start(ctx, &wg)
 	ext.start(ctx, &wg)
+	// the apps find this server on the home network (VAULT_DISCOVERY, VAULT_MDNS, VAULT_DISCOVERY_PORT)
+	wg.Add(1)
+	go func() { defer wg.Done(); runDiscovery(ctx, cfg, serverID) }()
 
 	errc := make(chan error, len(servers))
 	for i, s := range servers {

@@ -98,6 +98,8 @@ services:
     stop_grace_period: 30s
     ports:
       - "8420:8420"
+      # discovery: the apps' probe for servers on the home network (README)
+      - "8420:8420/udp"
     env_file:
       - path: .env
         required: false
@@ -206,6 +208,16 @@ docker compose logs -f     # сканирование напишет, какую
   укажите адрес прокси в `VAULT_TRUSTED_PROXIES`. Нужный адрес виден в логе:
   `request from <ip> carries X-Forwarded-For ... does not list it`. Профиль
   без пароля входит только из домашней сети.
+- **Поиск сервера.** Приложения сами ищут серверы в домашней сети: по mDNS / Bonjour
+  (`_antresol._tcp`) и UDP-запросом на порт 8420 (`VAULT_DISCOVERY_PORT`). В обычной сети Docker (bridge)
+  multicast и broadcast до контейнера не доходят: опубликованный
+  `8420/udp` отвечает приложениям, которые спрашивают адрес хоста, а чтобы
+  ничего не вводить, запускайте контейнер с `network_mode: host` (и уберите
+  `ports:`) или бинарь прямо на хосте. `VAULT_SERVER_NAME` — имя сервера в
+  списке приложений (по умолчанию `Antresol`); `VAULT_DISCOVERY=off`
+  выключает оба способа, `VAULT_MDNS=off` — только mDNS. На телевизоре
+  войдите, отсканировав его QR-код приложением на телефоне или камерой
+  телефона (страница `/pair`).
 - Любая настройка — переменная окружения, её можно вписать в `.env`; больше
   их в [`.env.example`](.env.example), сборка описана в
   [docs/build-tags.md](docs/build-tags.md).

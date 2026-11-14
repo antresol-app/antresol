@@ -135,6 +135,15 @@ type Config struct {
 	// letters and (sources build) the library import's OAuth redirects.
 	// "": letters carry no links.
 	PublicURL string
+
+	// The apps find the server on the home network (internal/discovery):
+	// MDNS (VAULT_MDNS, on unless "off") advertises _antresol._tcp, and
+	// DiscoveryPort (VAULT_DISCOVERY_PORT, 8420; "off" or 0: none) is the
+	// UDP port of the probe responder. VAULT_DISCOVERY=off turns both off.
+	// ServerName (VAULT_SERVER_NAME, "Antresol") is the name they list.
+	MDNS          bool
+	DiscoveryPort int
+	ServerName    string
 }
 
 // DefaultIMDbRatingsURL is IMDb's own copy of the ratings dataset.
@@ -269,6 +278,9 @@ func Load() (Config, error) {
 		c.IPTV = true
 	default:
 		return c, fmt.Errorf("VAULT_IPTV: %q is not on or off", os.Getenv("VAULT_IPTV"))
+	}
+	if err := c.loadDiscovery(); err != nil {
+		return c, err
 	}
 	if v := os.Getenv("VAULT_CHANNELS_MAX"); v != "" {
 		n, err := strconv.Atoi(v)

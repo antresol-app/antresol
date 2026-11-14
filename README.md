@@ -95,6 +95,8 @@ services:
     stop_grace_period: 30s
     ports:
       - "8420:8420"
+      # discovery: the apps' probe for servers on the home network (README)
+      - "8420:8420/udp"
     env_file:
       - path: .env
         required: false
@@ -203,6 +205,17 @@ administrator. The server scans the folders at start and every 15 minutes
   `request from <ip> carries X-Forwarded-For ... does not list it` shows the
   address to put there. A profile without a password can sign in only from
   the home network.
+- **Finding the server.** The apps look for servers on the home network
+  by themselves: by mDNS / Bonjour (`_antresol._tcp`)
+  and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). With Docker's
+  default bridge network multicast and broadcast stay outside the
+  container: the published `8420/udp` answers apps that ask the host's
+  address, and for discovery that needs nothing typed run the container with
+  `network_mode: host` (then drop `ports:`) or the binary on the host.
+  `VAULT_SERVER_NAME` is the name the apps list (default `Antresol`);
+  `VAULT_DISCOVERY=off` turns both off, `VAULT_MDNS=off` mDNS alone. On a
+  TV, sign in by scanning its QR code with the phone app or the phone's
+  camera (the page `/pair`).
 - Every setting is an environment variable and can go in `.env`;
   [`.env.example`](.env.example) lists more of them and
   [docs/build-tags.md](docs/build-tags.md) explains the build.
