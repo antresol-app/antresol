@@ -176,6 +176,25 @@ administrator. The server scans the folders at start and every 15 minutes
   If your files belong to another user, give uid 1000 write access or add
   `user: "<uid>:<gid>"` to the service. Settings and the database live in the
   `antresol-config` volume.
+- **Temporary files on another disk.** Playback segments, live TV and
+  offline copies go to `tmp/antresol-hls` inside the media folder. To keep
+  them elsewhere, for example on a separate disk mounted at `/scratch`, put
+  a `compose.override.yml` next to `compose.yml`; `docker compose up -d`
+  reads both:
+
+  ```yaml
+  services:
+    antresol:
+      environment:
+        VAULT_TRANSCODE_DIR: /transcode
+      volumes:
+        - /scratch/antresol-hls:/transcode
+  ```
+
+  Create the folder first and give uid 1000 write access to it: a folder
+  Docker creates by itself belongs to root, and the server cannot write
+  there. Setting `VAULT_TRANSCODE_DIR` in `.env` alone does not work with
+  this `compose.yml`, which sets it itself and mounts nothing else.
 - The image has no GPU video driver yet, so it transcodes on the CPU. For
   hardware decoding run the binary on the host (see below), where ffmpeg
   uses the host's drivers (`VAULT_HWACCEL`).
@@ -188,22 +207,8 @@ administrator. The server scans the folders at start and every 15 minutes
   [`.env.example`](.env.example) lists more of them and
   [docs/build-tags.md](docs/build-tags.md) explains the build.
 
-**Upgrading from 0.3.0.** The old image gets no new releases: in your old
-compose file or `docker run` command, change the image to the one in
-`compose.yml`. Keep the same `/config` and the media at the same path inside the
-container: the database stores full file paths, so settings, profiles and
-progress then stay as they were. With the published image nothing else changes.
-An image you built yourself from the old Dockerfile set `VAULT_MEDIA_ROOT` to
-another path on its own, and with it unset the server now uses `/media`: set it
-to the path you mount the media at. Until you do, the server finds no new files,
-and the items it already knows stay. Mounting the media at a new path instead
-changes the paths: the library is indexed anew, each item appears a second time
-without its progress, and the old entries stay and no longer play.
-
-This `compose.yml` as it stands makes a fresh install: its
-`antresol-config` volume is new and empty, so there are no profiles and no
-progress. Point its `/config` at your old folder to keep them; then the paths
-change as above, because it looks in `movies/`, not `media/movies/`.
+Upgrade notes for each version are in its
+[release notes](https://github.com/antresol-app/antresol/releases).
 
 ## Build from source
 
