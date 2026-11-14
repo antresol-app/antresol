@@ -32,3 +32,5 @@ internal/channels/trackset.go: полные  # a word in subtitle titles that na
 internal/channels/trackset.go: полный  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
 internal/channels/trackset.go: субтитры  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
 internal/channels/trackset.go: текст  # a word in subtitle titles that names no kind of subtitles (matched, never shown)
+internal/channels/suggest.go  # words matched in a channel request («советские фильмы») and genre keys (parser data, never shown)
+internal/channels/suggest_llm.go  # the model's example requests and answers (prompt data, never shown)

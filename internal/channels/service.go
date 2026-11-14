@@ -16,6 +16,8 @@ import (
 // Service is the channels feature: the store, schedules kept built, the
 // generated channels kept in step with the library and the live encoder.
 type Service struct {
+	// LLM helps Suggest read a sentence (VAULT_LLM_URL); nil: the words alone.
+	LLM       *LLM
 	Store     *Store
 	Builder   *Builder
 	Generator *Generator
@@ -57,7 +59,7 @@ type Service struct {
 func New(db *sql.DB, live *Live) *Service {
 	st := &Store{DB: db}
 	cat := Catalog{DB: db}
-	s := &Service{Store: st, Builder: &Builder{Store: st, Catalog: cat}, Generator: &Generator{Store: st, Catalog: cat}, Live: live}
+	s := &Service{Store: st, Builder: &Builder{Store: st, Catalog: cat}, Generator: &Generator{Store: st, Catalog: cat}, Live: live, LLM: LLMFromEnv()}
 	if live != nil && live.Source == nil {
 		live.Source = s
 	}

@@ -79,6 +79,8 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Get("/api/channels/options", a.options)
 	r.Get("/api/channels/options/search", a.optionsSearch)
 	r.Get("/api/channels/options/folders", a.optionsFolders)
+	r.Post("/api/channels/preview", a.preview)
+	r.Post("/api/channels/suggest", a.suggest)
 	r.With(auth.RequireAdmin).Post("/api/channels/generate", a.generate)
 	r.Post("/api/channels", a.create)
 	r.Put("/api/channels/{id}", a.update)
@@ -523,8 +525,13 @@ func (a *channelsAPI) options(w http.ResponseWriter, r *http.Request) {
 	}
 	// extrasAvailable: the editor offers «titles outside the library»
 	// (Rules.Extras) only where this server can play them
+	// the tags beyond genres and decades (channels_tags.go); aiAvailable:
+	// «Опишите канал» has a language model behind it, not the words alone
+	countries, languages, keywords, yearMin, yearMax := tagOptions(visible)
 	writeJSON(w, http.StatusOK, map[string]any{"genres": gs, "decades": ds, "titles": titles, "profiles": profiles,
-		"extrasAvailable": !u.IsKid && a.svc.ExtrasReady(ctx)})
+		"extrasAvailable": !u.IsKid && a.svc.ExtrasReady(ctx),
+		"countries":       countries, "languages": languages, "keywords": keywords, "yearMin": yearMin, "yearMax": yearMax,
+		"aiAvailable": a.svc.LLM != nil})
 }
 
 type channelBody struct {

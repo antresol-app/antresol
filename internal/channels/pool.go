@@ -20,6 +20,13 @@ type Unit struct {
 	Year   int
 	Rating string
 	Genres []string // GenreKey of each
+	// Countries (ISO 3166-1, upper case), OrigLang (ISO 639-1) and
+	// Keywords (lower case): from TMDB, empty before the enricher's pass.
+	Countries []string
+	OrigLang  string
+	Keywords  []string
+	// Poster: the stored poster value (library.ImageURL names it).
+	Poster string
 }
 
 // Part is one file of a programme.
@@ -62,7 +69,7 @@ type Catalog struct {
 
 // Units returns every movie and series in the library (not missing), by id.
 func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
-	rows, err := c.DB.QueryContext(ctx, `SELECT id, kind, title, sort_title, year, rating, meta_json FROM items
+	rows, err := c.DB.QueryContext(ctx, `SELECT id, kind, title, sort_title, year, rating, meta_json, COALESCE(poster, '') FROM items
 	  WHERE kind IN ('movie','series') AND missing_since IS NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -72,16 +79,20 @@ func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
 	for rows.Next() {
 		var u Unit
 		var meta string
-		if err := rows.Scan(&u.ID, &u.Kind, &u.Title, &u.Sort, &u.Year, &u.Rating, &meta); err != nil {
+		if err := rows.Scan(&u.ID, &u.Kind, &u.Title, &u.Sort, &u.Year, &u.Rating, &meta, &u.Poster); err != nil {
 			return nil, err
 		}
 		var m struct {
-			Genres []string `json:"genres"`
+			Genres    []string `json:"genres"`
+			Countries []string `json:"countries"`
+			OrigLang  string   `json:"orig_lang"`
+			Keywords  []string `json:"keywords"`
 		}
 		_ = json.Unmarshal([]byte(meta), &m)
 		for _, g := range m.Genres {
 			u.Genres = append(u.Genres, i18n.GenreKey(g))
 		}
+		u.Countries, u.OrigLang, u.Keywords = m.Countries, m.OrigLang, m.Keywords
 		if u.Sort == "" {
 			u.Sort = strings.ToLower(u.Title)
 		}
@@ -210,6 +221,9 @@ func Match(units []Unit, r Rules) []Unit {
 			genres[i18n.GenreKey(g)] = true
 		}
 	}
+	countries := setOf(r.Countries, strings.ToUpper)
+	languages := setOf(r.Languages, strings.ToLower)
+	keywords := setOf(r.Keywords, strings.ToLower)
 	for _, u := range units {
 		if len(r.Kinds) > 0 && !contains(r.Kinds, u.Kind) {
 			continue
@@ -220,10 +234,33 @@ func Match(units []Unit, r Rules) []Unit {
 		if genres != nil && !anyIn(u.Genres, genres) {
 			continue
 		}
+		if countries != nil && !anyIn(u.Countries, countries) {
+			continue
+		}
+		if languages != nil && !languages[u.OrigLang] {
+			continue
+		}
+		if keywords != nil && !anyIn(u.Keywords, keywords) {
+			continue
+		}
 		if !library.RatingAllowed(r.MaxRating, library.Item{Kind: u.Kind, Rating: u.Rating}) {
 			continue
 		}
 		out = append(out, u)
+	}
+	return out
+}
+
+// setOf is the set of the values, normalised (nil when there are none: no filter).
+func setOf(list []string, norm func(string) string) map[string]bool {
+	if len(list) == 0 {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, x := range list {
+		if x = norm(strings.TrimSpace(x)); x != "" {
+			out[x] = true
+		}
 	}
 	return out
 }

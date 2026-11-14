@@ -38,6 +38,12 @@ type Rules struct {
 	// YearFrom, YearTo bound the title's year (0: open).
 	YearFrom int `json:"yearFrom,omitempty"`
 	YearTo   int `json:"yearTo,omitempty"`
+	// Countries: made in any of them (ISO 3166-1, «SU» the Soviet Union).
+	Countries []string `json:"countries,omitempty"`
+	// Languages: the title's original language is any of them (ISO 639-1).
+	Languages []string `json:"languages,omitempty"`
+	// Keywords: themes, TMDB's keywords (English, lower case); any of them.
+	Keywords []string `json:"keywords,omitempty"`
 	// Picks: what the channel plays, in this order (titles, single
 	// movies or episodes, library folders); when set they are the whole
 	// pool and the filters above are ignored.
@@ -271,6 +277,9 @@ func normalize(c *Channel) error {
 		}
 	}
 	r.Genres = genres
+	r.Countries = cleanList(r.Countries, strings.ToUpper, 40)
+	r.Languages = cleanList(r.Languages, strings.ToLower, 40)
+	r.Keywords = cleanList(r.Keywords, strings.ToLower, 40)
 	if err := normalizePicks(r); err != nil {
 		return err
 	}
@@ -281,6 +290,17 @@ func normalize(c *Channel) error {
 		}
 	}
 	return nil
+}
+
+// cleanList: trimmed, normalised, once each, at most max of them (nil when none).
+func cleanList(list []string, norm func(string) string, max int) []string {
+	var out []string
+	for _, x := range list {
+		if x = norm(strings.TrimSpace(x)); x != "" && len(x) <= 60 && !contains(out, x) && len(out) < max {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func contains[T comparable](s []T, v T) bool {

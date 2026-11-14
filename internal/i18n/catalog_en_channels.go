@@ -4,6 +4,7 @@ package i18n
 func init() {
 	Register(EN, map[string]string{
 		"Укажите название канала":                              "Enter the channel’s name",
+		"Опишите, что показывать":                              "Describe what to show",
 		"Слишком длинное название":                             "The name is too long",
 		"Номер канала — от 1 до 99999":                         "The channel number is 1 to 99999",
 		"Канал показывает только фильмы и сериалы":             "A channel shows movies and series only",

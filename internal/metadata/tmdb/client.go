@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,6 +152,11 @@ type Details struct {
 	OriginalLanguage string
 	// Adult: TMDB marks it adult content.
 	Adult bool
+	// Countries: where it was made, ISO 3166-1 («SU» the Soviet Union): a
+	// movie's production countries, a show's origin countries.
+	Countries []string
+	// Keywords: TMDB's keywords (English, lower case: «space», «christmas»).
+	Keywords []string
 }
 
 // SeasonCount is one season of a TV show in its details.
@@ -347,10 +353,24 @@ type rawDetails struct {
 	OriginalTitle string `json:"original_title"`
 	OriginalName  string `json:"original_name"`
 	OriginalLang  string `json:"original_language"`
-	ReleaseDate   string `json:"release_date"`
-	FirstAirDate  string `json:"first_air_date"`
-	Overview      string `json:"overview"`
-	Genres        []struct {
+	// a movie's production countries; a show's origin_country (and its production_countries)
+	ProductionCountries []struct {
+		Code string `json:"iso_3166_1"`
+	} `json:"production_countries"`
+	OriginCountry []string `json:"origin_country"`
+	// keywords: a movie's under "keywords", a show's under "results"
+	KeywordsRaw struct {
+		Keywords []struct {
+			Name string `json:"name"`
+		} `json:"keywords"`
+		Results []struct {
+			Name string `json:"name"`
+		} `json:"results"`
+	} `json:"keywords"`
+	ReleaseDate  string `json:"release_date"`
+	FirstAirDate string `json:"first_air_date"`
+	Overview     string `json:"overview"`
+	Genres       []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"genres"`
@@ -418,7 +438,7 @@ func (c *Client) details(ctx context.Context, kind string, id int) (Details, err
 	lng := c.language(ctx)
 	v := url.Values{
 		"language":               {lng},
-		"append_to_response":     {"alternative_titles,translations,release_dates,content_ratings,credits,images,external_ids"},
+		"append_to_response":     {"alternative_titles,translations,release_dates,content_ratings,credits,images,external_ids,keywords"},
 		"include_image_language": {imageLanguages(lng)},
 	}
 	var r rawDetails
@@ -440,6 +460,12 @@ func (c *Client) details(ctx context.Context, kind string, id int) (Details, err
 	}
 	for _, se := range r.Seasons {
 		d.Seasons = append(d.Seasons, SeasonCount{Number: se.Number, Episodes: se.Episodes})
+	}
+	d.Countries = countriesOf(r)
+	for _, k := range append(r.KeywordsRaw.Keywords, r.KeywordsRaw.Results...) {
+		if n := strings.ToLower(strings.TrimSpace(k.Name)); n != "" && !slices.Contains(d.Keywords, n) {
+			d.Keywords = append(d.Keywords, n)
+		}
 	}
 	seen := map[string]bool{}
 	add := func(t string) {
@@ -623,4 +649,23 @@ func (c *Client) imageRoot() string {
 		return DefaultImageBase
 	}
 	return c.ImageBase
+}
+
+// countriesOf: a show's origin countries first, then the production
+// countries (a movie has only those); upper case, once each.
+func countriesOf(r rawDetails) []string {
+	out := []string{}
+	add := func(c string) {
+		c = strings.ToUpper(strings.TrimSpace(c))
+		if len(c) == 2 && !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	for _, c := range r.OriginCountry {
+		add(c)
+	}
+	for _, c := range r.ProductionCountries {
+		add(c.Code)
+	}
+	return out
 }

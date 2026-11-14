@@ -187,6 +187,10 @@ func pending(meta map[string]any, it library.Item) bool {
 	if _, ok := meta["imdb_id"]; !ok {
 		return true
 	}
+	// enriched before the countries were kept (channels by country): once more
+	if _, ok := meta["countries"]; !ok {
+		return true
+	}
 	// Enriched series: new episodes may still lack titles.
 	return it.Kind == library.KindSeries && time.Since(metaTime(meta, "eps_at")) > epsRetry
 }
@@ -350,6 +354,13 @@ func (e *Enricher) enrichItem(ctx context.Context, it library.Item, meta map[str
 		ids = []int{}
 	}
 	meta["genreIds"] = ids
+	// channels pick by them: always the current ones, [] when TMDB has none
+	// (so the item is not asked again)
+	meta["countries"] = nonNil(d.Countries)
+	meta["keywords"] = nonNil(d.Keywords)
+	if d.OriginalLanguage != "" {
+		meta["orig_lang"] = d.OriginalLanguage
+	}
 	if _, ok := meta["cast"]; !ok && len(d.Cast) > 0 {
 		meta["cast"] = d.Cast
 	}
@@ -504,4 +515,11 @@ func pickResult(rs []Result, want int) int {
 		}
 	}
 	return rs[0].ID
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
