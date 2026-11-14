@@ -22,6 +22,7 @@ func TestSuggestWords(t *testing.T) {
 		{"канал с фантастикой после 2000", Rules{Genres: []string{"фантастика", "нф и фэнтези"}, YearFrom: 2000}, "Канал с фантастикой после 2000"},
 		{"Japanese anime from the 1980s", Rules{Countries: []string{"JP"}, Genres: []string{"мультфильм"}, YearFrom: 1980, YearTo: 1989}, "Japanese anime from the 1980s"},
 		{"создай канал с комедиями", Rules{Genres: []string{"комедия"}}, "Канал с комедиями"},
+		{"что-нибудь доброе про собак", Rules{Keywords: []string{"dog"}}, "Что-нибудь доброе про собак"},
 		{"чехословацкие сказки", Rules{Countries: []string{"XC"}}, "Чехословацкие сказки"},
 	}
 	for _, c := range cases {
@@ -50,9 +51,19 @@ func TestSuggestWithModel(t *testing.T) {
 	s := &Service{LLM: &LLM{URL: srv.URL, Model: "m"}}
 	vocab := Vocabulary{Genres: map[string]bool{"фантастика": true, "комедия": true}, Countries: map[string]bool{"SU": true, "RU": true}, Keywords: map[string]bool{"space": true}}
 	got := s.Suggest(context.Background(), "советские фильмы про космос", vocab)
-	want := Suggestion{Name: "Советская фантастика", Via: "ai", Rules: Rules{Kinds: []string{"movie"}, Genres: []string{"фантастика"}, Countries: []string{"SU"}, Keywords: []string{"space"}}}
+	want := Suggestion{Name: "Советские фильмы про космос", Via: "ai", Rules: Rules{Kinds: []string{"movie"}, Genres: []string{"фантастика"}, Countries: []string{"SU"}, Keywords: []string{"space"}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
+	}
+	// a model that lists every genre and garbles the name: the words win
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": `{"name":"Советский Фильмы","kinds":["movie"],"genres":["комедия","фантастика","драма"],"countries":["SU"],"keywords":[]}`}})
+	}))
+	defer srv2.Close()
+	s2 := &Service{LLM: &LLM{URL: srv2.URL, Model: "m"}}
+	got = s2.Suggest(context.Background(), "создай канал который будет транслировать советские фильмы", vocab)
+	if got.Name != "Советские фильмы" || len(got.Rules.Genres) != 0 || got.Via != "ai" {
+		t.Errorf("genre dump %+v", got)
 	}
 	// the model down: the words alone
 	srv.Close()

@@ -173,6 +173,22 @@ var themeWords = []struct {
 	{[]string{"шпион", "spy"}, "spy"},
 	{[]string{"спорт", "sport"}, "sport"},
 	{[]string{"пришельц", "инопланет", "alien"}, "alien"},
+	{[]string{"собак", "щенк", "щенок", "dog", "puppy"}, "dog"},
+	{[]string{"кошк", "кошек", "котик", "котов", "cats", " cat "}, "cat"},
+	{[]string{"лошад", "конь ", "horse"}, "horse"},
+	{[]string{"дракон", "dragon"}, "dragon"},
+	{[]string{"волшеб", "магия", "магии", "колдун", "ведьм", "magic", "witch"}, "magic"},
+	{[]string{"мафи", "mafia", "mob "}, "mafia"},
+	{[]string{"самура", "samurai"}, "samurai"},
+	{[]string{"подводн", "submarine"}, "submarine"},
+	{[]string{"футбол", "soccer", "football"}, "football (soccer)"},
+	{[]string{"бокс", "boxing"}, "boxing"},
+	{[]string{"хэллоуин", "хеллоуин", "halloween"}, "halloween"},
+	{[]string{"свадьб", "wedding"}, "wedding"},
+	{[]string{"по книге", "по роману", "экранизац", "based on a book", "based on novel"}, "based on novel or book"},
+	{[]string{"реальных событ", "true story"}, "based on true story"},
+	{[]string{"вторая мировая", "второй мировой", "world war ii", "ww2"}, "world war ii"},
+	{[]string{"антиутоп", "dystopia"}, "dystopia"},
 }
 
 var (
@@ -300,7 +316,9 @@ func mergeSuggestion(words, ai Suggestion) Suggestion {
 	if len(w.Kinds) == 0 {
 		out.Rules.Kinds = a.Kinds
 	}
-	if len(w.Genres) == 0 {
+	// a small model tends to list every genre it was shown: more than two
+	// is not what was asked
+	if len(w.Genres) == 0 && len(a.Genres) <= 2 {
 		out.Rules.Genres = a.Genres
 	}
 	if len(w.Countries) == 0 {
@@ -317,10 +335,17 @@ func mergeSuggestion(words, ai Suggestion) Suggestion {
 			out.Rules.Keywords = append(out.Rules.Keywords, k)
 		}
 	}
-	if n := strings.TrimSpace(ai.Name); n != "" && utf8.RuneCountInString(n) <= 40 {
+	// the request's own words make a better name than a small model's
+	// grammar («Советский Фильмы»); its name only when the words said nothing
+	if n := strings.TrimSpace(ai.Name); n != "" && utf8.RuneCountInString(n) <= 40 && !understood(w) {
 		out.Name = n
 	}
 	return out
+}
+
+// understood: the words found something to pick by.
+func understood(r Rules) bool {
+	return len(r.Kinds)+len(r.Genres)+len(r.Countries)+len(r.Languages)+len(r.Keywords) > 0 || r.YearFrom != 0 || r.YearTo != 0
 }
 
 // keepKnown drops what the library does not have (an empty vocabulary — a
