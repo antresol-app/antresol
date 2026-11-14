@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { session } from '../../state/session'
 import { NotifySheet } from '../NotifySheet'
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
@@ -104,4 +105,13 @@ describe('NotifySheet', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/notify')).toBe(true))
   })
+
+  it('the missing public address is the admin\'s business: a profile does not see it', async () => {
+    state = { ...empty, publicLinks: false }
+    session.reset()
+    render(<NotifySheet onClose={() => {}} />)
+    await screen.findByRole('switch', { name: 'Новые серии сериалов, которые я смотрю' })
+    expect(screen.queryByText(/VAULT_PUBLIC_URL/)).toBeNull()
+  })
+
 })

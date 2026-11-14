@@ -9,6 +9,7 @@ import { useEffect, useId, useState } from 'react'
 import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, type NotifyPrefsInput, errorText } from '../api/client'
 import type { NotifyPrefs, NotifyTopic } from '../api/types'
 import { getLanguage, useT, type Key } from '../i18n'
+import { useSession } from '../state/session'
 import { Button } from '../ui/Button'
 import { Icon } from './Icon'
 import { Sheet } from '../ui/Sheet'
@@ -56,6 +57,7 @@ const inputOf = (p: NotifyPrefs): NotifyPrefsInput => ({
 
 export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
   const t = useT()
+  const isAdmin = Boolean(useSession().user?.isAdmin)
   const id = useId()
   const [state, setState] = useState<State>({ status: 'loading' })
   // the address as saved on the server (a typed one is saved before its letter)
@@ -244,7 +246,8 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 </li>
               </ul>
               <p className={styles.hint}>{t('comp.notify.digest')}</p>
-              {!prefs.publicLinks && <p className={styles.hint}>{t('comp.notify.noLinks')}</p>}
+              {/* a server setting: only the admin can do anything about it */}
+              {!prefs.publicLinks && isAdmin && <p className={styles.hint}>{t('comp.notify.noLinks')}</p>}
             </section>
           </>
         )}
