@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/antresol-app/antresol/internal/i18n"
@@ -31,6 +32,9 @@ type deviceCopyRequest struct {
 	AudioIndex *int   `json:"audioIndex"`
 	// AudioSrc: the id of the external audio track AudioIndex (2000+) names.
 	AudioSrc string `json:"audioSrc"`
+	// Caps is what the app plays (as /api/play's); only its video codecs
+	// count: with "hevc" a re-encoded copy may be HEVC. None: H.264.
+	Caps *media.ClientCaps `json:"caps"`
 }
 
 func (h *lib) deviceCopyRequest(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +101,10 @@ func (h *lib) deviceCopyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	key := media.DeviceCopyKey{FileID: f.ID, Size: st.Size(), ModTime: st.ModTime(), MaxHeight: caps.MaxHeight,
 		MaxBitrate: caps.MaxBitrate, AudioIndex: audio, ExtSubsHash: media.ExternalSubsHash(paths)}
+	// HEVC for a client that plays it, when the copy is re-encoded and the
+	// hardware encodes HEVC (a copied video is the same copy either way)
+	key.HEVC = in.Caps != nil && slices.ContainsFunc(in.Caps.VideoCodecs, func(c string) bool { return media.NormCodec(c) == "hevc" }) &&
+		!media.PlanDeviceCopy(p, nil, caps.MaxHeight, caps.MaxBitrate, audio).VideoCopy && h.DeviceCopies.HEVCOut()
 	if extA != nil {
 		key.ExtAudioHash = extA.copyHash()
 	}
@@ -109,6 +117,7 @@ func (h *lib) deviceCopyRequest(w http.ResponseWriter, r *http.Request) {
 	if extA != nil {
 		pl = media.PlanDeviceCopyExternalAudio(p, ext, caps.MaxHeight, caps.MaxBitrate, extA.media(), i18n.FromContext(r.Context()))
 	}
+	pl.HEVC = key.HEVC
 	cs, err := h.DeviceCopies.Request(r.Context(), userOf(r).ID, key, f.Path, pl)
 	if err != nil || cs.State == media.CopyReady {
 		// no job reads the decoded subtitles (a running one wrote the same files)

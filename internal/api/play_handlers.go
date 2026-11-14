@@ -73,6 +73,9 @@ func cachedProbe(f library.File) (media.ProbeResult, bool) {
 // probe returns the cached probe of f, running ffprobe (and caching) on first use.
 func (h *lib) probe(ctx context.Context, f library.File) (media.ProbeResult, error) {
 	if p, ok := cachedProbe(f); ok {
+		if p.Video != nil && p.Video.NeedsHDRMeta() {
+			h.refreshHDRMeta(ctx, f, &p)
+		}
 		return p, nil
 	}
 	var p media.ProbeResult
@@ -91,6 +94,26 @@ func (h *lib) probe(ctx context.Context, f library.File) (media.ProbeResult, err
 		}
 	}
 	return p, nil
+}
+
+// refreshHDRMeta adds the HDR10 metadata to a PQ file's probe cached
+// before it was recorded (one frame decoded, once per file): a transcode
+// then knows whether the GPU can tone-map it. A failed look leaves p as it
+// is (the GPU is tried, as before).
+func (h *lib) refreshHDRMeta(ctx context.Context, f library.File, p *media.ProbeResult) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	m, err := media.ProbeHDRMeta(ctx, h.ffprobe(), f.Path)
+	if err != nil {
+		log.Printf("api: hdr metadata of file %d: %v", f.ID, err)
+		return
+	}
+	p.Video.SetHDRMeta(m)
+	if b, err := json.Marshal(p); err == nil {
+		if err := h.Library.SetProbe(ctx, f.ID, string(b), p.DurationMs); err != nil {
+			log.Printf("api: cache probe of file %d: %v", f.ID, err)
+		}
+	}
 }
 
 func (h *lib) ffprobe() string {

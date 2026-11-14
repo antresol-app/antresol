@@ -43,6 +43,10 @@ func TestRealHW(t *testing.T) {
 		"-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
 		"-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1:"+
 			"master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400")
+	// HDR10 without mastering metadata (tonemap_vaapi refuses it)
+	hdr10bare := clip("hdr10bare.mkv", "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
+		"-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc",
+		"-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc")
 	probe := func(t *testing.T, file string) string {
 		b, err := exec.Command(fp, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,height,color_transfer",
 			"-of", "csv=p=0", file).Output()
@@ -166,6 +170,80 @@ func TestRealHW(t *testing.T) {
 				t.Logf("hdr10 %s (tonemap=%q hevc=%v): %s, mean luma %s", way, d.Tonemap, d.OutHEVC, got, luma(t, seg))
 				if d.Tonemap != "" && !strings.Contains(got, ",bt709") {
 					t.Fatalf("hdr10 %s: %q, want bt709", way, got)
+				}
+			}
+			// HDR10 without mastering metadata: probed so, the CPU tone-maps
+			// at once (the GPU still encodes) and the first run succeeds
+			pr, err := Probe(context.Background(), fp, hdr10bare)
+			if err != nil || !pr.Video.NoHDRMastering() {
+				t.Fatalf("bare hdr10 probe: %+v %v", pr.Video, err)
+			}
+			if pm, _ := Probe(context.Background(), fp, hdr10); pm.Video == nil || pm.Video.NoHDRMastering() || pm.Video.HDRMastering == nil {
+				t.Fatalf("hdr10 probe: %+v", pm.Video)
+			}
+			bd := Decide(pr, ClientCaps{VideoCodecs: []string{"h264", "hevc"}, AudioCodecs: []string{"aac"}, Containers: []string{"mp4"}, MaxHeight: 720}, -1)
+			bd = accel.plan(hw, bd)
+			if st.TonemapCPU && bd.Tonemap != "cpu" {
+				t.Fatalf("bare hdr10: tonemap %q", bd.Tonemap)
+			}
+			seg := hls(t, hw, hdr10bare, bd)
+			got := probe(t, seg)
+			t.Logf("bare hdr10 (tonemap=%q hevc=%v): %s, mean luma %s", bd.Tonemap, bd.OutHEVC, got, luma(t, seg))
+			if bd.Tonemap != "" && !strings.Contains(got, ",bt709") {
+				t.Fatalf("bare hdr10: %q", got)
+			}
+			if st.TonemapGPU {
+				// what the GPU's tone mapping does with it (the failed first run of before)
+				g := bd
+				g.Tonemap = "gpu"
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				b, err := exec.CommandContext(ctx, ff, BuildArgs(hw, hdr10bare, g, 0, t.TempDir())...).CombinedOutput()
+				cancel()
+				t.Logf("bare hdr10 forced onto the gpu: err=%v %s", err, strings.TrimSpace(string(b)))
+			}
+			// device copies through the job runner: HEVC asked for, HDR10
+			// without metadata; each must succeed on its first run
+			var runs []string
+			dc := &DeviceCopies{Dir: t.TempDir(), MinFreeBytes: -1, Accel: accel,
+				Run: func(ctx context.Context, args []string, progress func(int64)) error {
+					runs = append(runs, strings.Join(args, " "))
+					return runFFmpegProgress(ctx, ff, args, progress)
+				}}
+			defer dc.Close()
+			for i, c := range []struct {
+				in  string
+				pr  ProbeResult
+				src string
+			}{{hevc10, ProbeResult{}, "hevc10"}, {hdr10bare, pr, "bare hdr10"}} {
+				p := c.pr
+				if c.src == "hevc10" {
+					p, _ = Probe(context.Background(), fp, c.in)
+				}
+				pl := PlanDeviceCopy(p, nil, 720, 4_000_000, -1)
+				k := DeviceCopyKey{FileID: int64(100 + i), MaxHeight: 720, AudioIndex: -1, HEVC: dc.HEVCOut() && !pl.VideoCopy}
+				pl.HEVC = k.HEVC
+				runs = nil
+				cs, err := dc.Request(context.Background(), 1, k, c.in, pl)
+				if err != nil {
+					t.Fatal(err)
+				}
+				deadline := time.Now().Add(2 * time.Minute)
+				for cs.State != CopyReady && cs.State != CopyFailed && time.Now().Before(deadline) {
+					time.Sleep(100 * time.Millisecond)
+					cs, _ = dc.Status(cs.ID)
+				}
+				out, _, perr := dc.Path(cs.ID)
+				if cs.State != CopyReady || perr != nil || len(runs) != 1 {
+					t.Fatalf("%s copy: %+v %v runs %q", c.src, cs, perr, runs)
+				}
+				b, _ := exec.Command(fp, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,codec_tag_string,height,color_transfer",
+					"-of", "csv=p=0", out).Output()
+				head, _ := os.ReadFile(out)
+				moov, mdat := strings.Index(string(head), "moov"), strings.Index(string(head), "mdat")
+				info := strings.TrimSpace(string(b))
+				t.Logf("%s copy (hevc asked=%v): %s, faststart=%v, %s", c.src, k.HEVC, info, moov >= 0 && moov < mdat, runs[0])
+				if k.HEVC && !strings.HasPrefix(info, "hevc,hvc1,720") || !k.HEVC && !strings.HasPrefix(info, "h264,avc1,720") || moov < 0 || moov > mdat {
+					t.Fatalf("%s copy: %s", c.src, info)
 				}
 			}
 		})

@@ -176,6 +176,13 @@ func (c *DeviceCopies) init() {
 	})
 }
 
+// HEVCOut: a re-encoded copy would be HEVC for a client that plays it
+// now (the hardware's HEVC encoder passed its probe and «HEVC на выходе»
+// is on).
+func (c *DeviceCopies) HEVCOut() bool {
+	return c.Accel != nil && c.Accel.HEVC(c.Accel.Mode())
+}
+
 func (c *DeviceCopies) comicsDir() string { return filepath.Join(c.Dir, "comics") }
 func (c *DeviceCopies) subsDir() string   { return filepath.Join(c.Dir, "subs") }
 
@@ -477,14 +484,16 @@ func (c *DeviceCopies) runJob(j *copyJob) {
 	if c.Accel != nil {
 		hw = c.Accel.Mode()
 	}
-	j.plan.Tonemap = c.Accel.Tonemap(hw, j.plan.HDRTransfer, !j.plan.VideoCopy &&
+	j.plan.Tonemap = c.Accel.Tonemap(hw, j.plan.HDRTransfer, !j.plan.VideoCopy && !j.plan.HDRNoMastering &&
 		(hw == HWQSV && qsvDecodable(j.plan.VideoCodec, j.plan.SourcePixFmt) || hw == HWVAAPI && vaapiDecodable(j.plan.VideoCodec, j.plan.SourcePixFmt)))
+	j.plan.OutHEVC = j.plan.HEVC && !j.plan.VideoCopy && c.Accel.HEVC(hw)
 	err := c.ffmpeg(j, hw, part)
 	if err != nil && c.ctx.Err() == nil && !j.plan.VideoCopy && IsHW(hw) {
 		log.Printf("media: device copy %s: %s ffmpeg failed, retrying in software: %v", j.id, hw, err)
 		if j.plan.Tonemap == "gpu" {
 			j.plan.Tonemap = c.Accel.Tonemap(HWNone, j.plan.HDRTransfer, false)
 		}
+		j.plan.OutHEVC = false // software encodes H.264
 		err = c.ffmpeg(j, "none", part)
 	}
 	if err != nil {

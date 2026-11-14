@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -290,5 +291,98 @@ func TestDeviceCopyScreenTime(t *testing.T) {
 	}
 	if w := c.do("GET", "/api/device-copies/"+st.ID+"/file", "", c.admin); w.Code != 200 {
 		t.Fatalf("admin %d", w.Code)
+	}
+}
+
+// An app that declares HEVC gets a re-encoded copy in HEVC (hvc1, its own
+// copy id) when the hardware encodes it; without caps it is H.264 as before.
+func TestDeviceCopyHEVCForHEVCClient(t *testing.T) {
+	c := newCopyEnv(t, func(d *Deps, _ *sql.DB) {
+		d.ClientIsRemote = func(*http.Request) bool { return true } // «Авто» outside: 1080, re-encoded
+	})
+	accel := &media.Accel{Resolve: func(context.Context, media.HWOptions) media.HWStatus {
+		return media.HWStatus{Mode: media.HWVAAPI, HEVC: true, TonemapCPU: true}
+	}}
+	accel.Apply(context.Background(), media.AccelConfig{Mode: media.HWVAAPI, HEVC: true}, false)
+	c.dc.Accel = accel
+	_, f := c.movie("Волк", "18+", "x")
+	c.probeJSON(f, remuxProbe)
+	post := func(body string) media.CopyStatus {
+		w := c.do("POST", "/api/device-copies", body, c.admin)
+		var st media.CopyStatus
+		if json.Unmarshal(w.Body.Bytes(), &st); w.Code != 202 && w.Code != 200 {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		c.waitReady(st.ID, c.admin)
+		return st
+	}
+	h264 := post(`{"fileId":` + itoa(f) + `,"quality":"auto"}`)
+	if j := strings.Join(c.lastArgs(), " "); !strings.Contains(j, "-c:v h264_vaapi") || strings.Contains(j, "hvc1") {
+		t.Fatalf("no caps: %s", j)
+	}
+	hevc := post(`{"fileId":` + itoa(f) + `,"quality":"auto","caps":{"videoCodecs":["h264","hevc"],"audioCodecs":["aac"],"containers":["mp4"],"hevcNeedsHvc1":true}}`)
+	if j := strings.Join(c.lastArgs(), " "); hevc.ID == h264.ID || !strings.Contains(j, "-c:v hevc_vaapi") ||
+		!strings.Contains(j, "-tag:v hvc1") || !strings.Contains(j, "+faststart") {
+		t.Fatalf("hevc caps: %s %s %s", hevc.ID, h264.ID, j)
+	}
+	// caps without hevc: the H.264 copy
+	if st := post(`{"fileId":` + itoa(f) + `,"quality":"auto","caps":{"videoCodecs":["h264"]}}`); st.ID != h264.ID {
+		t.Fatal(st.ID, h264.ID)
+	}
+	// «HEVC на выходе» off: the H.264 copy too
+	accel.Apply(context.Background(), media.AccelConfig{Mode: media.HWVAAPI}, false)
+	w := c.do("POST", "/api/device-copies", `{"fileId":`+itoa(f)+`,"quality":"auto","caps":{"videoCodecs":["hevc"]}}`, c.admin)
+	var st media.CopyStatus
+	if json.Unmarshal(w.Body.Bytes(), &st); st.ID != h264.ID {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+// A PQ file probed before HDR10 metadata was recorded is looked at once
+// more: without mastering metadata its copy tone-maps on the CPU at once
+// (the GPU still encodes), and the cache keeps what was found.
+func TestDeviceCopyOldProbeGetsHDRMeta(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	ff, err := lookFFmpeg()
+	if err != nil {
+		t.Skip("no ffmpeg")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("no ffprobe")
+	}
+	clip := filepath.Join(t.TempDir(), "pq.mkv")
+	if out, err := exec.Command(ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=0.4",
+		"-vf", "format=yuv420p10le", "-c:v", "libx265", "-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc",
+		clip).CombinedOutput(); err != nil {
+		t.Skipf("no libx265: %v %s", err, out)
+	}
+	b, err := os.ReadFile(clip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCopyEnv(t, func(d *Deps, _ *sql.DB) {
+		d.ClientIsRemote = func(*http.Request) bool { return true }
+	})
+	accel := &media.Accel{Resolve: func(context.Context, media.HWOptions) media.HWStatus {
+		return media.HWStatus{Mode: media.HWVAAPI, HEVC: true, TonemapGPU: true, TonemapCPU: true}
+	}}
+	accel.Apply(context.Background(), media.AccelConfig{Mode: media.HWVAAPI, Tonemap: true}, false)
+	c.dc.Accel = accel
+	_, f := c.movie("HDR", "18+", string(b))
+	// an old cache row: 4K HDR10, nothing about its metadata
+	c.probeJSON(f, `{"Container":"mkv","DurationMs":400,"Video":{"Codec":"hevc","Width":3840,"Height":2160,"HDR":true,"BitRate":40000000,"PixFmt":"yuv420p10le","BitDepth":10,"ColorTransfer":"smpte2084"}}`)
+	code, st, body := c.post(f, "auto", c.admin)
+	if code != 202 {
+		t.Fatalf("%d %s", code, body)
+	}
+	c.waitReady(st.ID, c.admin)
+	if j := strings.Join(c.lastArgs(), " "); !strings.Contains(j, "zscale") || strings.Contains(j, "tonemap_vaapi") || !strings.Contains(j, "h264_vaapi") {
+		t.Fatalf("%s", j)
+	}
+	var js string
+	if err := c.db.QueryRow(`SELECT probe_json FROM files WHERE id=?`, f).Scan(&js); err != nil || !strings.Contains(js, `"HDRMastering":false`) {
+		t.Fatalf("%s %v", js, err)
 	}
 }

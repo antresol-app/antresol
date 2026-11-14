@@ -58,8 +58,14 @@ type DeviceCopyPlan struct {
 	DurationMs      int64
 	Reason          string
 	// HDRTransfer: Decision.HDRTransfer; Tonemap: Decision.Tonemap (set
-	// when the copy runs, by the hardware settings).
+	// when the copy runs, by the hardware settings); HDRNoMastering:
+	// Decision.HDRNoMastering.
 	HDRTransfer, Tonemap string
+	HDRNoMastering       bool
+	// HEVC: a re-encode may be HEVC (the client plays it and asked with
+	// DeviceCopyKey.HEVC); OutHEVC: it is (set when the copy runs: the
+	// hardware's HEVC encoder works and «HEVC на выходе» is on).
+	HEVC, OutHEVC bool
 }
 
 // PlanDeviceCopy decides a device copy of p: the video is copied when it
@@ -73,7 +79,7 @@ func PlanDeviceCopy(p ProbeResult, ext []ExternalSub, maxHeight int, maxBitrate 
 	var reasons []string
 	if v := p.Video; v != nil {
 		pl.VideoCodec, pl.SourcePixFmt, pl.SourceHeight = v.Codec, v.PixFmt, v.Height
-		pl.HDRTransfer = v.HDRTransfer()
+		pl.HDRTransfer, pl.HDRNoMastering = v.HDRTransfer(), v.NoHDRMastering()
 		c := normCodec(v.Codec)
 		switch {
 		case !deviceVideoCopy[c]:
@@ -218,7 +224,7 @@ func DeviceCopyArgs(hw, input string, pl DeviceCopyPlan, out string) []string {
 		}
 	} else {
 		a = append(a, encodeArgs(hw, encOpts{codec: pl.VideoCodec, pixFmt: pl.SourcePixFmt, h: pl.TargetHeight, sourceH: pl.SourceHeight,
-			maxBitrate: pl.MaxBitrate, tonemap: pl.Tonemap, transfer: pl.HDRTransfer})...)
+			maxBitrate: pl.MaxBitrate, tonemap: pl.Tonemap, transfer: pl.HDRTransfer, hevc: pl.OutHEVC})...)
 	}
 	if pl.AudioIndex >= 0 {
 		if pl.AudioCopy {
@@ -269,6 +275,9 @@ type DeviceCopyKey struct {
 	// ExtAudioHash is ExternalAudioHash of the external audio file chosen
 	// ("" = the file's own track: the id is the one it always was).
 	ExtAudioHash string
+	// HEVC: a re-encode may be HEVC (DeviceCopyPlan.HEVC): not the same
+	// copy as the H.264 one a client without HEVC gets.
+	HEVC bool
 }
 
 // ID is the copy's id: the first 16 hex characters of the key's sha256.
@@ -276,6 +285,9 @@ func (k DeviceCopyKey) ID() string {
 	s := fmt.Sprintf("v1|%d|%d|%d|%d|%d|%d|%s", k.FileID, k.Size, k.ModTime.UnixNano(), k.MaxHeight, k.MaxBitrate, k.AudioIndex, k.ExtSubsHash)
 	if k.ExtAudioHash != "" {
 		s += "|a" + k.ExtAudioHash
+	}
+	if k.HEVC {
+		s += "|hevc"
 	}
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])[:16]

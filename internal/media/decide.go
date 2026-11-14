@@ -58,6 +58,10 @@ type Decision struct {
 	// HDRTransfer is the source's HDR transfer ("smpte2084", "arib-std-b67";
 	// "" = SDR): a transcode, always SDR, tone-maps it when Tonemap says so.
 	HDRTransfer string
+	// HDRNoMastering: an HDR10 source without mastering-display metadata
+	// (VideoStream.NoHDRMastering): the CPU tone-maps it, as VA-API's tone
+	// mapping refuses it.
+	HDRNoMastering bool
 	// HEVCClient: the client plays HEVC, so a transcode may encode HEVC.
 	HEVCClient bool
 	// Tonemap and OutHEVC are what the session's transcode does, set when
@@ -133,6 +137,7 @@ func Decide(p ProbeResult, c ClientCaps, audioIndex int) Decision {
 		v := p.Video
 		d.VideoCodec, d.SourceHeight, d.SourcePixFmt = v.Codec, v.Height, v.PixFmt
 		d.HDRTransfer, d.HEVCClient = v.HDRTransfer(), inList(c.VideoCodecs, "hevc")
+		d.HDRNoMastering = v.NoHDRMastering()
 		if !inList(c.VideoCodecs, v.Codec) {
 			d.VideoCopy = false
 			reasons = append(reasons, i18n.TL(l, "видеокодек %s не поддерживается браузером", v.Codec))

@@ -28,6 +28,32 @@ type VideoStream struct {
 	// ColorTransfer is ffprobe's color_transfer ("smpte2084" = PQ,
 	// "arib-std-b67" = HLG, …); "" when unknown or in older cache rows.
 	ColorTransfer string `json:",omitempty"`
+	// HDRMastering and HDRLightLevel: an HDR10 (PQ) source carries
+	// mastering-display and content-light-level metadata (in the container
+	// or the first frame); nil = not looked at (SDR, HLG, a probe-cache row
+	// made before they were recorded, a failed look).
+	HDRMastering  *bool `json:",omitempty"`
+	HDRLightLevel *bool `json:",omitempty"`
+}
+
+// NoHDRMastering: a PQ source known to lack mastering-display metadata
+// (VA-API's tone mapping refuses it).
+func (v *VideoStream) NoHDRMastering() bool {
+	return v.HDRTransfer() == "smpte2084" && v.HDRMastering != nil && !*v.HDRMastering
+}
+
+// NeedsHDRMeta: a PQ source whose HDR10 metadata was not looked at yet
+// (an older probe-cache row): ProbeHDRMeta fills it in.
+func (v *VideoStream) NeedsHDRMeta() bool {
+	return v.HDRTransfer() == "smpte2084" && v.HDRMastering == nil
+}
+
+// HDRMeta is the HDR10 metadata ProbeHDRMeta found.
+type HDRMeta struct{ Mastering, LightLevel bool }
+
+// SetHDRMeta records m on v.
+func (v *VideoStream) SetHDRMeta(m HDRMeta) {
+	v.HDRMastering, v.HDRLightLevel = &m.Mastering, &m.LightLevel
 }
 
 // HDRTransfer is the transfer of an HDR picture (PQ or HLG; PQ for a
@@ -97,7 +123,31 @@ type ffprobeOut struct {
 		BitsPerSample int               `json:"bits_per_sample"`
 		Disposition   map[string]int    `json:"disposition"`
 		Tags          map[string]string `json:"tags"`
+		SideData      []ffprobeSideData `json:"side_data_list"`
 	} `json:"streams"`
+}
+
+type ffprobeSideData struct {
+	Type string `json:"side_data_type"`
+}
+
+// The side data names of HDR10 metadata (stream and frame side_data_list).
+const (
+	sideMastering  = "Mastering display metadata"
+	sideLightLevel = "Content light level metadata"
+)
+
+func hdrMetaOf(sd []ffprobeSideData) HDRMeta {
+	var m HDRMeta
+	for _, d := range sd {
+		switch d.Type {
+		case sideMastering:
+			m.Mastering = true
+		case sideLightLevel:
+			m.LightLevel = true
+		}
+	}
+	return m
 }
 
 // Probe runs ffprobe on path: a local file, or a loopback http URL (see
@@ -116,7 +166,57 @@ func Probe(ctx context.Context, ffprobe, path string) (ProbeResult, error) {
 		}
 		return ProbeResult{}, fmt.Errorf("ffprobe: %w", err)
 	}
-	return parseProbe(out, path)
+	r, err := parseProbe(out, path)
+	if err == nil && r.Video != nil && r.Video.NeedsHDRMeta() {
+		// HDR10 metadata is mostly in the bitstream (SEI), seen only by
+		// decoding: the first frame tells
+		if m, err := ProbeHDRMeta(ctx, ffprobe, path); err == nil {
+			r.Video.SetHDRMeta(m)
+		}
+	}
+	return r, err
+}
+
+// ProbeHDRMeta looks for HDR10 metadata of path's video: the stream's side
+// data (the container's) and that of its first decoded frame (SEI).
+func ProbeHDRMeta(ctx context.Context, ffprobe, path string) (HDRMeta, error) {
+	opts, operand, err := InputArgs(path)
+	if err != nil {
+		return HDRMeta{}, err
+	}
+	args := append([]string{"-v", "error"}, opts...)
+	args = append(args, "-select_streams", "V:0", "-read_intervals", "%+#1",
+		"-print_format", "json", "-show_streams", "-show_frames", operand)
+	out, err := exec.CommandContext(ctx, ffprobe, args...).Output()
+	if err != nil {
+		return HDRMeta{}, fmt.Errorf("ffprobe hdr metadata: %w", err)
+	}
+	return parseHDRMeta(out)
+}
+
+func parseHDRMeta(js []byte) (HDRMeta, error) {
+	var o struct {
+		Streams []struct {
+			SideData []ffprobeSideData `json:"side_data_list"`
+		} `json:"streams"`
+		Frames []struct {
+			SideData []ffprobeSideData `json:"side_data_list"`
+		} `json:"frames"`
+	}
+	if err := json.Unmarshal(js, &o); err != nil {
+		return HDRMeta{}, fmt.Errorf("ffprobe json: %w", err)
+	}
+	if len(o.Frames) == 0 {
+		return HDRMeta{}, fmt.Errorf("ffprobe hdr metadata: no video frame")
+	}
+	var m HDRMeta
+	for _, s := range o.Streams {
+		sm := hdrMetaOf(s.SideData)
+		m.Mastering, m.LightLevel = m.Mastering || sm.Mastering, m.LightLevel || sm.LightLevel
+	}
+	fm := hdrMetaOf(o.Frames[0].SideData)
+	m.Mastering, m.LightLevel = m.Mastering || fm.Mastering, m.LightLevel || fm.LightLevel
+	return m, nil
 }
 
 // ProbeAudioFile is Probe of an external audio file, read with the audio
@@ -170,6 +270,11 @@ func parseProbe(js []byte, path string) (ProbeResult, error) {
 				HDR:     s.ColorTransfer == "smpte2084" || s.ColorTransfer == "arib-std-b67",
 				BitRate: br, PixFmt: s.PixFmt, BitDepth: bitDepth(s.RawBits, s.PixFmt), CodecTag: s.CodecTag,
 				ColorTransfer: s.ColorTransfer,
+			}
+			// the container's HDR10 metadata settles it; else the first
+			// frame's (Probe)
+			if m := hdrMetaOf(s.SideData); m.Mastering && r.Video.HDRTransfer() == "smpte2084" {
+				r.Video.SetHDRMeta(m)
 			}
 		case "audio":
 			a := AudioStream{Index: s.Index, Codec: s.CodecName, Lang: lang,

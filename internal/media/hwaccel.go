@@ -492,7 +492,9 @@ func (a *Accel) Mode() string {
 
 // Tonemap is how a transcode in hw tone-maps a source of HDR transfer
 // transfer: "gpu", "cpu" or "" (an SDR source, tone mapping off or not
-// available). gpu needs frames the GPU decodes (gpuFrames) and a PQ source.
+// available). gpu needs frames the GPU decodes (gpuFrames) and a PQ source
+// (callers pass gpuFrames false for one without mastering-display
+// metadata: tonemap_vaapi refuses it).
 func (a *Accel) Tonemap(hw, transfer string, gpuFrames bool) string {
 	cfg, st := a.State()
 	if transfer == "" || !cfg.Tonemap {
@@ -521,7 +523,7 @@ func (a *Accel) plan(hw string, d Decision) Decision {
 	}
 	gpuFrames := d.BurnSub == 0 && (hw == HWQSV && qsvDecodable(d.VideoCodec, d.SourcePixFmt) ||
 		hw == HWVAAPI && vaapiDecodable(d.VideoCodec, d.SourcePixFmt))
-	d.Tonemap = a.Tonemap(hw, d.HDRTransfer, gpuFrames)
+	d.Tonemap = a.Tonemap(hw, d.HDRTransfer, gpuFrames && !d.HDRNoMastering)
 	if d.HEVCClient && d.BurnSub == 0 && a.HEVC(hw) {
 		d.OutHEVC, d.FMP4 = true, true // HEVC in HLS: fMP4 segments
 	}
