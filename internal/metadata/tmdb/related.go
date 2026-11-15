@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -177,6 +178,15 @@ func (s *Related) ttl() time.Duration {
 	return relatedTTL
 }
 
+// ttlOf is the TTL of a scope's entries: videos (trailers come out
+// before a release) a day, the rest ttl.
+func (s *Related) ttlOf(scope string) time.Duration {
+	if s.TTL <= 0 && strings.HasPrefix(scope, videosScope) {
+		return videosTTL
+	}
+	return s.ttl()
+}
+
 func (s *Related) wait() time.Duration {
 	if s.Wait > 0 {
 		return s.Wait
@@ -190,7 +200,7 @@ func (s *Related) get(ctx context.Context, scope string, id int, tag string, out
 	key := relatedKey(scope, id, tag)
 	c, ok := s.cached(ctx, key, scope, id, tag)
 	switch {
-	case ok && time.Since(c.at) >= s.ttl():
+	case ok && time.Since(c.at) >= s.ttlOf(scope):
 		s.start(key, scope, id, tag, fetch, relatedRefresh)
 	case !ok:
 		call := s.start(key, scope, id, tag, fetch, s.wait())

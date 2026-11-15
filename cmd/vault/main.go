@@ -361,10 +361,13 @@ func run() error {
 	// «Очищено»: voice-overs with the original speech subtracted
 	// (DataDir/audio), a file at a time, what is being watched first; at
 	// the lowest priority; fresh downloads and next episodes even while
-	// something plays, the backlog behind the same quiet as the analysis;
+	// something plays, the backlog behind the same quiet as the analysis
+	// (unless the admin's «Обработать всю медиатеку» is on);
 	// held while the media disk is away or DataDir's disk is short of room
 	vocWorker := &voclean.Worker{DB: database, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe, DataDir: cfg.DataDir, Log: slog.Default(),
 		Studios: releaseprefs.Store{DB: database}.Studios, Busy: segWorker.Busy,
+		// «Обработать всю медиатеку»: the backlog too even while something plays
+		Backfill: func(ctx context.Context) bool { return api.LoadVocleanBackfill(ctx, database) },
 		Disk: func() bool {
 			if f := jobs.Scanner.StorageOffline; f != nil && f() != "" {
 				return false
@@ -469,6 +472,7 @@ func run() error {
 		Channels:     chans,
 		IPTV:         cfg.IPTV,
 		Accounts:     accts.routes,
+		Voclean:      vocWorker,
 	}
 	// external IPTV playlists and guides in «ТВ» (added by an admin);
 	// their secrets sealed with the server's key
@@ -492,6 +496,7 @@ func run() error {
 	}
 	if related != nil { // never a typed nil in the interface
 		deps.Related = related
+		deps.Trailers = related
 	}
 	// IMDb and Rotten Tomatoes ratings of title pages
 	if rs := buildRatings(cfg, database, metaSrc.Wikidata, slog.Default()); rs != nil {

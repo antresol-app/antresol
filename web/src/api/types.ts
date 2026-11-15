@@ -110,8 +110,10 @@ export interface Card {
   /** 0..1 */
   progress: number
   onServer: boolean
-  /** Cards of GET /api/items/{id}/related: this profile finished the movie or every episode of the series. */
+  /** This profile finished the movie or episode, or every episode of the series or season. */
   watched?: boolean
+  /** Episodes: their own 16:9 picture (the stored still, else /api/images/frame/{id}). */
+  thumb?: string
   /** Facts worth a chip for the kind: FLAC 24/96, 4K, RU, EPUB. */
   badges?: string[]
   /** Episodes and seasons: the parent series. */
@@ -1202,6 +1204,28 @@ export interface TranscodingView {
     probes: { mode: string; ok: boolean; error?: string }[]
     probedAt: string
   }
+}
+
+/** One of GET /api/items/{id}/trailers: a YouTube trailer or teaser of the title (TMDB). */
+export interface Trailer {
+  name: string
+  site: 'YouTube'
+  key: string
+  type: 'Trailer' | 'Teaser'
+  lang: string
+  official: boolean
+  url: string
+}
+
+/** GET /api/admin/voclean: the cleaned voice-overs' tracks by state. */
+export interface VocleanStatus {
+  done: number
+  /** waiting to be measured or cleaned (retries due included) */
+  queued: number
+  failed: number
+  notEligible: number
+  /** «Обработать всю медиатеку»: the backlog runs even while something plays */
+  backfill: boolean
 }
 
 export interface AISettings {

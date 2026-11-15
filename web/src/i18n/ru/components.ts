@@ -42,6 +42,7 @@ export default {
   'comp.action.watchInOther': 'Смотреть в другом качестве',
   'comp.action.markUnwatched': 'Отметить как непросмотренное',
   'comp.action.markWatched': 'Отметить как просмотренное',
+  'comp.action.trailer': 'Трейлер',
   'comp.action.findSubtitles': 'Найти субтитры…',
   'comp.action.watched': 'Просмотрено',
   'comp.action.remaining': 'Осталось {time}',

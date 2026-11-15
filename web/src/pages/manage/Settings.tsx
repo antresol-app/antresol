@@ -28,6 +28,7 @@ import { t, useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
 import { TranscodingSection } from './TranscodingSettings'
+import { VocleanSection } from './VocleanSettings'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
@@ -520,6 +521,8 @@ export function Settings() {
       {at('transcoding') && <TranscodingSection />}
 
       {at('ai') && <AISettingsSection ai={values.ai} keySet={values.aiKeySet ?? false} fromEnv={values.aiFromEnv} onChange={(ai) => change({ ai })} />}
+
+      {at('library') && <VocleanSection />}
 
       {at('library') && <ShikimoriAdmin />}
 

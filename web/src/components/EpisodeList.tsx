@@ -38,8 +38,11 @@ export function episodeTitle(e: Pick<Episode, 'title' | 'episodeNo'>): string {
 }
 
 function stillOf(ep: Episode, series?: { poster?: string; backdrop?: string }): string | undefined {
-  // TMDB stills are stored as the episode's poster; the API fills missing art
-  // from the series, and the same series picture on every tile says nothing.
+  // the episode's own picture (its still, else a frame of its video)
+  if (ep.thumb) return ep.thumb
+  // an older server: TMDB stills are stored as the episode's poster; the API
+  // fills missing art from the series, and the same series picture on every
+  // tile says nothing.
   if (ep.poster && ep.poster !== series?.poster) return ep.poster
   if (ep.backdrop && ep.backdrop !== series?.backdrop) return ep.backdrop
   return undefined

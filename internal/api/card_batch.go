@@ -23,6 +23,10 @@ type cardBatch struct {
 	items    map[int64]library.Item // parents; an asked id missing is not shown
 	askedI   map[int64]bool
 	showKeys map[int64]string // series and seasons: Library.ShowFilesKey
+	// watched: series and seasons uid finished (every episode); an asked
+	// id missing is not
+	watched map[int64]bool
+	askedW  map[int64]bool
 }
 
 type cardBatchKey struct{}
@@ -40,15 +44,23 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 		return ctx
 	}
 	b := &cardBatch{uid: uid, progress: map[int64]progress.Entry{}, askedP: map[int64]bool{},
-		askedF: map[int64]bool{}, items: map[int64]library.Item{}, askedI: map[int64]bool{}}
+		askedF: map[int64]bool{}, items: map[int64]library.Item{}, askedI: map[int64]bool{},
+		watched: map[int64]bool{}, askedW: map[int64]bool{}}
 	if old := batchOf(ctx); old != nil && old.uid == uid {
 		b = old // a second page of cards adds to the first
 	}
-	var withProgress, withFiles, parents, shows []int64
+	var withProgress, withFiles, parents, shows, seriesW, seasonsW []int64
 	for _, it := range items {
 		if it.Kind == library.KindSeries || it.Kind == library.KindSeason {
 			if _, ok := b.showKeys[it.ID]; !ok {
 				shows = append(shows, it.ID)
+			}
+			if !b.askedW[it.ID] {
+				if it.Kind == library.KindSeries {
+					seriesW = append(seriesW, it.ID)
+				} else {
+					seasonsW = append(seasonsW, it.ID)
+				}
 			}
 		}
 		b.items[it.ID], b.askedI[it.ID] = it, true
@@ -80,6 +92,9 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 				b.progress[e.ItemID] = e
 			}
 		}
+	}
+	if len(seriesW)+len(seasonsW) > 0 && h.Progress != nil {
+		h.batchWatched(ctx, b, seriesW, seasonsW)
 	}
 	if len(withFiles) > 0 {
 		fs, err := h.Library.FilesOfItems(ctx, withFiles)
@@ -127,6 +142,54 @@ func (h *lib) withCards(ctx context.Context, uid int64, items []library.Item) co
 		parents = next
 	}
 	return context.WithValue(ctx, cardBatchKey{}, b)
+}
+
+// batchWatched fills b.watched of the series and seasons: one grouped
+// query for each list.
+func (h *lib) batchWatched(ctx context.Context, b *cardBatch, series, seasons []int64) {
+	if len(series) > 0 {
+		done, err := h.Progress.WatchedOf(ctx, b.uid, nil, series)
+		if err != nil {
+			log.Printf("api: cards: series watched: %v", err)
+		} else {
+			for _, id := range series {
+				b.askedW[id], b.watched[id] = true, done[id]
+			}
+		}
+	}
+	if len(seasons) > 0 {
+		done, err := h.Progress.SeasonsWatchedOf(ctx, b.uid, seasons)
+		if err != nil {
+			log.Printf("api: cards: seasons watched: %v", err)
+		} else {
+			for _, id := range seasons {
+				b.askedW[id], b.watched[id] = true, done[id]
+			}
+		}
+	}
+}
+
+// showWatched: uid finished every episode of the series or season it,
+// from the batch when it has it.
+func (h *lib) showWatched(ctx context.Context, uid int64, it library.Item) bool {
+	if b := batchOf(ctx); b != nil && b.uid == uid && b.askedW[it.ID] {
+		return b.watched[it.ID]
+	}
+	if h.Progress == nil {
+		return false
+	}
+	var done map[int64]bool
+	var err error
+	if it.Kind == library.KindSeries {
+		done, err = h.Progress.WatchedOf(ctx, uid, nil, []int64{it.ID})
+	} else {
+		done, err = h.Progress.SeasonsWatchedOf(ctx, uid, []int64{it.ID})
+	}
+	if err != nil {
+		log.Printf("api: card %d watched: %v", it.ID, err) // degrade: not marked
+		return false
+	}
+	return done[it.ID]
 }
 
 // withItems is withCards of the items ids (one Library.ItemsByID); an id

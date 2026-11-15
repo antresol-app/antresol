@@ -6,7 +6,7 @@
 // watched) live in the «Ещё» menu.
 import { useEffect, useState, type ReactNode } from 'react'
 import { addToWatchlist, downloadUrl, removeFromWatchlist, setWatched, errorText } from '../api/client'
-import type { Episode, ItemDetail, MediaFile } from '../api/types'
+import type { Episode, ItemDetail, MediaFile, Trailer } from '../api/types'
 import { clock, durationSec, FINISHED, humanMinutes, isMultiPart, langBadge, partNumber, playbackParts, resumeSec } from '../player/timeline'
 import { ActionTiles } from '../ui/ActionTiles'
 import { MaterialContext } from '../ui/Button'
@@ -53,7 +53,12 @@ export interface ActionBarProps {
   onFindSubtitles?: () => void
   /** Sources build, adults: «Найти озвучку…» in «Ещё» (VoiceOverSheet). */
   onFindVoiceOvers?: () => void
+  /** «Трейлер» in «Ещё» (GET /api/items/{id}/trailers, best first): opens YouTube. */
+  trailers?: Trailer[]
 }
+
+/** The trailers «Ещё» offers: the best few. */
+const MAX_TRAILERS = 3
 
 const units = ['common.unit.B', 'common.unit.KB', 'common.unit.MB', 'common.unit.GB', 'common.unit.TB'] as const
 /** «2,4 ГБ» / "2.4 GB" in the interface language. */
@@ -97,7 +102,7 @@ function fileBadges(f: MediaFile, quality = true): string {
   return [quality && f.resolution, langs(f.audio), subs && t('comp.action.subs', { langs: subs }), formatSize(f.size)].filter(Boolean).join(' · ')
 }
 
-export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, onFindVoiceOvers }: ActionBarProps) {
+export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, onFindVoiceOvers, trailers = [] }: ActionBarProps) {
   const t = useT()
   const [inList, setInList] = useState(item.inWatchlist)
   const [busy, setBusy] = useState(false)
@@ -278,6 +283,19 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
                       void toggleWatched()
                     }}
                   />
+                  {trailers.slice(0, MAX_TRAILERS).map((tr) => (
+                    <MenuItem
+                      key={tr.key}
+                      icon={<Icon name="film" size={18} />}
+                      label={t('comp.action.trailer')}
+                      // several: each says which («Official Trailer», «Тизер»)
+                      detail={trailers.length > 1 ? tr.name : undefined}
+                      onSelect={() => {
+                        close(false)
+                        window.open(tr.url, '_blank', 'noopener')
+                      }}
+                    />
+                  ))}
                   {onFindSubtitles && (
                     <MenuItem
                       icon={<Icon name="captions" size={18} />}

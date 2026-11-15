@@ -44,6 +44,7 @@ export default {
   'comp.action.watchInOther': 'Play in Another Quality',
   'comp.action.markUnwatched': 'Mark as Unwatched',
   'comp.action.markWatched': 'Mark as Watched',
+  'comp.action.trailer': 'Trailer',
   'comp.action.findSubtitles': 'Find Subtitles…',
   'comp.action.watched': 'Watched',
   'comp.action.remaining': '{time} left',

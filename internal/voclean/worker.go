@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/extaudio"
@@ -72,7 +73,8 @@ var errDiskFull = errors.New("voclean: disk full")
 // the household's favourite studios first, all of a file's from one read.
 // The ffmpeg children run at the lowest CPU and I/O priority; files
 // added within 48 h and next episodes run even while something plays,
-// older ones wait until nothing does and yield the disk to playback. A
+// older ones wait until nothing does and yield the disk to playback (unless
+// Backfill, «Обработать всю медиатеку», is on: then they run like fresh ones). A
 // failure is retried after an hour, doubling to a week, and given up on
 // after maxFails; a track that is not eligible is never measured again
 // while its file stays the same.
@@ -88,8 +90,12 @@ type Worker struct {
 	Disk func() bool
 	// Busy: playback needs the media disk (nil: never).
 	Busy func() bool
-	Log  *slog.Logger
-	Now  func() time.Time
+	// Backfill is «Обработать всю медиатеку»: the backlog runs like the
+	// fresh files, even while something plays (still at the lowest
+	// priority); nil or false: it waits until nothing plays.
+	Backfill func(ctx context.Context) bool
+	Log      *slog.Logger
+	Now      func() time.Time
 	// Idle: how often a pass runs unprompted (6 h when 0); StartDelay: the
 	// first pass after Run starts (startDelay when 0).
 	Idle, StartDelay time.Duration
@@ -105,6 +111,10 @@ type Worker struct {
 	// heldForPlayback: the last pass left backlog files until playback ends
 	heldForPlayback bool
 	queues          int // queue reads (tests)
+	// due: the tracks the last queue read found due (Status)
+	due atomic.Int64
+	// dueKnown: due was read at least once
+	dueKnown atomic.Bool
 }
 
 func (w *Worker) init() { w.once.Do(func() { w.kick = make(chan struct{}, 1) }) }
@@ -709,11 +719,16 @@ func (w *Worker) queue(ctx context.Context) ([]job, error) {
 		}
 		return len(first)
 	}
+	backfill := w.Backfill != nil && w.Backfill(ctx)
+	dueTracks := 0
 	for i := range jobs {
-		if _, ok := first[jobs[i].itemID]; ok {
-			jobs[i].fresh = true // about to be watched
+		if _, ok := first[jobs[i].itemID]; ok || backfill {
+			jobs[i].fresh = true // about to be watched, or the whole library asked for
 		}
+		dueTracks += len(jobs[i].tracks)
 	}
+	w.due.Store(int64(dueTracks))
+	w.dueKnown.Store(true)
 	sort.SliceStable(jobs, func(a, b int) bool { return rank(jobs[a].itemID) < rank(jobs[b].itemID) })
 	return jobs, nil
 }

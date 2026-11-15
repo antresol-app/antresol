@@ -688,6 +688,13 @@ func (h *lib) trackedShelf(ctx context.Context, u auth.User) ([]Card, error) {
 	}
 	cards := []Card{}
 	done := map[int64]bool{}
+	var lib []library.Item // the library cards in one batch
+	for _, it := range items {
+		if li := g.seen[it.Title.ID].item; li != nil {
+			lib = append(lib, *li)
+		}
+	}
+	ctx = h.withCards(ctx, u.ID, lib)
 	for _, it := range items {
 		if done[it.Title.ID] || len(cards) == shelfSize {
 			continue

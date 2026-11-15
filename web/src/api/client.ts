@@ -3,6 +3,8 @@
 import type {
   TranscodingSettings,
   TranscodingView,
+  VocleanStatus,
+  Trailer,
   About,
   AccountsState,
   MyShowsState,
@@ -194,9 +196,12 @@ export function imageUrl(ref: string | null | undefined, width?: number): string
 /** The widths the server shrinks an image to (?w=, internal/api/images.go imageWidths). */
 export const IMAGE_WIDTHS = [160, 240, 320, 480, 640, 960, 1280, 1920] as const
 
-/** The server's image at the smallest step at least `width` px wide; another URL (TMDB, a blob) as it is. */
+/** A video frame (/api/images/frame/{id}, Card.thumb): one fixed size, no ?w= steps. */
+const isFrame = (url: string) => url.startsWith('/api/images/frame/')
+
+/** The server's image at the smallest step at least `width` px wide; another URL (TMDB, a blob, a frame) as it is. */
 function sized(url: string, width: number): string {
-  if (!url.startsWith('/api/images/') || url.includes('?')) return url
+  if (!url.startsWith('/api/images/') || url.includes('?') || isFrame(url)) return url
   const w = IMAGE_WIDTHS.find((s) => s >= width)
   return w ? `${url}?w=${w}` : url
 }
@@ -209,7 +214,7 @@ function sized(url: string, width: number): string {
  */
 export function imageSrcSet(ref: string | null | undefined, min = 240, max = 960): string | undefined {
   const url = imageUrl(ref)
-  if (!url?.startsWith('/api/images/') || url.includes('?')) return undefined
+  if (!url?.startsWith('/api/images/') || url.includes('?') || isFrame(url)) return undefined
   return IMAGE_WIDTHS.filter((w) => w >= min && w <= max)
     .map((w) => `${url}?w=${w} ${w}w`)
     .join(', ')
@@ -432,6 +437,10 @@ export const saveSettings = (s: Settings) => request<Settings>('PUT', '/api/sett
 /** «Проверить» of «ИИ-помощник»: one short question to the model (nothing is saved; an empty key: the stored one). */
 export const getTranscoding = (signal?: AbortSignal) => request<TranscodingView>('GET', '/api/settings/transcoding', undefined, signal)
 export const saveTranscoding = (s: Partial<TranscodingSettings> & { reset?: boolean }) => request<TranscodingView>('PUT', '/api/settings/transcoding', s)
+export const getTrailers = (id: number, signal?: AbortSignal) =>
+  request<{ trailers: Trailer[] }>('GET', `/api/items/${id}/trailers`, undefined, signal).then((r) => r.trailers ?? [])
+export const getVoclean = (signal?: AbortSignal) => request<VocleanStatus>('GET', '/api/admin/voclean', undefined, signal)
+export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => request<VocleanStatus>('POST', '/api/admin/voclean/backfill', b)
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
 export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string }>('POST', '/api/settings/ai/test', ai)
 

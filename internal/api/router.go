@@ -61,6 +61,8 @@ type Deps struct {
 	FFprobe  string
 	// Probe overrides media.Probe (tests).
 	Probe func(ctx context.Context, path string) (media.ProbeResult, error)
+	// FrameRunner runs the ffmpeg of /api/images/frame (nil: cmd.Run; tests).
+	FrameRunner media.Runner
 	// Keyframe overrides media.KeyframeBefore (tests).
 	Keyframe func(ctx context.Context, input string, t float64) (float64, error)
 	// ClientIsRemote overrides Network for the playback quality cap
@@ -122,6 +124,12 @@ type Deps struct {
 	// pages (/api/items/{id}/related, /api/items/{id}/collection); nil
 	// without a TMDB key: no rows.
 	Related RelatedSource
+	// Voclean is «Очищенные озвучки» of the admin's server settings
+	// (/api/admin/voclean*); nil: none.
+	Voclean VocleanAdmin
+	// Trailers are the trailers of movie and series pages
+	// (/api/items/{id}/trailers); nil without a TMDB key: none.
+	Trailers TrailerSource
 	// Ratings are the IMDb and Rotten Tomatoes ratings of
 	// /api/ratings/{imdbId} (nil: none, the answer is {}).
 	Ratings Ratings
@@ -358,6 +366,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			mountStats(r, newStats(deps, time.Now))
 			mountSettings(r, newSettingsAPI(deps))
 			mountTranscoding(r, deps)
+			mountVoclean(r, deps)
 		})
 	}
 	if deps.Sessions != nil && deps.Users != nil && deps.MediaImport != nil {

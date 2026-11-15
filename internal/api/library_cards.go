@@ -32,10 +32,15 @@ type Card struct {
 	// Badges: the facts worth a chip for the kind (see badges.go).
 	Badges   []string `json:"badges,omitempty"`
 	OnServer bool     `json:"onServer"`
-	// Watched: the profile finished the movie or every episode of the
-	// series (set on the cards of /api/items/{id}/related only).
-	Watched  bool  `json:"watched,omitempty"`
-	SeriesID int64 `json:"seriesId,omitempty"` // episodes, seasons and comic volumes
+	// Watched: the profile finished the movie or episode, or every episode
+	// of the series or season in the library (every card of a library
+	// title; batched by withCards).
+	Watched bool `json:"watched,omitempty"`
+	// Thumb: an episode's own 16:9 picture — its stored still (TMDB's),
+	// else a frame of its video (/api/images/frame/{id}); "" on other
+	// kinds.
+	Thumb    string `json:"thumb,omitempty"`
+	SeriesID int64  `json:"seriesId,omitempty"` // episodes, seasons and comic volumes
 	// Online cards of «Продолжить» (a title watched online, not in the
 	// library; ID 0, only for /api/home?online=1): the TMDB title, the
 	// episode and where to resume. A missing season or episode is 0
@@ -241,14 +246,29 @@ func ratio(e progress.Entry) float64 {
 // progressOf returns the user's progress (0..1) on an item (the read
 // share of a book).
 func (h *lib) progressOf(ctx context.Context, uid, itemID int64) float64 {
+	p, _ := h.progressDone(ctx, uid, itemID)
+	return p
+}
+
+// progressDone is progressOf and whether the user finished the item.
+func (h *lib) progressDone(ctx context.Context, uid, itemID int64) (float64, bool) {
 	e, err := h.progressEntry(ctx, uid, itemID)
 	if err != nil {
 		if !errors.Is(err, progress.ErrNotFound) {
 			log.Printf("api: progress %d: %v", itemID, err)
 		}
-		return 0
+		return 0, false
 	}
-	return ratio(e)
+	return ratio(e), e.Finished
+}
+
+// episodeThumb is an episode's Card.Thumb: its own stored still, else a
+// frame of its video.
+func episodeThumb(ep library.Item) string {
+	if u := imageURL(ep.ID, "poster", ep.Poster); u != "" {
+		return u
+	}
+	return "/api/images/frame/" + strconv.FormatInt(ep.ID, 10)
 }
 
 func episodeLabel(ctx context.Context, season, ep int) string {
@@ -271,15 +291,19 @@ func (h *lib) card(ctx context.Context, uid int64, it library.Item) Card {
 		c.Title = translatedTitle(tr, it.Title)
 		h.translatedArt(&c, tr, it.Poster, m.Logo)
 		c.Subtitle = strings.Join(firstN(h.genreNames(ctx, it.Kind, m), 2), " · ")
-		c.Progress = h.progressOf(ctx, uid, it.ID)
+		c.Progress, c.Watched = h.progressDone(ctx, uid, it.ID)
 	case library.KindSeries:
 		tr := h.cachedTranslation(ctx, it, m)
 		c.Title = translatedTitle(tr, it.Title)
 		h.translatedArt(&c, tr, it.Poster, m.Logo)
 		c.Subtitle = strings.Join(firstN(h.genreNames(ctx, it.Kind, m), 2), " · ")
+		c.Watched = h.showWatched(ctx, uid, it)
 	case library.KindSeason, library.KindEpisode:
 		if it.Kind == library.KindEpisode {
-			c.Progress = h.progressOf(ctx, uid, it.ID)
+			c.Progress, c.Watched = h.progressDone(ctx, uid, it.ID)
+			c.Thumb = episodeThumb(it)
+		} else {
+			c.Watched = h.showWatched(ctx, uid, it)
 		}
 		s, err := h.root(ctx, it)
 		if err != nil {

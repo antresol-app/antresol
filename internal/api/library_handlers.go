@@ -477,7 +477,7 @@ func (h *lib) episodeCard(ctx context.Context, uid int64, ep library.Item, tr *t
 	if tr != nil {
 		_, ec.Overview = translatedEpisode(tr, ep) // the title is the card's
 	}
-	ec.Watched = ec.Progress >= 1
+	ec.Watched = ec.Card.Watched || ec.Progress >= 1
 	fs, err := h.filesOf(ctx, ep.ID)
 	if err != nil {
 		log.Printf("api: episode %d files: %v", ep.ID, err) // degrade: no duration

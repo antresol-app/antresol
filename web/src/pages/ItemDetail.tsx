@@ -4,8 +4,8 @@
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
-import { ApiError, downloadUrl, getItem, getTitle, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
-import type { Episode, ItemDetail as Detail, MediaFile, SourceChoice, TitleEpisode, TitleInfo } from '../api/types'
+import { ApiError, downloadUrl, getItem, getTitle, getTrailers, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
+import type { Episode, ItemDetail as Detail, MediaFile, SourceChoice, TitleEpisode, TitleInfo, Trailer } from '../api/types'
 import { MarkButton } from '../components/MarkButton'
 import { ActionBar, episodeToPlay, type PlayOptions } from '../components/ActionBar'
 import type { WatchWay } from '../components/WatchButton'
@@ -191,6 +191,17 @@ export function ItemDetail() {
     if (item) document.title = `${item.title} — ${APP_NAME}`
   }, [item])
 
+  // «Трейлер» in «Ещё»: TMDB's trailers of a library movie or series (a season's or episode's: its series')
+  const [trailers, setTrailers] = useState<Trailer[]>([])
+  const trailerOf = item && item.id > 0 && item.kind !== 'track' ? item.id : 0
+  useEffect(() => {
+    setTrailers([])
+    if (!trailerOf) return
+    const ac = new AbortController()
+    getTrailers(trailerOf, ac.signal).then(setTrailers, () => {}) // none: no item in «Ещё»
+    return () => ac.abort()
+  }, [trailerOf])
+
   const logoSrc = imageUrl(item?.logo)
   const [logoFailed, setLogoFailed] = useState(false)
   useEffect(() => setLogoFailed(false), [logoSrc])
@@ -301,6 +312,7 @@ export function ItemDetail() {
       onChanged={() => load(true)}
       onFindSubtitles={subsFile ? () => setFindingSubs(true) : undefined}
       onFindVoiceOvers={canFindVoices ? () => setFindingVoices(true) : undefined}
+      trailers={trailers}
       deletion={
         canDelete
           ? {

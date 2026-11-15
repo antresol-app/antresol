@@ -57,6 +57,7 @@ type CollectionRow struct {
 func mountRelated(r chi.Router, h *lib) {
 	r.Get("/api/items/{id}/related", h.related)
 	r.Get("/api/items/{id}/collection", h.collection)
+	r.Get("/api/items/{id}/trailers", h.trailers)
 }
 
 // tmdbKindOf is the TMDB kind of a library movie or series ("" = other).

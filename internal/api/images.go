@@ -23,6 +23,7 @@ func mountImages(r chi.Router, h *lib) {
 	r.Get("/api/images/local/{id}/{slot}", h.localImage)
 	r.Get("/api/images/cast/{name}", h.castImage)
 	r.Get("/api/images/art/{name}", h.artImage)
+	r.Get("/api/images/frame/{itemId}", h.frameImage)
 }
 
 // castImage serves a cast member's TMDB photo from the image cache; one
