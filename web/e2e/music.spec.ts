@@ -188,11 +188,10 @@ test('shuffle library and genre', async ({ page }) => {
 
 test('app password sheet shows password', async ({ page, baseURL }) => {
   await setupAdmin(page.request)
-  await page.goto('/')
-  await page.getByRole('button', { name: /Профиль:/ }).click()
-  await page.getByRole('menuitem', { name: 'Пароль для приложений…' }).click()
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /Пароль для приложений/ }).click()
   const sheet = page.getByRole('dialog', { name: 'Пароль для приложений' })
-  await expect(sheet).toContainText(`сервер — ${new URL(baseURL!).origin}`)
+  await expect(sheet).toContainText(`Сервер — ${new URL(baseURL!).origin}`)
   await expect(sheet).toContainText(`Каталог книг: ${new URL(baseURL!).origin}/opds`)
   await sheet.getByRole('button', { name: 'Создать пароль' }).click()
   const field = sheet.getByRole('textbox', { name: 'Пароль' })
@@ -203,9 +202,8 @@ test('app password sheet shows password', async ({ page, baseURL }) => {
   const ping = await page.request.get(`/rest/ping.view?u=${encodeURIComponent('Александр')}&p=${encodeURIComponent(password)}&v=1.16.1&c=e2e&f=json`)
   expect(((await ping.json()) as { 'subsonic-response': { status: string } })['subsonic-response'].status).toBe('ok')
   // reopened: the password is not shown again
-  await sheet.getByRole('button', { name: 'Закрыть' }).click()
-  await page.getByRole('button', { name: /Профиль:/ }).click()
-  await page.getByRole('menuitem', { name: 'Пароль для приложений…' }).click()
+  await sheet.getByRole('button', { name: 'Готово' }).click()
+  await page.getByRole('button', { name: /Пароль для приложений/ }).click()
   await expect(sheet.getByRole('button', { name: 'Создать новый' })).toBeVisible()
   await expect(sheet.getByRole('textbox', { name: 'Пароль' })).toHaveCount(0)
 })
