@@ -82,6 +82,7 @@ func init() {
 		"Это нельзя добавить в список":               "This can’t be added to the list",
 		"Обновление медиатеки недоступно":            "Library refresh isn’t available",
 		"Картинка не найдена":                        "Image not found",
+		"Картинка ещё не готова":                     "Image not ready yet",
 		"Нужно войти":                                "Sign in required",
 		"Перекодирование недоступно":                 "Transcoding isn’t available",
 
