@@ -33,6 +33,7 @@ import (
 	"github.com/antresol-app/antresol/internal/segments"
 	"github.com/antresol-app/antresol/internal/subtitles"
 	"github.com/antresol-app/antresol/internal/tracking"
+	"github.com/antresol-app/antresol/internal/trailers"
 	"github.com/antresol-app/antresol/internal/version"
 	"github.com/antresol-app/antresol/internal/webui"
 	"github.com/go-chi/chi/v5"
@@ -130,6 +131,10 @@ type Deps struct {
 	// Trailers are the trailers of movie and series pages
 	// (/api/items/{id}/trailers); nil without a TMDB key: none.
 	Trailers TrailerSource
+	// TrailerCache plays those trailers inside the apps (the play URL of
+	// each, /api/trailers/*): a build with a trailer fetcher sets it; nil:
+	// the apps play trailers their own way.
+	TrailerCache *trailers.Cache
 	// Ratings are the IMDb and Rotten Tomatoes ratings of
 	// /api/ratings/{imdbId} (nil: none, the answer is {}).
 	Ratings Ratings
@@ -496,9 +501,11 @@ func compressible(ct string) bool {
 // External IPTV channels play the provider's stream directly (hls.js fetches
 // its playlists and segments, Safari loads it as media), so media and
 // connections may go to any http(s) host; scripts stay same-origin only.
+// A trailer the server does not play opens in the official embedded player
+// (frame-src trailerFrameSrc).
 const appCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; " +
 	"img-src * data: blob:; font-src 'self' data: blob:; media-src 'self' blob: http: https:; connect-src 'self' blob: http: https:; " +
-	"worker-src 'self' blob:; frame-src 'self' blob:; manifest-src 'self'; object-src 'none'; " +
+	"worker-src 'self' blob:; frame-src 'self' blob: " + trailerFrameSrc + "; manifest-src 'self'; object-src 'none'; " +
 	"base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 
 // spa serves static files from fsys, falling back to index.html for unknown

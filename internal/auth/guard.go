@@ -39,7 +39,7 @@ func ViaMediaKey(ctx context.Context) (string, bool) {
 // mediaKeyRoute: the paths a media key opens (file streams, HLS playlists
 // and segments, a live channel's playlist and segments, music tracks, audiobook parts, the app's «Смотреть
 // сейчас» file of a release that is still arriving, and the online
-// stream proxy with its subtitles), for GET and HEAD only.
+// stream proxy with its subtitles, a cached trailer), for GET and HEAD only.
 func mediaKeyRoute(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -50,6 +50,7 @@ func mediaKeyRoute(r *http.Request) bool {
 		strings.HasPrefix(p, "/api/audio/") ||
 		strings.HasPrefix(p, "/api/online/s/") ||
 		strings.HasPrefix(p, "/api/channels/live/") ||
+		(strings.HasPrefix(p, "/api/trailers/") && strings.HasSuffix(p, ".mp4")) ||
 		(strings.HasPrefix(p, "/api/tracks/") && strings.HasSuffix(p, "/stream"))
 }
 

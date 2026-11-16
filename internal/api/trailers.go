@@ -10,13 +10,18 @@ import (
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 )
 
+// trailerFrameSrc is the origin of the official embedded player the web
+// app plays a trailer in when the server does not (appCSP's frame-src).
+const trailerFrameSrc = "https://www.youtube-nocookie.com"
+
 // TrailerSource is TMDB's videos of a title (*tmdb.Related, cached a day).
 type TrailerSource interface {
 	Videos(ctx context.Context, kind string, id int) ([]tmdb.Video, bool)
 }
 
 // Trailer is one of GET /api/items/{id}/trailers: a YouTube trailer or
-// teaser (the apps open it in the YouTube app, or url).
+// teaser. With play the server plays it (POST play, trailers_play.go);
+// without, the apps open it in the YouTube app, or url.
 type Trailer struct {
 	Name     string `json:"name"`
 	Site     string `json:"site"`
@@ -25,6 +30,7 @@ type Trailer struct {
 	Lang     string `json:"lang"`
 	Official bool   `json:"official"`
 	URL      string `json:"url"`
+	Play     string `json:"play,omitempty"`
 }
 
 // trailers: GET /api/items/{id}/trailers, {"trailers": [...]} of a movie
@@ -48,6 +54,7 @@ func (h *lib) trailers(w http.ResponseWriter, r *http.Request) {
 	if h.Trailers != nil && kind != "" && it.TmdbID > 0 {
 		if vs, ok := h.Trailers.Videos(ctx, kind, int(it.TmdbID)); ok {
 			out = orderTrailers(vs, i18n.FromContext(ctx))
+			h.listTrailers(it, out)
 		}
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")

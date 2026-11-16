@@ -17,6 +17,7 @@ import { DownloadButton } from './DownloadButton'
 import { episodeCode } from './EpisodeList'
 import { Icon } from './Icon'
 import { MenuItem, MenuSeparator, Menu } from '../ui/Menu'
+import { TrailerSheet } from './TrailerSheet'
 import { WatchButton, type WatchWay } from './WatchButton'
 import { discardProgress } from '../offline/store'
 import { useIsCompact } from '../state/useMediaQuery'
@@ -53,7 +54,7 @@ export interface ActionBarProps {
   onFindSubtitles?: () => void
   /** Sources build, adults: «Найти озвучку…» in «Ещё» (VoiceOverSheet). */
   onFindVoiceOvers?: () => void
-  /** «Трейлер» in «Ещё» (GET /api/items/{id}/trailers, best first): opens YouTube. */
+  /** «Трейлер» in «Ещё» (GET /api/items/{id}/trailers, best first): plays inside the app (TrailerSheet). */
   trailers?: Trailer[]
 }
 
@@ -108,6 +109,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [trailer, setTrailer] = useState<Trailer | null>(null)
   const compact = useIsCompact()
   useEffect(() => setInList(item.inWatchlist), [item.inWatchlist])
   const hasMore = item.actions.play || item.files.length > 0
@@ -292,7 +294,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
                       detail={trailers.length > 1 ? tr.name : undefined}
                       onSelect={() => {
                         close(false)
-                        window.open(tr.url, '_blank', 'noopener')
+                        setTrailer(tr)
                       }}
                     />
                   ))}
@@ -339,6 +341,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
         {deletion && deleting && (
           <DeleteItemSheet itemId={deletion.itemId} title={deletion.title} onClose={() => setDeleting(false)} onDeleted={deletion.onDeleted} />
         )}
+        {trailer && <TrailerSheet trailer={trailer} onClose={() => setTrailer(null)} />}
       </div>
       </MaterialContext.Provider>
       {problem && (

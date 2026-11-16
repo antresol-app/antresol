@@ -5,6 +5,7 @@ import type {
   TranscodingView,
   VocleanStatus,
   Trailer,
+  TrailerPlay,
   About,
   AccountsState,
   MyShowsState,
@@ -439,6 +440,32 @@ export const getTranscoding = (signal?: AbortSignal) => request<TranscodingView>
 export const saveTranscoding = (s: Partial<TranscodingSettings> & { reset?: boolean }) => request<TranscodingView>('PUT', '/api/settings/transcoding', s)
 export const getTrailers = (id: number, signal?: AbortSignal) =>
   request<{ trailers: Trailer[] }>('GET', `/api/items/${id}/trailers`, undefined, signal).then((r) => r.trailers ?? [])
+
+/**
+ * POST a trailer's `play` path: the server fetches the trailer when it has
+ * not yet. `{ wait }` (seconds, its Retry-After) while it is busy or still
+ * fetching; an ApiError when it failed.
+ */
+export async function playTrailer(play: string, signal?: AbortSignal): Promise<TrailerPlay | { wait: number }> {
+  let res: Response
+  try {
+    res = await fetch(play, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'Accept-Language': getLanguage(), 'Content-Type': 'application/json' },
+      body: '{}',
+      signal,
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e
+    throw new ApiError(0, offline())
+  }
+  if (res.status === 503) {
+    const s = Number(res.headers.get('Retry-After'))
+    return { wait: s > 0 && s <= 30 ? s : 2 }
+  }
+  return readResponse<TrailerPlay>(res, play)
+}
 export const getVoclean = (signal?: AbortSignal) => request<VocleanStatus>('GET', '/api/admin/voclean', undefined, signal)
 export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => request<VocleanStatus>('POST', '/api/admin/voclean/backfill', b)
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')

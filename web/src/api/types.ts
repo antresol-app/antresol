@@ -1215,6 +1215,14 @@ export interface Trailer {
   lang: string
   official: boolean
   url: string
+  /** POST it (playTrailer) to play the trailer from the server; absent: the server does not play trailers (the official embedded player instead). */
+  play?: string
+}
+
+/** POST /api/trailers/{key}/play: the cached trailer (url carries a media key) and its length. */
+export interface TrailerPlay {
+  url: string
+  durationMs: number
 }
 
 /** GET /api/admin/voclean: the cleaned voice-overs' tracks by state. */
