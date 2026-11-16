@@ -294,6 +294,28 @@ func TestHLSSessionBoundToUser(t *testing.T) {
 	}
 }
 
+// A page that is closing stops its session with a beacon (navigator.sendBeacon:
+// a POST with no body, the one request Safari still sends while it leaves
+// a page): the owner's stops it, anyone else's is 404 as for DELETE.
+func TestHLSStopBeacon(t *testing.T) {
+	e := newLibEnv(t)
+	_, f := e.movie("Брат", "16+", "x")
+	e.probeJSON(f, hevcProbe)
+	if w := e.do("POST", "/api/play/"+itoa(f), `{"caps":{"videoCodecs":["h264"]}}`, e.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	other := e.login(`{"name":"Мама"}`)
+	if w := e.do("POST", "/api/hls/sess1/stop", "", other); w.Code != 404 {
+		t.Fatalf("other beacon %d", w.Code)
+	}
+	if w := e.do("POST", "/api/hls/sess1/stop", "", e.admin); w.Code != 204 {
+		t.Fatalf("owner beacon %d %s", w.Code, w.Body)
+	}
+	if w := e.do("GET", "/api/hls/sess1/index.m3u8", "", e.admin); w.Code != 404 {
+		t.Fatalf("after the beacon %d", w.Code)
+	}
+}
+
 func TestImagesRejectTraversal(t *testing.T) {
 	e := newLibEnv(t)
 	id, _ := e.movie("Брат", "16+", "x")

@@ -57,6 +57,9 @@ func mountPlay(r chi.Router, h *lib) {
 	r.Get("/api/hls/{session}/{name}", h.hlsFile)
 	r.Put("/api/hls/{session}", h.hlsTouch)
 	r.Delete("/api/hls/{session}", h.hlsStop)
+	// a closing page's beacon (POST, no body: Safari cancels a keepalive
+	// DELETE when it leaves the page, a beacon it sends)
+	r.Post("/api/hls/{session}/stop", h.hlsStop)
 	r.Get("/api/subs/{fileId}/{index}.vtt", h.subtitle)
 }
 

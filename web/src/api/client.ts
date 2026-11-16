@@ -299,8 +299,24 @@ export const getLibraryStatus = () => request<LibraryStatus>('GET', '/api/librar
 // --- Playback & progress ---
 export const play = (fileId: number, body: PlayRequest) => request<PlayResponse>('POST', `/api/play/${fileId}`, body)
 export const touchHls = (session: string) => request<HlsStatus>('PUT', `/api/hls/${encodeURIComponent(session)}`)
-export const stopHls = (session: string, keepalive = false) =>
-  request<void>('DELETE', `/api/hls/${encodeURIComponent(session)}`, undefined, undefined, keepalive)
+/**
+ * Stops an HLS session. `keepalive`: the page is leaving (pagehide, the
+ * player unmounting), so a beacon to the stop route goes first — Safari
+ * cancels a keepalive fetch as it leaves a page, and the session would
+ * count against the profile's limit until it idles out; a DELETE when the
+ * browser has no beacon or refuses it.
+ */
+export const stopHls = (session: string, keepalive = false) => {
+  const id = encodeURIComponent(session)
+  if (keepalive && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      if (navigator.sendBeacon(`/api/hls/${id}/stop`)) return Promise.resolve()
+    } catch {
+      /* refused: the DELETE below */
+    }
+  }
+  return request<void>('DELETE', `/api/hls/${id}`, undefined, undefined, keepalive)
+}
 /** A 12-hour key for media URLs (`mk=`): an AirPlay receiver fetches the stream without the cookie. */
 export const getMediaKey = () => request<{ key: string; expiresAt: string }>('POST', '/api/auth/media-key')
 /** `updatedAt` (RFC 3339): when the position was reached (a save queued offline); the server keeps the newer one. */
