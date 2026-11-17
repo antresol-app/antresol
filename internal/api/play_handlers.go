@@ -475,10 +475,15 @@ func withQuery(u, q string) string {
 
 // serveHLS serves the playlist (index.m3u8) or a segment of the request
 // profile's session id. uri, when set, rewrites every URI of the playlist
-// (a keyed playlist: AVPlayer and mpv fetch them without headers), and the
-// playlist is then the complete VOD one when the session has it, so
-// AVPlayer and Picture in Picture treat a transcode as a film, not as live;
-// the web (nil) keeps ffmpeg's EVENT playlist. media.ErrNoSession: the
+// (a keyed playlist: AVPlayer and mpv fetch them without headers). A keyed
+// request and Apple's media stack (appleMediaStack: Safari's native HLS) get
+// the session's complete VOD playlist when it has one, so AVPlayer and
+// Picture in Picture treat a transcode as a film, not as live, and iOS
+// Safari starts at once: a growing (EVENT) playlist that lists one segment
+// makes it wait for the next reload, a whole target duration. hls.js keeps
+// ffmpeg's EVENT playlist: in a complete one a far seek restarts ffmpeg,
+// whose first segment's timestamps do not line up with the segments before,
+// and hls.js then loses its place (AVPlayer copes). media.ErrNoSession: the
 // session is not the profile's, or is gone; nothing is written then.
 func (h *lib) serveHLS(w http.ResponseWriter, r *http.Request, id, name string, uri func(string) string) error {
 	if h.HLS == nil || !h.sessions.owns(id, userOf(r).ID) {
@@ -524,8 +529,14 @@ func (h *lib) serveHLS(w http.ResponseWriter, r *http.Request, id, name string, 
 		internalErr(w, r, "hls", err)
 		return nil
 	}
-	if uri != nil && name == "index.m3u8" {
-		playlist, complete := h.HLS.CompletePlaylist(id)
+	var playlist string
+	complete := false
+	if name == "index.m3u8" && (uri != nil || appleMediaStack(r)) {
+		playlist, complete = h.HLS.CompletePlaylist(id)
+	}
+	// a keyed playlist, or the complete one for Apple's player; else (hls.js,
+	// or no complete playlist) ffmpeg's EVENT file as is, below
+	if name == "index.m3u8" && (uri != nil || complete) {
 		if !complete {
 			b, err := os.ReadFile(p)
 			if err != nil {
@@ -534,8 +545,11 @@ func (h *lib) serveHLS(w http.ResponseWriter, r *http.Request, id, name string, 
 			}
 			playlist = string(b)
 		}
+		if uri != nil {
+			playlist = rewritePlaylistURIs(playlist, uri)
+		}
 		setHLSType(w, name)
-		http.ServeContent(w, r, name, time.Time{}, strings.NewReader(rewritePlaylistURIs(playlist, uri)))
+		http.ServeContent(w, r, name, time.Time{}, strings.NewReader(playlist))
 		return nil
 	}
 	fh, err := os.Open(p)
@@ -552,6 +566,14 @@ func (h *lib) serveHLS(w http.ResponseWriter, r *http.Request, id, name string, 
 	setHLSType(w, name)
 	http.ServeContent(w, r, name, st.ModTime(), fh)
 	return nil
+}
+
+// appleMediaStack: the request comes from AVFoundation (Safari's native HLS
+// on iOS and macOS, an app's AVPlayer), which names its playback session in
+// X-Playback-Session-Id on every playlist and segment request; hls.js and
+// other players do not send it.
+func appleMediaStack(r *http.Request) bool {
+	return r.Header.Get("X-Playback-Session-Id") != ""
 }
 
 // setHLSType sets the Content-Type of an HLS file (and no-cache on a playlist).

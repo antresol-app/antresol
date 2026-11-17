@@ -262,9 +262,12 @@ func TestHLSPlaylistKeyed(t *testing.T) {
 	}
 }
 
-// A transcode: the app (keyed) gets the whole film as a VOD playlist from
-// the start, so AVPlayer and Picture in Picture treat it as a film; the web
-// (no key) keeps ffmpeg's growing EVENT playlist byte for byte.
+// A transcode: every player gets the whole film as a VOD playlist from the
+// start, so AVPlayer and Picture in Picture treat it as a film. The app
+// (keyed) gets its URIs with the key; a request without a key (the web)
+// gets the same playlist as is. A session without one (a remux of a file
+// without a keyframe index) keeps ffmpeg's growing EVENT playlist byte for
+// byte.
 func TestHLSKeyedTranscodeIsComplete(t *testing.T) {
 	const vod = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:6\n#EXT-X-PLAYLIST-TYPE:VOD\n" +
 		"#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:6.000000,\nseg00000.m4s\n#EXTINF:6.000000,\nseg00001.m4s\n" +
@@ -294,11 +297,25 @@ func TestHLSKeyedTranscodeIsComplete(t *testing.T) {
 		!strings.Contains(body, `#EXT-X-MAP:URI="init.mp4?mk=`+esc+`"`) || !strings.Contains(body, "\nseg00002.m4s?mk="+esc+"\n") {
 		t.Fatalf("keyed playlist %d:\n%s", w.Code, body)
 	}
+	// without a key, Apple's media stack (Safari's native HLS: it sends
+	// X-Playback-Session-Id) gets the same VOD playlist, its URIs untouched:
+	// iOS Safari starts a growing playlist only once it lists more segments,
+	// a whole target duration (6 s) later
+	avf := append(bearer(tok), "X-Playback-Session-Id", "11111111-2222-4333-8444-555555555555")
+	if w := e.do("GET", "/api/hls/sess1/index.m3u8", "", nil, avf...); w.Code != 200 || w.Body.String() != vod {
+		t.Fatalf("native playlist %d:\n%s", w.Code, w.Body)
+	}
+	// hls.js (no such header) keeps ffmpeg's EVENT playlist: a far segment of
+	// a complete playlist restarts ffmpeg, whose first segment's timestamps
+	// do not line up with the ones before (AVPlayer copes, hls.js does not)
 	if w := e.do("GET", "/api/hls/sess1/index.m3u8", "", nil, bearer(tok)...); w.Code != 200 || w.Body.String() != fmp4Playlist {
 		t.Fatalf("plain playlist %d:\n%s", w.Code, w.Body)
 	}
 	// a remux keeps the EVENT playlist and says so
 	ph.complete = ""
+	if w := e.do("GET", "/api/hls/sess1/index.m3u8", "", nil, bearer(tok)...); w.Code != 200 || w.Body.String() != fmp4Playlist {
+		t.Fatalf("plain event playlist %d:\n%s", w.Code, w.Body)
+	}
 	if w := e.do("POST", "/api/play/"+itoa(f), `{"caps":{"videoCodecs":["h264"]}}`, nil, bearer(tok)...); !strings.Contains(w.Body.String(), `"hlsComplete":false`) {
 		t.Fatalf("play %s", w.Body)
 	}
