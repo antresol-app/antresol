@@ -6,11 +6,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter, Outlet, Route, RouterProvider, Routes, createMemoryRouter } from 'react-router'
 import type { ItemDetail as Detail } from '../../api/types'
 import { session } from '../../state/session'
 import { registerAddon, resetAddonsForTests, setActiveAddons, setAddonUser } from '../../addons/registry'
 import { importer, resetLoaderForTests } from '../../addons/loader'
+import { installShared } from '../../addons/shared'
 import { Manage } from '../manage/Manage'
 import { ItemDetail } from '../ItemDetail'
 import { ActionBar } from '../../components/ActionBar'
@@ -446,5 +448,196 @@ describe('addon labels are keys of the addon\'s strings', () => {
   it('AddonPage: an unknown key shows as itself', async () => {
     await renderPage('Своя страница')
     await waitFor(() => expect(document.title).toMatch(/^Своя страница — /))
+  })
+})
+
+describe('an addon page with :name segments in its path', () => {
+  // what an addon bundle gets: the app's own react-router, through the shared map
+  const sharedUseParams = () => (globalThis.__antresol!.shared['react-router'] as { useParams: () => Record<string, string | undefined> }).useParams
+
+  beforeEach(() => {
+    session.reset()
+    installShared()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    session.reset()
+    resetAddonsForTests()
+    resetLoaderForTests()
+    globalThis.__antresol = undefined
+  })
+
+  // how an addon written before `params` existed reads its values: useParams() of the shared react-router, no props
+  function ParamsPage({ params }: { params?: Readonly<Record<string, string>> }) {
+    const useParams = sharedUseParams()
+    const p = useParams()
+    return (
+      <>
+        <h1>Страница с параметрами</h1>
+        <p data-testid="hook">{JSON.stringify(p)}</p>
+        <p data-testid="prop">{JSON.stringify(params)}</p>
+      </>
+    )
+  }
+
+  async function open(path: string, adminOnly = true) {
+    await signIn(admin, [{ id: 'hello', entry: '/addons/hello/ui/index.js' }])
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', {
+        routes: [
+          { path: 'sources/add', admin: adminOnly, title: 'Привет', element: () => <h1>Каталог</h1> },
+          { path: 'sources/add/:id', admin: adminOnly, title: 'Привет', element: (props) => <ParamsPage {...props} /> },
+          { path: 'sources/:sourceId/edit', admin: adminOnly, title: 'Привет', element: (props) => <ParamsPage {...props} /> },
+        ],
+      })
+      return {}
+    })
+    const router = createMemoryRouter(routes, { initialEntries: [path] })
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  it('/addons/hello/sources/add/alpha draws the page; the hook and the prop both give id', async () => {
+    await open('/addons/hello/sources/add/alpha')
+    expect(await screen.findByRole('heading', { name: 'Страница с параметрами' })).toBeInTheDocument()
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).toMatchObject({ id: 'alpha' })
+    expect(JSON.parse(screen.getByTestId('prop').textContent!)).toEqual({ id: 'alpha' })
+  })
+
+  it('/addons/hello/sources/7/edit: sourceId comes through useParams() unchanged', async () => {
+    await open('/addons/hello/sources/7/edit')
+    expect(await screen.findByRole('heading', { name: 'Страница с параметрами' })).toBeInTheDocument()
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).toMatchObject({ sourceId: '7' })
+    expect(JSON.parse(screen.getByTestId('prop').textContent!)).toEqual({ sourceId: '7' })
+  })
+
+  it('the core route\'s own params stay beside the page\'s', async () => {
+    await open('/addons/hello/sources/add/alpha')
+    await screen.findByRole('heading', { name: 'Страница с параметрами' })
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).toEqual({ addonId: 'hello', '*': 'sources/add/alpha', id: 'alpha' })
+  })
+
+  it('a plain route of the same addon still draws, with no params in its prop', async () => {
+    await open('/addons/hello/sources/add')
+    expect(await screen.findByRole('heading', { name: 'Каталог' })).toBeInTheDocument()
+  })
+
+  it('a path that fits no route is «not here»', async () => {
+    await open('/addons/hello/sources/add/alpha/extra')
+    await waitFor(() => expect(screen.getByText('Такого раздела у расширения нет')).toBeInTheDocument())
+    expect(screen.queryByRole('heading', { name: 'Страница с параметрами' })).toBeNull()
+  })
+
+  it('an admin: true param route is not there for an adult', async () => {
+    await signIn(adult, [{ id: 'hello', entry: '/addons/hello/ui/index.js' }])
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', { routes: [{ path: 'sources/add/:id', admin: true, title: 'Привет', element: (props) => <ParamsPage {...props} /> }] })
+      return {}
+    })
+    const router = createMemoryRouter(routes, { initialEntries: ['/addons/hello/sources/add/alpha'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByText('Такого раздела у расширения нет')).toBeInTheDocument())
+    expect(screen.queryByRole('heading', { name: 'Страница с параметрами' })).toBeNull()
+  })
+
+  it('going from one value to another (a link in the page) gives the page the new one', async () => {
+    const router = await open('/addons/hello/sources/add/alpha')
+    await screen.findByRole('heading', { name: 'Страница с параметрами' })
+    await act(async () => {
+      await router.navigate('/addons/hello/sources/add/beta')
+    })
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('hook').textContent!)).toMatchObject({ id: 'beta' }))
+    expect(JSON.parse(screen.getByTestId('prop').textContent!)).toEqual({ id: 'beta' })
+    // and to the other route's shape: no leftover id
+    await act(async () => {
+      await router.navigate('/addons/hello/sources/9/edit')
+    })
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('hook').textContent!)).toMatchObject({ sourceId: '9' }))
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).not.toHaveProperty('id')
+  })
+
+  it('/Addons/... (the app\'s own route to addon pages is case-insensitive) draws the same page', async () => {
+    await open('/Addons/hello/sources/add/alpha')
+    expect(await screen.findByRole('heading', { name: 'Страница с параметрами' })).toBeInTheDocument()
+    expect(JSON.parse(screen.getByTestId('prop').textContent!)).toEqual({ id: 'alpha' })
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).toMatchObject({ id: 'alpha' })
+  })
+
+  it('an addon\'s own * (a splat route) is what its useParams() gives, over the app route\'s', async () => {
+    await signIn(admin, [{ id: 'hello', entry: '/addons/hello/ui/index.js' }])
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', { routes: [{ path: 'files/*', title: 'Привет', element: (props) => <ParamsPage {...props} /> }] })
+      return {}
+    })
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ['/addons/hello/files/x/y'] })} />)
+    await screen.findByRole('heading', { name: 'Страница с параметрами' })
+    // the app's own * would be files/x/y
+    expect(JSON.parse(screen.getByTestId('hook').textContent!)).toEqual({ addonId: 'hello', '*': 'x/y' })
+    expect(JSON.parse(screen.getByTestId('prop').textContent!)).toEqual({ '*': 'x/y' })
+  })
+
+  it('another value of the same route starts the page afresh: its local state resets', async () => {
+    function Counter({ params }: { params: Readonly<Record<string, string>> }) {
+      const [n, setN] = useState(0)
+      return (
+        <>
+          <p>для {params.id}</p>
+          <button onClick={() => setN(n + 1)}>нажато {n}</button>
+        </>
+      )
+    }
+    await signIn(admin, [{ id: 'hello', entry: '/addons/hello/ui/index.js' }])
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', { routes: [{ path: 'sources/add/:id', title: 'Привет', element: (props) => <Counter {...props} /> }] })
+      return {}
+    })
+    const router = createMemoryRouter(routes, { initialEntries: ['/addons/hello/sources/add/1'] })
+    render(<RouterProvider router={router} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'нажато 0' }))
+    expect(await screen.findByRole('button', { name: 'нажато 1' })).toBeInTheDocument()
+    expect(screen.getByText('для 1')).toBeInTheDocument()
+    await act(async () => {
+      await router.navigate('/addons/hello/sources/add/2')
+    })
+    expect(await screen.findByText('для 2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'нажато 0' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'нажато 1' })).toBeNull()
+  })
+
+  it('outside an addon page the shared useParams is the router\'s own', () => {
+    function Probe() {
+      const useParams = sharedUseParams()
+      return <p>{JSON.stringify(useParams())}</p>
+    }
+    render(
+      <MemoryRouter initialEntries={['/title/5']}>
+        <Routes>
+          <Route path="/title/:titleId" element={<Probe />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('paragraph').textContent).toBe(JSON.stringify({ titleId: '5' }))
+  })
+
+  it('the params are the same object between renders of one page (an effect may depend on it)', async () => {
+    const seen: unknown[] = []
+    function Spy() {
+      const useParams = sharedUseParams()
+      seen.push(useParams())
+      const [n, setN] = useState(0)
+      return <button onClick={() => setN(n + 1)}>again {n}</button>
+    }
+    await signIn(admin, [{ id: 'hello', entry: '/addons/hello/ui/index.js' }])
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', { routes: [{ path: 'x/:id', title: 'Привет', element: () => <Spy /> }] })
+      return {}
+    })
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ['/addons/hello/x/1'] })} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'again 0' }))
+    await screen.findByRole('button', { name: 'again 1' })
+    expect(seen.length).toBeGreaterThan(1)
+    expect(new Set(seen).size).toBe(1)
   })
 })

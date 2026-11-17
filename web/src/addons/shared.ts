@@ -43,9 +43,10 @@ import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 // Named, not namespaces: a namespace keeps every export of the library in the
 // app's first load. These are what the app itself already ships.
-import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router'
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router'
 import * as sdk from './sdk'
 import { registerAddon } from './registry'
+import { useAddonParams } from './routeParams'
 
 export type AntresolGlobal = {
   shared: Record<string, unknown>
@@ -103,7 +104,8 @@ export function installShared() {
       },
       'react/jsx-runtime': { Fragment, jsx, jsxs },
       'react-dom': { createPortal },
-      'react-router': { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType, useParams, useSearchParams },
+      // useParams is the router's, plus the `:name` values of the addon page it is called in
+      'react-router': { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType, useParams: useAddonParams, useSearchParams },
       '@antresol/addon-sdk': sdk,
     },
     register: registerAddon,

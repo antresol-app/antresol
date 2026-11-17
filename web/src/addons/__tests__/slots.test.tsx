@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { EpisodeCtx, EpisodePlay } from '../../components/episodes/episodeTypes'
 import { session } from '../../state/session'
 import { registerAddon, resetAddonsForTests, setAddonUser } from '../registry'
-import { resolveAddonPath, useCanAdd, useEpisodeActions, useProfileMenu, useSourceKinds } from '../slots'
+import { addonRest, matchAddonRoute, resolveAddonPath, useCanAdd, useEpisodeActions, useProfileMenu, useSourceKinds } from '../slots'
 
 const adult = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
 const admin = { ...adult, id: 1, name: 'Папа', isAdmin: true }
@@ -304,5 +304,135 @@ describe('useProfileMenu', () => {
     act(() => session.reset())
     await signIn(kid)
     expect(screen.getByRole('paragraph').textContent).toBe('')
+  })
+})
+
+describe('matchAddonRoute: the route of an addon that a path names', () => {
+  const route = (addonId: string, path: string) => ({ addonId, path, title: 'page', element: () => <p>{path}</p> })
+  const routes = [
+    route('dl', 'downloads'),
+    route('dl', 'sources/add'),
+    route('dl', 'sources/add/:id'),
+    route('dl', 'sources/:sourceId/edit'),
+    route('dl', 'play/:kind/:id'),
+    route('dl', 'Mixed'),
+    route('other', 'downloads'),
+    route('other', 'only-other'),
+  ]
+  const hit = (addonId: string, rest: string) => {
+    const m = matchAddonRoute(routes, addonId, rest)
+    return m && { path: m.route.path, params: m.params }
+  }
+
+  it('a plain path matches as it is, with no params', () => {
+    expect(hit('dl', 'downloads')).toEqual({ path: 'downloads', params: {} })
+    expect(hit('dl', 'sources/add')).toEqual({ path: 'sources/add', params: {} })
+  })
+
+  it('a :name segment takes the value of its place', () => {
+    expect(hit('dl', 'sources/add/alpha')).toEqual({ path: 'sources/add/:id', params: { id: 'alpha' } })
+    expect(hit('dl', 'sources/7/edit')).toEqual({ path: 'sources/:sourceId/edit', params: { sourceId: '7' } })
+    expect(hit('dl', 'play/movie/42')).toEqual({ path: 'play/:kind/:id', params: { kind: 'movie', id: '42' } })
+  })
+
+  it('an encoded value comes decoded', () => {
+    expect(hit('dl', 'sources/add/two%20words')?.params).toEqual({ id: 'two words' })
+  })
+
+  it('an encoded slash stays inside its value; a plain path of non-ASCII letters matches its encoded form', () => {
+    expect(hit('dl', 'sources/add/a%2Fb')).toEqual({ path: 'sources/add/:id', params: { id: 'a/b' } })
+    const ru = [route('dl', 'страница'), route('dl', 'найти/:q')]
+    expect(matchAddonRoute(ru, 'dl', '%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0')?.route.path).toBe('страница')
+    expect(matchAddonRoute(ru, 'dl', encodeURI('найти/кино'))?.params).toEqual({ q: 'кино' })
+  })
+
+  it('a malformed escape does not throw', () => {
+    expect(hit('dl', 'sources/add/100%')).toEqual({ path: 'sources/add/:id', params: { id: '100%' } })
+    expect(hit('dl', 'nothing%E0%A4%A')).toBeNull()
+  })
+
+  it('no match: a missing, an extra or a different segment', () => {
+    expect(hit('dl', 'nothing')).toBeNull()
+    expect(hit('dl', 'sources/7')).toBeNull()
+    expect(hit('dl', 'sources/7/edit/more')).toBeNull()
+    expect(hit('dl', 'sources/7/remove')).toBeNull()
+    expect(hit('dl', 'play/movie')).toBeNull()
+    expect(hit('dl', 'downloads/x')).toBeNull()
+    expect(hit('dl', '')).toBeNull()
+  })
+
+  it('one leading or trailing slash on either side does not matter', () => {
+    expect(hit('dl', '/downloads/')).toEqual({ path: 'downloads', params: {} })
+    expect(hit('dl', 'sources/add/alpha/')).toEqual({ path: 'sources/add/:id', params: { id: 'alpha' } })
+    expect(matchAddonRoute([route('dl', '/downloads/')], 'dl', 'downloads')?.params).toEqual({})
+    expect(matchAddonRoute([route('dl', '/sources/:id/')], 'dl', 'sources/3')?.params).toEqual({ id: '3' })
+  })
+
+  it('any number of slashes at either end does not matter', () => {
+    expect(hit('dl', '///downloads///')).toEqual({ path: 'downloads', params: {} })
+    expect(hit('dl', '//sources/add/alpha//')).toEqual({ path: 'sources/add/:id', params: { id: 'alpha' } })
+    expect(matchAddonRoute([route('dl', '//downloads//')], 'dl', 'downloads')?.params).toEqual({})
+    expect(matchAddonRoute([route('dl', '///sources/:id///')], 'dl', '/sources/3/')?.params).toEqual({ id: '3' })
+  })
+
+  it('a route path is react-router\'s matchPath syntax: * takes the rest, ? makes a segment optional', () => {
+    const more = [route('dl', 'files/*'), route('dl', 'page/:id?')]
+    expect(matchAddonRoute(more, 'dl', 'files/a/b')?.params).toEqual({ '*': 'a/b' })
+    expect(matchAddonRoute(more, 'dl', 'files')?.params).toEqual({ '*': '' })
+    expect(matchAddonRoute(more, 'dl', 'page')?.params).toEqual({})
+    expect(matchAddonRoute(more, 'dl', 'page/7')?.params).toEqual({ id: '7' })
+    expect(matchAddonRoute(more, 'dl', 'page/7/8')).toBeNull()
+  })
+
+  it('only the routes of the addon asked about', () => {
+    expect(hit('other', 'only-other')).toEqual({ path: 'only-other', params: {} })
+    expect(hit('dl', 'only-other')).toBeNull()
+    expect(hit('other', 'sources/add')).toBeNull()
+    expect(hit('nobody', 'downloads')).toBeNull()
+    // the same path in two addons: each gets its own
+    expect(matchAddonRoute(routes, 'other', 'downloads')?.route.addonId).toBe('other')
+  })
+
+  it('case counts', () => {
+    expect(hit('dl', 'Mixed')).toEqual({ path: 'Mixed', params: {} })
+    expect(hit('dl', 'mixed')).toBeNull()
+    expect(hit('dl', 'Downloads')).toBeNull()
+    expect(hit('dl', 'SOURCES/add')).toBeNull()
+  })
+
+  it('the addon root: an empty path', () => {
+    expect(matchAddonRoute([route('dl', '')], 'dl', '')?.params).toEqual({})
+    expect(matchAddonRoute([route('dl', '')], 'dl', '/')?.params).toEqual({})
+    expect(matchAddonRoute([route('dl', '')], 'dl', 'x')).toBeNull()
+  })
+
+  it('the first of the routes that match wins', () => {
+    const two = [route('dl', 'a/:x'), route('dl', 'a/b')]
+    expect(matchAddonRoute(two, 'dl', 'a/b')?.route.path).toBe('a/:x')
+  })
+})
+
+describe('addonRest: the path after /addons/<id>/', () => {
+  it('cuts the addon prefix', () => {
+    expect(addonRest('/addons/dl/sources/add/x', 'dl')).toBe('sources/add/x')
+    expect(addonRest('/addons/dl/page', 'dl')).toBe('page')
+    expect(addonRest('/addons/dl/page/', 'dl')).toBe('page/')
+  })
+  it('the addon root is empty', () => {
+    expect(addonRest('/addons/dl', 'dl')).toBe('')
+    expect(addonRest('/addons/dl/', 'dl')).toBe('')
+  })
+  it('the /addons prefix is as case-insensitive as the app\'s own route to it', () => {
+    expect(addonRest('/Addons/dl/sources/add/x', 'dl')).toBe('sources/add/x')
+    expect(addonRest('/ADDONS/dl', 'dl')).toBe('')
+    expect(addonRest('/Addons/dl/page', 'dl')).toBe('page')
+    // the addon's id is not: another addon's path is still empty
+    expect(addonRest('/Addons/dlx/page', 'dl')).toBe('')
+    expect(addonRest('/Addons/other/page', 'dl')).toBe('')
+  })
+  it('another addon, a longer id or a core path is empty', () => {
+    expect(addonRest('/addons/dlx/page', 'dl')).toBe('')
+    expect(addonRest('/addons/other/page', 'dl')).toBe('')
+    expect(addonRest('/manage/addons', 'dl')).toBe('')
   })
 })

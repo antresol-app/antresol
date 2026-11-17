@@ -11,6 +11,7 @@ import { addonString } from './registry'
 export type {
   AddonContributions,
   AddonRoute,
+  AddonRouteProps,
   EmptyStateAction,
   EpisodeAction,
   ImportSource,

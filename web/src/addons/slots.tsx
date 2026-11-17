@@ -15,6 +15,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
+import { matchPath } from 'react-router'
 import type { EpisodeCtx, EpisodePlay } from '../components/episodes/episodeTypes'
 import { useLang, useT } from '../i18n'
 import { useSession } from '../state/session'
@@ -61,6 +62,61 @@ export function useCanAddState(): boolean | undefined {
   if (yes) return true
   if (!user || user.isKid || user.addons !== true) return false
   return settled === user.id ? false : undefined
+}
+
+const trimSlashes = (p: string) => p.replace(/^\/+|\/+$/g, '')
+
+/** A URL path as the router matches the app's own routes: each segment decoded, an encoded slash kept inside its segment (it reads as `/` in a value). */
+function decodePath(p: string): string {
+  try {
+    return p
+      .split('/')
+      .map((v) => decodeURIComponent(v).replace(/\//g, '%2F'))
+      .join('/')
+  } catch {
+    return p
+  }
+}
+
+/**
+ * The route of addon `addonId` that `rest` (the path after /addons/<id>/,
+ * as the location has it: percent-encoded) names, with the values of its
+ * `:name` segments, decoded; null: none. A plain path matches as it is (one
+ * leading or trailing slash aside; case counts).
+ */
+export function matchAddonRoute(
+  routes: readonly Contribution<'routes'>[],
+  addonId: string,
+  rest: string,
+): { route: Contribution<'routes'>; params: Record<string, string> } | null {
+  const want = '/' + decodePath(trimSlashes(rest))
+  for (const route of routes) {
+    if (route.addonId !== addonId) continue
+    const m = matchPath({ path: '/' + trimSlashes(route.path), caseSensitive: true, end: true }, want)
+    if (!m) continue
+    const params: Record<string, string> = {}
+    for (const [k, v] of Object.entries(m.params)) if (v !== undefined) params[k] = v
+    return { route, params }
+  }
+  return null
+}
+
+/**
+ * The path after /addons/<addonId>/ in `pathname` (empty for the addon's
+ * root). The prefix is as case-insensitive as the app's route to it
+ * (/Addons/<id>/… is the same page); the rest keeps its case.
+ */
+export function addonRest(pathname: string, addonId: string): string {
+  const prefix = `/addons/${addonId}`
+  if (pathname.slice(0, prefix.length).toLowerCase() !== prefix.toLowerCase()) return ''
+  if (pathname.length > prefix.length && pathname[prefix.length] !== '/') return ''
+  return pathname.slice(prefix.length).replace(/^\/+/, '')
+}
+
+/** The profile's route of addon `addonId` at `rest` (none for a kid); see matchAddonRoute. */
+export function useAddonRoute(addonId: string, rest: string) {
+  const routes = useAddonSlot('routes')
+  return useMemo(() => matchAddonRoute(routes, addonId, rest), [routes, addonId, rest])
 }
 
 /** Where an addon's `to` leads: an app path (starting with `/`) as it is, else under /addons/<id>/. */

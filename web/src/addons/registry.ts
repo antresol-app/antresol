@@ -19,8 +19,14 @@ type AdminOnly = { admin?: boolean }
  * when the core draws it, in the interface language (a key that is not
  * there shows as itself).
  */
-/** A page of the addon; it mounts at /addons/<id>/<path>. */
-export type AddonRoute = { path: string; element: () => ReactElement; title: string } & AdminOnly
+/** What an addon route's element gets: the values of its path's `:name` segments. */
+export type AddonRouteProps = { params: Readonly<Record<string, string>> }
+/**
+ * A page of the addon; it mounts at /addons/<id>/<path>. `path` may hold
+ * `:name` segments (`sources/:id/edit`); the values reach the element as its
+ * `params` prop and as `useParams()` (the app's react-router, shared).
+ */
+export type AddonRoute = { path: string; element: (props: AddonRouteProps) => ReactElement; title: string } & AdminOnly
 export type ManageTile = { label: string; icon: IconName; to: string } & AdminOnly
 export type ItemAction = AdminOnly & {
   label: string
