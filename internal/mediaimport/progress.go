@@ -2,17 +2,14 @@ package mediaimport
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/mediaimport/runkit"
 	"github.com/antresol-app/antresol/internal/progress"
-	"github.com/antresol-app/antresol/internal/sqlitesnap"
 )
 
 // Line.Source of the progress importers.
@@ -77,64 +74,14 @@ func notFoundInVault(name, path string) string {
 
 func itemRef(id int64) string { return "item:" + strconv.FormatInt(id, 10) }
 
-// srcDB is a read-only snapshot of another service's database.
-type srcDB struct {
-	*sql.DB
-	files []string
-	tmp   string // own temporary folder, removed on close
-}
+// srcDB, errNoSourceDB and snapshotDB are runkit's (one copy for the
+// importers here and the counts there).
+type srcDB = runkit.SrcDB
 
-func (d *srcDB) close() {
-	d.DB.Close()
-	for _, f := range d.files {
-		os.Remove(f)
-	}
-	if d.tmp != "" {
-		os.RemoveAll(d.tmp)
-	}
-}
-
-var errNoSourceDB = errors.New("migrate: no database")
-
-// snapshotDB copies path into tmp (or a temporary folder of its own) and
-// opens the copy read-only. A missing file is errNoSourceDB.
-func snapshotDB(tmp, path string) (*srcDB, error) {
-	if path == "" {
-		return nil, errNoSourceDB
-	}
-	st, err := os.Stat(path)
-	if errors.Is(err, fs.ErrNotExist) || err == nil && st.IsDir() {
-		return nil, errNoSourceDB
-	}
-	if err != nil { // permission denied and the like: there, but unreadable
-		return nil, err
-	}
-	d := &srcDB{}
-	if tmp == "" {
-		t, err := os.MkdirTemp("", "vault-migrate-")
-		if err != nil {
-			return nil, err
-		}
-		tmp, d.tmp = t, t
-	} else if err := os.MkdirAll(tmp, 0o700); err != nil {
-		return nil, err
-	}
-	snap, err := sqlitesnap.Snapshot(path, tmp)
-	if err == nil {
-		d.files = []string{snap, snap + "-wal", snap + "-shm"}
-		d.DB, err = sqlitesnap.OpenRO(snap)
-	}
-	if err != nil {
-		for _, f := range d.files {
-			os.Remove(f)
-		}
-		if d.tmp != "" {
-			os.RemoveAll(d.tmp)
-		}
-		return nil, err
-	}
-	return d, nil
-}
+var (
+	errNoSourceDB = runkit.ErrNoSourceDB
+	snapshotDB    = runkit.SnapshotDB
+)
 
 // openProgressDB opens app's database for an importer; a missing one is a
 // skipped line, an unreadable one a failed line (nil returned for both).

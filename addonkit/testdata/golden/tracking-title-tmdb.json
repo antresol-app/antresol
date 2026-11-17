@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/tracking/titles?kind=series\u0026tmdbId=126308",
+  "status": 200,
+  "body": {
+    "id": 1,
+    "kind": "series",
+    "tmdbId": 126308,
+    "imdbId": "",
+    "name": "Сёгун",
+    "poster": "/shogun.jpg",
+    "status": "ended",
+    "cert": "18+"
+  }
+}

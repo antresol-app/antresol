@@ -1,0 +1,24 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/files?path=%7Broot%7D%2Fmovies%2F%D0%9C%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0+%281999%29%2F%D0%9C%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0+%281999%29.mkv",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "itemId": 1,
+      "path": "{root}/movies/Матрица (1999)/Матрица (1999).mkv",
+      "size": 5,
+      "mtime": 1793534400,
+      "durationMs": 8160000,
+      "season": 0,
+      "episode": 0,
+      "probe": {
+        "Audio": [
+          {
+            "Title": "Дубляж"
+          }
+        ]
+      }
+    }
+  ]
+}

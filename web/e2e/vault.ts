@@ -136,16 +136,22 @@ export const test = base.extend<{
   library: Library
   fakes: boolean
   migrate: boolean
+  importSeed: { seed: (importDir: string) => void } | null
   fakesExtension: FakesExtension | null
+  env: Record<string, string>
   vaultURL: string
 }>({
   library: ['sample', { option: true }],
-  /** Old Sonarr, Radarr and Jellyfin databases under VAULT_IMPORT_DIR (migrate-media.ts) for «Переезд». */
+  /** An old Jellyfin database under VAULT_IMPORT_DIR (migrate-media.ts) for «Переезд». */
   migrate: [false, { option: true }],
+  /** More old services' databases under VAULT_IMPORT_DIR (with migrate): `seed` writes them. */
+  importSeed: [null, { option: true }],
   /** Fake TMDB, MusicBrainz and Open Library (fakes.ts), plus fakesExtension. */
   fakes: [false, { option: true }],
   fakesExtension: [null, { option: true }],
-  vaultURL: async ({ library, fakes, migrate, fakesExtension }, use) => {
+  /** More variables for the test server (last: they win over the ones above). */
+  env: [{}, { option: true }],
+  vaultURL: async ({ library, fakes, migrate, importSeed, fakesExtension, env }, use) => {
     const root = mkdtempSync(path.join(tmpdir(), 'vault-e2e-'))
     const media = path.join(root, 'media-root')
     const data = path.join(root, 'data')
@@ -154,7 +160,10 @@ export const test = base.extend<{
     mkdirSync(data, { recursive: true })
     mkdirSync(importDir, { recursive: true })
     seedMedia(media, library)
-    if (migrate) seedMigrate(importDir, media)
+    if (migrate) {
+      seedMigrate(importDir, media)
+      importSeed?.seed(importDir)
+    }
     let fake: Fakes | null = null
     const extra: Record<string, string> = {}
     if (fakes) {
@@ -178,11 +187,6 @@ export const test = base.extend<{
         VAULT_LISTEN: `127.0.0.1:${port}`,
         VAULT_DATA_DIR: data,
         VAULT_MEDIA_ROOT: media,
-        // the fixtures' downloads folder (files-media.ts)
-        VAULT_TORRENTS_DIR: 'downloads',
-        VAULT_TORRENT_PORT: String(await freePort()),
-        // a random port must never be mapped on the real router by UPnP
-        VAULT_TORRENT_UPNP: 'off',
         VAULT_TMDB_KEY: '',
         // e2e never reaches the internet: music and book metadata sources off
         // (fakes: the fake MusicBrainz / Open Library below)
@@ -201,6 +205,7 @@ export const test = base.extend<{
         // take :8096
         VAULT_JELLYFIN_LISTEN: 'off',
         ...extra,
+        ...env,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })

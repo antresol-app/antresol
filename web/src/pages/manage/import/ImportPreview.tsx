@@ -5,7 +5,6 @@ import type { ImportJob, ImportJobPatch } from '../../../api/types'
 import { Button } from '../../../ui/Button'
 import { DiskMeter } from '../../../components/DiskMeter'
 import { Toggle } from '../../../ui/Toggle'
-import { useCanDownload } from '../../../state/canDownload'
 import { getLanguage, t as tr, useT } from '../../../i18n'
 import m from '../Manage.module.css'
 import styles from './ImportPreview.module.css'
@@ -35,15 +34,16 @@ export function unreadableHint(service: string): string {
 
 export interface ImportPreviewProps {
   job: ImportJob
+  /** The server downloads the albums the library lacks: the size, the space, the download words. */
+  downloads: boolean
   onPatch: (patch: ImportJobPatch) => void
   onStart: () => void
   onCancel: () => void
   busy?: '' | 'start' | 'cancel'
 }
 
-export function ImportPreview({ job, onPatch, onStart, onCancel, busy = '' }: ImportPreviewProps) {
+export function ImportPreview({ job, downloads, onPatch, onStart, onCancel, busy = '' }: ImportPreviewProps) {
   const t = useT()
-  const downloads = useCanDownload()
   const favorites = t('import.favorites')
   const c = job.counts
   // a server that shows nobody its disk (a library-only one) sends zeros: no space line

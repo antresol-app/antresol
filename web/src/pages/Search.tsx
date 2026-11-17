@@ -3,12 +3,10 @@
 // library answers at once: the top row puts «Лучшее совпадение» (a compact
 // card with one action: «Слушать», «Смотреть» or «Открыть») beside the first
 // five songs (or «Ещё совпадения»), then a rail per
-// kind, kinds with a few results sharing a row. «Найти и добавить» (for a kid
-// «Попросить» only) searches the catalog the filter picks (TMDB, MusicBrainz,
-// Open Library, the manga name itself) for what is not on the server yet:
-// films get «Смотреть ▾» and the download button, albums and books «На
-// сервер»; admins can pick the release by hand. The query and the filter
-// live in the URL (?q=, ?scope=).
+// kind, kinds with a few results sharing a row. A kid gets «Найти и
+// попросить» (RequestSearch, core) while requests are open; anyone else gets
+// the addons' search blocks (searchBlocks) under the results, for a query of
+// two letters or more. The query and the filter live in the URL (?q=, ?scope=).
 import { Artwork } from '../ui/Artwork'
 import { TextField } from '../ui/TextField'
 import { APP_NAME } from '../brand'
@@ -26,29 +24,15 @@ import { Shelf } from '../components/Shelf'
 import { audio } from '../player/audio/engine'
 import { songItems } from '../player/audio/queue'
 import { useSession } from '../state/session'
-// «Найти и добавить» (the sources build's; see docs/build-tags.md)
-import { FindAndAdd } from './SearchDiscover'
+import { AddonBoundary, useAddonSlot, useCanAddState } from '../addons/slots'
+import { RequestSearch } from './RequestSearch'
 import { TrackList } from './music/TrackList'
 import { t as tr, useT, type Key } from '../i18n'
+import { KIND_ICON, kindLabel, useDebounced, type Found } from '../state/searchKinds'
 import styles from './Search.module.css'
 
-export type Found<T> = { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: T }
-
-const KIND: Record<string, Key> = {
-  movie: 'common.kind.movie',
-  series: 'common.kind.series',
-  artist: 'common.kind.artist',
-  album: 'common.kind.album',
-  playlist: 'common.kind.playlist',
-  music: 'common.kind.album',
-  book: 'common.kind.book',
-  audiobook: 'common.kind.audiobook',
-  comic: 'common.kind.manga',
-  comic_volume: 'common.kind.manga',
-}
-export const kindLabel = (kind: string) => (KIND[kind] ? tr(KIND[kind]) : '')
-
-export const KIND_ICON: Record<string, IconName> = { movie: 'film', series: 'tv', music: 'music', book: 'book', audiobook: 'headphones', comic: 'book' }
+// (re-exported for the pages that import them from here)
+export { KIND_ICON, kindLabel, useDebounced, type Found } from '../state/searchKinds'
 
 /** Card sections of «В медиатеке», in page order (songs sit between albums and books). */
 const SECTIONS: { key: Exclude<keyof SearchResult, 'songs'>; title: Key }[] = [
@@ -71,15 +55,6 @@ export function bestMatch(r: SearchResult, q: string): Card | undefined {
     if (hit) return hit
   }
   return undefined
-}
-
-export function useDebounced<T>(v: T, ms: number): T {
-  const [d, setD] = useState(v)
-  useEffect(() => {
-    const id = window.setTimeout(() => setD(v), ms)
-    return () => window.clearTimeout(id)
-  }, [v, ms])
-  return d
 }
 
 const normalized = (r: Partial<SearchResult>): SearchResult => ({
@@ -189,10 +164,14 @@ function useTileArt(): Record<string, string> {
 export function Search() {
   const t = useT()
   const { user } = useSession()
-  // «Найти и добавить»: the sources build's (not on a library-only server); a
-  // kid's, where the server has it (canRequest), only asks («Попросить»)
+  // the addons' blocks (never a kid's); a kid, while requests are open
+  // (canRequest), gets the core's «Найти и попросить» (RequestSearch)
   const kid = Boolean(user?.isKid)
-  const canAcquire = !__LIBRARY_EDITION__ && Boolean(user && !user.libraryOnly && (!kid || user.canRequest))
+  const asks = kid && Boolean(user?.canRequest)
+  const blocks = useAddonSlot('searchBlocks')
+  // undefined while the addons load: the hint waits rather than flip
+  const addKnown = useCanAddState()
+  const canAdd = addKnown === true
   const [params, setParams] = useSearchParams()
   const [text, setText] = useState(params.get('q') ?? '')
   const scope = scopeParam(params.get('scope'))
@@ -344,7 +323,7 @@ export function Search() {
               })}
             </ul>
           </section>
-          <p className={styles.hint}>{canAcquire ? (kid ? t('search.hintAsk') : t('search.hintAcquire')) : t('search.hint')}</p>
+          <p className={styles.hint}>{asks ? t('search.hintAsk') : addKnown === undefined ? '\u00a0' : canAdd ? t('search.hintAcquire') : t('search.hint')}</p>
         </div>
       )}
 
@@ -352,18 +331,26 @@ export function Search() {
       {scoped && q && !nothing && <LibraryResults result={scoped} q={q} scope={scope} />}
       {library.status === 'error' && <p className={styles.problem}>{library.message}</p>}
 
-      {/* nothing in the library: the same empty state, shorter when «Найти и добавить» follows */}
+      {/* nothing in the library: the same empty state, shorter when «Найти и добавить» (or «попросить») follows */}
       {nothing && (
-        <div className={canAcquire ? `${styles.empty} ${styles.emptyCompact}` : styles.empty} role="status">
-          <Icon name="search" size={canAcquire ? 32 : 44} strokeWidth={1.4} />
+        <div className={canAdd || asks ? `${styles.empty} ${styles.emptyCompact}` : styles.empty} role="status">
+          <Icon name="search" size={canAdd || asks ? 32 : 44} strokeWidth={1.4} />
           <h2>{t('search.nothing')}</h2>
           <p>{t('search.nothingHint')}</p>
         </div>
       )}
 
-      {!__LIBRARY_EDITION__ && canAcquire && q.length >= 2 && (
-        <FindAndAdd text={text} q={q} scope={scope} nothing={nothing} admin={Boolean(user?.isAdmin)} kid={kid} />
-      )}
+      {!kid &&
+        q.length >= 2 &&
+        blocks.map((b, i) => {
+          const Block = b.element
+          return (
+            <AddonBoundary key={`${b.addonId}:${i}`} addonId={b.addonId} fallback={null}>
+              <Block text={text} q={q} scope={scope} nothing={nothing} />
+            </AddonBoundary>
+          )
+        })}
+      {asks && q.length >= 2 && <RequestSearch text={text} q={q} scope={scope} nothing={nothing} />}
     </div>
   )
 }

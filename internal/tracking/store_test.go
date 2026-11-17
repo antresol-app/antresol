@@ -99,12 +99,12 @@ func TestUpsertSourcesReportsOnlyNew(t *testing.T) {
 	mk := func(ep int, ref string) Source {
 		return Source{Season: 1, Episode: ep, Ref: ref, Provider: "p", Quality: "1080p", Labels: []string{"ru"}}
 	}
-	added, err := s.UpsertSources(ctx, ti.ID, "torrent", []Source{mk(1, "a"), mk(2, "b"), mk(3, "c")}, t0)
+	added, err := s.UpsertSources(ctx, ti.ID, "alpha", []Source{mk(1, "a"), mk(2, "b"), mk(3, "c")}, t0)
 	if err != nil || len(added) != 3 {
 		t.Fatalf("%v %v", added, err)
 	}
-	added, err = s.UpsertSources(ctx, ti.ID, "torrent", []Source{mk(1, "a"), mk(2, "b"), mk(4, "d")}, t1)
-	if err != nil || len(added) != 1 || added[0].Ref != "d" || added[0].Kind != "torrent" {
+	added, err = s.UpsertSources(ctx, ti.ID, "alpha", []Source{mk(1, "a"), mk(2, "b"), mk(4, "d")}, t1)
+	if err != nil || len(added) != 1 || added[0].Ref != "d" || added[0].Kind != "alpha" {
 		t.Fatalf("%v %v", added, err)
 	}
 	got, _ := s.Sources(ctx, ti.ID)
@@ -132,7 +132,7 @@ func TestUpsertSourcesReportsOnlyNew(t *testing.T) {
 	if _, err := s.UpsertSources(ctx, ti.ID, "library", []Source{mk(1, "f")}, t1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.UpsertSources(ctx, ti.ID, "torrent", nil, t1); err != nil {
+	if _, err := s.UpsertSources(ctx, ti.ID, "alpha", nil, t1); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.Sources(ctx, ti.ID)
@@ -229,7 +229,7 @@ func TestChoicePerProfile(t *testing.T) {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 	now := time.Now()
-	c1, c2 := Choice{Kind: "online", Provider: "b1", Voice: "A"}, Choice{Kind: "torrent", Quality: "1080p", Lang: "ja"}
+	c1, c2 := Choice{Kind: "online", Provider: "b1", Voice: "A"}, Choice{Kind: "alpha", Quality: "1080p", Lang: "ja"}
 	if err := s.SetChoice(ctx, u1, "series", 7, c1, now); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestChoicePerProfile(t *testing.T) {
 }
 
 // TestUpsertSourcesKeepsFirstSeenOnRefChange: a row whose ref changed (a
-// library ref migration, a new pinned version, a re-uploaded torrent) keeps
+// library ref migration, a new version of an addon's source) keeps
 // the episode's first_seen of that kind, is not reported added and does not
 // come back in the feed.
 func TestUpsertSourcesKeepsFirstSeenOnRefChange(t *testing.T) {

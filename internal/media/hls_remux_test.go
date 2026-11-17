@@ -504,7 +504,7 @@ func TestRemuxStartMustBeIndexed(t *testing.T) {
 		t.Fatalf("IndexedKeyframe(9.3) = %v %v", k, ok)
 	}
 	if _, ok := m.IndexedKeyframe("http://127.0.0.1:8421/stream/x", 9.3); ok {
-		t.Fatal("a torrent has no index")
+		t.Fatal("a loopback http input has no index")
 	}
 }
 

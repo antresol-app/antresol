@@ -1,6 +1,7 @@
 // «Выбрать источник»: every source of one episode, by language and dub. The
 // current pick is checked; a pick is remembered by the caller and plays.
 import type { EpisodeSource } from '../../api/types'
+import { useSourceKinds } from '../../addons/slots'
 import { locale, useT } from '../../i18n'
 import type { SourceGroup } from '../../state/pickSource'
 import { Badge } from '../../ui/Badge'
@@ -38,12 +39,13 @@ function languageHeading(lang: string, other: string): string {
 
 export function SourceSheet({ episode, groups, current, onPick, onOther, onDownload, onDownloadLibrary, onClose }: SourceSheetProps) {
   const t = useT()
+  const kinds = useSourceKinds()
   const name = episodeTitle({ title: episode.name, episodeNo: episode.number })
   const plain = t('comp.episode.number', { n: episode.number })
   const title = name === plain ? plain : t('episodes.sheet.title', { n: episode.number, name })
   const pinned = current?.kind === 'pinned' ? current : groups.flatMap((g) => g.dubs.flatMap((d) => d.items)).find((s) => s.kind === 'pinned')
   const library = current?.kind === 'library' ? current : groups.flatMap((g) => g.dubs.flatMap((d) => d.items)).find((s) => s.kind === 'library')
-  const kindLabel = (s: EpisodeSource) => t(`episodes.kind.${s.kind}`)
+  const kindLabel = (s: EpisodeSource) => kinds.label(s.kind)
   const providerOf = (s: EpisodeSource) => s.provider || s.meta.providerId || ''
   return (
     <Sheet title={title} role="dialog" size="large" noButtons dismissOnOutside onCancel={onClose}>

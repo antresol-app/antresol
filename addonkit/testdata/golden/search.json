@@ -1,0 +1,23 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/search?kind=movie\u0026title=%D0%BC%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "kind": "movie",
+      "parentId": 0,
+      "title": "Матрица",
+      "originalTitle": "The Matrix",
+      "year": 1999,
+      "rating": "",
+      "tmdbId": 603,
+      "seasonNo": 0,
+      "episodeNo": 0,
+      "poster": "",
+      "addedAt": "{time}",
+      "meta": {},
+      "aliases": []
+    }
+  ]
+}

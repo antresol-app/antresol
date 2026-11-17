@@ -29,8 +29,15 @@ func playbackRequest(r *http.Request) bool {
 		return strings.HasSuffix(p, "/file")
 	case strings.HasPrefix(p, "/api/tracks/"):
 		return strings.HasSuffix(p, "/stream")
-	case strings.HasPrefix(p, "/api/stream/"), strings.HasPrefix(p, "/api/torrent-stream/"),
-		strings.HasPrefix(p, "/api/audio/"), strings.HasPrefix(p, "/api/download/"),
+	case strings.HasPrefix(p, "/api/play/input/"):
+		// an addon input's file as it is (not its info, play start, progress
+		// or subtitles): /api/play/input/{id}/direct, one id segment
+		id, ok := strings.CutSuffix(strings.TrimPrefix(p, "/api/play/input/"), "/direct")
+		return ok && id != "" && !strings.Contains(id, "/")
+	case strings.HasPrefix(p, "/api/addon-input/"):
+		// ffmpeg reading an addon input through the loopback relay
+		return true
+	case strings.HasPrefix(p, "/api/stream/"), strings.HasPrefix(p, "/api/audio/"), strings.HasPrefix(p, "/api/download/"),
 		p == "/api/files/content", strings.HasPrefix(p, "/opds/files/"),
 		strings.HasPrefix(p, "/rest/stream"), strings.HasPrefix(p, "/rest/download"):
 		return true
@@ -83,10 +90,10 @@ func browsingRequest(r *http.Request) bool {
 
 // pageLoads are the calls of the web app's pages, as they open.
 var pageLoads = map[string]bool{
-	"/api/me": true, "/api/home": true, "/api/items": true, "/api/search": true, "/api/discover": true,
-	"/api/torrents": true, "/api/settings": true, "/api/stats": true, "/api/stats/storage": true,
+	"/api/me": true, "/api/home": true, "/api/items": true, "/api/search": true,
+	"/api/settings": true, "/api/stats": true, "/api/stats/storage": true,
 	"/api/sources": true, "/api/users": true, "/api/follow": true, "/api/requests": true, "/api/requests/mine": true,
-	"/api/arrivals": true, "/api/files/list": true, "/api/import/jobs": true, "/api/torrent-engine": true,
+	"/api/files/list": true, "/api/import/jobs": true,
 	"/api/music/home": true, "/api/music/genres": true, "/api/music/albums": true, "/api/music/artists": true,
 	"/api/music/songs": true, "/api/music/playlists": true, "/api/books/home": true, "/api/books": true,
 }

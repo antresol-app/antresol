@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/imports/jobs",
+  "status": 200,
+  "body": {
+    "id": 4
+  }
+}

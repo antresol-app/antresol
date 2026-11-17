@@ -53,6 +53,28 @@ function samples() {
   return { h264, hevc, short }
 }
 
+/**
+ * The sample files an addon serves as inputs (ANTRESOL_HELLO_SAMPLES of the
+ * hello addon): video.mp4 plays directly (H.264 + AAC, its own audio tagged
+ * Russian so the profile's languages keep it), video.mkv goes through HLS
+ * (HEVC + AC-3), video.ru.m4a is a Russian voice-over beside the mp4 (another
+ * tone, 660 Hz), video.ru.srt its Russian subtitles. Returns the directory.
+ */
+export function inputSamples(): string {
+  const s = samples()
+  const dir = path.join(CACHE, 'input')
+  mkdirSync(dir, { recursive: true })
+  // a stream copy, not a link: the tag changes the file
+  ffmpeg(path.join(dir, 'video.mp4'), ['-i', s.h264, '-map', '0', '-c', 'copy', '-metadata:s:a:0', 'language=rus', '-movflags', '+faststart'])
+  const mkv = path.join(dir, 'video.mkv')
+  if (!existsSync(mkv)) place(s.hevc, mkv)
+  ffmpeg(path.join(dir, 'video.ru.m4a'), ['-f', 'lavfi', '-i', 'sine=frequency=660:sample_rate=48000:duration=40',
+    '-c:a', 'aac', '-b:a', '96k', '-metadata:s:a:0', 'language=rus', '-movflags', '+faststart'])
+  const srt = path.join(dir, 'video.ru.srt')
+  if (!existsSync(srt)) writeFileSync(srt, SRT)
+  return dir
+}
+
 function place(from: string, to: string) {
   mkdirSync(path.dirname(to), { recursive: true })
   try {

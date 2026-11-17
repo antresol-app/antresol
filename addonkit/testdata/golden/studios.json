@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/settings/studios",
+  "status": 200,
+  "body": {
+    "studios": [
+      "Кубик в Кубе",
+      "LostFilm"
+    ]
+  }
+}

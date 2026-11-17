@@ -1,9 +1,12 @@
 package files
 
 import (
+	"bytes"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -100,5 +103,59 @@ func TestResolveRejectsTrashCaseVariant(t *testing.T) {
 		if _, err := s.Resolve("disk", rel); !errors.Is(err, ErrOutside) {
 			t.Errorf("Resolve(disk, %q) = %v", rel, err)
 		}
+	}
+}
+
+func TestExtraRoots_Downloads(t *testing.T) {
+	dir := t.TempDir()
+	got, err := ExtraRoots("downloads=" + dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Root{{ID: "downloads", Title: "Загрузки", Icon: "download", Dir: dir, AdminOnly: true}}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	got, err = ExtraRoots("  ")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("empty spec: %+v %v", got, err)
+	}
+	other := t.TempDir()
+	got, err = ExtraRoots("scratch=" + other + ";downloads=" + dir)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("two roots: %+v %v", got, err)
+	}
+	if got[0].ID != "scratch" || got[0].Title != "scratch" || got[0].Icon != "folder" || !got[0].AdminOnly || got[0].Dir != other {
+		t.Fatalf("unknown id: %+v", got[0])
+	}
+}
+
+func TestExtraRoots_Errors(t *testing.T) {
+	d := t.TempDir()
+	for _, spec := range []string{
+		"library=" + d, "movies=" + d, "series=" + d, "music=" + d, "books=" + d, "disk=" + d, "stream-cache=" + d,
+		"downloads=relative/dir",
+		"=" + d, "downloads=", "downloads", "a=" + d + ";a=" + d, "a=" + d + ";;b=" + d,
+	} {
+		if got, err := ExtraRoots(spec); err == nil {
+			t.Errorf("%q: want error, got %+v", spec, got)
+		}
+	}
+}
+
+func TestExtraRoots_MissingDirSkipped(t *testing.T) {
+	d := t.TempDir()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	got, err := ExtraRoots("gone=" + filepath.Join(d, "nope") + ";here=" + d)
+	if out := buf.String(); !strings.Contains(out, "WARN") || !strings.Contains(out, `"gone"`) || strings.Contains(out, `"here"`) {
+		t.Fatalf("log: %q", out)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "here" {
+		t.Fatalf("got %+v", got)
 	}
 }

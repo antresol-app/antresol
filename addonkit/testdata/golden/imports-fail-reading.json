@@ -1,0 +1,10 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/imports/jobs/fail-reading",
+  "status": 200,
+  "body": {
+    "ids": [
+      3
+    ]
+  }
+}

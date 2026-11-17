@@ -73,7 +73,29 @@ describe('keyboard belongs to the file view', () => {
   })
 })
 
-describe('needsConfirm: the server asks before stopping a torrent', () => {
+describe('needsConfirm: the server asks before touching files an extension holds', () => {
+  it('rename → the warnings sheet names what stops → resent with confirm:true', async () => {
+    const u = userEvent.setup()
+    const mock = mockApi(admin, BASE, (c) =>
+      c.path === '/api/files/rename'
+        ? json(c.body?.confirm ? entry('Брат 2 (2000).mkv', { kind: 'video' }) : { needsConfirm: true, warnings: ['«Брат 2» перестанет обновляться'] })
+        : undefined,
+    )
+    await renderFiles(admin, mock, '/files/movies', /Брат 2\.mkv/)
+    fireEvent.contextMenu(screen.getByRole('option', { name: /Брат 2\.mkv/ }))
+    await u.click(await screen.findByRole('menuitem', { name: /Переименовать/ }))
+    const field = screen.getByRole('textbox', { name: 'Новое имя' })
+    await u.clear(field)
+    await u.type(field, 'Брат 2 (2000).mkv')
+    await u.click(screen.getByRole('button', { name: 'Переименовать' }))
+    const warn = await screen.findByRole('alertdialog', { name: 'Эти файлы используются' })
+    expect(warn).toHaveTextContent('Эти файлы использует расширение. После этого оно перестанет с ними работать:')
+    expect(within(warn).getByText('«Брат 2» перестанет обновляться')).toBeInTheDocument()
+    await u.click(within(warn).getByRole('button', { name: 'Продолжить' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(posts(mock.calls, '/api/files/rename').map((b) => b?.confirm)).toEqual([false, true])
+  })
+
   async function moveTwo(u: ReturnType<typeof userEvent.setup>, mock: ReturnType<typeof mockApi>) {
     await renderFiles(admin, mock, '/files/movies', /Брат 2\.mkv/)
     await u.click(screen.getByRole('option', { name: /Брат 2\.mkv/ }))

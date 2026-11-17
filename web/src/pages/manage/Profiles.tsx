@@ -260,7 +260,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
         <div className={styles.switchRow}>
           <div>
             <p className={m.rowLabel}>{t('common.role.kid')}</p>
-            <p className={m.rowHint}>{t(__LIBRARY_EDITION__ ? 'profiles.kidHintLibrary' : 'profiles.kidHint')}</p>
+            <p className={m.rowHint}>{t('profiles.kidHint')}</p>
           </div>
           <Toggle label={t('common.role.kid')} checked={kid} onChange={(v) => (setKid(v), v && setAdmin(false))} />
         </div>

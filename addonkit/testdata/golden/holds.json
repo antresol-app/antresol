@@ -1,0 +1,35 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/files/holds",
+  "status": 200,
+  "body": {
+    "holds": [
+      {
+        "key": "k-0001",
+        "root": "{root}/dl/Pack",
+        "files": [
+          {
+            "path": "{root}/dl/Pack/a.mkv",
+            "size": 0,
+            "selected": true
+          }
+        ],
+        "active": true,
+        "itemId": 0,
+        "busy": false,
+        "label": {
+          "ru": "Используется",
+          "en": "In use"
+        },
+        "moveWarning": {
+          "ru": "",
+          "en": ""
+        },
+        "keptWarning": {
+          "ru": "",
+          "en": ""
+        }
+      }
+    ]
+  }
+}

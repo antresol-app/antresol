@@ -107,7 +107,8 @@ func (e entrySums) sorted() []UsageEntry {
 }
 
 // Breakdown lists what a category of the report is made of (id is a usage
-// category or "other"; one without a root is ErrUnknownRoot). A category's
+// category, an addon segment of the report or "other"; one without a root,
+// or a segment the report does not have, is ErrUnknownRoot). A category's
 // entries come with the cached report; «other» needs a walk of the rest of
 // the disk, which runs in the background: Pending says to ask again. A
 // report without the disk (NoDisk) has no breakdown.
@@ -115,7 +116,8 @@ func (u *Usage) Breakdown(ctx context.Context, id string) (UsageBreakdown, error
 	if u.NoDisk {
 		return UsageBreakdown{}, ErrUnknownRoot
 	}
-	if id != "other" {
+	addon := strings.HasPrefix(id, "addon:")
+	if id != "other" && !addon {
 		if !slices.Contains(usageCategories, id) {
 			return UsageBreakdown{}, ErrUnknownRoot
 		}
@@ -126,6 +128,9 @@ func (u *Usage) Breakdown(ctx context.Context, id string) (UsageBreakdown, error
 	s, err := u.snapshot(ctx)
 	if err != nil {
 		return UsageBreakdown{}, err
+	}
+	if addon && !s.extra[id] {
+		return UsageBreakdown{}, ErrUnknownRoot
 	}
 	b := UsageBreakdown{Category: id, Entries: []UsageEntry{}}
 	for _, c := range s.report.Categories {
@@ -207,13 +212,15 @@ func (u *Usage) walkOther(ctx context.Context, s *usageSnap) *otherSizes {
 	mr := u.Sandbox.MediaRoot()
 	cats := map[string]bool{}
 	ancestors := map[string]bool{} // relative to mr
+	dirs := slices.Clone(s.extraDirs)
 	for _, id := range usageCategories {
-		root, err := u.Sandbox.Root(id)
-		if err != nil {
-			continue
+		if root, err := u.Sandbox.Root(id); err == nil {
+			dirs = append(dirs, root.Dir)
 		}
-		cats[root.Dir] = true
-		rel, err := filepath.Rel(mr, root.Dir)
+	}
+	for _, dir := range dirs {
+		cats[dir] = true
+		rel, err := filepath.Rel(mr, dir)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			continue
 		}

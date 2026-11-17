@@ -58,7 +58,7 @@ describe('Files storage panel', () => {
 
 describe('Settings: «Качество вне дома»', () => {
   it('shows 1080p by default and saves another choice', async () => {
-    const values = { quality: 1080, voice: 'dub', maxSizeGB: 0, uploadLimited: false, uploadLimitKBs: 0, streamCacheGB: 20, remoteQuality: '1080' }
+    const values = { quality: 1080, voice: 'dub', remoteQuality: '1080' }
     const puts: unknown[] = []
     stubFetch((url, init) => {
       if (url === '/api/settings' && init?.method === 'PUT') {

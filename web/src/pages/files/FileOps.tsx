@@ -57,7 +57,7 @@ function Warnings({ warnings }: { warnings: string[] }) {
   const t = useT()
   return (
     <>
-      {t('files.op.seedWarning')}
+      {t('files.op.heldWarning')}
       <ul>
         {warnings.slice(0, 5).map((w) => (
           <li key={w}>{w}</li>
@@ -100,10 +100,10 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
     }
   }
 
-  // another build's server warns before touching some files
-  const warn = !__LIBRARY_EDITION__ && warnings && (
+  // the server warns before touching files an extension holds (files.plan)
+  const warn = warnings && (
     <Sheet
-      title={t('files.op.stopSeeding')}
+      title={t('files.op.heldTitle')}
       message={<Warnings warnings={warnings} />}
       icon={<Glyph name="warning" size={44} strokeWidth={1.5} style={{ color: 'var(--orange)' }} />}
       busy={busy}

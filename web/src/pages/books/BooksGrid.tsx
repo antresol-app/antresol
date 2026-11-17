@@ -6,8 +6,9 @@ import { useEffect, useMemo } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { getBooks } from '../../api/client'
 import type { BookKind, BookSort, Card } from '../../api/types'
-import { Button, ButtonLink } from '../../ui/Button'
+import { Button } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
+import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
 import { PosterGrid, PosterGridSkeleton } from '../../components/PosterGrid'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
@@ -106,14 +107,9 @@ function Grid({ kind }: { kind: BookKind }) {
             <p>{t('books.empty.kid')}</p>
           ) : (
             <>
-              <p>{t(__LIBRARY_EDITION__ ? 'books.empty.hint' : 'books.empty.hintFull')}</p>
-              {__LIBRARY_EDITION__ ? (
-                <RescanLink variant="secondary" />
-              ) : (
-                <ButtonLink to={`/search?dk=${kind}`} icon="search" variant="secondary">
-                  {t('books.empty.find')}
-                </ButtonLink>
-              )}
+              <p>{t('books.empty.hint')}</p>
+              <RescanLink variant="secondary" />
+              <EmptyStateActions scope={kind} variant="secondary" />
             </>
           )}
         </div>

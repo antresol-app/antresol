@@ -11,9 +11,9 @@ import (
 )
 
 // mountMediaImport: «Управление → Переезд» (admin only): the media servers'
-// import in both editions, and the sources build's own part (migrate_handlers_full.go).
+// import. The addons' own moves live on their pages.
 func mountMediaImport(r chi.Router, deps Deps) {
-	h := &mediaImportAPI{svc: deps.MediaImport, users: deps.Users, full: newImportFull(deps)}
+	h := &mediaImportAPI{svc: deps.MediaImport, users: deps.Users}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
 		r.Get("/api/migrate", h.status)
@@ -21,14 +21,12 @@ func mountMediaImport(r chi.Router, deps Deps) {
 		r.Post("/api/migrate/run", h.run)
 		r.Get("/api/migrate/reports", h.reports)
 		r.Get("/api/migrate/reports/{id}", h.report)
-		h.mountFull(r)
 	})
 }
 
 type mediaImportAPI struct {
 	svc   *mediaimport.Service
 	users *auth.Store
-	full  importFull
 }
 
 const notScannedMsg = "Медиатека ещё сканируется — подождите"
@@ -65,9 +63,7 @@ func (h *mediaImportAPI) err(w http.ResponseWriter, r *http.Request, what string
 	case errors.Is(err, mediaimport.ErrNotFound):
 		writeErr(w, r, http.StatusNotFound, "Отчёт не найден")
 	default:
-		if !h.full.err(w, r, err) {
-			internalErr(w, r, what, err)
-		}
+		internalErr(w, r, what, err)
 	}
 }
 
@@ -86,34 +82,26 @@ type migrateStatus struct {
 
 // migrateState is the part of the status that changes during a run or a
 // library scan; reading it touches no old database, so the page polls it.
-// The sources build adds the switch state (migrateStateFull).
 type migrateState struct {
 	Running      *string `json:"running"`
 	LibraryReady struct {
 		OK     bool   `json:"ok"`
 		Reason string `json:"reason"`
 	} `json:"libraryReady"`
-	migrateStateFull
 }
 
-func (h *mediaImportAPI) readState(w http.ResponseWriter, r *http.Request) (migrateState, bool) {
+func (h *mediaImportAPI) readState(r *http.Request) migrateState {
 	var out migrateState
 	if id := h.svc.Running(); id != "" {
 		out.Running = &id
 	}
-	if err := h.full.fillState(r.Context(), &out.migrateStateFull); err != nil {
-		h.err(w, r, "migrate state", err)
-		return out, false
-	}
 	out.LibraryReady.OK, out.LibraryReady.Reason = h.ready()
 	out.LibraryReady.Reason = i18n.Localize(r.Context(), out.LibraryReady.Reason)
-	return out, true
+	return out
 }
 
 func (h *mediaImportAPI) state(w http.ResponseWriter, r *http.Request) {
-	if out, ok := h.readState(w, r); ok {
-		writeJSON(w, http.StatusOK, out)
-	}
+	writeJSON(w, http.StatusOK, h.readState(r))
 }
 
 func (h *mediaImportAPI) status(w http.ResponseWriter, r *http.Request) {
@@ -144,11 +132,7 @@ func (h *mediaImportAPI) status(w http.ResponseWriter, r *http.Request) {
 	for _, u := range list {
 		out.Profiles = append(out.Profiles, migrateProfile{ID: u.ID, Name: u.Name})
 	}
-	st, ok := h.readState(w, r)
-	if !ok {
-		return
-	}
-	out.migrateState = st
+	out.migrateState = h.readState(r)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -166,11 +150,9 @@ func (h *mediaImportAPI) run(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"reportId": id})
 }
 
-// reportSummary is a report in the history: no lines; another build adds
-// a number of its own.
+// reportSummary is a report in the history.
 type reportSummary struct {
 	*mediaimport.Report
-	reportSummaryFull
 }
 
 func (h *mediaImportAPI) reports(w http.ResponseWriter, r *http.Request) {
@@ -181,9 +163,7 @@ func (h *mediaImportAPI) reports(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]reportSummary, 0, len(list))
 	for _, rep := range list {
-		sum := reportSummary{Report: rep}
-		h.full.fillSummary(&sum)
-		out = append(out, sum)
+		out = append(out, reportSummary{Report: rep})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -56,7 +56,7 @@ const AudioFormats = "matroska,webm,ac3,eac3,dts,aac,flac,mp3,wav,ogg,mov,mp4,m4
 
 // httpReconnectArgs keep a loopback http input alive: a read waits while
 // pieces are missing and the server keeps the request open as long as the
-// source lives, so a swarm stall must not end the stream (ffmpeg would write
+// source lives, so a stalled source must not end the stream (ffmpeg would write
 // ENDLIST). The I/O timeout is only a safety net; reconnects never give up.
 // Shared by the video input and an http external audio input.
 var httpReconnectArgs = []string{"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1",

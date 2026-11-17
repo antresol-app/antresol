@@ -9,8 +9,9 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { getHome, useEvents, errorText } from '../api/client'
 import type { CardKind, Home as HomeData, Shelf as ShelfData } from '../api/types'
 import { isSquareKind } from '../components/Card'
-import { ButtonLink, Button } from '../ui/Button'
+import { Button } from '../ui/Button'
 import { RescanLink } from '../components/RescanLink'
+import { EmptyStateActions } from '../components/EmptyStateActions'
 import { Hero } from '../components/Hero'
 import { Icon } from '../components/Icon'
 import { MineEmpty } from '../components/LibraryScopeMenu'
@@ -139,14 +140,9 @@ export function Home() {
         <h1>{t('browse.home.empty')}</h1>
         {user?.isAdmin ? (
           <>
-            <p>{t(__LIBRARY_EDITION__ ? 'browse.home.emptyAdmin' : 'browse.home.emptyAdminFull')}</p>
-            {__LIBRARY_EDITION__ ? (
-              <RescanLink />
-            ) : (
-              <ButtonLink to="/search" icon="search">
-                {t('browse.home.findMovie')}
-              </ButtonLink>
-            )}
+            <p>{t('browse.home.emptyAdmin')}</p>
+            <RescanLink />
+            <EmptyStateActions scope="home" />
           </>
         ) : (
           <p>{t('browse.home.emptyOthers')}</p>
@@ -171,7 +167,6 @@ export function Home() {
               variant={shelfVariant(s)}
               seeAllTo={SEE_ALL[s.id]}
               priority={i === 0}
-              offLibraryUnlinked={s.id === 'tracked-new'}
             />
             {/* the channels on air after the first shelf («Продолжить» when there is one) */}
             {i === 0 && <OnAirShelf />}

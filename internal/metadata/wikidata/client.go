@@ -44,6 +44,11 @@ type Client struct {
 
 	once sync.Once
 	lim  *metadata.Limiter
+	// addonSem: the addons' pass-through calls (Raw), a budget of their
+	// own besides the shared limiter, so their bulk traffic takes at most
+	// maxAddonLookups of the limiter's turns at once and the library's
+	// enrichment keeps its own
+	addonSem chan struct{}
 }
 
 // Work is a written work found by a search: the work itself when an edition
@@ -67,19 +72,36 @@ func (c *Client) limiter() *metadata.Limiter {
 		if c.lim == nil {
 			c.lim = &metadata.Limiter{Interval: DefaultMinInterval}
 		}
+		c.addonSem = make(chan struct{}, maxAddonLookups)
 	})
 	return c.lim
+}
+
+func (c *Client) getter() metadata.Getter {
+	return metadata.Getter{Service: "wikidata", HTTP: c.HTTP, Limiter: c.limiter(), UserAgent: c.UserAgent,
+		Retry:      func(s int) bool { return s == http.StatusServiceUnavailable || s == http.StatusTooManyRequests },
+		RetryDelay: retryDelay, MaxRetries: maxRetries}
+}
+
+// maxAddonLookups: the addons' pass-through calls in flight at once.
+const maxAddonLookups = 2
+
+// Raw is the addons' pass-through: a GET of p (percent-encoded, below
+// BaseURL; metadata.SafeRawPath) with q, sent with the client's User-Agent
+// through its limiter and retries, waiting on addonSem
+// (metadata.Getter.RawWithin). Any status is
+// returned as it is; a body over metadata.MaxRaw is an error.
+func (c *Client) Raw(ctx context.Context, p string, q url.Values) (status int, contentType string, body []byte, err error) {
+	g := c.getter() // initialises addonSem
+	return g.RawWithin(ctx, c.addonSem, c.BaseURL, p, q)
 }
 
 func (c *Client) get(ctx context.Context, q url.Values, out any) error {
 	q.Set("format", "json")
 	u := strings.TrimRight(c.BaseURL, "/") + "/w/api.php?" + q.Encode()
-	g := metadata.Getter{Service: "wikidata", HTTP: c.HTTP, Limiter: c.limiter(), UserAgent: c.UserAgent,
-		Retry:      func(s int) bool { return s == http.StatusServiceUnavailable || s == http.StatusTooManyRequests },
-		RetryDelay: retryDelay, MaxRetries: maxRetries}
 	path := "/w/api.php " + q.Get("action")
 	var raw json.RawMessage
-	if err := g.JSON(ctx, u, path, &raw); err != nil {
+	if err := c.getter().JSON(ctx, u, path, &raw); err != nil {
 		return err
 	}
 	// a refused request is HTTP 200 with {"error":{"code","info"}}

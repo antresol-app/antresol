@@ -19,6 +19,9 @@ import (
 //
 //   - GET|PUT /api/me/notify: the profile's address and topics; a kid's are
 //     the admin's, through /api/users/{id}/notify (as «Звук и субтитры»).
+//     addonTopics: the addons' topics the profile may turn on, titled in
+//     the request's language; a PUT changes the ones it lists
+//     ([{addon, topic, on}]) and leaves the others.
 //   - POST /api/me/notify/verify: «Отправить проверочное письмо» (a code,
 //     and a link with a public address); POST /api/me/notify/confirm
 //     {code} confirms the address.
@@ -101,6 +104,7 @@ func (h *lib) notifyOut(w http.ResponseWriter, r *http.Request, uid int64) {
 		internalErr(w, r, "notify prefs", err)
 		return
 	}
+	p.AddonTopics = h.Notify.AddonPrefs(ctx, u, p, i18n.FromContext(ctx))
 	_, ready := h.Notify.MailReady(ctx)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, notifyView{Prefs: p, Topics: h.Notify.TopicsFor(ctx, u), MailReady: ready, PublicLinks: h.Notify.Links()})
@@ -245,7 +249,7 @@ func notifyUnsubscribeLink(n *notify.Service, apply bool) http.HandlerFunc {
 			return
 		}
 		l := linkLang(r, info)
-		topic := notify.Heading(l, info.Topic)
+		topic := n.TopicHeading(r.Context(), l, info.Topic)
 		if !apply {
 			writeLinkPage(w, http.StatusOK, linkView{Lang: l, Title: i18n.TL(l, "Больше не присылать «%s»?", topic),
 				Text:   i18n.TL(l, "Остальные уведомления не изменятся."),

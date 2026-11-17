@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 	"unicode"
 
@@ -25,8 +27,14 @@ var adminEvents = map[string]bool{
 
 // eventVisible says whether a subscriber gets an event at all:
 // request.changed (a kid's request made or answered) reaches the admins
-// and the kid whose request it is only.
+// and the kid whose request it is only; an addon's events
+// (addon.<id>.<name>) never reach kids, and addon.<id>.admin.<name>
+// reaches admins only.
 func eventVisible(u auth.User, typ string, data any) bool {
+	if rest, ok := strings.CutPrefix(typ, "addon."); ok {
+		_, name, _ := strings.Cut(rest, ".")
+		return !u.IsKid && (u.IsAdmin || !strings.HasPrefix(name, "admin."))
+	}
 	if typ != events.RequestChanged || u.IsAdmin {
 		return true
 	}
@@ -37,13 +45,29 @@ func eventVisible(u auth.User, typ string, data any) bool {
 // sseHeartbeat keeps proxies from closing an idle stream.
 var sseHeartbeat = 25 * time.Second
 
-func mountEvents(r chi.Router, bus *events.Bus) {
-	r.Get("/api/events", func(w http.ResponseWriter, r *http.Request) { serveEvents(w, r, bus) })
+// addonForAdults says whether addon id has access "adults" (nil: no
+// addons, so none has).
+type addonForAdults func(ctx context.Context, id string) bool
+
+func mountEvents(r chi.Router, bus *events.Bus, forAdults addonForAdults) {
+	r.Get("/api/events", func(w http.ResponseWriter, r *http.Request) { serveEvents(w, r, bus, forAdults) })
+}
+
+// addonEventFor: an addon's events reach a profile that is not an admin
+// only when the addon is for adults (eventVisible keeps kids and admin.*
+// out).
+func addonEventFor(ctx context.Context, u auth.User, typ string, forAdults addonForAdults) bool {
+	rest, ok := strings.CutPrefix(typ, "addon.")
+	if !ok || u.IsAdmin {
+		return true
+	}
+	id, _, _ := strings.Cut(rest, ".")
+	return forAdults != nil && forAdults(ctx, id)
 }
 
 // serveEvents streams the bus as server-sent events: "event: <type>" and
 // "data: <json>" per message.
-func serveEvents(w http.ResponseWriter, r *http.Request, bus *events.Bus) {
+func serveEvents(w http.ResponseWriter, r *http.Request, bus *events.Bus, forAdults addonForAdults) {
 	rc := http.NewResponseController(w)
 	u := userOf(r)
 	// library.updated names what was added; a rating-limited profile could
@@ -81,14 +105,13 @@ func serveEvents(w http.ResponseWriter, r *http.Request, bus *events.Bus) {
 			if !ok {
 				return
 			}
-			if !eventVisible(u, ev.Type, ev.Data) {
+			if !eventVisible(u, ev.Type, ev.Data) || !addonEventFor(r.Context(), u, ev.Type, forAdults) {
 				continue
 			}
 			payload := ev.Data
 			if limited && ev.Type == events.LibraryUpdated {
 				payload = struct{}{}
 			}
-			payload = eventPayload(lang, u, ev.Type, payload)
 			data, err := json.Marshal(payload)
 			if err != nil {
 				log.Printf("api: event %s: %v", ev.Type, err)

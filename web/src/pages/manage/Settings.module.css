@@ -2,11 +2,6 @@
 .page {
   max-width: 760px;
 }
-/* «Входящие подключения»: a problem the admin should fix */
-.incomingIcon {
-  color: var(--warning);
-  vertical-align: -2px;
-}
 
 /* «Отправка на Kindle» */
 .mailFields {

@@ -18,23 +18,9 @@ import (
 	"github.com/antresol-app/antresol/internal/natsort"
 )
 
-// bookExts lists the e-book formats the book scanner indexes (DJVU,
-// comics and everything else are left alone).
-var bookExts = map[string]bool{".epub": true, ".fb2": true, ".fb2.zip": true, ".mobi": true, ".azw3": true, ".pdf": true}
-
 var (
-	reBookFB2Zip = regexp.MustCompile(`(?i)\.fb2\.zip$`)
 	reSiteBookID = regexp.MustCompile(`\.\d{4,}$`)
 )
-
-// bookExt returns ".fb2.zip" for an FB2 archive, else the lower-cased
-// extension.
-func bookExt(name string) string {
-	if reBookFB2Zip.MatchString(name) {
-		return ".fb2.zip"
-	}
-	return strings.ToLower(filepath.Ext(name))
-}
 
 // bookStem is the file name without its bookExt.
 func bookStem(name string) string { return name[:len(name)-len(bookExt(name))] }

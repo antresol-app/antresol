@@ -10,11 +10,11 @@ import { ImportProgress } from '../import/ImportProgress'
 import { ReviewList } from '../import/ReviewList'
 import { pendingLabel } from '../../music/TrackList'
 
-/** What useCanDownload answers in the tests that set it (the page tests use the real one). */
+/** What useCanAdd answers in the tests that set it: the page must not follow it (the server's answer decides). */
 const downloads = vi.hoisted(() => ({ value: null as boolean | null }))
-vi.mock('../../../state/canDownload', async (orig) => {
-  const real = await orig<typeof import('../../../state/canDownload')>()
-  return { useCanDownload: () => (downloads.value ?? real.useCanDownload()) }
+vi.mock('../../../addons/slots', async (orig) => {
+  const real = await orig<typeof import('../../../addons/slots')>()
+  return { ...real, useCanAdd: () => (downloads.value ?? real.useCanAdd()) }
 })
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
@@ -41,20 +41,25 @@ const job = (o: Partial<ImportJob> = {}): ImportJob => ({
 let calls: string[] = []
 /** The next PATCH of the job fails with no answer from the server. */
 let patchFails = false
+/** What GET /api/import/services says the server does beyond the library. */
+let offers: { downloads?: boolean; catalog?: boolean } = {}
+let uploaded: ImportJob = job()
 
 beforeEach(() => {
   calls = []
   patchFails = false
   downloads.value = null
+  offers = {}
+  uploaded = job()
   vi.stubGlobal('EventSource', class { addEventListener() {} close() {} })
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       calls.push(`${init?.method ?? 'GET'} ${url}`)
-      if (url === '/api/import/services') return json({ services: [] })
+      if (url === '/api/import/services') return json({ services: [], ...offers })
       if (url === '/api/import/jobs') return json({ jobs: [] })
-      if (url === '/api/import/files') return json(job(), 201)
+      if (url === '/api/import/files') return json(uploaded, 201)
       if (url === '/api/import/jobs/3' && init?.method === 'PATCH' && patchFails) throw new TypeError('network')
       if (url === '/api/import/jobs/3/review')
         return json({ tracks: [{ id: 1, artist: 'Кино', title: 'Кукушка', album: '', reason: 'Нет точного совпадения', candidates: [] }] })
@@ -122,38 +127,71 @@ describe('Import without services', () => {
   })
 })
 
+// The server alone decides whether it downloads (an addon that declares
+// import.services with the imports permission) and whether the review can
+// search a catalog (one that declares import.search): an addon that only
+// adds titles (useCanAdd) promises neither.
+describe('the page words its texts by the server\'s answer', () => {
+  it('an addon that adds titles but takes no imports: local texts, «Нет в медиатеке», no size, no space, no catalog', async () => {
+    downloads.value = true // useCanAdd: an addon adds titles
+    offers = { downloads: false, catalog: false }
+    uploaded = job({ estimatedBytes: 1 << 30, disk: { free: 2 ** 30, total: 10 * 2 ** 30 } })
+    renderImport()
+    expect(await screen.findByText(/В них попадут песни, которые уже есть в медиатеке/)).toBeTruthy()
+    const input = (await screen.findByLabelText('Файл медиатеки')) as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['#EXTM3U\n'], 'a.m3u')] } })
+    expect(await screen.findByText('Песен: 2')).toBeTruthy()
+    expect(screen.getByText(/Остальные будут отмечены как «Нет в медиатеке»/)).toBeTruthy()
+    expect(screen.queryByText(/Примерно|Свободно на сервере/)).toBeNull()
+  })
+
+  it('a server that downloads: the size and the space, though no addon adds titles here', async () => {
+    downloads.value = false
+    offers = { downloads: true, catalog: true }
+    uploaded = job({ estimatedBytes: 1 << 30, disk: { free: 4 * 2 ** 30, total: 10 * 2 ** 30 } })
+    renderImport()
+    const input = (await screen.findByLabelText('Файл медиатеки')) as HTMLInputElement
+    expect(screen.queryByText(/В них попадут песни, которые уже есть в медиатеке/)).toBeNull()
+    fireEvent.change(input, { target: { files: [new File(['#EXTM3U\n'], 'a.m3u')] } })
+    expect(await screen.findByText('Примерно 1,0 ГБ')).toBeTruthy()
+    expect(screen.getByText(/Свободно на сервере/)).toBeTruthy()
+    expect(screen.queryByText(/Остальные будут отмечены как «Нет в медиатеке»/)).toBeNull()
+  })
+
+  it('an answer without the flags (an older server) promises nothing', async () => {
+    downloads.value = true
+    renderImport()
+    expect(await screen.findByText(/В них попадут песни, которые уже есть в медиатеке/)).toBeTruthy()
+  })
+})
+
 describe('where nothing is downloaded', () => {
   it('the preview says what happens to the songs the library lacks and shows no size or space', () => {
-    downloads.value = false
-    render(<ImportPreview job={job({ estimatedBytes: 1 << 30, disk: { free: 0, total: 0 } })} onPatch={() => {}} onStart={() => {}} onCancel={() => {}} />)
+    render(<ImportPreview downloads={false} job={job({ estimatedBytes: 1 << 30, disk: { free: 0, total: 0 } })} onPatch={() => {}} onStart={() => {}} onCancel={() => {}} />)
     expect(screen.getByText(/Остальные будут отмечены как «Нет в медиатеке»/)).toBeTruthy()
     expect(screen.queryByText(/Примерно/)).toBeNull()
     expect(screen.queryByText(/Свободно/)).toBeNull()
   })
 
   it('an album the library lacks is «Нет в медиатеке» and has no «Повторить»', async () => {
-    downloads.value = false
     const g: ImportGroup = { id: 1, artist: 'Кино', album: 'Группа крови', year: 1988, songs: 3, state: 'not_found', bytes: 0, done: 0, error: '', infoHash: '' }
-    render(<ImportProgress job={job({ status: 'done', progress: { ...progress, notFound: 3 } })} groups={[g]} onReview={() => {}} onCancel={() => {}} onDone={() => {}} />)
+    render(<ImportProgress downloads={false} job={job({ status: 'done', progress: { ...progress, notFound: 3 } })} groups={[g]} onReview={() => {}} onCancel={() => {}} onDone={() => {}} />)
     await waitFor(() => expect(screen.getByTestId('import-group').textContent).toContain('Нет в медиатеке'))
     expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull()
   })
 
   it('a space line is not shown without downloads even when the server sends disk numbers', () => {
-    downloads.value = false
-    render(<ImportPreview job={job({ disk: { free: 1 << 30, total: 10 << 30 } })} onPatch={() => {}} onStart={() => {}} onCancel={() => {}} />)
+    render(<ImportPreview downloads={false} job={job({ disk: { free: 1 << 30, total: 10 << 30 } })} onPatch={() => {}} onStart={() => {}} onCancel={() => {}} />)
     expect(screen.queryByText(/Свободно/)).toBeNull()
   })
 
   it('the review offers the manual search only where there is a catalog', async () => {
-    downloads.value = false
-    const { unmount } = render(<ReviewList jobId={3} onChanged={() => {}} />)
+    const { unmount } = render(<ReviewList jobId={3} catalog={false} onChanged={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Пропустить' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Найти вручную' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Выбрать альбом…' })).toBeNull()
     unmount()
-    downloads.value = true
-    render(<ReviewList jobId={3} onChanged={() => {}} />)
+    render(<ReviewList jobId={3} catalog onChanged={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Найти вручную' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Выбрать альбом…' })).toBeTruthy()
   })

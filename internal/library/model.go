@@ -102,22 +102,20 @@ type Item struct {
 
 // File is a row of the files table.
 type File struct {
-	ID              int64  `json:"id"`
-	ItemID          int64  `json:"item_id"`
-	Path            string `json:"path"`
-	Size            int64  `json:"size"`
-	Mtime           int64  `json:"mtime"`
-	DurationMs      int64  `json:"duration_ms,omitempty"`
-	ProbeJSON       string `json:"probe_json,omitempty"`
-	TorrentInfohash string `json:"torrent_infohash,omitempty"`
+	ID         int64  `json:"id"`
+	ItemID     int64  `json:"item_id"`
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	Mtime      int64  `json:"mtime"`
+	DurationMs int64  `json:"duration_ms,omitempty"`
+	ProbeJSON  string `json:"probe_json,omitempty"`
 }
 
 // FileInput describes a media file to attach to an item.
 type FileInput struct {
-	Path     string
-	Size     int64
-	Mtime    int64
-	Infohash string
+	Path  string
+	Size  int64
+	Mtime int64
 }
 
 // MovieInput is the scanner/acquire-side description of a movie.

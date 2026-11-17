@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/files"
+	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/progress"
@@ -35,7 +37,7 @@ func newFilesEnv(t *testing.T) *filesEnv {
 	st, ss := auth.NewStore(d), auth.NewSessions(d)
 	repo := library.NewRepo(d)
 	mr := t.TempDir()
-	for _, p := range []string{"media/movies", "media/series", "torrents", "tmp/vault-stream"} {
+	for _, p := range []string{"media/movies", "media/series", "downloads", "tmp/vault-stream"} {
 		if err := os.MkdirAll(filepath.Join(mr, p), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +48,7 @@ func newFilesEnv(t *testing.T) *filesEnv {
 	sb := files.NewSandbox(mr, []files.Root{
 		{ID: "movies", Title: "Фильмы", Icon: "film", Dir: filepath.Join(mr, "media/movies")},
 		{ID: "series", Title: "Сериалы", Icon: "tv", Dir: filepath.Join(mr, "media/series")},
-		{ID: "downloads", Title: "Загрузки", Icon: "download", Dir: filepath.Join(mr, "torrents")},
+		{ID: "downloads", Title: "Загрузки", Icon: "download", Dir: filepath.Join(mr, "downloads")},
 		{ID: "stream-cache", Title: "Кеш просмотра", Icon: "clock", Dir: filepath.Join(mr, "tmp/vault-stream"), NoDrop: true},
 		{ID: "disk", Title: "Весь диск", Icon: "disk", Dir: mr, AdminOnly: true},
 	})
@@ -299,3 +301,18 @@ func TestMoveIntoStreamCacheForbidden(t *testing.T) {
 }
 
 // every path below the prefix is shared
+
+// Data in use reached through a symlinked folder: 409 with a message that
+// says how to move it, in the asker's language.
+func TestFilesHeldAliasIsConflict(t *testing.T) {
+	for lang, want := range map[string]string{"ru": "по их собственному пути", "en": "move it by its own path"} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/", nil)
+		filesErr(w, r.WithContext(i18n.WithLanguage(r.Context(), lang)), "rename", files.ErrHeldAlias)
+		var out struct{ Error string }
+		json.Unmarshal(w.Body.Bytes(), &out)
+		if w.Code != http.StatusConflict || !strings.Contains(out.Error, want) {
+			t.Errorf("%s: %d %q", lang, w.Code, out.Error)
+		}
+	}
+}

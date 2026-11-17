@@ -12,8 +12,8 @@ import (
 
 func TestUsageCountsHardlinksOnce(t *testing.T) {
 	s, mr := testSandbox(t)
-	write(t, filepath.Join(mr, "torrents/x.mkv"), 4096)
-	if err := os.Link(filepath.Join(mr, "torrents/x.mkv"), filepath.Join(mr, "media/movies/x.mkv")); err != nil {
+	write(t, filepath.Join(mr, "downloads/x.mkv"), 4096)
+	if err := os.Link(filepath.Join(mr, "downloads/x.mkv"), filepath.Join(mr, "media/movies/x.mkv")); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(mr, "media/series/e.mkv"), 1000)
@@ -57,7 +57,7 @@ func TestUsageCountsHardlinksOnce(t *testing.T) {
 func TestUsageNoDisk(t *testing.T) {
 	full, mr := testSandbox(t)
 	write(t, filepath.Join(mr, "media/movies/x.mkv"), 4096)
-	write(t, filepath.Join(mr, "torrents/t.mkv"), 1000)
+	write(t, filepath.Join(mr, "downloads/t.mkv"), 1000)
 	s := NewSandbox(mr, LibraryOnlyRoots(full.Roots()))
 	for _, id := range []string{"downloads", "stream-cache", "disk"} {
 		if _, err := s.Root(id); err == nil {

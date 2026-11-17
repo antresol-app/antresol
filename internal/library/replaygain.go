@@ -116,16 +116,6 @@ func parseR128(s string) *float64 {
 	return &g
 }
 
-// ReadReplayGain reads the ReplayGain tags of an audio file as the scanner
-// does (image: a CUE image, whose tags are its disc's: the album gain only).
-func ReadReplayGain(path string, image bool) (ReplayGain, error) {
-	t, err := readTags(path)
-	if err != nil {
-		return ReplayGain{}, err
-	}
-	return trackReplayGain(&musicEntry{tags: t, image: image}), nil
-}
-
 // nullFloat is a *float64 as an SQL argument (nil: NULL).
 func nullFloat(v *float64) any {
 	if v == nil {

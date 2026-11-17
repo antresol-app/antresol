@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/requests/approve",
+  "status": 200,
+  "body": {
+    "approved": 1
+  }
+}

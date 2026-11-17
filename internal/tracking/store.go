@@ -241,8 +241,8 @@ func (s *Store) ReplaceEpisodes(ctx context.Context, titleID int64, eps []Episod
 // UpsertSources syncs the sources of one kind for a title: rows not in srcs
 // are deleted, known rows get last_seen (and details) refreshed, and the rows
 // new for that title+kind are returned. A row whose episode already had a row
-// of the kind under another ref (a library ref migration, a new pinned
-// version, a re-uploaded torrent) takes that episode's earliest first_seen
+// of the kind under another ref (a library ref migration, a new version of
+// an addon's source) takes that episode's earliest first_seen
 // and is not returned: it is the same source under a new name, not news.
 func (s *Store) UpsertSources(ctx context.Context, titleID int64, kind string, srcs []Source, now time.Time) ([]Source, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)

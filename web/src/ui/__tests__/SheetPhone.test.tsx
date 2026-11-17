@@ -52,7 +52,7 @@ describe('Sheet on a phone', () => {
   it('a picker has a grabber: a swipe down closes it, after it slides away', async () => {
     setViewport(390)
     const onCancel = vi.fn()
-    render(<Sheet title="Раздачи" role="dialog" dismissOnOutside onCancel={onCancel} />)
+    render(<Sheet title="Источники" role="dialog" dismissOnOutside onCancel={onCancel} />)
     const grabber = screen.getByTestId('sheet-grabber')
     fireEvent.pointerDown(grabber, { pointerId: 1, pointerType: 'touch', clientX: 200, clientY: 300 })
     fireEvent.pointerMove(grabber, { pointerId: 1, pointerType: 'touch', clientX: 200, clientY: 420 })
@@ -68,7 +68,7 @@ describe('Sheet on a phone', () => {
     let now = 1000
     vi.spyOn(Date, 'now').mockImplementation(() => (now += 80))
     const onCancel = vi.fn()
-    render(<Sheet title="Раздачи" role="dialog" dismissOnOutside onCancel={onCancel} />)
+    render(<Sheet title="Источники" role="dialog" dismissOnOutside onCancel={onCancel} />)
     const grabber = screen.getByTestId('sheet-grabber')
     fireEvent.pointerDown(grabber, { pointerId: 1, pointerType: 'touch', clientX: 200, clientY: 300 })
     fireEvent.pointerMove(grabber, { pointerId: 1, pointerType: 'touch', clientX: 200, clientY: 330 })
@@ -86,7 +86,7 @@ describe('Sheet on a phone', () => {
   it('on a phone the ✕ closes it after it slides down, not by vanishing', async () => {
     setViewport(390)
     const onCancel = vi.fn()
-    render(<Sheet title="Раздачи" role="dialog" dismissOnOutside onCancel={onCancel} />)
+    render(<Sheet title="Источники" role="dialog" dismissOnOutside onCancel={onCancel} />)
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(document.querySelector('[role="dialog"]')).toHaveAttribute('data-closing', 'true')
     expect(onCancel).not.toHaveBeenCalled()

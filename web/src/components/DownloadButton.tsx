@@ -1,18 +1,22 @@
 // The round «download» button that sits next to «Смотреть»: an IconButton
 // whose outline is the progress — a ProgressRing drawn exactly over the
 // glass border fills clockwise.
-import type { TorrentHint, TorrentStalled } from '../api/types'
 import { useT } from '../i18n'
 import { IconButton, IconButtonAnchor, IconButtonLink } from '../ui/IconButton'
 import type { TriggerProps } from '../ui/Menu'
 import { percent, ProgressRing } from '../ui/StatusRing'
 import styles from './DownloadButton.module.css'
 
-export type DownloadState =
+/**
+ * What the button shows. An active download may say why it makes no
+ * headway: `stalled` (a reason code) and `hint` (more of what its addon
+ * knows, of the addon's own shape); the button only carries them for the
+ * page that shows them.
+ */
+export type DownloadState<Hint = unknown> =
   | { kind: 'idle' }
   | { kind: 'starting' }
-  /** `stalled`: no headway, and why (the page shows it under the button). */
-  | { kind: 'active'; done: number; size: number; stalled?: TorrentStalled; hint?: TorrentHint }
+  | { kind: 'active'; done: number; size: number; stalled?: string; hint?: Hint }
   | { kind: 'paused'; done: number; size: number }
   | { kind: 'done' }
 

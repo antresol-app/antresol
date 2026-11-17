@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/mailer"
 )
@@ -130,10 +131,38 @@ func (s *Service) flushOne(ctx context.Context, cfg mailer.Config, uid int64, no
 	if inFlight > 0 {
 		return nil // another send of this profile's is under way
 	}
+	// the addons' topics now: the events of an addon that is off or gone
+	// wait (removing it drops them), left out before the batch's LIMIT so
+	// that however many there are they never hold back the others
+	decl := s.declared(ctx)
+	declared := map[string]bool{}
+	args := []any{uid, len(addonPrefix), addonPrefix}
+	for _, t := range decl {
+		k := AddonTopicKey(t.Addon, t.Topic)
+		declared[k] = true
+		args = append(args, k)
+	}
+	addonOK := ""
+	if len(decl) > 0 {
+		addonOK = ` OR topic IN (?` + strings.Repeat(",?", len(decl)-1) + `)`
+	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, topic, item_id, group_id, data_json, created_at FROM notify_events
-		WHERE user_id=? AND sent_at IS NULL ORDER BY created_at, id LIMIT 500`, uid)
+		WHERE user_id=? AND sent_at IS NULL AND (substr(topic, 1, ?)<>?`+addonOK+`) ORDER BY created_at, id LIMIT 500`, args...)
 	if err != nil {
 		return err
+	}
+	// the profile as it is now: an addon line queued before the owner made
+	// it a kid (or took its admin away) is not sent past its topic's audience
+	name := ""
+	var who *auth.User
+	if s.Users != nil {
+		if u, err := s.Users.Get(ctx, uid); err == nil {
+			name, who = u.Name, &u
+		}
+	}
+	audience := map[string]string{}
+	for _, t := range decl {
+		audience[AddonTopicKey(t.Addon, t.Topic)] = t.Audience
 	}
 	byTopic := map[string][]stored{}
 	var ids []any
@@ -145,8 +174,11 @@ func (s *Service) flushOne(ctx context.Context, cfg mailer.Config, uid int64, no
 			rows.Close()
 			return err
 		}
-		if !p.On(e.topic) || renderers[e.topic] == nil {
-			continue // turned off meanwhile (dropOff), or not this edition's
+		if !p.On(e.topic) || rendererOf(e.topic) == nil || (isAddonTopic(e.topic) && !declared[e.topic]) {
+			continue // turned off meanwhile (dropOff), not this edition's, or its addon is off
+		}
+		if isAddonTopic(e.topic) && s.Users != nil && (who == nil || !admits(audience[e.topic], *who)) {
+			continue // the profile is no longer in the topic's audience
 		}
 		e.decode(raw)
 		byTopic[e.topic] = append(byTopic[e.topic], e)
@@ -163,26 +195,34 @@ func (s *Service) flushOne(ctx context.Context, cfg mailer.Config, uid int64, no
 	if now.Sub(time.Unix(newest, 0)) < s.settle() && now.Sub(time.Unix(oldest, 0)) < s.every() {
 		return nil // more may come: a season arrives an episode at a time
 	}
-	name := ""
-	if s.Users != nil {
-		if u, err := s.Users.Get(ctx, uid); err == nil {
-			name = u.Name
-		}
-	}
 	lang := p.Language()
 	link := s.linker()
 	var sections []section
-	for _, t := range AllTopics {
+	add := func(t, heading string) {
 		evs := byTopic[t]
 		if len(evs) == 0 {
-			continue
+			return
 		}
-		sec := section{Topic: t, Heading: headings[t](lang), Entries: renderers[t](lang, evs, link)}
+		sec := section{Topic: t, Heading: heading, Entries: rendererOf(t)(lang, evs, link)}
 		if u := link("/api/notify/link/unsubscribe?t=" + s.UnsubscribeToken(uid, t, p.Email)); u != "" {
 			sec.Unsubscribe = u
 			sec.OffLabel = i18n.TL(lang, "Больше не присылать «%s»", sec.Heading)
 		}
 		sections = append(sections, sec)
+	}
+	for _, t := range AllTopics {
+		if len(byTopic[t]) > 0 {
+			add(t, headings[t](lang))
+		}
+	}
+	// the addons' sections after the core's, by addon id, then manifest order
+	for _, t := range decl {
+		k := AddonTopicKey(t.Addon, t.Topic)
+		h := pickText(t.Title, lang)
+		if h == "" {
+			h = t.Topic
+		}
+		add(k, h)
 	}
 	l, err := compose(lang, name, sections)
 	if err != nil {

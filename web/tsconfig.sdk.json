@@ -1,0 +1,16 @@
+{
+  // npm run sdk:types: the declarations of src/addons/sdk.ts (the addon SDK's
+  // surface), emitted into addon-sdk/.dts and copied from there by
+  // scripts/sdk-types.mjs.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "addon-sdk/.dts",
+    "tsBuildInfoFile": null
+  },
+  "include": [],
+  "files": ["src/addons/sdk.ts", "src/vite-env.d.ts", "src/vendor/foliate/foliate.d.ts", "src/boot/early.ts"]
+}

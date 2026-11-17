@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/antresol-app/antresol/internal/trailers"
 	"log"
 	"net/http"
 	"strconv"
@@ -110,6 +111,9 @@ type lib struct {
 	// concurrent requests for the title (the guide's episodes and choice)
 	// wait for it and share it (ensureFresh).
 	refreshes singleflight.Group
+	// trailerKeys are the trailer keys the server listed (nil: no trailer
+	// provider, nothing to play)
+	trailerKeys *trailers.Listed
 }
 
 func userOf(r *http.Request) auth.User {

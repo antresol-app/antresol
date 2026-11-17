@@ -7,6 +7,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata/musicbrainz"
+	"github.com/antresol-app/antresol/internal/playlistimport/model"
 )
 
 // MsgNotInLibrary is the reason of a song (and the error of its album)
@@ -21,12 +22,12 @@ type AlbumFinder interface {
 }
 
 // FindExisting finds the album in the library: the one its songs went to
-// before, else (byTorrent, when not nil) the one the download it waited for
+// before, else (byDownload, when not nil) the one the download it waited for
 // went to, else by its MusicBrainz id, else by artist and title. It returns
 // the album and the tracks of every album item in its folder (a file whose
 // tag names the album differently may be an item of its own) — 0, nil:
 // none.
-func FindExisting(ctx context.Context, lib AlbumFinder, g Group, byTorrent func(ctx context.Context, ih string) ([]library.Track, error)) (int64, []library.Track, error) {
+func FindExisting(ctx context.Context, lib AlbumFinder, g Group, byDownload func(ctx context.Context, key string) ([]library.Track, error)) (int64, []library.Track, error) {
 	try := func(id int64) ([]library.Track, error) {
 		if id == 0 {
 			return nil, nil
@@ -36,8 +37,8 @@ func FindExisting(ctx context.Context, lib AlbumFinder, g Group, byTorrent func(
 	if ts, err := try(g.AlbumItemID); err != nil || len(ts) > 0 {
 		return g.AlbumItemID, ts, err
 	}
-	if g.InfoHash != "" && byTorrent != nil {
-		ts, err := byTorrent(ctx, g.InfoHash)
+	if g.InfoHash != "" && byDownload != nil {
+		ts, err := byDownload(ctx, g.InfoHash)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -90,13 +91,7 @@ func LinkTracks(ts []Track, lib []library.Track) map[int64]int64 {
 }
 
 // TrackIDs are the ids of the songs.
-func TrackIDs(ts []Track) []int64 {
-	out := make([]int64, len(ts))
-	for i, t := range ts {
-		out[i] = t.ID
-	}
-	return out
-}
+var TrackIDs = model.TrackIDs
 
 // noAlbums is a library with no album in it (LibraryStep without one).
 type noAlbums struct{}

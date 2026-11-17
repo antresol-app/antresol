@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/tracking"
 )
@@ -42,6 +44,20 @@ type trackEnv struct {
 	*libEnv
 	svc *tracking.Service
 	sk  *trackSkeleton
+	// addons are the installed addons: "scan" (for adults, on) declares
+	// the scan kinds alpha and beta
+	addons *fakeAddons
+	hooks  *addons.Hooks // Deps.AddonHooks, over addons
+}
+
+// scanAddon is an installed addon declaring scan kinds.
+func scanAddon(id, access string, enabled bool, kinds ...string) addons.Installed {
+	var hooks []string
+	for _, k := range kinds {
+		hooks = append(hooks, "tracking.scan:"+k)
+	}
+	return addons.Installed{ID: id, Version: "1.0.0", Enabled: enabled,
+		Manifest: addons.Manifest{ID: id, Version: "1.0.0", Access: access, Hooks: hooks}}
 }
 
 func newTrackEnv(t *testing.T) *trackEnv { return newTrackEnvWith(t, nil) }
@@ -51,8 +67,11 @@ func newTrackEnvWith(t *testing.T, opt func(*Deps)) *trackEnv {
 	today := time.Now().Format(time.DateOnly)
 	sk := &trackSkeleton{eps: []tracking.Episode{{Season: 1, Number: 1, Name: "Первая", AirDate: today},
 		{Season: 1, Number: 2, Name: "Вторая", AirDate: today}}}
-	te := &trackEnv{sk: sk}
+	te := &trackEnv{sk: sk, addons: &fakeAddons{installed: map[string]addons.Installed{
+		"scan": scanAddon("scan", "adults", true, "alpha", "beta")}, status: map[string]addons.Status{}}}
 	te.libEnv = newLibEnvWith(t, func(d *Deps, db *sql.DB) {
+		te.hooks = &addons.Hooks{T: te.addons}
+		d.AddonHooks = te.hooks
 		st := &tracking.Store{DB: db}
 		te.svc = &tracking.Service{Store: st, Skeleton: sk, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(d.Library)}}
 		te.svc.Watched = []tracking.WatchedFunc{tracking.LibraryWatched(d.Library, d.Progress)}
@@ -102,10 +121,10 @@ func (e *trackEnv) refresh(ti tracking.Title) {
 	}
 }
 
-// offLibrary gives a non-library title a source (a torrent) now and its cert.
+// offLibrary gives a non-library title a source of an addon kind (alpha) now and its cert.
 func (e *trackEnv) offLibrary(ti tracking.Title, cert string) {
 	ctx := context.Background()
-	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "alpha", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
 		e.t.Fatal(err)
 	}
 	if _, err := e.db.Exec(`UPDATE tracked_titles SET cert=? WHERE id=?`, cert, ti.ID); err != nil {
@@ -568,7 +587,7 @@ func TestChoiceRoute(t *testing.T) {
 	if w := e.do("GET", "/api/tracking/series/70/choice", "", lc); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"choice":null}` {
 		t.Fatalf("other profile %d %s", w.Code, w.Body)
 	}
-	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"magnet"}`, e.admin); w.Code != 400 {
+	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"zeta"}`, e.admin); w.Code != 400 {
 		t.Fatalf("bad kind %d", w.Code)
 	}
 	if w := e.do("PUT", "/api/tracking/series/70/choice", `{}`, e.admin); w.Code != 204 {
@@ -578,8 +597,158 @@ func TestChoiceRoute(t *testing.T) {
 	if w := e.do("GET", "/api/tracking/series/71/choice", "", kc); w.Code != 404 {
 		t.Fatalf("kid get %d", w.Code)
 	}
-	if w := e.do("PUT", "/api/tracking/series/71/choice", `{"kind":"online"}`, kc); w.Code != 404 {
+	if w := e.do("PUT", "/api/tracking/series/71/choice", `{"kind":"library"}`, kc); w.Code != 404 {
 		t.Fatalf("kid put %d", w.Code)
+	}
+}
+
+// TestPutChoice_UnknownKind: a choice's kind is library, online, or
+// a scan kind of an installed addon the profile may use (a disabled one's
+// too); a kid's is the library's alone.
+func TestPutChoice_UnknownKind(t *testing.T) {
+	e := newTrackEnv(t)
+	e.addons.installed["off"] = scanAddon("off", "adults", false, "gamma")
+	e.addons.installed["adm"] = scanAddon("adm", "admins", true, "delta")
+	_, ac := e.profile(`{"name":"Взрослый"}`)
+	kid := e.addUser(`{"name":"Вася","isKid":true,"maxRating":"12+"}`, e.admin)
+	kc := session(e.do("POST", "/api/login", `{"userId":`+itoa(kid.ID)+`}`, nil))
+	// a library title a kid may see (an off-library one is hidden from kids)
+	e.series("Сёгун", "6+", 42)
+	e.refresh(e.track(1, "series", 42, "Сёгун"))
+	put := func(c *http.Cookie, kind string) int {
+		return e.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+kind+`"}`, c).Code
+	}
+	for _, c := range []struct {
+		who    string
+		c      *http.Cookie
+		kind   string
+		status int
+	}{
+		{"admin", e.admin, "zeta", 400}, {"admin", e.admin, "alpha", 204}, {"admin", e.admin, "beta", 204},
+		{"admin", e.admin, "gamma", 204}, {"admin", e.admin, "delta", 204}, {"admin", e.admin, "online", 204},
+		{"admin", e.admin, "library", 204},
+		{"adult", ac, "alpha", 204}, {"adult", ac, "gamma", 204}, {"adult", ac, "delta", 400}, {"adult", ac, "zeta", 400},
+		{"kid", kc, "library", 204}, {"kid", kc, "", 204}, {"kid", kc, "alpha", 400}, {"kid", kc, "online", 400},
+		{"kid", kc, "zeta", 400},
+	} {
+		if got := put(c.c, c.kind); got != c.status {
+			t.Errorf("%s %q: %d, want %d", c.who, c.kind, got, c.status)
+		}
+	}
+	// no addons at all: only library and online
+	e.addons.installed = map[string]addons.Installed{}
+	if got := put(e.admin, "alpha"); got != 400 {
+		t.Errorf("alpha with no addon: %d", got)
+	}
+
+	// a library-only server: the addons' kinds, no online
+	lo := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
+	_, lac := lo.profile(`{"name":"Взрослый"}`)
+	lo.series("Сёгун", "6+", 42)
+	lo.refresh(lo.track(1, "series", 42, "Сёгун"))
+	for _, c := range []struct {
+		c      *http.Cookie
+		kind   string
+		status int
+	}{{lo.admin, "alpha", 204}, {lac, "beta", 204}, {lo.admin, "library", 204}, {lo.admin, "online", 400}, {lac, "online", 400}} {
+		if got := lo.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+c.kind+`"}`, c.c).Code; got != c.status {
+			t.Errorf("library-only %q: %d, want %d", c.kind, got, c.status)
+		}
+	}
+}
+
+// TestSourceKinds_Addons: an adult's episode rows are the library's
+// and those of every installed addon's kind it may use, on or off; a kid
+// gets the library's alone; a kind no addon declares is not shown.
+func TestSourceKinds_Addons(t *testing.T) {
+	e := newTrackEnv(t)
+	e.addons.installed["off"] = scanAddon("off", "adults", false, "gamma")
+	e.addons.installed["adm"] = scanAddon("adm", "admins", true, "delta")
+	_, ac := e.profile(`{"name":"Взрослый"}`)
+	e.series("Сёгун", "6+", 42)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.refresh(ti)
+	for _, k := range []string{"alpha", "beta", "gamma", "delta", "zeta"} {
+		if _, err := e.svc.Store.UpsertSources(context.Background(), ti.ID, k,
+			[]tracking.Source{{Season: 1, Episode: 1, Ref: k + "-ref"}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sorted := func(k []string) string { slices.Sort(k); return strings.Join(k, ",") }
+	if got := sorted(e.episodes(42, e.admin).kinds(0)); got != "alpha,beta,delta,gamma,library" {
+		t.Fatalf("admin kinds %s", got)
+	}
+	if got := sorted(e.episodes(42, ac).kinds(0)); got != "alpha,beta,gamma,library" {
+		t.Fatalf("adult kinds %s", got)
+	}
+	if got := sorted(e.episodes(42, e.kid("")).kinds(0)); got != "library" {
+		t.Fatalf("kid kinds %s", got)
+	}
+
+	// a library-only server: an adult still gets the addons' kinds, no
+	// online (R9: library-only gates online only); a kid the library's
+	lo := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
+	_, lac := lo.profile(`{"name":"Взрослый"}`)
+	lo.series("Сёгун", "6+", 42)
+	lti := lo.track(1, "series", 42, "Сёгун")
+	lo.refresh(lti)
+	for _, k := range []string{"alpha", "beta", "online"} {
+		if _, err := lo.svc.Store.UpsertSources(context.Background(), lti.ID, k,
+			[]tracking.Source{{Season: 1, Episode: 1, Ref: k + "-ref"}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for who, c := range map[string]*http.Cookie{"admin": lo.admin, "adult": lac} {
+		if got := sorted(lo.episodes(42, c).kinds(0)); got != "alpha,beta,library" {
+			t.Fatalf("library-only %s kinds %s", who, got)
+		}
+	}
+	if got := sorted(lo.episodes(42, lo.kid("")).kinds(0)); got != "library" {
+		t.Fatalf("library-only kid kinds %s", got)
+	}
+}
+
+// TestEpisodeGuideKindsFromAddons: the core names no source kind
+// of an addon; the episode guide's kinds are the library's, online's (the
+// sources build, for a profile that may watch online) and the tracking.scan
+// kinds of the installed addons. An enabled addon's kind is listed and may
+// be chosen; a disabled one's is still listed; a kind no installed
+// addon declares, or that of an addon since uninstalled, is refused.
+func TestEpisodeGuideKindsFromAddons(t *testing.T) {
+	e := newTrackEnv(t)
+	e.addons.installed = map[string]addons.Installed{
+		"on":  scanAddon("on", "adults", true, "alpha"),
+		"off": scanAddon("off", "adults", false, "gamma"),
+	}
+	e.series("Сёгун", "6+", 42)
+	ti := e.track(1, "series", 42, "Сёгун")
+	e.refresh(ti)
+	for _, k := range []string{"alpha", "beta", "gamma", "online"} {
+		if _, err := e.svc.Store.UpsertSources(context.Background(), ti.ID, k,
+			[]tracking.Source{{Season: 1, Episode: 1, Ref: k + "-ref"}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed := func() []string { return slices.Sorted(slices.Values(e.episodes(42, e.admin).kinds(0))) }
+	put := func(kind string) int {
+		return e.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+kind+`"}`, e.admin).Code
+	}
+	// no Online dep here: online rows are listed by the sources build only
+	// with «Смотреть онлайн» (TestEpisodesFilterSourcesByCaller)
+	if got := listed(); !slices.Equal(got, []string{"alpha", "gamma", "library"}) {
+		t.Fatalf("kinds %v, want [alpha gamma library]", got)
+	}
+	for kind, want := range map[string]int{"alpha": 204, "gamma": 204, "beta": 400, "library": 204} {
+		if got := put(kind); got != want {
+			t.Errorf("choice %q: %d, want %d", kind, got, want)
+		}
+	}
+	delete(e.addons.installed, "off")
+	if got := listed(); !slices.Equal(got, []string{"alpha", "library"}) {
+		t.Fatalf("after uninstall: kinds %v, want [alpha library]", got)
+	}
+	if got := put("gamma"); got != 400 {
+		t.Errorf("an uninstalled addon's kind: %d, want 400", got)
 	}
 }
 
@@ -623,7 +792,7 @@ func (o episodesOut) kinds(ep int) []string {
 func (e *trackEnv) srcRows(ti tracking.Title) {
 	ctx := context.Background()
 	now := time.Now()
-	for _, k := range []string{"pinned", "torrent", "online"} {
+	for _, k := range []string{"beta", "alpha", "online"} {
 		if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, k, []tracking.Source{{Season: 1, Episode: 1, Ref: k + "-ref"}}, now); err != nil {
 			e.t.Fatal(err)
 		}
@@ -649,13 +818,15 @@ func TestLibraryRowsCarryEpisodeItem(t *testing.T) {
 	}
 }
 
+// TestEpisodesFilterLibraryOnly: a library-only server shows no online
+// rows; the addons' kinds stay (R9: library-only gates online only).
 func TestEpisodesFilterLibraryOnly(t *testing.T) {
 	e := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
 	e.series("Сёгун", "", 42)
 	ti := e.track(1, "series", 42, "Сёгун")
 	e.srcRows(ti)
 	e.refresh(ti)
-	if k := e.episodes(42, e.admin).kinds(0); len(k) != 1 || k[0] != "library" {
+	if k := e.episodes(42, e.admin).kinds(0); !slices.Equal(slices.Sorted(slices.Values(k)), []string{"alpha", "beta", "library"}) {
 		t.Fatalf("kinds %v", k)
 	}
 }
@@ -695,8 +866,8 @@ func TestEpisodesNewFlag(t *testing.T) {
 	ti := e.track(1, "series", 42, "Сёгун")
 	e.refresh(ti)
 	ctx := context.Background()
-	// episode 1: a fresh torrent; episode 2: only the library file
-	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
+	// episode 1: a fresh alpha source; episode 2: only the library file
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "alpha", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	out := e.episodes(42, e.admin)
@@ -710,12 +881,12 @@ func TestEpisodesNewFlag(t *testing.T) {
 	if out = e.episodes(42, e.admin); out.Episodes[0].New {
 		t.Fatal("watched episode is new")
 	}
-	// a torrent first seen outside the feed window is not new
-	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 2, Ref: "old"}}, time.Now().AddDate(0, 0, -feedDays-3)); err != nil {
+	// an alpha source first seen outside the feed window is not new
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "alpha", []tracking.Source{{Season: 1, Episode: 2, Ref: "old"}}, time.Now().AddDate(0, 0, -feedDays-3)); err != nil {
 		t.Fatal(err)
 	}
 	if out = e.episodes(42, e.admin); out.Episodes[1].New {
-		t.Fatal("old torrent is new")
+		t.Fatal("old alpha source is new")
 	}
 }
 
@@ -753,7 +924,7 @@ func TestEpisodesListLibraryOnlyEpisodes(t *testing.T) {
 
 // TestEpisodesNewFollowsFeedRule: «новое» on a row agrees with «Вышло
 // новое»: an episode that aired long ago is old news however fresh its
-// torrent, and an episode already in the library does not turn new when it
+// source, and an episode already in the library does not turn new when it
 // gets another source.
 func TestEpisodesNewFollowsFeedRule(t *testing.T) {
 	e := newTrackEnv(t)
@@ -761,7 +932,7 @@ func TestEpisodesNewFollowsFeedRule(t *testing.T) {
 	ti := e.track(1, "series", 42, "Сёгун")
 	e.refresh(ti)
 	ctx := context.Background()
-	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "torrent", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
+	if _, err := e.svc.Store.UpsertSources(ctx, ti.ID, "alpha", []tracking.Source{{Season: 1, Episode: 1, Ref: "t"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if out := e.episodes(42, e.admin); out.Episodes[0].New {
@@ -776,11 +947,11 @@ func TestEpisodesNewFollowsFeedRule(t *testing.T) {
 	if _, err := e2.db.Exec(`UPDATE episode_sources SET first_seen=? WHERE kind='library'`, old); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e2.svc.Store.UpsertSources(ctx, ti2.ID, "pinned", []tracking.Source{{Season: 1, Episode: 1, Ref: "pin:1:0"}}, time.Now()); err != nil {
+	if _, err := e2.svc.Store.UpsertSources(ctx, ti2.ID, "beta", []tracking.Source{{Season: 1, Episode: 1, Ref: "b:1:0"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if out := e2.episodes(42, e2.admin); out.Episodes[0].New {
-		t.Fatal("a library episode with a fresh pin is new")
+		t.Fatal("a library episode with a fresh beta source is new")
 	}
 }
 

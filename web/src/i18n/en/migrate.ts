@@ -24,6 +24,7 @@ export default {
   'migrate.scanning': 'The library is still being scanned — please wait',
   'migrate.what': 'What to Move',
   'migrate.oldServices': 'Old services',
+  'migrate.addons': 'Other Moves',
   'migrate.profiles': 'Profiles',
   'migrate.marks': { one: '{count} mark', other: '{count} marks' },
   'migrate.dontMove': 'Don’t move',
@@ -48,5 +49,6 @@ export default {
   'migrate.progress.now': 'Now: {name} · {done} of {total} done',
   'migrate.report.check': 'Check',
   'migrate.report.run': 'Move',
+  'migrate.report.undo': 'Undoing a move',
   'migrate.subtitle': '{app} moves progress and marks from Jellyfin, Kavita and Audiobookshelf.',
 } satisfies EnOf<typeof ru>

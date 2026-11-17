@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/active-count",
+  "status": 200,
+  "body": {
+    "count": 0
+  }
+}

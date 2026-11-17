@@ -3,6 +3,7 @@ module github.com/antresol-app/antresol
 go 1.27.1
 
 require (
+	github.com/antresol-app/antresol/addonkit v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/go-chi/chi/v5 v5.5.0
@@ -37,3 +38,5 @@ require (
 )
 
 replace github.com/bodgit/sevenzip => ./third_party/sevenzip
+
+replace github.com/antresol-app/antresol/addonkit => ./addonkit

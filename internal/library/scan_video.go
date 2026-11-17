@@ -122,30 +122,6 @@ func walkVideos(ctx context.Context, root string) ([]videoFile, error) {
 	return out, err
 }
 
-// dirIndex caches case-insensitive directory listings.
-type dirIndex map[string]map[string]string
-
-func (di dirIndex) find(dir string, names ...string) string {
-	m, ok := di[dir]
-	if !ok {
-		m = map[string]string{}
-		if es, err := os.ReadDir(dir); err == nil {
-			for _, e := range es {
-				m[strings.ToLower(e.Name())] = e.Name()
-			}
-		}
-		di[dir] = m
-	}
-	for _, n := range names {
-		if real, ok := m[strings.ToLower(n)]; ok {
-			return filepath.Join(dir, real)
-		}
-	}
-	return ""
-}
-
-var imgExts = []string{".jpg", ".jpeg", ".png", ".webp"}
-
 func withExts(stem string) []string {
 	out := make([]string, len(imgExts))
 	for i, e := range imgExts {

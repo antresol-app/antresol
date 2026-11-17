@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { TopNav } from '../components/TopNav'
-import { useActiveDownloads } from '../components/DownloadsBadge'
 import { MiniPlayer } from '../player/MiniPlayer'
 import { AudioScreenStop } from '../player/AudioScreenStop'
 import { NowPlaying } from '../player/NowPlaying'
@@ -15,9 +14,6 @@ import { useLang, useT } from '../i18n'
 import { prefetchSections } from './chunks'
 import styles from './Shell.module.css'
 
-// the admin's downloads badge (none in the core build)
-const useDownloads = __LIBRARY_EDITION__ ? (_enabled: boolean) => 0 : useActiveDownloads
-
 export function Shell() {
   // «Сейчас играет», opened from the mini player.
   const [full, setFull] = useState(false)
@@ -25,7 +21,6 @@ export function Shell() {
   const closeFull = useCallback(() => setFull(false), [])
   const { user } = useSession()
   const { pathname } = useLocation()
-  const downloads = useDownloads(Boolean(user?.isAdmin))
   // The mini player floats over the bottom of the page: keep it clear.
   const mini = useAudioSelect((s) => s.queue.length > 0)
   const t = useT()
@@ -55,7 +50,7 @@ export function Shell() {
       <a href="#main" className="skip-link">
         {t('app.skipToContent')}
       </a>
-      <TopNav user={user} downloads={downloads} />
+      <TopNav user={user} />
       <main id="main" tabIndex={-1} className={styles.main} data-mini={mini ? 'on' : undefined}>
         <Outlet key={lang} />
       </main>

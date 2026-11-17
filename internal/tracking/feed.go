@@ -10,7 +10,7 @@ import (
 
 // FeedItem is one episode (a movie: season and episode 0) of a profile's
 // tracked title. FirstSeen is when its first source appeared (zero: none
-// yet); Kinds are the kinds of its sources (library, torrent, ...).
+// yet); Kinds are the kinds of its sources (library, online, an addon's kinds).
 type FeedItem struct {
 	Title           Title
 	Season, Episode int

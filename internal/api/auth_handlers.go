@@ -30,6 +30,8 @@ type authAPI struct {
 	caps meCaps
 	// libraryOnly is me.libraryOnly.
 	libraryOnly bool
+	// addons is me.addons.
+	addons bool
 	// requestsOpen says whether kids' requests are offered here (nil: no).
 	requestsOpen func(context.Context) bool
 }
@@ -52,6 +54,9 @@ type me struct {
 	// LibraryOnly: the server serves its library only. The web hides the
 	// screens of the sources build's other features.
 	LibraryOnly bool `json:"libraryOnly"`
+	// Addons: the server runs addons (not VAULT_ADDONS=off); the web shows
+	// «Расширения» to admins only then.
+	Addons bool `json:"addons"`
 }
 
 // patchMe: PATCH /api/me {"hideProgress": bool}, the settings a profile
@@ -83,7 +88,7 @@ func (a *authAPI) patchMe(w http.ResponseWriter, r *http.Request) {
 
 // meOf is the /api/me answer for u on request r.
 func (a *authAPI) meOf(r *http.Request, u auth.User) me {
-	m := me{User: u, Remote: !a.net.IsTrusted(r), meExtra: a.caps.of(r.Context(), u), LibraryOnly: a.libraryOnly}
+	m := me{User: u, Remote: !a.net.IsTrusted(r), meExtra: a.caps.of(r.Context(), u), LibraryOnly: a.libraryOnly, Addons: a.addons}
 	if a.requestsOpen != nil && (u.IsKid || u.IsAdmin) && a.requestsOpen(r.Context()) {
 		m.CanRequest, m.Requests = u.IsKid, u.IsAdmin && !u.IsKid
 	}
@@ -223,13 +228,13 @@ func (a *authAPI) checkLogin(w http.ResponseWriter, r *http.Request, userID int6
 // mountAuth mounts setup, login, device sign-in and profiles. guard is the
 // router's one session check. throttle counts failed password checks; it is
 // shared with Subsonic and OPDS (nil: a new one).
-func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *auth.Throttle, caps meCaps, libraryOnly bool, requestsOpen func(context.Context) bool) {
+func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *auth.Throttle, caps meCaps, libraryOnly, addons bool, requestsOpen func(context.Context) bool) {
 	if throttle == nil {
 		throttle = auth.NewThrottle()
 	}
 	sessions, network := guard.Sessions, guard.Network
 	a := &authAPI{users: users, sessions: sessions, net: network, throttle: throttle, loginSlots: make(chan struct{}, 2), caps: caps,
-		libraryOnly: libraryOnly, requestsOpen: requestsOpen}
+		libraryOnly: libraryOnly, addons: addons, requestsOpen: requestsOpen}
 	r.Get("/api/setup", func(w http.ResponseWriter, r *http.Request) {
 		need, err := users.NeedsSetup(r.Context())
 		if err != nil {

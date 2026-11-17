@@ -1,0 +1,68 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/tracking/titles/1/sources",
+  "status": 200,
+  "body": [
+    {
+      "titleId": 1,
+      "season": 1,
+      "episode": 1,
+      "kind": "library",
+      "ref": "file:2",
+      "provider": "library",
+      "quality": "",
+      "labels": [],
+      "meta": {
+        "itemId": 4,
+        "fileId": 2
+      },
+      "firstSeen": "2026-11-02T10:00:00Z",
+      "lastSeen": "2026-11-02T10:00:00Z"
+    },
+    {
+      "titleId": 1,
+      "season": 1,
+      "episode": 2,
+      "kind": "alpha",
+      "ref": "alpha:1",
+      "provider": "a1",
+      "quality": "1080p",
+      "labels": [
+        "HDR"
+      ],
+      "meta": {
+        "sourceId": "s-1",
+        "voice": "Студия",
+        "lang": "ru",
+        "audio": "MVO",
+        "studios": [
+          "Студия"
+        ],
+        "subs": [
+          "en"
+        ],
+        "fileIndex": 3
+      },
+      "firstSeen": "2026-11-02T10:00:00Z",
+      "lastSeen": "2026-11-02T10:00:00Z"
+    },
+    {
+      "titleId": 1,
+      "season": 1,
+      "episode": 2,
+      "kind": "beta",
+      "ref": "beta:1",
+      "provider": "b1",
+      "quality": "720p",
+      "labels": [],
+      "meta": {
+        "providerId": "b-host",
+        "voice": "Оригинал",
+        "lang": "ja",
+        "audio": "Original"
+      },
+      "firstSeen": "2026-11-02T10:00:00Z",
+      "lastSeen": "2026-11-02T10:00:00Z"
+    }
+  ]
+}

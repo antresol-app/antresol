@@ -1,22 +1,23 @@
 // «Управление → Просьбы» (admin): what kid profiles asked for («Попросить»),
-// the waiting ones first. «Одобрить» approves a request at once; on a server
-// that can download (user.canAcquire) it opens the release picker of the
-// title instead (a series: its page, where seasons are picked), and the
-// download it starts approves the request on the server. The kid sees
+// the waiting ones first. «Одобрить» opens the sheet of the first addon
+// request action that wants the request (requestActions: a release picker,
+// whose download approves the request on the server); with none it
+// approves at once, and a sheet that throws leaves the request waiting
+// with an error shown. The kid sees
 // «Уже в медиатеке» once the library has the title. «Отказать» takes an
 // optional reason the kid sees. Updates live (request.changed, library.updated).
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { approveRequest, declineRequest, getRequests, useEvents, errorText } from '../../api/client'
 import type { KidRequest } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
-import { RequestStatus, titlePath } from '../../components/RequestButton'
+import { RequestStatus } from '../../components/RequestButton'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
 import { ago } from '../../state/format'
 import { refreshPendingRequests } from '../../state/kidRequests'
-import { useSession } from '../../state/session'
+import { AddonBoundary, useAddonSlot } from '../../addons/slots'
+import type { Contribution } from '../../addons/registry'
 import { useT } from '../../i18n'
 import { RequestCard } from '../RequestCard'
 import s from '../Search.module.css'
@@ -24,17 +25,25 @@ import m from './Manage.module.css'
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; list: KidRequest[] }
 
-// The release picker of the sources build (a lazy chunk; none in the core build)
-const ReleasePicker = __LIBRARY_EDITION__ ? null : lazy(() => import('./RequestsRelease'))
+type Action = Contribution<'requestActions'>
+
+/** The first action that wants the request (a `visible` that throws: not that one). */
+function actionFor(actions: Action[], r: KidRequest): Action | undefined {
+  return actions.find((a) => {
+    try {
+      return !a.visible || a.visible(r)
+    } catch (e) {
+      console.warn(`antresol: addon ${a.addonId} failed to answer for a request`, e)
+      return false
+    }
+  })
+}
 
 export function Requests() {
   const t = useT()
-  const navigate = useNavigate()
-  const { user } = useSession()
-  // a server that downloads: «Одобрить» picks the release; else it approves at once
-  const canAcquire = !__LIBRARY_EDITION__ && Boolean(user?.canAcquire)
+  const actions = useAddonSlot('requestActions')
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [approving, setApproving] = useState<KidRequest | null>(null)
+  const [approving, setApproving] = useState<{ request: KidRequest; action: Action } | null>(null)
   const [declining, setDeclining] = useState<KidRequest | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
   const [error, setError] = useState('')
@@ -74,9 +83,14 @@ export function Requests() {
       .finally(() => setBusy(null))
   }
   const approve = (r: KidRequest) => {
-    if (!canAcquire) approveNow(r)
-    else if (r.kind === 'series') navigate(titlePath(r))
-    else setApproving(r)
+    const action = actionFor(actions, r)
+    if (action) setApproving({ request: r, action })
+    else approveNow(r)
+  }
+  const approved = () => {
+    setApproving(null)
+    load(true)
+    refreshPendingRequests()
   }
   const line = (r: KidRequest) => t('requests.from', { name: r.user?.name ?? '', when: ago(r.createdAt) })
 
@@ -87,7 +101,7 @@ export function Requests() {
           <h2 id="requests-title" className={m.title}>
             {t('requests.title')}
           </h2>
-          <p className={m.subtitle}>{canAcquire ? t('requests.leadFull') : t('requests.lead')}</p>
+          <p className={m.subtitle}>{t('requests.lead')}</p>
         </div>
       </header>
       {state.status === 'loading' && (
@@ -155,10 +169,20 @@ export function Requests() {
           )}
         </>
       )}
-      {approving && ReleasePicker && (
-        <Suspense fallback={null}>
-          <ReleasePicker request={approving} onClose={() => setApproving(null)} />
-        </Suspense>
+      {approving && (
+        <AddonBoundary
+          key={approving.request.id}
+          addonId={approving.action.addonId}
+          fallback={null}
+          // the sheet failed: the request stays waiting (approving now would
+          // say «Одобрено» with nothing coming) and the admin is told
+          onError={() => {
+            setApproving(null)
+            setError(t('requests.sheetFailed'))
+          }}
+        >
+          <approving.action.element request={approving.request} onClose={() => setApproving(null)} onApproved={approved} />
+        </AddonBoundary>
       )}
       {declining && (
         <DeclineSheet

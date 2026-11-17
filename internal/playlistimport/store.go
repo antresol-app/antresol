@@ -7,56 +7,54 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/playlistimport/model"
 )
 
 // Job statuses: reading → preview → matching → downloading → done; failed,
 // cancelled.
 const (
-	StatusReading     = "reading"
-	StatusPreview     = "preview"
-	StatusMatching    = "matching"
-	StatusDownloading = "downloading"
-	StatusDone        = "done"
-	StatusFailed      = "failed"
-	StatusCancelled   = "cancelled"
+	StatusReading     = model.StatusReading
+	StatusPreview     = model.StatusPreview
+	StatusMatching    = model.StatusMatching
+	StatusDownloading = model.StatusDownloading
+	StatusDone        = model.StatusDone
+	StatusFailed      = model.StatusFailed
+	StatusCancelled   = model.StatusCancelled
 )
 
 // Track states.
 const (
-	TrackPending     = "pending"
-	TrackMatched     = "matched"
-	TrackReview      = "review"
-	TrackSkipped     = "skipped"
-	TrackHave        = "have"
-	TrackQueued      = "queued"
-	TrackDownloading = "downloading"
-	TrackDone        = "done"
-	TrackNotFound    = "not_found"
-	TrackFailed      = "failed"
+	TrackPending     = model.TrackPending
+	TrackMatched     = model.TrackMatched
+	TrackReview      = model.TrackReview
+	TrackSkipped     = model.TrackSkipped
+	TrackHave        = model.TrackHave
+	TrackQueued      = model.TrackQueued
+	TrackDownloading = model.TrackDownloading
+	TrackDone        = model.TrackDone
+	TrackNotFound    = model.TrackNotFound
+	TrackFailed      = model.TrackFailed
 )
 
-// Group states.
+// Group states (model: GroupWaitingDownload, GroupNoFormat).
 const (
-	GroupWaiting      = "waiting"
-	GroupSearching    = "searching"
-	GroupWaitingSpace = "waiting_space"
-	// GroupWaitingDownload: the album downloads elsewhere (another job's
-	// download, or «На сервер»): Group.WaitingFor names it.
-	GroupWaitingDownload = "waiting_download"
-	GroupDownloading     = "downloading"
-	GroupDone            = "done"
-	GroupHave            = "have"
-	GroupNotFound        = "not_found"
-	// GroupNoFormat: releases exist, none in «Формат загрузки»; it waits
-	// for «Скачать в другом формате» (Group.AnyFormat).
-	GroupNoFormat = "no_format"
-	GroupFailed   = "failed"
+	GroupWaiting         = model.GroupWaiting
+	GroupSearching       = model.GroupSearching
+	GroupWaitingSpace    = model.GroupWaitingSpace
+	GroupWaitingDownload = model.GroupWaitingDownload
+	GroupDownloading     = model.GroupDownloading
+	GroupDone            = model.GroupDone
+	GroupHave            = model.GroupHave
+	GroupNotFound        = model.GroupNotFound
+	GroupNoFormat        = model.GroupNoFormat
+	GroupFailed          = model.GroupFailed
 )
 
 // Store errors (their text is shown as is).
 var (
-	ErrNotFound = errors.New("Не найдено")
-	ErrBusy     = errors.New("Импорт уже идёт")
+	ErrNotFound = model.ErrNotFound
+	ErrBusy     = model.ErrBusy
 	ErrStarted  = errors.New("Импорт уже начат")
 )
 
@@ -66,53 +64,12 @@ type Store struct {
 	Now func() time.Time // nil: time.Now
 }
 
-// Job is one import run.
-type Job struct {
-	ID, UserID int64
-	Service    string
-	Account    string
-	Status     string
-	Favorites  bool // liked songs become «Избранное»
-	Error      string
-	Report     Report
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	StartedAt  *time.Time
-	FinishedAt *time.Time
-}
-
-// Active reports whether the job is matching or downloading.
-func (j Job) Active() bool { return j.Status == StatusMatching || j.Status == StatusDownloading }
-
-// Report is what the import could not do (report_json).
-type Report struct {
-	SavedAlbumsMissing int `json:"savedAlbumsMissing"`
-	// Unresolved: songs an uploaded file named only by an id (a Takeout
-	// playlist video not in its library), left out of the import.
-	Unresolved int `json:"unresolved"`
-}
-
-// Track is one song of a job.
-type Track struct {
-	ID, JobID      int64
-	Key            string
-	Artist, Title  string
-	Album          string
-	AlbumArtist    string
-	ISRC           string
-	DurationMs     int64
-	AddedAt        *time.Time
-	Liked          bool
-	State, Reason  string
-	MBRecording    string
-	MBReleaseGroup string
-	MBTitle        string
-	MBArtist       string
-	MBAlbum        string
-	MBYear         int
-	GroupID        int64 // 0: none
-	ItemID         int64 // 0: none
-}
+// A job, what it could not do and its songs (model: Job.Active).
+type (
+	Job    = model.Job
+	Report = model.Report
+	Track  = model.Track
+)
 
 // wantedSQL selects the job's songs to import (t: import_tracks, j: its
 // import_jobs row): liked ones when «Избранное» is on, and those of the

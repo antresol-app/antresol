@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -146,7 +147,7 @@ func TestNothingIsQueuedOrSentByDefault(t *testing.T) {
 		t.Fatalf("queued %d without settings", n)
 	}
 	p, err := f.svc.Prefs(f.ctx, u.ID)
-	if err != nil || p.Email != "" || p.Episodes || p.Available || p.Requests || p.Downloads || !p.QuietHours {
+	if err != nil || p.Email != "" || p.Episodes || p.Available || p.Requests || !p.QuietHours {
 		t.Fatalf("defaults %+v %v", p, err)
 	}
 	// an address but no topic: still nothing
@@ -519,11 +520,11 @@ func TestSetPrefsChecksAddressAndTopics(t *testing.T) {
 	if _, err := f.svc.SetPrefs(f.ctx, u, Prefs{Email: "a@localhost"}); !errors.Is(err, ErrBadEmail) {
 		t.Fatalf("no domain: %v", err)
 	}
-	p, err := f.svc.SetPrefs(f.ctx, u, Prefs{Email: " a@example.com ", Downloads: true, Requests: true, Episodes: true, Lang: "de"})
+	p, err := f.svc.SetPrefs(f.ctx, u, Prefs{Email: " a@example.com ", Requests: true, Episodes: true, Lang: "de"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Email != "a@example.com" || p.Downloads || p.Requests || !p.Episodes || p.Lang != "" {
+	if p.Email != "a@example.com" || p.Requests || !p.Episodes || p.Lang != "" {
 		t.Fatalf("an adult's %+v", p)
 	}
 }
@@ -602,5 +603,27 @@ func TestHTMLEscapesTitles(t *testing.T) {
 	}
 	if strings.Contains(l.HTML, "<script>") || strings.Contains(l.HTML, "<b>Аня") {
 		t.Fatal(l.HTML)
+	}
+}
+
+// The topics by role: a kid's requests only while they are open; an admin
+// and an adult have the shared ones (an addon's come from its manifest).
+func TestTopicsByRole(t *testing.T) {
+	f := newFixture(t)
+	admin := f.user(t, "Папа", true, false)
+	kid := f.user(t, "Маша", false, true)
+	adult := f.user(t, "Аня", false, false)
+	if got := f.svc.TopicsFor(f.ctx, admin); !slices.Equal(got, []string{Episodes, Available}) {
+		t.Errorf("admin %v", got)
+	}
+	if got := f.svc.TopicsFor(f.ctx, kid); slices.Contains(got, Requests) {
+		t.Errorf("kid, requests closed %v", got)
+	}
+	f.svc.RequestsOpen = func(context.Context) bool { return true }
+	if got := f.svc.TopicsFor(f.ctx, kid); !slices.Equal(got, []string{Episodes, Available, Requests}) {
+		t.Errorf("kid %v", got)
+	}
+	if got := f.svc.TopicsFor(f.ctx, adult); !slices.Equal(got, []string{Episodes, Available}) {
+		t.Errorf("adult %v", got)
 	}
 }

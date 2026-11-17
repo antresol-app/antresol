@@ -1,6 +1,6 @@
 // Avatar button in the top-right corner. Opens the app's Menu (a sheet on a
 // phone) with the current profile, its places («Файлы», «Управление» for
-// admins, «Мои просьбы», «Мои слежения»), «Настройки» (the profile's own:
+// admins, «Мои просьбы», the addons' entries), «Настройки» (the profile's own:
 // pages/ProfileSettings.tsx) and «Сменить профиль», then the profile's
 // library («Общая медиатека / Моя медиатека», as Photos has it in its View
 // menu besides the toolbar picker).
@@ -10,6 +10,8 @@ import { useLibraryScope } from '../state/libraryScope'
 import { usePendingRequests } from '../state/kidRequests'
 import { session } from '../state/session'
 import { useLang, useT } from '../i18n'
+import { addonString } from '../addons/registry'
+import { useProfileMenu } from '../addons/slots'
 import { Avatar } from './Avatar'
 import { Icon, type IconName } from './Icon'
 import { LIBRARY_OPTIONS } from './LibraryScopeMenu'
@@ -27,7 +29,9 @@ interface Item {
 
 export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchProfile?: () => void }) {
   const t = useT()
-  useLang()
+  const lang = useLang()
+  // the addons' entries (none for a kid; visible(user) may hide one)
+  const addonEntries = useProfileMenu()
   const library = useLibraryScope()
   const navigate = useNavigate()
   // requests waiting for an admin's answer (none where requests are closed)
@@ -74,18 +78,13 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
           },
         ]
       : []),
-    // what this adult follows (the admin sees every follow in «Управление → Слежение»);
-    // a library-only server has no «Следить»
-    ...(!__LIBRARY_EDITION__ && !user.isAdmin && !user.isKid && !user.libraryOnly
-      ? [
-          {
-            id: 'follows',
-            label: t('common.myFollows'),
-            icon: 'eye' as const,
-            run: () => navigate('/follows'),
-          },
-        ]
-      : []),
+    // the addons' places of the profile
+    ...addonEntries.map((e, i) => ({
+      id: `addon:${e.addonId}:${i}`,
+      label: addonString(e.addonId, lang, e.label),
+      icon: e.icon,
+      run: () => navigate(e.to),
+    })),
     // the profile's own settings: language, sound, mail, app password, devices
     {
       id: 'settings',

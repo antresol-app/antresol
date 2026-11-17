@@ -8,9 +8,14 @@ type Handler = (e: ServerEvent) => void
 let source: EventSource | null = null
 const handlers = new Set<Handler>()
 // request.changed (a kid's request made or answered: {id, userId}) reaches the kid and the admins; disk.warning,
-// migrate.progress and import.progress reach admins only. Another build adds events of its own.
-const CORE_EVENTS = ['library.updated', 'request.changed', 'disk.warning', 'migrate.progress', 'import.progress']
-const KNOWN = __LIBRARY_EDITION__ ? CORE_EVENTS : [...CORE_EVENTS, 'torrent.progress', 'source.status', 'follow.queued', 'follow.checked']
+// migrate.progress and import.progress reach admins only. The addons' come as addon.<id>.<name> (listenEvent).
+const KNOWN = ['library.updated', 'request.changed', 'disk.warning', 'migrate.progress', 'import.progress']
+// Event types added at runtime (addons: addon.<id>.<name>); kept across reconnects.
+const extra = new Set<string>()
+
+function listen(s: EventSource, t: string) {
+  s.addEventListener(t, (m) => dispatch(t, (m as MessageEvent).data as string))
+}
 
 function dispatch(type: string, raw: string) {
   let data: unknown = raw
@@ -27,7 +32,8 @@ function connect() {
   // EventSource cannot send Accept-Language: the language goes in the query
   source = new EventSource(`/api/events?lang=${getLanguage()}`)
   source.onmessage = (m) => dispatch('message', m.data as string)
-  for (const t of KNOWN) source.addEventListener(t, (m) => dispatch(t, (m as MessageEvent).data as string))
+  for (const t of KNOWN) listen(source, t)
+  for (const t of extra) listen(source, t)
   // EventSource reconnects by itself; errors never surface to the UI.
 }
 
@@ -42,6 +48,13 @@ subscribeLanguage(() => {
   disconnect()
   connect()
 })
+
+/** Delivers named events of `type` too (an SSE stream only hands over the names it is asked for). */
+export function listenEvent(type: string) {
+  if (KNOWN.includes(type) || extra.has(type)) return
+  extra.add(type)
+  if (source) listen(source, type)
+}
 
 /**
  * Subscribes to server-sent events. `types` filters by event type; omit for all.

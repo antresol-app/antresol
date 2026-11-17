@@ -22,6 +22,7 @@ export default {
   'migrate.scanning': 'Медиатека ещё сканируется — подождите',
   'migrate.what': 'Что перенести',
   'migrate.oldServices': 'Старые сервисы',
+  'migrate.addons': 'Другие переезды',
   'migrate.profiles': 'Профили',
   'migrate.marks': { one: '{count} отметка', few: '{count} отметки', many: '{count} отметок' },
   'migrate.dontMove': 'Не переносить',
@@ -46,5 +47,6 @@ export default {
   'migrate.progress.now': 'Сейчас: {name} · готово {done} из {total}',
   'migrate.report.check': 'Проверка',
   'migrate.report.run': 'Перенос',
+  'migrate.report.undo': 'Возврат перенесённого',
   'migrate.subtitle': '{app} перенесёт прогресс и отметки из Jellyfin, Kavita и Audiobookshelf.',
 }

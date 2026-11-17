@@ -1,0 +1,43 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/users",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "uid": "{uid}",
+      "name": "Папа",
+      "isAdmin": true,
+      "isKid": false,
+      "lang": "ru",
+      "languages": [
+        "ru",
+        "en"
+      ]
+    },
+    {
+      "id": 2,
+      "uid": "{uid}",
+      "name": "Маша",
+      "isAdmin": false,
+      "isKid": false,
+      "lang": "ru",
+      "languages": [
+        "ru",
+        "en"
+      ]
+    },
+    {
+      "id": 3,
+      "uid": "{uid}",
+      "name": "Вася",
+      "isAdmin": false,
+      "isKid": true,
+      "lang": "ru",
+      "languages": [
+        "ru",
+        "en"
+      ]
+    }
+  ]
+}

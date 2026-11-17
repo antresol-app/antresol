@@ -1,0 +1,9 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/play/inputs",
+  "status": 201,
+  "body": {
+    "id": "{input}",
+    "expiresAt": "{time}"
+  }
+}

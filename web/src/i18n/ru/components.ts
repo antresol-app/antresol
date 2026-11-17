@@ -88,6 +88,12 @@ export default {
   'comp.devices.signOutTitle': 'Выйти на «{name}»?',
   'comp.devices.signOutAction': 'Выйти',
   // DiskMeter
+  'comp.pending.active': 'Загружается {n} %',
+  'comp.pending.starting': 'Загружается',
+  'comp.pending.paused': 'Пауза · {n} %',
+  'comp.pending.waiting': 'Ждёт места на диске',
+  'comp.pending.organizing': 'Добавляется в медиатеку',
+  'comp.pending.error': 'Не удалось загрузить',
   'comp.disk.movies': 'Фильмы',
   'comp.disk.series': 'Сериалы',
   'comp.disk.music': 'Музыка',
@@ -305,7 +311,4 @@ export default {
 
   // the sources build's, but named by core code (were in ./full.ts)
   'comp.card.online': 'Онлайн',
-  'comp.disk.cache': 'Кеш',
-  'comp.notify.availableHintFull': 'Когда фильм из «Хочу посмотреть» появится в медиатеке',
-  'comp.notify.downloads': 'Загрузка завершилась / не удалась',
 } as const

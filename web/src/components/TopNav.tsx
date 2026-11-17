@@ -1,5 +1,5 @@
 // Global navigation, variant B: a centred matte-glass pill (tvOS style) with the
-// profile and downloads on the right. Below 700px the pill is replaced by the
+// profile and the addons' badges on the right. Below 700px the pill is replaced by the
 // bottom tab bar (ui/TabBar) and the header keeps only the brand and the profile.
 import { APP_NAME } from '../brand'
 import { useEffect, useRef, useState } from 'react'
@@ -8,7 +8,7 @@ import { useSlidingThumb } from '../ui/slidingThumb'
 import type { User } from '../api/types'
 import { SECTIONS, searchHref } from '../app/sections'
 import { useIsCompact } from '../state/useMediaQuery'
-import { DownloadsBadge } from './DownloadsBadge'
+import { NavBadges } from './NavBadges'
 import { useT } from '../i18n'
 import { Icon } from './Icon'
 import { LogoMark } from './Logo'
@@ -18,8 +18,6 @@ import styles from './TopNav.module.css'
 
 export interface TopNavProps {
   user: User
-  /** Active downloads; shown to admins only. */
-  downloads?: number
   onSwitchProfile?: () => void
 }
 
@@ -34,7 +32,7 @@ function useScrolled(threshold = 8) {
   return scrolled
 }
 
-export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
+export function TopNav({ user, onSwitchProfile }: TopNavProps) {
   const t = useT()
   const compact = useIsCompact()
   const scrolled = useScrolled()
@@ -76,7 +74,7 @@ export function TopNav({ user, downloads = 0, onSwitchProfile }: TopNavProps) {
         )}
 
         <div className={styles.trailing}>
-          {!__LIBRARY_EDITION__ && user.isAdmin && <DownloadsBadge count={downloads} />}
+          <NavBadges />
           <ProfileMenu user={user} onSwitchProfile={onSwitchProfile} />
         </div>
       </header>

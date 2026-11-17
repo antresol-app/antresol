@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, useLayoutEffect } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, getItem, getTrackPrefs, errorText } from '../api/client'
 import type { Episode, ItemDetail, TrackPrefs } from '../api/types'
+import type { TrackActionItem } from '../addons/registry'
 import { episodeToPlay } from '../components/ActionBar'
 import { episodeCode, episodeTitle } from '../components/EpisodeList'
 import { Icon } from '../components/Icon'
@@ -133,6 +134,13 @@ export function Player() {
       }
     : undefined
 
+  const trackActionItem: TrackActionItem | undefined = isEpisode
+    ? item.seriesId
+      ? { id: item.seriesId, title, kind: 'series' }
+      : undefined
+    : item.kind === 'movie'
+      ? { id: item.id, title, kind: 'movie' }
+      : undefined
   return (
     <VideoPlayer
       key={`${item.id}-${parts.map((p) => p.id).join(',')}`}
@@ -145,9 +153,8 @@ export function Player() {
       next={next}
       onClose={close}
       tracks={tracks}
-      voiceOverItem={
-        __LIBRARY_EDITION__ ? undefined : isEpisode ? (item.seriesId ? { id: item.seriesId, title } : undefined) : item.kind === 'movie' ? { id: item.id, title } : undefined
-      }
+      // the addons' track actions are of the movie, or of the series of an episode
+      trackActionItem={trackActionItem}
     />
   )
 }

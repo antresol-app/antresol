@@ -186,7 +186,7 @@ func TestRepackFailureLeavesTheFile(t *testing.T) {
 
 // A file another tool keeps open (shared) and a hard-linked one (another app holds the
 // same data) stay .ts.
-func TestRepackSkipsTorrentAndLinkedFiles(t *testing.T) {
+func TestRepackSkipsLegacyAndLinkedFiles(t *testing.T) {
 	s, r, src := repackFixture(t)
 	ctx := context.Background()
 	if _, err := s.Repo.db.Exec(`UPDATE files SET torrent_infohash='abc'`); err != nil {
@@ -196,7 +196,7 @@ func TestRepackSkipsTorrentAndLinkedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(src); err != nil {
-		t.Fatalf("torrent file repacked: %v", err)
+		t.Fatalf("a file of the old download column repacked: %v", err)
 	}
 	if _, err := s.Repo.db.Exec(`UPDATE files SET torrent_infohash=NULL`); err != nil {
 		t.Fatal(err)
@@ -209,5 +209,31 @@ func TestRepackSkipsTorrentAndLinkedFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(src); err != nil {
 		t.Fatalf("linked file repacked: %v", err)
+	}
+}
+
+// A file an addon references (addon_file_refs) shares its data with the
+// addon: it is left as it is, while a .ts without a reference is repacked.
+func TestRepackSkipsAddonRefs(t *testing.T) {
+	s, r, src := repackFixture(t)
+	ctx := context.Background()
+	mv := filepath.Dir(filepath.Dir(src))
+	other := filepath.Join(mv, "Shrek (2001)", "Shrek.2001.BD-Remux.ts")
+	writeTS(t, other)
+	if _, err := s.ScanVideo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	addRef(t, s.Repo, "a", "r1", src)
+	if err := r.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Fatalf("referenced file repacked: %v", err)
+	}
+	if _, err := os.Stat(other); !os.IsNotExist(err) {
+		t.Fatalf("unreferenced .ts not repacked: %v", err)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(other, ".ts") + ".mkv"); err != nil {
+		t.Fatalf("no .mkv: %v", err)
 	}
 }

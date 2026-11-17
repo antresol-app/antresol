@@ -1,0 +1,5 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/imports/groups/2/fail",
+  "status": 204
+}

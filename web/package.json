@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && vite build -c vite.sw.config.ts && node scripts/sw-assets.mjs && node -e \"require('fs').writeFileSync('dist/.gitkeep','')\"",
     "typecheck": "tsc -b",
+    "sdk:types": "node scripts/sdk-types.mjs",
     "build:reader-native": "vite build --config vite.reader-native.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",

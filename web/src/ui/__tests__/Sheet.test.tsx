@@ -22,7 +22,7 @@ describe('Sheet', () => {
 
   it('closes a read-only picker on a click outside it, not on a press that started inside', () => {
     const onCancel = vi.fn()
-    const { unmount } = render(<Sheet title="Раздачи" role="dialog" dismissOnOutside onCancel={onCancel} />)
+    const { unmount } = render(<Sheet title="Источники" role="dialog" dismissOnOutside onCancel={onCancel} />)
     const sheet = document.querySelector('[role="dialog"]')!
     const backdrop = sheet.parentElement!
     fireEvent.mouseDown(sheet)
@@ -69,7 +69,7 @@ describe('Sheet', () => {
 
   it('a dialog without a Cancel button closes with the round ✕; a form or a confirmation keeps its Cancel', () => {
     const onCancel = vi.fn()
-    const picker = render(<Sheet title="Раздачи" role="dialog" onCancel={onCancel} actions={[{ label: 'Смотреть', kind: 'primary', run: () => {} }]} />)
+    const picker = render(<Sheet title="Источники" role="dialog" onCancel={onCancel} actions={[{ label: 'Смотреть', kind: 'primary', run: () => {} }]} />)
     const close = screen.getByRole('button', { name: 'Закрыть' })
     // focus on open goes to the content (here the primary button), not to the ✕
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Смотреть' }))

@@ -120,6 +120,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.hold {
+  flex: none;
+  margin-left: var(--s-1h);
+}
 .where {
   flex: none;
   max-width: 40%;

@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/series/126308/episodes",
+  "status": 200,
+  "body": [
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      2
+    ]
+  ]
+}

@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/antresol-app/antresol/internal/events"
@@ -66,5 +67,39 @@ func TestImportFilesCreatesPreview(t *testing.T) {
 	// the routes need a session
 	if w := e.do("GET", "/api/import/jobs", "", nil); w.Code != 401 {
 		t.Fatalf("no session: %d", w.Code)
+	}
+}
+
+// GET /api/import/services also says what the server does with the albums
+// the library lacks (downloads: an addon takes them) and whether the
+// review can search a catalog: the page words its texts by these, not by
+// what else the addons offer.
+func TestImportServicesOffers(t *testing.T) {
+	var svc *playlistimport.Service
+	e := newLibEnvWith(t, func(d *Deps, db *sql.DB) {
+		svc = &playlistimport.Service{Store: &playlistimport.Store{DB: db}, Bus: &events.Bus{}, Matcher: offlineMatcher{}}
+		d.PlaylistImport = svc
+	})
+	body := func() string {
+		t.Helper()
+		w := e.do("GET", "/api/import/services", "", e.admin)
+		if w.Code != 200 {
+			t.Fatalf("services: %d %s", w.Code, w.Body)
+		}
+		return strings.TrimSpace(w.Body.String())
+	}
+	if got := body(); got != `{"catalog":false,"downloads":false,"services":[]}` {
+		t.Fatalf("no offers: %s", got)
+	}
+	var asked int
+	svc.Offers = func(ctx context.Context) playlistimport.Offers {
+		asked++
+		if ctx == nil {
+			t.Error("no context")
+		}
+		return playlistimport.Offers{Downloads: true, Catalog: true}
+	}
+	if got := body(); got != `{"catalog":true,"downloads":true,"services":[]}` || asked != 1 {
+		t.Fatalf("offers: %s (asked %d)", got, asked)
 	}
 }

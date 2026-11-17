@@ -11,7 +11,6 @@ import (
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/notify"
 	"github.com/antresol-app/antresol/internal/tracking"
-	"github.com/antresol-app/antresol/internal/vofit"
 )
 
 // serverName opens the "listening" log line.
@@ -33,4 +32,3 @@ func (*extras) trackingHooks(*tracking.Service)        {}
 func (*extras) apiDeps(*api.Deps, *auth.Store) error   { return nil }
 func (*extras) start(context.Context, *sync.WaitGroup) {}
 func (*extras) wait()                                  {}
-func (*extras) voiceOverFit(*vofit.Worker) bool        { return false } // no stage B: nothing is fitted

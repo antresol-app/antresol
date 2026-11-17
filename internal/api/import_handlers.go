@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
@@ -28,10 +29,15 @@ const maxSnapshotBody = 32 << 20
 const songBytes = 30 << 20
 
 // mountImport: «Импорт медиатеки» (admins only), in both editions: the
-// jobs, the upload of files, the review and the playlists' pending songs.
-// Another build adds its own (import_handlers_full.go).
+// jobs, the upload of files, the review, «Повторить» and the playlists'
+// pending songs. The music services' sign-ins are an addon's (its
+// import.* hooks and its own routes); the sign-in's registered callback
+// address sends the browser on to it (import_oauth_redirect.go).
 func mountImport(r chi.Router, deps Deps) {
-	h := &importAPI{svc: deps.PlaylistImport, full: newPlaylistFull(deps)}
+	h := &importAPI{svc: deps.PlaylistImport}
+	if deps.AddonHooks != nil { // never a typed nil in the interface
+		h.owners = deps.AddonHooks
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
 		r.Post("/api/import/jobs", h.create)
@@ -48,22 +54,16 @@ func mountImport(r chi.Router, deps Deps) {
 		r.Post("/api/import/tracks/{id}/resolve", h.resolve)
 		r.Get("/api/import/search", h.search)
 		r.Get("/api/import/jobs/{id}/groups", h.groups)
-		h.mountFull(r)
+		r.Post("/api/import/groups/{id}/retry", h.retry)
+		r.Get("/api/import/oauth/{service}/callback", h.oauthCallback)
 	})
 	// a playlist page's «Ещё не скачано» rows: any profile, its own playlists
 	r.Get("/api/import/playlists/{playlistId}/pending", h.pending)
 }
 
 type importAPI struct {
-	svc  *playlistimport.Service
-	full playlistFull
-}
-
-// backgroundReader makes a reading job whose snapshot is read in the
-// background (musicimport.OAuth in the sources build; the core build has
-// none).
-type backgroundReader interface {
-	ReadInBackground(ctx context.Context, userID int64, service string, read func(ctx context.Context, jobID int64) (playlistimport.Snapshot, error)) (int64, error)
+	svc    *playlistimport.Service
+	owners serviceOwners // nil: no addons, no sign-in is connected
 }
 
 func (h *importAPI) err(w http.ResponseWriter, r *http.Request, what string, err error) {
@@ -84,7 +84,6 @@ func (h *importAPI) err(w http.ResponseWriter, r *http.Request, what string, err
 		writeErr(w, r, http.StatusBadRequest, "Неизвестный сервис")
 	case errors.Is(err, playlistimport.ErrTooLarge):
 		writeErr(w, r, http.StatusRequestEntityTooLarge, "Файл слишком большой")
-	case h.full.err(w, r, err):
 	default:
 		internalErr(w, r, what, err)
 	}
@@ -295,7 +294,7 @@ func (h *importAPI) files(w http.ResponseWriter, r *http.Request) {
 	}
 	snap := merged.Snapshot()
 	unresolved := files.Unresolved(snap)
-	if unresolved > 0 && h.svc.Resolver != nil && h.full.reader() != nil {
+	if unresolved > 0 && h.svc.Resolver != nil {
 		h.resolveFiles(w, r, snap)
 		return
 	}
@@ -317,15 +316,15 @@ func (h *importAPI) files(w http.ResponseWriter, r *http.Request) {
 var resolveBudget = 20 * time.Minute
 
 // resolveFiles makes the job of an upload with videos known only by id (a
-// Google Takeout) in the background: a reading job while YouTube names
-// them (oEmbed, 2 a second), then the preview with the ones still unknown
-// counted in the report.
+// Google Takeout) in the background, through the core's own reader: a
+// reading job while the addons name them (import.resolve), then the
+// preview with the ones still unknown counted in the report.
 func (h *importAPI) resolveFiles(w http.ResponseWriter, r *http.Request, snap playlistimport.Snapshot) {
 	if !h.noOpenJob(w, r, snap.Service) {
 		return
 	}
 	resolver := h.svc.Resolver
-	id, err := h.full.reader().ReadInBackground(r.Context(), userOf(r).ID, snap.Service, func(ctx context.Context, jobID int64) (playlistimport.Snapshot, error) {
+	id, err := h.svc.ReadInBackground(r.Context(), userOf(r).ID, snap.Service, func(ctx context.Context, jobID int64) (playlistimport.Snapshot, error) {
 		// naming has its own budget: when it runs out, the songs named so
 		// far and the whole rest of the upload are kept
 		rctx, cancel := context.WithTimeout(ctx, resolveBudget)
@@ -352,13 +351,19 @@ func (h *importAPI) resolveFiles(w http.ResponseWriter, r *http.Request, snap pl
 }
 
 // GET /api/import/services: the tiles, in the order the page shows them
-// ([] without connectors).
+// ([] without connectors), and what the page may promise: downloads (an
+// addon takes the albums the library lacks) and catalog (the review can
+// search one); both false without Offers.
 func (h *importAPI) services(w http.ResponseWriter, r *http.Request) {
 	out := []playlistimport.ServiceInfo{}
 	if h.svc.Connectors != nil {
 		out = h.svc.Connectors.Services(r.Context())
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"services": out})
+	var o playlistimport.Offers
+	if h.svc.Offers != nil {
+		o = h.svc.Offers(r.Context())
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"services": out, "downloads": o.Downloads, "catalog": o.Catalog})
 }
 
 func (h *importAPI) list(w http.ResponseWriter, r *http.Request) {
@@ -514,10 +519,28 @@ func (h *importAPI) discover(w http.ResponseWriter, r *http.Request, q string) {
 	}
 	cs, err := h.svc.Catalog.DiscoverMedia(r.Context(), library.KindMusic, q)
 	if err != nil {
-		h.full.catalogErr(w, r, err)
+		catalogErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"candidates": cs})
+}
+
+// catalogErr answers a failed catalog search. The addons' search
+// (import.search) says its catalog is offline by refusing with
+// playlistimport.CatalogOffline's text: 503 with it, as without a
+// catalog; another refusal is the admin's 400 with its text.
+func catalogErr(w http.ResponseWriter, r *http.Request, err error) {
+	var ref *addons.HookRefusal
+	refused := errors.As(err, &ref)
+	switch {
+	case r.Context().Err() != nil:
+	case errors.Is(err, playlistimport.ErrCatalogOffline), refused && ref.Message == playlistimport.CatalogOffline:
+		writeErr(w, r, http.StatusServiceUnavailable, playlistimport.CatalogOffline)
+	case refused:
+		writeErr(w, r, http.StatusBadRequest, ref.Message)
+	default:
+		internalErr(w, r, "import search", err)
+	}
 }
 
 // GET /api/import/tracks/{id}/candidates: albums for «<artist> <title>».
@@ -587,6 +610,37 @@ type importGroupDTO struct {
 	// WaitingFor: the download a waiting_download album waits for (as
 	// «Загрузки» names it).
 	WaitingFor string `json:"waitingFor,omitempty"`
+}
+
+// POST /api/import/groups/{id}/retry: «Повторить» of an album not found,
+// failed, waiting for space or waiting for another download (back in the
+// queue: an addon's, or the library's again); ?format=any is «Скачать в
+// другом формате» of an album with no release of «Формат загрузки».
+// Another profile's album is «Не найдено».
+func (h *importAPI) retry(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "id")
+	if !ok {
+		return
+	}
+	g, err := h.svc.Store.Group(r.Context(), id)
+	if err == nil {
+		var j playlistimport.Job
+		if j, err = h.svc.Store.Job(r.Context(), g.JobID); err == nil && j.UserID != userOf(r).ID {
+			err = playlistimport.ErrNotFound
+		}
+	}
+	if err == nil {
+		if r.URL.Query().Get("format") == "any" {
+			err = h.svc.RetryAnyFormat(r.Context(), id)
+		} else {
+			err = h.svc.Retry(r.Context(), id)
+		}
+	}
+	if err != nil {
+		h.err(w, r, "import retry", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /api/import/jobs/{id}/groups: the job's albums and their downloads.

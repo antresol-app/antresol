@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
-import type { SourceChoice, TitleEpisodes } from '../../../api/types'
+import type { EpisodeSource, SourceChoice, SourceKind, TitleEpisodes } from '../../../api/types'
+import { registerAddon, resetAddonsForTests } from '../../../addons/registry'
 import { choiceOf } from '../../../state/pickSource'
 import { session } from '../../../state/session'
 import { EpisodeGuide } from '../EpisodeGuide'
@@ -52,6 +53,7 @@ const fakePlay = (over: Partial<EpisodePlay> = {}) => ({ play: vi.fn(), other: v
 describe('EpisodeGuide', () => {
   beforeEach(async () => {
     session.reset()
+    resetAddonsForTests()
     h.play = null
     vi.stubGlobal('fetch', vi.fn(async () => json({ id: 2, name: 'Test', avatar: 'grad-1', hasPassword: false, isAdmin: false, isKid: false, maxRating: null })))
     await session.login(2)
@@ -233,5 +235,157 @@ describe('EpisodeGuide', () => {
     await act(async () => {})
     expect(container.querySelector('section')).toBeNull()
     expect(screen.queryByRole('listitem')).toBeNull()
+  })
+
+  // an addon's own source kind (its scanners'), played by its episodeActions entry
+  const extra = (over: Partial<EpisodeSource> = {}): EpisodeSource => ({
+    kind: 'extra' as SourceKind, ref: 'x:1', provider: 'Дополнение', labels: [], firstSeen: '2026-01-01', meta: {}, ...over,
+  })
+
+  for (const bad of [-1, 0]) {
+    it(`the library ranks first even when an addon's order says ${bad} (tap and sheet)`, async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const mine = fakePlay()
+      registerAddon('fake', { episodeActions: [{ kinds: ['extra'], order: { extra: bad }, use: () => mine }] })
+      const onPlayLibrary = vi.fn()
+      const disk = lib({ quality: '480p' })
+      serve(guide([ep(1, { sources: [extra({ quality: '2160p' }), disk] })]))
+      mount({ onPlayLibrary })
+      await userEvent.click(await screen.findByRole('button', { name: /Name 1/ }))
+      expect(onPlayLibrary).toHaveBeenCalledWith(7, 70)
+      expect(mine.play).not.toHaveBeenCalled()
+      await userEvent.click(screen.getByRole('button', { name: 'Выбрать источник' }))
+      const rows = within(screen.getByRole('dialog')).getAllByRole('button', { pressed: true }).concat(within(screen.getByRole('dialog')).queryAllByRole('button', { pressed: false }))
+      expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Диск'), expect.stringContaining('Дополнение')])
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/addon fake: episodeActions order of "extra" dropped/))
+      warn.mockRestore()
+    })
+  }
+
+  it('an addon-kind row uses the addon\'s episode action', async () => {
+    const core = fakePlay()
+    h.play = core
+    const mine = fakePlay({ node: <p>Узел дополнения</p> })
+    registerAddon('fake', { episodeActions: [{ kinds: ['extra'], use: () => mine }] })
+    serve(guide([ep(1, { sources: [extra()] }), ep(2, { sources: [online('alpha', 'Voice A')] })]))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: /Name 1/ }))
+    expect(mine.play).toHaveBeenCalledTimes(1)
+    expect(mine.play.mock.calls[0]![1]).toMatchObject({ kind: 'extra' })
+    expect(core.play).not.toHaveBeenCalled()
+    // online goes through the build's player
+    await userEvent.click(screen.getByRole('button', { name: /Name 2/ }))
+    expect(core.play).toHaveBeenCalledTimes(1)
+    // the Host draws the addon's node; the guide does not draw it again
+    expect(screen.getAllByText('Узел дополнения')).toHaveLength(1)
+  })
+
+  it('a source of a kind with no live player is not tapped dead: another playable source plays, else the sheet opens', async () => {
+    const core = fakePlay()
+    h.play = core
+    // `pinned` (an addon's kind whose addon is gone) ranks above online
+    const gone = extra({ kind: 'pinned' as SourceKind, ref: 'p:1' })
+    serve(guide([ep(1, { sources: [gone, online('alpha', 'Voice A')] }), ep(2, { sources: [extra({ kind: 'pinned' as SourceKind, ref: 'p:2' })] })]))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: /Name 1/ }))
+    expect(core.play).toHaveBeenCalledTimes(1)
+    expect(core.play.mock.calls[0]![1]).toMatchObject({ kind: 'online' })
+    // nothing playable: the sheet, and the build's player is not called with it
+    await userEvent.click(screen.getByRole('button', { name: /Name 2/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(core.play).toHaveBeenCalledTimes(1)
+  })
+
+  it('an addon registered late still gets its rows', async () => {
+    serve(guide([ep(1, { sources: [extra()] })]))
+    mount()
+    const row = await screen.findByRole('button', { name: /Name 1/ })
+    const mine = fakePlay()
+    act(() => registerAddon('fake', { episodeActions: [{ kinds: ['extra'], use: () => mine }] }))
+    await userEvent.click(row)
+    expect(mine.play).toHaveBeenCalledTimes(1)
+  })
+
+  it('a use() answering a new object each render neither loops nor loses its rows', async () => {
+    let calls = 0
+    const played: string[] = []
+    registerAddon('fake', {
+      episodeActions: [
+        {
+          kinds: ['extra'],
+          use: (ctx) => {
+            calls++
+            return { play: (e) => void played.push(`${ctx.title}:${e.number}`), other: () => {}, node: null }
+          },
+        },
+      ],
+    })
+    serve(guide([ep(1, { sources: [extra()] })]))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: /Name 1/ }))
+    expect(played).toEqual(['Show:1'])
+    expect(calls).toBeLessThan(10)
+  })
+
+  it('an addon whose use() throws drops its kinds; the guide stays', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    registerAddon('fake', {
+      episodeActions: [
+        {
+          kinds: ['extra'],
+          use: () => {
+            throw new Error('boom')
+          },
+        },
+      ],
+    })
+    serve(guide([ep(1, { sources: [extra(), lib()] })]))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: /Name 1/ }))
+    // the library source plays instead
+    expect(screen.getByTestId('where')).toHaveTextContent('/watch/7')
+    vi.restoreAllMocks()
+  })
+
+  it('«Другие источники…» goes where the title page’s does: online picker for an online profile with online sources, else the addon’s', async () => {
+    const core = fakePlay()
+    h.play = core
+    const mine = fakePlay()
+    registerAddon('fake', { episodeActions: [{ kinds: ['extra'], use: () => mine }] })
+    const other = async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Выбрать источник' }))
+      await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Другие источники…' }))
+    }
+    const watcher = { id: 2, name: 'Test', avatar: 'grad-1', hasPassword: false, isAdmin: false, isKid: false, maxRating: null, canWatchOnline: true }
+    vi.stubGlobal('fetch', vi.fn(async () => json(watcher)))
+    session.reset()
+    await session.login(2)
+    serve(guide([ep(1, { sources: [online('alpha', 'Voice A'), extra()] })]))
+    // serve() answers the profile without canWatchOnline: keep the signed-in one
+    const first = mount()
+    await other()
+    expect(core.other).toHaveBeenCalledTimes(1)
+    expect(mine.other).not.toHaveBeenCalled()
+    first.unmount()
+
+    // no online source in the guide: the addon's
+    serve(guide([ep(1, { sources: [extra()] })]))
+    mount()
+    await other()
+    expect(mine.other).toHaveBeenCalledTimes(1)
+  })
+
+  it('a profile that does not watch online: the addon’s «Другие источники…»', async () => {
+    const core = fakePlay()
+    h.play = core
+    const mine = fakePlay()
+    registerAddon('fake', { episodeActions: [{ kinds: ['extra'], use: () => mine }] })
+    serve(guide([ep(1, { sources: [online('alpha', 'Voice A'), extra()] })]))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: 'Выбрать источник' }))
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Другие источники…' }))
+    expect(mine.other).toHaveBeenCalledTimes(1)
+    expect(core.other).not.toHaveBeenCalled()
   })
 })

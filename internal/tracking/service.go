@@ -65,6 +65,8 @@ var ErrUnchanged = errors.New("tracking: scanner skipped this title")
 type Service struct {
 	Store    *Store
 	Skeleton Skeleton
+	// Scanners are the core's own (library, online); the addons' come
+	// through SetScanners.
 	Scanners []Scanner
 	Notify   Notifier
 	// Interest lists the profiles to tell about a title's new episodes.
@@ -85,12 +87,43 @@ type Service struct {
 	// the full build appends «Смотреть онлайн» progress in trackingHooks.
 	WatchStates []WatchStateFunc
 
+	// scanners are the scanners from outside the core (the addons'),
+	// asked for again on every refresh (SetScanners)
+	scanners func(ctx context.Context) []Scanner
+
 	startAfter time.Duration // 0 = defaultStart (tests shorten it)
 
 	kickOnce   sync.Once
 	kickSignal chan struct{}
 	kickMu     sync.Mutex
 	kicked     map[int64]bool
+}
+
+// SetScanners adds scanners that come and go (the addons' scan kinds): f
+// is called on every refresh and its scanners run after Scanners. One
+// whose kind an earlier scanner has (library, online, or a repeat) is not
+// run. Call it before Run.
+func (s *Service) SetScanners(f func(ctx context.Context) []Scanner) { s.scanners = f }
+
+// roundScanners are the scanners of one refresh: Scanners, then those of
+// SetScanners whose kind is not taken yet.
+func (s *Service) roundScanners(ctx context.Context) []Scanner {
+	if s.scanners == nil {
+		return s.Scanners
+	}
+	out := slices.Clone(s.Scanners)
+	taken := map[string]bool{"library": true}
+	for _, sc := range s.Scanners {
+		taken[sc.Kind()] = true
+	}
+	for _, sc := range s.scanners(ctx) {
+		if taken[sc.Kind()] {
+			continue
+		}
+		taken[sc.Kind()] = true
+		out = append(out, sc)
+	}
+	return out
 }
 
 func (s *Service) now() time.Time {
@@ -252,7 +285,7 @@ func (s *Service) Refresh(ctx context.Context, titleID int64) error {
 	}
 	now := s.now()
 	var added, mailable []Source
-	for _, sc := range s.Scanners {
+	for _, sc := range s.roundScanners(ctx) {
 		srcs, err := sc.Scan(ctx, t, eps)
 		if errors.Is(err, ErrUnchanged) {
 			continue

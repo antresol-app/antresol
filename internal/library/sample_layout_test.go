@@ -170,7 +170,9 @@ func TestSeriesKeepsIDWhenNfoAppears(t *testing.T) {
 	}
 }
 
-func TestRadarrUpgradeKeepsItem(t *testing.T) {
+// TestUpgradedFileKeepsItem: a movie whose file is replaced by a better copy
+// under a new name (a media manager's upgrade) stays the same item.
+func TestUpgradedFileKeepsItem(t *testing.T) {
 	s, mv, _ := newScanner(t)
 	d := filepath.Join(mv, "A (2001)")
 	old := filepath.Join(d, "A (2001) WEBDL-1080p.mkv")

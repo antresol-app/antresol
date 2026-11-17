@@ -123,9 +123,9 @@ func TestNewEpisodeNotifiesInterestedProfiles(t *testing.T) {
 		{Season: 1, Number: 7, AirDate: "2026-03-01"},
 		{Season: 1, Number: 8, Name: "Eight", AirDate: "2026-03-08"},
 	}}
-	tor := &fakeScanner{kind: "torrent", srcs: []Source{{Season: 1, Episode: 7, Ref: "a"}}}
+	ext := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 7, Ref: "a"}}}
 	onl := &fakeScanner{kind: "online"}
-	s, n, _ := newService(t, sk, tor, onl)
+	s, n, _ := newService(t, sk, ext, onl)
 	ti, users := watched(t, s, "one", "two")
 	dropped := addUser(t, s.Store, "three")
 	ctx := context.Background()
@@ -138,7 +138,7 @@ func TestNewEpisodeNotifiesInterestedProfiles(t *testing.T) {
 	if len(n.got) != 0 {
 		t.Fatalf("baseline notified: %+v", n.got)
 	}
-	tor.srcs = append(tor.srcs, Source{Season: 1, Episode: 8, Ref: "b"})
+	ext.srcs = append(ext.srcs, Source{Season: 1, Episode: 8, Ref: "b"})
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -164,15 +164,15 @@ func TestNewEpisodeNotifiesInterestedProfiles(t *testing.T) {
 
 func TestScannerErrorKeepsOldRows(t *testing.T) {
 	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1}, {Season: 1, Number: 2}}}
-	tor := &fakeScanner{kind: "torrent", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
+	ext := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
 	onl := &fakeScanner{kind: "online", srcs: []Source{{Season: 1, Episode: 1, Ref: "o"}}}
-	s, _, logs := newService(t, sk, tor, onl)
+	s, _, logs := newService(t, sk, ext, onl)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
-	tor.srcs, tor.err = nil, errors.New("tracker down")
+	ext.srcs, ext.err = nil, errors.New("source down")
 	onl.srcs = []Source{{Season: 1, Episode: 2, Ref: "o2"}}
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
@@ -182,10 +182,10 @@ func TestScannerErrorKeepsOldRows(t *testing.T) {
 	for _, x := range src {
 		refs = append(refs, x.Kind+":"+x.Ref)
 	}
-	if strings.Join(refs, ",") != "torrent:a,online:o2" {
+	if strings.Join(refs, ",") != "alpha:a,online:o2" {
 		t.Fatalf("sources %v", refs)
 	}
-	if !strings.Contains(logs.String(), "tracker down") {
+	if !strings.Contains(logs.String(), "source down") {
 		t.Fatalf("not logged: %s", logs.String())
 	}
 }
@@ -250,8 +250,8 @@ func TestRunRefreshesOnlyDue(t *testing.T) {
 func TestLibraryOnlyEpisodeNotNotified(t *testing.T) {
 	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1}, {Season: 1, Number: 2}, {Season: 1, Number: 3}}}
 	lib := &fakeScanner{kind: "library"}
-	tor := &fakeScanner{kind: "torrent"}
-	s, n, _ := newService(t, sk, lib, tor)
+	ext := &fakeScanner{kind: "alpha"}
+	s, n, _ := newService(t, sk, lib, ext)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
 	var hooked []Source
@@ -262,9 +262,9 @@ func TestLibraryOnlyEpisodeNotNotified(t *testing.T) {
 	if err := s.Refresh(ctx, ti.ID); err != nil { // baseline
 		t.Fatal(err)
 	}
-	// E01: library only (notify.Collect mails it); E02: library and torrent
+	// E01: library only (notify.Collect mails it); E02: library and alpha
 	lib.srcs = []Source{{Season: 1, Episode: 1, Ref: "7"}, {Season: 1, Episode: 2, Ref: "7"}}
-	tor.srcs = []Source{{Season: 1, Episode: 2, Ref: "t"}}
+	ext.srcs = []Source{{Season: 1, Episode: 2, Ref: "t"}}
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -274,13 +274,13 @@ func TestLibraryOnlyEpisodeNotNotified(t *testing.T) {
 	if len(hooked) != 3 {
 		t.Fatalf("hooked %+v", hooked)
 	}
-	// E01 later appears as a torrent too: it had a source already, no letter
-	tor.srcs = append(tor.srcs, Source{Season: 1, Episode: 1, Ref: "t1"})
+	// E01 later appears as alpha too: it had a source already, no letter
+	ext.srcs = append(ext.srcs, Source{Season: 1, Episode: 1, Ref: "t1"})
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
 	if len(n.got) != 1 {
-		t.Fatalf("late torrent notified: %+v", n.got)
+		t.Fatalf("late alpha row notified: %+v", n.got)
 	}
 }
 
@@ -298,23 +298,23 @@ func TestScannerDownAtBaselineStaysSilentLater(t *testing.T) {
 		{Season: 1, Number: 3, AirDate: "2026-03-03"}, {Season: 1, Number: 4, AirDate: "2026-03-09"},
 	}}
 	lib := &fakeScanner{kind: "library", srcs: []Source{{Season: 1, Episode: 1, Ref: "7"}}}
-	tor := &fakeScanner{kind: "torrent", err: errors.New("tracker down")}
-	s, n, _ := newService(t, sk, lib, tor)
+	ext := &fakeScanner{kind: "alpha", err: errors.New("source down")}
+	s, n, _ := newService(t, sk, lib, ext)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
-	if err := s.Refresh(ctx, ti.ID); err != nil { // baseline with the torrents down
+	if err := s.Refresh(ctx, ti.ID); err != nil { // baseline with alpha down
 		t.Fatal(err)
 	}
-	// the tracker is back: its first successful scan is its baseline
-	tor.err = nil
-	tor.srcs = []Source{{Season: 1, Episode: 2, Ref: "a"}, {Season: 1, Episode: 3, Ref: "b"}}
+	// alpha is back: its first successful scan is its baseline
+	ext.err = nil
+	ext.srcs = []Source{{Season: 1, Episode: 2, Ref: "a"}, {Season: 1, Episode: 3, Ref: "b"}}
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
 	if len(n.got) != 0 {
 		t.Fatalf("back catalogue mailed: %v", episodesOf(n))
 	}
-	tor.srcs = append(tor.srcs, Source{Season: 1, Episode: 4, Ref: "c"})
+	ext.srcs = append(ext.srcs, Source{Season: 1, Episode: 4, Ref: "c"})
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -328,8 +328,8 @@ func TestNewScannerKindBaselinesSilently(t *testing.T) {
 		{Season: 1, Number: 1, AirDate: "2026-03-01"}, {Season: 1, Number: 5, AirDate: "2026-03-05"},
 		{Season: 1, Number: 6, AirDate: "2026-03-09"},
 	}}
-	tor := &fakeScanner{kind: "torrent", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
-	s, n, _ := newService(t, sk, tor)
+	ext := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
+	s, n, _ := newService(t, sk, ext)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
@@ -362,14 +362,14 @@ func TestOldEpisodeNeverMailed(t *testing.T) {
 		{Season: 1, Number: 3, AirDate: "2026-03-05"},
 		{Season: 1, Number: 4}, // no air date
 	}}
-	tor := &fakeScanner{kind: "torrent"}
-	s, n, _ := newService(t, sk, tor)
+	ext := &fakeScanner{kind: "alpha"}
+	s, n, _ := newService(t, sk, ext)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
-	tor.srcs = []Source{{Season: 1, Episode: 1, Ref: "a"}, {Season: 1, Episode: 2, Ref: "b"},
+	ext.srcs = []Source{{Season: 1, Episode: 1, Ref: "a"}, {Season: 1, Episode: 2, Ref: "b"},
 		{Season: 1, Episode: 3, Ref: "c"}, {Season: 1, Episode: 4, Ref: "d"}}
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
@@ -381,8 +381,8 @@ func TestOldEpisodeNeverMailed(t *testing.T) {
 
 func TestScannerUnchangedKeepsRowsAndLastSeen(t *testing.T) {
 	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1}}}
-	tor := &fakeScanner{kind: "torrent", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
-	s, _, logs := newService(t, sk, tor)
+	ext := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
+	s, _, logs := newService(t, sk, ext)
 	ti, _ := watched(t, s, "one")
 	ctx := context.Background()
 	if err := s.Refresh(ctx, ti.ID); err != nil {
@@ -390,7 +390,7 @@ func TestScannerUnchangedKeepsRowsAndLastSeen(t *testing.T) {
 	}
 	first := tnow
 	s.Now = func() time.Time { return first.Add(time.Hour) }
-	tor.srcs, tor.err = nil, ErrUnchanged
+	ext.srcs, ext.err = nil, ErrUnchanged
 	if err := s.Refresh(ctx, ti.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -408,8 +408,8 @@ func TestScannerUnchangedKeepsRowsAndLastSeen(t *testing.T) {
 // as «появилось», not as a new episode.
 func TestNotifyGroupsByTitleAndSendsFilmsAsAvailable(t *testing.T) {
 	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1, AirDate: "2026-03-01"}}}
-	tor := &fakeScanner{kind: "torrent"}
-	s, n, _ := newService(t, sk, tor)
+	ext := &fakeScanner{kind: "alpha"}
+	s, n, _ := newService(t, sk, ext)
 	s.TitlePath = func(t Title) string { return "/title/" + t.Kind + "/" + strconv.FormatInt(t.TMDBID, 10) }
 	ctx := context.Background()
 	show, _ := watched(t, s, "one")
@@ -424,12 +424,12 @@ func TestNotifyGroupsByTitleAndSendsFilmsAsAvailable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	tor.srcs = []Source{{Season: 1, Episode: 1, Ref: "a"}}
+	ext.srcs = []Source{{Season: 1, Episode: 1, Ref: "a"}}
 	if err := s.Refresh(ctx, show.ID); err != nil {
 		t.Fatal(err)
 	}
 	sk.eps = []Episode{{Season: 0, Number: 0, AirDate: "2026-03-01"}}
-	tor.srcs = []Source{{Season: 0, Episode: 0, Ref: "f"}}
+	ext.srcs = []Source{{Season: 0, Episode: 0, Ref: "f"}}
 	if err := s.Refresh(ctx, film.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -443,5 +443,49 @@ func TestNotifyGroupsByTitleAndSendsFilmsAsAvailable(t *testing.T) {
 	if mv.Topic != notify.Available || mv.GroupID != -film.ID || mv.Data.Kind != "movie" ||
 		mv.Data.Path != "/title/movie/77" || mv.Data.Title != "Film" || mv.UserID != uid {
 		t.Fatalf("film event %+v", mv)
+	}
+}
+
+// TestSetScanners_ReadEachRoundAfterInCore: the in-core scanners run first,
+// then those SetScanners gives, asked again on every refresh; one whose
+// kind an in-core scanner has, or that repeats a kind, is not run.
+func TestSetScanners_ReadEachRoundAfterInCore(t *testing.T) {
+	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1}}}
+	onl := &fakeScanner{kind: "online", srcs: []Source{{Season: 1, Episode: 1, Ref: "o"}}}
+	s, _, _ := newService(t, sk, onl)
+	ti, _ := watched(t, s, "one")
+	ctx := context.Background()
+	alpha := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 1, Ref: "a"}}}
+	spoof := &fakeScanner{kind: "online", srcs: []Source{{Season: 1, Episode: 1, Ref: "spoof"}}}
+	again := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 1, Ref: "again"}}}
+	var list []Scanner
+	rounds := 0
+	s.SetScanners(func(context.Context) []Scanner { rounds++; return list })
+	refs := func() string {
+		src, _ := s.Store.Sources(ctx, ti.ID)
+		var out []string
+		for _, x := range src {
+			out = append(out, x.Kind+":"+x.Ref)
+		}
+		return strings.Join(out, ",")
+	}
+	if err := s.Refresh(ctx, ti.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := refs(); got != "online:o" {
+		t.Fatalf("round 1 sources %s", got)
+	}
+	list = []Scanner{alpha, spoof, again}
+	if err := s.Refresh(ctx, ti.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := refs(); got != "alpha:a,online:o" {
+		t.Fatalf("round 2 sources %s", got)
+	}
+	if rounds != 2 {
+		t.Fatalf("scanners asked %d times", rounds)
+	}
+	if len(s.Scanners) != 1 {
+		t.Fatalf("in-core scanners changed: %d", len(s.Scanners))
 	}
 }

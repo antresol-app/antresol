@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { MigrateReport, MigrateStatus } from '../../../api/types'
-import { Migrate, summaryParts } from '../Migrate'
+import { registerAddon, resetAddonsForTests, setAddonUser } from '../../../addons/registry'
+import { session } from '../../../state/session'
+import { Migrate, summaryParts, type MigrateApi, type MigrateFullApi } from '../Migrate'
 
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
 const status: MigrateStatus = {
   sources: [
-    { id: 'sonarr', name: 'Sonarr', found: true, path: '/import/sonarr/sonarr.db', detail: '15 сериалов, 15 отслеживается', error: '' },
+    { id: 'oldshows', name: 'OldShows', found: true, path: '/import/oldshows/oldshows.db', detail: '15 сериалов, 15 отслеживается', error: '' },
     { id: 'kavita', name: 'Kavita', found: false, path: '/import/kavita/kavita.db', detail: 'Не найден — смонтируйте /import/kavita/kavita.db', error: '' },
     { id: 'jellyfin', name: 'Jellyfin', found: true, path: '/import/jellyfin/jellyfin.db', detail: '', error: '' },
   ],
@@ -120,6 +122,8 @@ describe('Migrate', () => {
     within(history).getByRole('button', { name: 'Открыть' }).click()
     expect(await screen.findByLabelText('Возвращено')).toBeTruthy()
     expect(within(screen.getByTestId('migrate-summary')).queryByText(/Перенесено/)).toBeNull()
+    // the core's own title of a rollback (an addon's part names its own)
+    expect(within(history).getByText(/^Возврат перенесённого ·/)).toBeTruthy()
   })
 })
 
@@ -160,7 +164,7 @@ describe('Migrate on a server with media servers only', () => {
     expect(screen.getByText(/перенесёт прогресс и отметки из Jellyfin, Kavita и Audiobookshelf/)).toBeTruthy()
   })
 
-  it.runIf(__LIBRARY_EDITION__)('core build: media servers only', async () => {
+  it('without an addon: media servers only', async () => {
     mount()
     expect(await screen.findByRole('checkbox', { name: /Jellyfin/ })).toBeTruthy()
     // let anything that could still load settle
@@ -170,7 +174,214 @@ describe('Migrate on a server with media servers only', () => {
       expect.stringContaining('Kavita'),
       expect.stringContaining('Audiobookshelf'),
     ])
-    expect(document.body.textContent).not.toMatch(/Sonarr|Radarr|[Рр]аздач/)
+    expect(document.body.textContent).not.toMatch(/OldShows/)
     expect(screen.queryByRole('button', { name: /Перейти на/ })).toBeNull()
+  })
+})
+
+const admin = { id: 1, name: 'Папа', avatar: 'grad-3', hasPassword: false, isAdmin: true, isKid: false, maxRating: null }
+
+async function signInAdmin() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => json(admin)),
+  )
+  await session.login(admin.id)
+  vi.unstubAllGlobals()
+  act(() => setAddonUser({ isAdmin: true }))
+}
+
+describe('Migrate with addons', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    session.reset()
+    resetAddonsForTests()
+  })
+
+  it('renders addon source cards', async () => {
+    await signInAdmin()
+    registerAddon('alpha', {
+      migrateSources: [{ id: 'old', name: 'src.name', icon: 'arrowRight', to: 'migrate', admin: true, summary: () => <span>Ждут переноса: 3</span> }],
+      strings: { ru: { 'src.name': 'Старые службы' }, en: { 'src.name': 'Old services' } },
+    })
+    registerAddon('beta', { migrateSources: [{ id: 'other', name: 'other.name', icon: 'plug', to: '/manage/import' }] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (u) => json(String(u).endsWith('/reports') ? [] : mediaOnly))
+    render(
+      <MemoryRouter>
+        <Migrate />
+      </MemoryRouter>,
+    )
+    const cards = await screen.findByRole('list', { name: 'Другие переезды' })
+    const links = within(cards).getAllByRole('link')
+    // the name is a strings key of the addon; a key it lacks shows as itself
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Старые службыЖдут переноса: 3', '/addons/alpha/migrate'],
+      ['other.name', '/manage/import'],
+    ])
+    // the core's own services are still checkboxes of this page
+    expect(screen.getByRole('checkbox', { name: /Jellyfin/ })).toBeTruthy()
+  })
+
+  it('shows no addon cards without one, nor on an addon\'s own page', async () => {
+    await signInAdmin()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (u) => json(String(u).endsWith('/reports') ? [] : mediaOnly))
+    const { unmount } = render(
+      <MemoryRouter>
+        <Migrate />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('checkbox', { name: /Jellyfin/ })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Другие переезды' })).toBeNull()
+    unmount()
+    registerAddon('alpha', { migrateSources: [{ id: 'old', name: 'src.name', icon: 'arrowRight', to: 'migrate' }] })
+    const api: MigrateApi = {
+      migrateStatus: async () => mediaOnly,
+      migrateState: async () => mediaOnly,
+      migrateRun: async () => ({ reportId: 'r' }),
+      migrateReports: async () => [],
+      migrateReport: async () => report({}),
+      useProgress: () => {},
+    }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('checkbox', { name: /Jellyfin/ })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Другие переезды' })).toBeNull()
+  })
+
+  const report = (r: Partial<MigrateReport>): MigrateReport => ({
+    id: 'r',
+    sources: ['jellyfin'],
+    dryRun: false,
+    planId: '',
+    planHash: '',
+    startedAt: '2026-10-25T19:30:00Z',
+    finishedAt: '0001-01-01T00:00:00Z',
+    counts: {},
+    lines: [],
+    ...r,
+  })
+
+  it('uses an injected api and progress source', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch')
+    const running = report({ id: 'rep-1', lines: [] })
+    let lines: MigrateReport['lines'] = []
+    let progress: ((data: unknown) => void) | null = null
+    const asked: string[] = []
+    const api: MigrateApi = {
+      migrateStatus: async () => {
+        asked.push('status')
+        return { ...mediaOnly, running: 'rep-1' }
+      },
+      migrateState: async () => {
+        asked.push('state')
+        return { running: 'rep-1', libraryReady: { ok: true, reason: '' } }
+      },
+      migrateRun: async () => ({ reportId: 'rep-2' }),
+      migrateReports: async () => {
+        asked.push('reports')
+        return []
+      },
+      migrateReport: async (id) => {
+        asked.push(`report ${id}`)
+        return { ...running, lines }
+      },
+      useProgress: (h) => {
+        progress = h
+      },
+    }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('migrate-report')).toBeTruthy()
+    expect(asked).toContain('status')
+    expect(asked).toContain('reports')
+    expect(asked).toContain('report rep-1')
+    lines = [{ source: 'jellyfin', kind: 'progress', name: 'Дюна', status: 'imported', reason: '', ref: '', size: 0 }]
+    // a progress event of another report is not this one's
+    const before = asked.filter((a) => a === 'report rep-1').length
+    act(() => progress!({ reportId: 'other' }))
+    act(() => progress!({ reportId: 'rep-1' }))
+    expect(await screen.findByText('Дюна')).toBeTruthy()
+    expect(asked.filter((a) => a === 'report rep-1').length).toBeGreaterThan(before)
+    // nothing went to the core's own /api/migrate
+    expect(fetch.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/migrate'))).toEqual([])
+  })
+
+  it('keeps an addon page\'s own subtitle once loaded, also when its status has no state', async () => {
+    const api: MigrateApi = {
+      migrateStatus: async () => mediaOnly,
+      migrateState: async () => mediaOnly,
+      migrateRun: async () => ({ reportId: 'r' }),
+      migrateReports: async () => [],
+      migrateReport: async () => report({}),
+      useProgress: () => {},
+    }
+    const None = () => null
+    const full: MigrateFullApi = { source: () => undefined, TopCards: None, HistoryAction: None, ConfirmItems: None, progressNote: () => '', subtitle: () => 'Своя подпись.' }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} full={full} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/^Своя подпись\./)).toBeTruthy() // loading
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+    expect(screen.getByText(/^Своя подпись\./)).toBeTruthy() // loaded: no flip to the core's
+  })
+
+  it('titles a rollback with the addon part\'s own text', async () => {
+    const back = report({ id: 'back', rollbackOf: 'r0', finishedAt: '2026-10-25T20:31:00Z', counts: { imported: 1 } })
+    const api: MigrateApi = {
+      migrateStatus: async () => ({ ...mediaOnly, state: { switchedAt: null } }),
+      migrateState: async () => ({ ...mediaOnly, state: { switchedAt: null } }),
+      migrateRun: async () => ({ reportId: 'r' }),
+      migrateReports: async () => [back],
+      migrateReport: async () => back,
+      useProgress: () => {},
+    }
+    const None = () => null
+    const full: MigrateFullApi = { source: () => undefined, TopCards: None, HistoryAction: None, ConfirmItems: None, progressNote: () => '', subtitle: () => 'Своя подпись.', rollbackTitle: () => 'Свой возврат' }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} full={full} />
+      </MemoryRouter>,
+    )
+    const history = await screen.findByRole('list', { name: 'История переноса' })
+    expect(within(history).getByText(/^Свой возврат ·/)).toBeTruthy()
+  })
+
+  it('draws an addon part\'s own texts (functions) beside core keys', async () => {
+    const withOld = { ...mediaOnly, state: { switchedAt: null }, sources: [...mediaOnly.sources, { id: 'oldtool', name: 'OldTool', found: true, path: '/import/oldtool', detail: '2', error: '' }] }
+    const api: MigrateApi = {
+      migrateStatus: async () => withOld,
+      migrateState: async () => withOld,
+      migrateRun: async () => ({ reportId: 'r' }),
+      migrateReports: async () => [],
+      migrateReport: async () => report({}),
+      useProgress: () => {},
+    }
+    const None = () => null
+    const full: MigrateFullApi = {
+      source: (id) => (id === 'oldtool' ? { icon: 'plug', what: () => 'Своё: что придёт', note: () => 'Своя заметка' } : undefined),
+      TopCards: None,
+      HistoryAction: None,
+      ConfirmItems: None,
+      progressNote: () => '',
+      subtitle: () => 'Своя подпись.',
+    }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} full={full} />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Своё: что придёт')).toBeTruthy()
+    expect(screen.getByText('Своя заметка')).toBeTruthy()
+    expect(screen.getByText(/^Своя подпись\./)).toBeTruthy()
+    // a core key still resolves from the core's catalog
+    expect(screen.getByText('Просмотренное и «Избранное»')).toBeTruthy()
   })
 })

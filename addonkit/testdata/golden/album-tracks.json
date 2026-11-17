@@ -1,0 +1,53 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/albums/7/tracks",
+  "status": 200,
+  "body": [
+    {
+      "id": 8,
+      "kind": "track",
+      "parentId": 7,
+      "title": "Группа крови",
+      "originalTitle": "",
+      "year": 0,
+      "rating": "",
+      "tmdbId": 0,
+      "seasonNo": 0,
+      "episodeNo": 0,
+      "poster": "",
+      "addedAt": "{time}",
+      "meta": {},
+      "albumId": 7,
+      "artistId": 6,
+      "fileId": 4,
+      "artist": "Кино",
+      "album": "Группа крови",
+      "disc": 1,
+      "no": 1,
+      "startMs": 0
+    },
+    {
+      "id": 9,
+      "kind": "track",
+      "parentId": 7,
+      "title": "Закрой за мной дверь",
+      "originalTitle": "",
+      "year": 0,
+      "rating": "",
+      "tmdbId": 0,
+      "seasonNo": 0,
+      "episodeNo": 0,
+      "poster": "",
+      "addedAt": "{time}",
+      "meta": {},
+      "albumId": 7,
+      "artistId": 6,
+      "fileId": 5,
+      "artist": "Кино",
+      "album": "Группа крови",
+      "disc": 1,
+      "no": 2,
+      "startMs": 0
+    }
+  ]
+}

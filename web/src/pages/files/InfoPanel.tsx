@@ -198,15 +198,9 @@ export function InfoContent({ root, entry, where, compact, refresh }: InfoConten
           {e.isDir && e.childCount !== undefined && <Row label={t('files.info.contains')}>{objects(e.childCount)}</Row>}
           <Row label={t('files.col.modified')}>{formatLongDate(e.mtime)}</Row>
           {!compact && <Row label={t('files.info.where')}>{where}</Row>}
-          {!__LIBRARY_EDITION__ && e.torrent && (
-            <Row label={t('files.info.torrent')}>
-              {e.torrent.seeding ? (
-                <span className={styles.seeding}>
-                  {t('files.info.seeding')} <Glyph name="checkCircle" size={14} label={t('files.info.yes')} />
-                </span>
-              ) : (
-                t('files.info.downloading')
-              )}
+          {e.hold && (
+            <Row label={t('addons.files.hold')}>
+              {e.hold.label ? `${e.hold.addon} · ${e.hold.label}` : e.hold.addon}
             </Row>
           )}
         </Rows>

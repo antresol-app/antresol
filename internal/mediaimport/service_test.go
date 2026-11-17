@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -229,17 +230,54 @@ func TestLeftoversJellyfinChannels(t *testing.T) {
 	if len(got) != 1 || got[0].Reason != "Jellyfin: ТВ-каналы не переносятся (2 канала)" || got[0].Status != StatusWarning {
 		t.Fatalf("leftovers %+v", got)
 	}
-	// the sources build's lines come first; the importer writes the channels
-	// line itself when Jellyfin runs
-	e.s.ExtraLeftovers = func(_ context.Context, _ string, running []string) []Line {
-		return []Line{{Source: "librarr", Kind: "leftover", Status: StatusWarning, Reason: strings.Join(running, ",")}}
-	}
+	// the importer writes the channels line itself when Jellyfin runs
 	tmp := t.TempDir()
-	if got := e.s.leftovers(ctx, tmp, nil); len(got) != 2 || got[0].Source != "librarr" || got[1].Source != SourceJellyfin {
-		t.Fatalf("with extra %+v", got)
-	}
-	if got := e.s.leftovers(ctx, tmp, []string{SourceJellyfin}); len(got) != 1 || got[0].Reason != SourceJellyfin {
+	if got := e.s.leftovers(ctx, tmp, []string{SourceJellyfin}); len(got) != 0 {
 		t.Fatalf("jellyfin running %+v", got)
+	}
+}
+
+// The addons' lines (ExtraLeftovers, migrate.leftovers) come first, before
+// the core's Jellyfin line, once per look. They are asked on every look,
+// outside the screen's cache (the hook keeps its own), and a run's
+// leftovers are the core's alone.
+func TestLeftovers_FromAddon(t *testing.T) {
+	e := newSvcEnv(t)
+	ctx := context.Background()
+	src := jellyfinDB(t, nil, []jfItem{{ID: "c1", Type: jfChannel, Name: "Первый"}}, nil)
+	writeFile(t, e.s.Jellyfin, string(mustRead(t, src)))
+	asked := 0
+	addon := []Line{{Source: "alpha", Kind: "leftover", Name: "Правила", Status: StatusWarning, Reason: "Не переносится: правила (2)"}}
+	e.s.ExtraLeftovers = func(context.Context) []Line {
+		asked++
+		return slices.Clone(addon)
+	}
+	got := e.s.Leftovers(ctx)
+	if len(got) != 2 || got[0] != addon[0] || got[1].Source != SourceJellyfin || asked != 1 {
+		t.Fatalf("leftovers %+v (asked %d)", got, asked)
+	}
+	scans := e.s.Scans()
+	addon[0].Reason = "Не переносится: правила (3)"
+	got = e.s.Leftovers(ctx)
+	if len(got) != 2 || got[0].Reason != "Не переносится: правила (3)" || got[1].Source != SourceJellyfin || asked != 2 {
+		t.Fatalf("second look %+v (asked %d)", got, asked)
+	}
+	if e.s.Scans() != scans {
+		t.Fatalf("the core's part was read again: %d → %d", scans, e.s.Scans())
+	}
+	// none from the addons: the core's line alone
+	addon = nil
+	if got := e.s.Leftovers(ctx); len(got) != 1 || got[0].Source != SourceJellyfin {
+		t.Fatalf("no addon lines %+v", got)
+	}
+	// a run's leftovers never ask the addons
+	asked = 0
+	tmp := t.TempDir()
+	if got := e.s.leftovers(ctx, tmp, nil); len(got) != 1 || got[0].Source != SourceJellyfin || asked != 0 {
+		t.Fatalf("a run's leftovers %+v (asked %d)", got, asked)
+	}
+	if got := e.s.leftovers(ctx, tmp, []string{SourceJellyfin}); len(got) != 0 || asked != 0 {
+		t.Fatalf("jellyfin running %+v (asked %d)", got, asked)
 	}
 }
 

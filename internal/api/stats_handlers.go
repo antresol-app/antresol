@@ -15,6 +15,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/disk"
 	"github.com/antresol-app/antresol/internal/files"
+	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/go-chi/chi/v5"
 )
@@ -119,6 +120,7 @@ func (s *stats) disk(ctx context.Context) statsDisk {
 	if s.files != nil {
 		u, err := s.files.Usage.Report(ctx)
 		if err == nil {
+			u = u.Localized(i18n.FromContext(ctx)) // addon segments' names
 			return statsDisk{Total: u.Total, Used: u.Used, Free: u.Free, Categories: u.Categories}
 		}
 		if ctx.Err() == nil {

@@ -37,6 +37,10 @@ type Data struct {
 	// Status: done | failed (downloads), approved | in_library (requests).
 	Status string `json:"status,omitempty"`
 	Error  string `json:"error,omitempty"` // why a download failed
+	// Subject and Body: an addon event's line and detail by interface
+	// language ("ru", "en"); its link is Path.
+	Subject map[string]string `json:"subject,omitempty"`
+	Body    map[string]string `json:"body,omitempty"`
 }
 
 // tmdbImageHost: the only pictures a letter shows.

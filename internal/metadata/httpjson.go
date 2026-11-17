@@ -44,19 +44,28 @@ type Getter struct {
 	MaxRetries int
 }
 
-// JSON GETs rawURL and decodes the body into out; path labels errors.
-func (g Getter) JSON(ctx context.Context, rawURL, path string, out any) error {
+// answer is one GET's final answer, after the retries.
+type answer struct {
+	status  int
+	ctype   string
+	body    []byte // at most MaxRaw+1 bytes
+	readErr error  // the connection broke mid-body
+}
+
+// fetch GETs rawURL: every attempt waits on Limiter; statuses Retry
+// accepts are repeated. Transport failures are returned wrapped.
+func (g Getter) fetch(ctx context.Context, rawURL, path string) (answer, error) {
 	hc := g.HTTP
 	if hc == nil {
 		hc = &http.Client{Timeout: 20 * time.Second}
 	}
 	for attempt := 0; ; attempt++ {
 		if err := g.Limiter.Wait(ctx); err != nil {
-			return err
+			return answer{}, err
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return err
+			return answer{}, err
 		}
 		req.Header.Set("Accept", "application/json")
 		if g.UserAgent != "" {
@@ -65,39 +74,69 @@ func (g Getter) JSON(ctx context.Context, rawURL, path string, out any) error {
 		resp, err := hc.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return answer{}, ctx.Err()
 			}
-			return fmt.Errorf("%s %s: %w", g.Service, path, err)
+			return answer{}, fmt.Errorf("%s %s: %w", g.Service, path, err)
 		}
-		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, MaxRaw+1))
 		resp.Body.Close()
-		switch {
-		case resp.StatusCode == http.StatusOK:
-		case g.Retry != nil && g.Retry(resp.StatusCode) && attempt < g.MaxRetries:
+		if resp.StatusCode != http.StatusOK && g.Retry != nil && g.Retry(resp.StatusCode) && attempt < g.MaxRetries {
 			t := time.NewTimer(g.RetryDelay)
 			select {
 			case <-t.C:
 				continue
 			case <-ctx.Done():
 				t.Stop()
-				return ctx.Err()
+				return answer{}, ctx.Err()
 			}
-		case resp.StatusCode == http.StatusNotFound:
-			return ErrNotFound
-		default:
-			return &HTTPError{g.Service, path, resp.StatusCode}
 		}
-		if rerr != nil { // the connection broke mid-body
+		if rerr != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return answer{}, ctx.Err()
 			}
-			return fmt.Errorf("%s %s: %w", g.Service, path, rerr)
+			rerr = fmt.Errorf("%s %s: %w", g.Service, path, rerr)
 		}
-		if err := json.Unmarshal(body, out); err != nil {
-			return &DecodeError{g.Service, path, err}
-		}
-		return nil
+		return answer{status: resp.StatusCode, ctype: resp.Header.Get("Content-Type"), body: body, readErr: rerr}, nil
 	}
+}
+
+// JSON GETs rawURL and decodes the body into out; path labels errors.
+func (g Getter) JSON(ctx context.Context, rawURL, path string, out any) error {
+	a, err := g.fetch(ctx, rawURL, path)
+	if err != nil {
+		return err
+	}
+	switch a.status {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return ErrNotFound
+	default:
+		return &HTTPError{g.Service, path, a.status}
+	}
+	if a.readErr != nil {
+		return a.readErr
+	}
+	if err := json.Unmarshal(a.body, out); err != nil {
+		return &DecodeError{g.Service, path, err}
+	}
+	return nil
+}
+
+// Raw GETs rawURL as JSON does (Limiter, UserAgent, retries) and returns
+// the final answer as it is, whatever its status: the metadata
+// pass-through of addons. A body over MaxRaw is ErrTooLarge.
+func (g Getter) Raw(ctx context.Context, rawURL, path string) (status int, contentType string, body []byte, err error) {
+	a, err := g.fetch(ctx, rawURL, path)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	if a.readErr != nil {
+		return 0, "", nil, a.readErr
+	}
+	if len(a.body) > MaxRaw {
+		return 0, "", nil, fmt.Errorf("%s %s: %w", g.Service, path, ErrTooLarge)
+	}
+	return a.status, a.ctype, a.body, nil
 }
 
 // Class says what a client error means for the item being enriched.

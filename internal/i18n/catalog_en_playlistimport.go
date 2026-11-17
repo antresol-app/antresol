@@ -11,11 +11,13 @@ func init() {
 		"Неизвестный сервис":                                               "Unknown service",
 		"Импорт уже идёт":                                                  "An import is already in progress",
 		"Импорт уже начат":                                                 "The import has already started",
-		"Нет точного совпадения":                                           "No exact match",
-		"Несколько исполнителей с таким именем":                            "Several artists have this name",
-		"Не найдено в MusicBrainz":                                         "Not found in MusicBrainz",
-		"Не найдено":                                                       "Not found",
-		"Нет в медиатеке":                                                  "Not in the library",
-		"Каталог недоступен — проверьте интернет":                          "The catalog is unavailable — check your internet connection",
+		// a song a finished download did not bring (queue_ops.go MsgError)
+		"Ошибка": "Error",
+		"Нет точного совпадения":                  "No exact match",
+		"Несколько исполнителей с таким именем":   "Several artists have this name",
+		"Не найдено в MusicBrainz":                "Not found in MusicBrainz",
+		"Не найдено":                              "Not found",
+		"Нет в медиатеке":                         "Not in the library",
+		"Каталог недоступен — проверьте интернет": "The catalog is unavailable — check your internet connection",
 	})
 }

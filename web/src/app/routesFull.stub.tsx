@@ -7,19 +7,3 @@ import type { RouteObject } from 'react-router'
 export function fullPlayerRoutes(): RouteObject[] {
   return []
 }
-
-export function fullShellRoutes(): RouteObject[] {
-  return []
-}
-
-export function fullNoKidsRoutes(): RouteObject[] {
-  return []
-}
-
-export function FullSectionPrefetch() {
-  return null
-}
-
-export function fullManageRoutes(): RouteObject[] {
-  return []
-}

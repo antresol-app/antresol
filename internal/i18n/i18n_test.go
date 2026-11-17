@@ -70,13 +70,13 @@ func TestFromContextDefault(t *testing.T) {
 func init() {
 	// test-only keys (the catalog test checks them like any other)
 	Register(EN, map[string]string{
-		"Тестовая раздача не найдена": "Test torrent not found",
-		"Тестовый файл %s не найден":  "Test file %s not found",
-		"Тест: скачано %d из %d":      "Test: %d of %d downloaded",
-		"тест\x04Продолжить":          "Continue Watching",
-		"Тестовая ошибка: %w":         "Test error: %w",
-		"Тест: в папке %s":            "Test: in %s",
-		"Тест: отмечено %s":           "Test: %s marked",
+		"Тестовая запись не найдена": "Test record not found",
+		"Тестовый файл %s не найден": "Test file %s not found",
+		"Тест: скачано %d из %d":     "Test: %d of %d downloaded",
+		"тест\x04Продолжить":         "Continue Watching",
+		"Тестовая ошибка: %w":        "Test error: %w",
+		"Тест: в папке %s":           "Test: in %s",
+		"Тест: отмечено %s":          "Test: %s marked",
 	})
 	RegisterPlural(EN, "тестовый том", "тестовых тома", "тестовых томов", "test volume", "test volumes")
 }
@@ -84,10 +84,10 @@ func init() {
 func TestT(t *testing.T) {
 	ru := WithLanguage(context.Background(), RU)
 	en := WithLanguage(context.Background(), EN)
-	if got := T(ru, "Тестовая раздача не найдена"); got != "Тестовая раздача не найдена" {
+	if got := T(ru, "Тестовая запись не найдена"); got != "Тестовая запись не найдена" {
 		t.Errorf("ru = %q", got)
 	}
-	if got := T(en, "Тестовая раздача не найдена"); got != "Test torrent not found" {
+	if got := T(en, "Тестовая запись не найдена"); got != "Test record not found" {
 		t.Errorf("en = %q", got)
 	}
 	if got := T(en, "Тестовый файл %s не найден", "a.mkv"); got != "Test file a.mkv not found" {
@@ -136,27 +136,27 @@ func TestErrorf(t *testing.T) {
 	if got := Message(en, wrapped); got != "acquire: Test error: disk" {
 		t.Errorf("en wrapped = %q", got)
 	}
-	nested := Errorf("Тестовая ошибка: %w", Errorf("Тестовая раздача не найдена"))
-	if got := Message(en, nested); got != "Test error: Test torrent not found" {
+	nested := Errorf("Тестовая ошибка: %w", Errorf("Тестовая запись не найдена"))
+	if got := Message(en, nested); got != "Test error: Test record not found" {
 		t.Errorf("en nested = %q", got)
 	}
-	if got := Message(en, errors.New("Тестовая раздача не найдена")); got != "Test torrent not found" {
+	if got := Message(en, errors.New("Тестовая запись не найдена")); got != "Test record not found" {
 		t.Errorf("en plain = %q", got)
 	}
-	if got := Message(WithLanguage(context.Background(), RU), nested); got != "Тестовая ошибка: Тестовая раздача не найдена" {
+	if got := Message(WithLanguage(context.Background(), RU), nested); got != "Тестовая ошибка: Тестовая запись не найдена" {
 		t.Errorf("ru nested = %q", got)
 	}
 }
 
 func TestLocalize(t *testing.T) {
 	for in, want := range map[string]string{
-		"Тестовая раздача не найдена":               "Test torrent not found",
-		"Тестовый файл Мой фильм.mkv не найден":     "Test file Мой фильм.mkv not found",
-		"Тест: скачано 3 из 10":                     "Test: 3 of 10 downloaded",
-		"Тест: в папке Тестовая раздача не найдена": "Test: in Test torrent not found",
-		"Тест: отмечено 5 тестовых томов":           "Test: 5 test volumes marked",
-		"5 тестовых томов":                          "5 test volumes",
-		"Совсем неизвестный текст":                  "Совсем неизвестный текст",
+		"Тестовая запись не найдена":               "Test record not found",
+		"Тестовый файл Мой фильм.mkv не найден":    "Test file Мой фильм.mkv not found",
+		"Тест: скачано 3 из 10":                    "Test: 3 of 10 downloaded",
+		"Тест: в папке Тестовая запись не найдена": "Test: in Test record not found",
+		"Тест: отмечено 5 тестовых томов":          "Test: 5 test volumes marked",
+		"5 тестовых томов":                         "5 test volumes",
+		"Совсем неизвестный текст":                 "Совсем неизвестный текст",
 		"plain english": "plain english",
 	} {
 		if got := LocalizeL(EN, in); got != want {

@@ -90,6 +90,12 @@ export default {
   'comp.devices.signOutTitle': 'Sign out on “{name}”?',
   'comp.devices.signOutAction': 'Sign Out',
   // DiskMeter
+  'comp.pending.active': 'Downloading {n}%',
+  'comp.pending.starting': 'Downloading',
+  'comp.pending.paused': 'Paused · {n}%',
+  'comp.pending.waiting': 'Waiting for disk space',
+  'comp.pending.organizing': 'Adding to the library',
+  'comp.pending.error': 'Download failed',
   'comp.disk.movies': 'Movies',
   'comp.disk.series': 'TV Shows',
   'comp.disk.music': 'Music',
@@ -304,7 +310,4 @@ export default {
 
   // the sources build's, but named by core code (were in ./full.ts)
   'comp.card.online': 'Online',
-  'comp.disk.cache': 'Cache',
-  'comp.notify.availableHintFull': 'When a movie from Want to Watch arrives in the library',
-  'comp.notify.downloads': 'Download finished / failed',
 } satisfies EnOf<typeof ru>

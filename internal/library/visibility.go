@@ -5,17 +5,6 @@ import (
 	"strings"
 )
 
-// HasRatedParent reports kinds whose age rating is the one of the top of
-// their hierarchy: episode/season → series, track/album → artist,
-// comic_volume → comic.
-func HasRatedParent(kind string) bool {
-	switch kind {
-	case KindSeason, KindEpisode, KindTrack, KindAlbum, KindComicVolume:
-		return true
-	}
-	return false
-}
-
 // Root walks up to the top of an item's hierarchy (or returns it as is).
 func (r *Repo) Root(ctx context.Context, it Item) (Item, error) {
 	for i := 0; i < 4 && HasRatedParent(it.Kind) && it.ParentID != 0; i++ {
@@ -42,22 +31,6 @@ func (r *Repo) Visible(ctx context.Context, maxRating string, it Item) (bool, er
 		return false, err
 	}
 	return RatingAllowed(maxRating, root), nil
-}
-
-// RatingAllowed applies the rule of Visible to a root item.
-func RatingAllowed(maxRating string, root Item) bool {
-	if maxRating == "" {
-		return true
-	}
-	if IsUnratedKind(root.Kind) && root.Rating == "" {
-		return true
-	}
-	max, ok := RatingRank(maxRating)
-	if !ok {
-		return false
-	}
-	rank, ok := RatingRank(root.Rating)
-	return ok && rank <= max
 }
 
 // MusicRootAllowed is the SQL form of RatingAllowed for a music root (an

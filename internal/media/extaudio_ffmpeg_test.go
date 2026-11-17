@@ -111,6 +111,7 @@ func TestExternalAudioOverHTTPLoopback(t *testing.T) {
 	if err != nil {
 		t.Skip("ffprobe not installed")
 	}
+	needReconnectFlags(t, ff)
 	dir := t.TempDir()
 	video := filepath.Join(dir, "v.mkv")
 	ext := filepath.Join(dir, "a.mka")
@@ -156,6 +157,7 @@ func TestRawAudioOverHTTPByteSeek(t *testing.T) {
 	if err != nil {
 		t.Skip("ffprobe not installed")
 	}
+	needReconnectFlags(t, ff)
 	dir := t.TempDir()
 	video := filepath.Join(dir, "v.mkv")
 	ext := filepath.Join(dir, "a.ac3")
@@ -229,5 +231,60 @@ func TestRawAudioOverHTTPByteSeek(t *testing.T) {
 	want := beepAt(local)
 	if math.Abs(got-7) > 0.5 || math.Abs(got-want) > 0.3 {
 		t.Fatalf("beep at %.3f s over http, %.3f s from the file (want ~7)", got, want)
+	}
+}
+
+// needReconnectFlags skips a test that feeds ffmpeg a loopback http input
+// when the installed ffmpeg is older than 7: httpReconnectArgs'
+// -reconnect_max_retries and -reconnect_delay_total_max came with ffmpeg 7,
+// and an older one refuses the whole command. The server's image ships 7+.
+func needReconnectFlags(t *testing.T, ff string) {
+	t.Helper()
+	out, err := exec.Command(ff, "-hide_banner", "-version").Output()
+	if err != nil {
+		t.Skipf("%s -version: %v", ff, err)
+	}
+	if v, ok := ffmpegMajor(string(out)); ok && v < 7 {
+		line, _, _ := strings.Cut(string(out), "\n")
+		t.Skipf("%s: the http input's reconnect flags need ffmpeg 7 or newer", line)
+	}
+}
+
+// ffmpegMajor reads the major version of `ffmpeg -version`'s first line
+// ("ffmpeg version 6.1.1-3ubuntu5 ..."); a build without one (a git
+// snapshot, "N-12345-g...") is not known to be old.
+func ffmpegMajor(out string) (int, bool) {
+	f := strings.Fields(out)
+	if len(f) < 3 || f[0] != "ffmpeg" || f[1] != "version" {
+		return 0, false
+	}
+	v := strings.TrimPrefix(f[2], "n")
+	end := strings.IndexFunc(v, func(r rune) bool { return r < '0' || r > '9' })
+	if end == 0 {
+		return 0, false
+	}
+	if end > 0 {
+		v = v[:end]
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil
+}
+
+func TestFFmpegMajor(t *testing.T) {
+	for in, want := range map[string]int{
+		"ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023": 6,
+		"ffmpeg version 7.1 Copyright":                          7,
+		"ffmpeg version n7.0.2 Copyright":                       7,
+		"ffmpeg version 9.0.2 Copyright (c) 2000-2026":          9,
+		"ffmpeg version N-112233-gabcdef Copyright":             -1,
+		"": -1,
+	} {
+		got, ok := ffmpegMajor(in)
+		if !ok {
+			got = -1
+		}
+		if got != want {
+			t.Errorf("%q: %d, want %d", in, got, want)
+		}
 	}
 }

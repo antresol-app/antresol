@@ -167,6 +167,11 @@ export default {
   'player.page.fileMissing': 'Файл не найден на сервере.',
   'player.page.openFailedDot': 'Не удалось открыть видео.',
   'player.page.openFailed': 'Не удалось открыть видео',
+  // an addon's video (/play/input/:id)
+  'player.input.loading': 'Загружается…',
+  'player.input.gone': 'Видео больше недоступно',
+  'player.input.title': 'Видео',
+  'player.slowSourceStalled': 'Источник не отдаёт данные',
   'player.bookmarks': 'Закладки',
   'player.bookmark.add': 'Добавить закладку',
   'player.bookmark.at': 'Закладка на {time}',
@@ -182,7 +187,6 @@ export default {
   'player.screen.overFallback': 'Время на сегодня закончилось. Завтра можно снова!',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'vo.find': 'Найти озвучку…',
   'player.track.cleanedToggle': 'Очищенный перевод',
   'player.track.cleanedToggleHint': 'Без оригинальной речи под переводом',
 } as const

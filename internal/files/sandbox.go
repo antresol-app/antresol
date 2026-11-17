@@ -7,6 +7,8 @@ package files
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -66,15 +68,61 @@ func NewSandbox(mediaRoot string, roots []Root) *Sandbox {
 
 // DefaultRoots are the roots of a standard configuration, in sidebar order.
 func DefaultRoots(cfg config.Config) []Root {
-	roots := []Root{
+	return []Root{
 		{ID: "library", Title: "Медиатека", Icon: "library", Dir: cfg.Abs("media")},
 		{ID: "movies", Title: "Фильмы", Icon: "film", Dir: cfg.Abs(cfg.MoviesDir)},
 		{ID: "series", Title: "Сериалы", Icon: "tv", Dir: cfg.Abs(cfg.SeriesDir)},
 		{ID: "music", Title: "Музыка", Icon: "music", Dir: cfg.Abs(cfg.MusicDir)},
 		{ID: "books", Title: "Книги", Icon: "book", Dir: cfg.Abs(cfg.BooksDir)},
+		{ID: "disk", Title: "Весь диск", Icon: "disk", Dir: cfg.MediaRoot, AdminOnly: true},
 	}
-	roots = append(roots, acquisitionRoots(cfg)...)
-	return append(roots, Root{ID: "disk", Title: "Весь диск", Icon: "disk", Dir: cfg.MediaRoot, AdminOnly: true})
+}
+
+// reservedRootIDs are the ids ExtraRoots never lets a spec redefine.
+var reservedRootIDs = []string{"library", "movies", "series", "music", "books", "disk", "stream-cache"}
+
+// extraRootMeta gives the known extra ids their title and icon.
+var extraRootMeta = map[string]struct{ title, icon string }{
+	"downloads": {"Загрузки", "download"},
+}
+
+// ExtraRoots parses VAULT_EXTRA_ROOTS: "id=/abs/dir;id2=/abs/dir2". Every
+// extra root is admin-only. A clash with a default id, a repeated id, a
+// relative dir or an empty part is an error; a dir that does not exist is
+// skipped (as the default roots are when their folder is missing).
+func ExtraRoots(spec string) ([]Root, error) {
+	if strings.TrimSpace(spec) == "" {
+		return nil, nil
+	}
+	var out []Root
+	seen := map[string]bool{}
+	for _, id := range reservedRootIDs {
+		seen[id] = true
+	}
+	for _, part := range strings.Split(spec, ";") {
+		id, dir, ok := strings.Cut(part, "=")
+		id, dir = strings.TrimSpace(id), strings.TrimSpace(dir)
+		if !ok || id == "" || dir == "" {
+			return nil, fmt.Errorf("files: extra root %q: want id=/absolute/dir", part)
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("files: extra root %q: id is taken", id)
+		}
+		if !filepath.IsAbs(dir) {
+			return nil, fmt.Errorf("files: extra root %q: dir must be absolute", id)
+		}
+		seen[id] = true
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			log.Printf("WARN files: VAULT_EXTRA_ROOTS: %q (%s) is missing or not a directory: root skipped", id, dir)
+			continue
+		}
+		r := Root{ID: id, Title: id, Icon: "folder", Dir: filepath.Clean(dir), AdminOnly: true}
+		if m, ok := extraRootMeta[id]; ok {
+			r.Title, r.Icon = m.title, m.icon
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }
 
 // LibraryOnlyRoots drops the roots a library-only server has no use for:

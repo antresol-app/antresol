@@ -2,12 +2,13 @@
 // the profile menu, kept on the server for the profile; the pages ask with
 // ?scope=mine; a kid's profile never gets the picker.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { registerAddon, resetAddonsForTests } from '../../addons/registry'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { User } from '../../api/types'
 import { ProfileMenu } from '../../components/ProfileMenu'
-import { libraryScopeOf } from '../../state/libraryScope'
+import { canPickLibrary, libraryScopeOf } from '../../state/libraryScope'
 import { session } from '../../state/session'
 import { Browse } from '../Browse'
 import { card } from '../../components/__tests__/fixtures'
@@ -48,13 +49,14 @@ beforeEach(() => session.reset())
 afterEach(() => {
   vi.unstubAllGlobals()
   session.reset()
+  resetAddonsForTests()
 })
 
 describe('library picker', () => {
   it('a kid gets no picker and always the shared library', async () => {
     server({ ...kid, libraryScope: 'mine' })
     await session.login(kid.id)
-    expect(libraryScopeOf(session.get().user)).toBe('all')
+    expect(libraryScopeOf(session.get().user, true)).toBe('all')
     render(
       <MemoryRouter initialEntries={['/movies']}>
         <ProfileMenu user={session.get().user!} />
@@ -66,5 +68,24 @@ describe('library picker', () => {
     expect(calls.filter((c) => c.url.includes('/api/items')).every((c) => !c.url.includes('scope='))).toBe(true)
     await userEvent.click(screen.getByRole('button', { name: 'Профиль: Вася' }))
     expect(screen.queryByRole('group', { name: 'Медиатека' })).not.toBeInTheDocument()
+  })
+
+  it('the picker needs an addon', async () => {
+    expect(canPickLibrary(adult, false)).toBe(false)
+    expect(canPickLibrary(adult, true)).toBe(true)
+    expect(canPickLibrary(kid, true)).toBe(false)
+    expect(libraryScopeOf({ ...adult, libraryScope: 'mine' }, false)).toBe('all')
+    server({ ...adult, libraryScope: 'mine' })
+    await session.login(adult.id)
+    render(
+      <MemoryRouter initialEntries={['/movies']}>
+        <Browse kind="movie" title="Фильмы" emptyTitle="Нет фильмов" />
+      </MemoryRouter>,
+    )
+    // without one: the shared library, no picker
+    expect(await screen.findByText('Чужое')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Медиатека:/ })).not.toBeInTheDocument()
+    act(() => registerAddon('dl', { searchBlocks: [{ element: () => null }] }))
+    expect(await screen.findByRole('button', { name: /^Медиатека:/ })).toBeInTheDocument()
   })
 })

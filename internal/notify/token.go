@@ -15,7 +15,9 @@ import (
 // Links of the letters carry a signed token instead of a login:
 //
 //	v|<user>|<address hash>|<expires>   confirms the address
-//	u|<user>|<topic>|<address hash>     turns the topic off
+//	u|<user>|<topic>|<address hash>     turns the topic off ("all":
+//	                                     every topic, the addons' too;
+//	                                     "addon:<id>:<topic>": that one)
 //
 // The address hash ties a link to the address it went to: after the
 // address changes, old links do nothing.
@@ -111,7 +113,11 @@ func (s *Service) Unsubscribe(ctx context.Context, token string) (LinkInfo, erro
 
 func (s *Service) unsubscribe(ctx context.Context, token string, apply bool) (LinkInfo, error) {
 	f, err := s.open(token)
-	if err != nil || len(f) != 4 || f[0] != "u" || (f[2] != TopicAll && !slices.Contains(AllTopics, f[2])) {
+	if err != nil || len(f) != 4 || f[0] != "u" {
+		return LinkInfo{}, ErrBadToken
+	}
+	_, _, addonTopic := ParseAddonTopic(f[2])
+	if f[2] != TopicAll && !slices.Contains(AllTopics, f[2]) && !addonTopic {
 		return LinkInfo{}, ErrBadToken
 	}
 	uid, err := strconv.ParseInt(f[1], 10, 64)
@@ -129,16 +135,26 @@ func (s *Service) unsubscribe(ctx context.Context, token string, apply bool) (Li
 	if !apply {
 		return info, nil
 	}
-	set := "episodes=0, available=0, requests=0, downloads=0" // TopicAll: the one-click of List-Unsubscribe
-	if f[2] == TopicAll {
-		for _, t := range AllTopics {
-			p.set(t, false)
+	switch {
+	case addonTopic:
+		if err := s.setAddonPref(ctx, uid, f[2], false); err != nil {
+			return info, err
 		}
-	} else {
-		p.set(f[2], false)
-		set = map[string]string{Episodes: "episodes", Available: "available", Requests: "requests", Downloads: "downloads"}[f[2]] + "=0"
+	case f[2] == TopicAll: // the one-click of List-Unsubscribe: the addons' topics too
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_prefs SET episodes=0, available=0, requests=0, downloads=0,
+			updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE user_id=?`, uid); err != nil {
+			return info, err
+		}
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_addon_prefs SET enabled=0 WHERE user_id=?`, uid); err != nil {
+			return info, err
+		}
+	default:
+		set := map[string]string{Episodes: "episodes", Available: "available", Requests: "requests"}[f[2]] + "=0"
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_prefs SET `+set+`, updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE user_id=?`, uid); err != nil {
+			return info, err
+		}
 	}
-	if _, err := s.DB.ExecContext(ctx, `UPDATE notify_prefs SET `+set+`, updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE user_id=?`, uid); err != nil {
+	if p, err = s.Prefs(ctx, uid); err != nil {
 		return info, err
 	}
 	return info, s.dropOff(ctx, uid, p)

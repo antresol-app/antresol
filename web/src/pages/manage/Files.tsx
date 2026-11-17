@@ -278,12 +278,12 @@ export function Files() {
 
       {confirm && (
         <Sheet
-          title={!__LIBRARY_EDITION__ && confirm.warnings ? t('mfiles.seedingTitle') : t('mfiles.deleteConfirm', { title: confirm.item.title })}
+          title={confirm.warnings ? t('mfiles.heldTitle') : t('mfiles.deleteConfirm', { title: confirm.item.title })}
           message={
-            // another build's server warns before deleting some files
-            !__LIBRARY_EDITION__ && confirm.warnings ? (
+            // the server warns before deleting files an extension holds
+            confirm.warnings ? (
               <>
-                {t('mfiles.seedingText')}
+                {t('mfiles.heldText')}
                 <ul>
                   {confirm.warnings.slice(0, 4).map((w) => (
                     <li key={w}>{w}</li>

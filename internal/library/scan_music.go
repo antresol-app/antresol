@@ -14,26 +14,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/dhowden/tag"
-	"github.com/dhowden/tag/mbz"
 
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/natsort"
 	"github.com/antresol-app/antresol/internal/release"
 )
-
-// musicExt reports whether p is a music track file: audioExt without .m4b
-// (an .m4b is always an audiobook).
-func musicExt(p string) bool {
-	e := strings.ToLower(filepath.Ext(p))
-	return e != ".m4b" && audioExt[e]
-}
-
-// musicSkipDirs are never a source of tracks (resource forks, NAS indexes,
-// booklet scans).
-var musicSkipDirs = map[string]bool{"__macosx": true, ".appledouble": true, "@eadir": true, "scans": true, "covers": true, "artwork": true}
 
 var losslessCodecs = map[string]bool{"flac": true, "alac": true, "wav": true, "aiff": true, "ape": true, "wv": true}
 
@@ -132,83 +119,6 @@ func walkMusic(ctx context.Context, root string) ([]musicFile, map[string][]stri
 		err = firstErr
 	}
 	return out, cues, err
-}
-
-// audioTags is what the scanner reads from a file's tags.
-type audioTags struct {
-	title, album, artist, albumArtist, genre, lyrics string
-	year, track, disc                                int
-	compilation                                      bool
-	fileType                                         tag.FileType
-	mbReleaseGroup, mbTrack                          string
-	picture                                          *tag.Picture
-	replayGain                                       ReplayGain
-}
-
-func truthy(v any) bool {
-	switch x := v.(type) {
-	case bool:
-		return x
-	case int:
-		return x != 0
-	case string:
-		n, err := strconv.Atoi(strings.TrimSpace(x))
-		return err == nil && n != 0 || strings.EqualFold(strings.TrimSpace(x), "true")
-	case []byte:
-		return len(x) > 0 && x[0] != 0 && x[0] != '0'
-	case *tag.Comm:
-		return x != nil && truthy(x.Text)
-	}
-	return false
-}
-
-// tagReads counts readTags calls (tests: an unchanged folder is not re-read).
-var tagReads atomic.Int64
-
-// readTags reads the tags of an audio file. A broken or untagged file
-// returns an error; the scanner then uses the folder and file names.
-func readTags(path string) (t audioTags, err error) {
-	tagReads.Add(1)
-	f, err := os.Open(path)
-	if err != nil {
-		return t, err
-	}
-	defer f.Close()
-	defer func() {
-		if r := recover(); r != nil { // the tag reader must not take the scan down
-			err = fmt.Errorf("tag reader panic: %v", r)
-		}
-	}()
-	m, err := tag.ReadFrom(f)
-	if err != nil {
-		return t, err
-	}
-	t.title, t.album, t.artist = strings.TrimSpace(m.Title()), strings.TrimSpace(m.Album()), strings.TrimSpace(m.Artist())
-	t.albumArtist, t.genre = strings.TrimSpace(m.AlbumArtist()), strings.TrimSpace(m.Genre())
-	t.year, t.lyrics, t.fileType, t.picture = plausibleYear(m.Year()), m.Lyrics(), m.FileType(), m.Picture()
-	t.track, _ = m.Track()
-	t.disc, _ = m.Disc()
-	rawYear := 0
-	for k, v := range m.Raw() {
-		switch strings.ToLower(k) {
-		case "tcmp", "tcp", "cpil", "compilation":
-			t.compilation = t.compilation || truthy(v)
-		case "date", "year", "tdrc", "tyer", "\u00a9day":
-			if s, ok := v.(string); ok && rawYear == 0 {
-				rawYear = parseYear(s)
-			}
-		}
-	}
-	if t.year == 0 { // the reader gave junk (e.g. 1 for an odd-length date): try the raw date
-		t.year = rawYear
-	}
-	t.replayGain = replayGainOf(m.Raw())
-	info := mbz.Extract(m)
-	t.mbReleaseGroup = info.Get(mbz.ReleaseGroup)
-	if t.mbTrack = info.Get(mbz.Recording); t.mbTrack == "" {
-		t.mbTrack = info.Get(mbz.Track)
-	}
-	return t, nil
 }
 
 // coverName is the ArtDir name of an embedded cover: sha1 of its bytes.
@@ -435,54 +345,6 @@ func findImages(af *albumFolder, cues map[string][]string) map[string]imageSheet
 		}
 	}
 	return out
-}
-
-// readSmall reads a whole file of at most limit bytes.
-func readSmall(path string, limit int64) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > limit {
-		return nil, errors.New("file too large")
-	}
-	return os.ReadFile(path)
-}
-
-func cueYear(date string) int { return parseYear(date) }
-
-// Plausible album years; anything else from a tag is garbage (a year of 1 is
-// a zero date) and means «unknown».
-const (
-	minYear = 1000
-	maxYear = 2999
-)
-
-// plausibleYear returns y when it is a plausible year, else 0 (unknown).
-func plausibleYear(y int) int {
-	if y < minYear || y > maxYear {
-		return 0
-	}
-	return y
-}
-
-// parseYear reads the year from a tag date: «1973», «1973-03-01»,
-// «1973-03-01T00:00:00Z». 0 when there is no plausible one.
-func parseYear(date string) int {
-	date = strings.TrimSpace(date)
-	if len(date) < 4 {
-		return 0
-	}
-	for _, c := range date[:4] {
-		if c < '0' || c > '9' {
-			return 0
-		}
-	}
-	if len(date) > 4 && date[4] >= '0' && date[4] <= '9' {
-		return 0 // a longer number is not a date
-	}
-	y, _ := strconv.Atoi(date[:4])
-	return plausibleYear(y)
 }
 
 // mostCommon returns the most frequent non-empty value (the first seen on a tie).
@@ -890,6 +752,16 @@ func natsortFiles(fs []musicFile) {
 // normalized, edition suffixes («(Remastered 2012)», «[Deluxe Edition]»)
 // dropped; a version («(Live)») stays apart.
 func editionKey(title string) string { return release.Normalize(release.StripEditions(title)) }
+
+// ReadReplayGain reads the ReplayGain tags of an audio file as the scanner
+// does (image: a CUE image, whose tags are its disc's: the album gain only).
+func ReadReplayGain(path string, image bool) (ReplayGain, error) {
+	t, err := readTags(path)
+	if err != nil {
+		return ReplayGain{}, err
+	}
+	return trackReplayGain(&musicEntry{tags: t, image: image}), nil
+}
 
 // trackReplayGain is the ReplayGain of an entry's track. A CUE image's
 // tags describe the whole disc: its track gain is the disc's (the album

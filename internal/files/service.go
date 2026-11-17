@@ -11,18 +11,18 @@ import (
 	"github.com/antresol-app/antresol/internal/media"
 )
 
-// ServiceConfig wires a Service. Library, Seeds, Changed and Probe are optional.
+// ServiceConfig wires a Service. Library, Held, Changed and Probe are optional.
 type ServiceConfig struct {
-	Sandbox  *Sandbox
-	DB       *sql.DB
-	Library  *library.Repo
-	Seeds    SeedInfo
-	Torrents Torrents
-	DataDir  string // thumbnails go to DataDir/thumbs
-	FFmpeg   string
-	FFprobe  string
-	Changed  func(roots ...string)
-	Probe    func(ctx context.Context, path string) (media.ProbeResult, error)
+	Sandbox *Sandbox
+	DB      *sql.DB
+	Library *library.Repo
+	Held    HeldInfo
+	Holders Holders
+	DataDir string // thumbnails go to DataDir/thumbs
+	FFmpeg  string
+	FFprobe string
+	Changed func(roots ...string)
+	Probe   func(ctx context.Context, path string) (media.ProbeResult, error)
 	// NoDiskUsage: the usage report leaves out the disk (see Usage.NoDisk).
 	NoDiskUsage bool
 	// LibraryRoots, Offline and Linked set up deleting library items
@@ -31,6 +31,9 @@ type ServiceConfig struct {
 	Offline      func() string
 	Linked       func(ctx context.Context, set library.DeleteSet) []Linked
 	Hold         func(ctx context.Context) (release func(), err error)
+	// Texts and LinkFiles (optional): see Ops.Texts, ItemDelete.LinkFiles.
+	Texts     HoldTexts
+	LinkFiles func(ctx context.Context, key string) ([]library.File, error)
 }
 
 // Service bundles the file browser parts used by the API.
@@ -52,14 +55,14 @@ func ThumbURL(root, rel string, v int64) string {
 }
 
 func NewService(c ServiceConfig) *Service {
-	b := &Browser{Sandbox: c.Sandbox, Seeds: c.Seeds, ThumbURL: ThumbURL}
+	b := &Browser{Sandbox: c.Sandbox, Texts: c.Texts, ThumbURL: ThumbURL}
 	if c.Library != nil {
 		b.Library = c.Library
 	}
-	ops := &Ops{Sandbox: c.Sandbox, DB: c.DB, Seeds: c.Seeds, Torrents: c.Torrents, Changed: c.Changed}
+	ops := &Ops{Sandbox: c.Sandbox, DB: c.DB, Held: c.Held, Holders: c.Holders, Texts: c.Texts, Changed: c.Changed}
 	var items *ItemDelete
 	if c.Library != nil {
-		items = &ItemDelete{Ops: ops, Library: c.Library, Roots: c.LibraryRoots, Offline: c.Offline, Linked: c.Linked, Hold: c.Hold}
+		items = &ItemDelete{Ops: ops, Library: c.Library, Roots: c.LibraryRoots, Offline: c.Offline, Linked: c.Linked, Hold: c.Hold, LinkFiles: c.LinkFiles}
 	}
 	return &Service{
 		Sandbox: c.Sandbox,

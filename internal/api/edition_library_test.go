@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,12 +74,23 @@ func TestLibraryEditionStatsAndMe(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if keys := jsonKeys(t, w.Body.Bytes()); keys["seeding"] || !keys["counts"] || !keys["disk"] {
+	keys := jsonKeys(t, w.Body.Bytes())
+	if !keys["counts"] || !keys["disk"] {
 		t.Fatalf("stats %s", w.Body)
 	}
+	for k := range keys {
+		if !slices.Contains([]string{"disk", "counts", "watchedByUser", "topItems30d", "transcoding"}, k) {
+			t.Fatalf("stats block %q is not the library's: %s", k, w.Body)
+		}
+	}
 	w = e.do("GET", "/api/me", "", e.admin)
-	keys := jsonKeys(t, w.Body.Bytes())
-	if keys["canAcquire"] || keys["canWatchOnline"] || !keys["libraryOnly"] {
+	keys = jsonKeys(t, w.Body.Bytes())
+	for _, k := range capabilityKeys(keys) {
+		if k != "canRequest" { // no online viewing, no capability of an addon's ways
+			t.Fatalf("me has %s: %s", k, w.Body)
+		}
+	}
+	if !keys["libraryOnly"] {
 		t.Fatalf("me %s", w.Body)
 	}
 	var me struct {
@@ -97,8 +109,8 @@ func TestLibraryEditionRoutesAbsent(t *testing.T) {
 		d.DB = db
 		d.MediaImport = testMediaImport(t, d) // «Переезд» is core; its sources build's parts are not
 	})
-	for _, p := range []string{"/api/online/status", "/api/discover?q=x", "/api/torrents", "/api/sources", "/api/follow",
-		"/api/migrate/switch", "/api/arrivals", "/api/disk", "/api/acquire/progress?kind=movie&tmdbId=1", "/api/torrent-stream/x/0", "/api/torrent-engine"} {
+	for _, p := range []string{"/api/online/status", "/api/discover?q=x", "/api/sources", "/api/follow",
+		"/api/migrate/switch", "/api/disk", "/api/acquire/progress?kind=movie&tmdbId=1"} {
 		if w := e.do("GET", p, "", e.admin); w.Code != 404 {
 			t.Errorf("GET %s: %d %s", p, w.Code, w.Body)
 		}
@@ -146,9 +158,6 @@ func TestLibraryEditionRequestsClosed(t *testing.T) {
 	if w := e.do("GET", "/api/me", "", e.admin); json.Unmarshal(w.Body.Bytes(), &me) != nil || me.Requests || me.CanRequest || !jsonKeys(t, w.Body.Bytes())["requests"] {
 		t.Fatalf("me: %s", w.Body)
 	}
-	if w := e.do("GET", "/api/arrivals", "", e.admin); w.Code != 404 {
-		t.Errorf("arrivals: %d", w.Code)
-	}
 }
 
 // TestLibraryEditionImportFiles: the playlist import is core: its jobs are
@@ -167,16 +176,17 @@ func TestLibraryEditionImportFiles(t *testing.T) {
 func TestImportServicesEmptyInCore(t *testing.T) {
 	e := newCoreImportEnv(t)
 	w := e.do("GET", "/api/import/services", "", e.admin)
-	if w.Code != 200 || strings.ReplaceAll(strings.TrimSpace(w.Body.String()), " ", "") != `{"services":[]}` {
+	if w.Code != 200 || strings.ReplaceAll(strings.TrimSpace(w.Body.String()), " ", "") != `{"catalog":false,"downloads":false,"services":[]}` {
 		t.Fatalf("services: %d %s", w.Code, w.Body)
 	}
 }
 
-// TestImportRetryAbsentInLibrary: «Повторить» of an import and the
-// sign-ins are another build's: no such routes.
-func TestImportRetryAbsentInLibrary(t *testing.T) {
+// TestImportSignInsAbsentInLibrary: the sign-ins are an addon's (behind
+// its own routes): the core has no such routes. «Повторить» is the core's
+// (TestImportRetryInCore).
+func TestImportSignInsAbsentInLibrary(t *testing.T) {
 	e := newCoreImportEnv(t)
-	for _, p := range []string{"/api/import/groups/1/retry", "/api/import/connect/spotify", "/api/import/deezer/public"} {
+	for _, p := range []string{"/api/import/connect/spotify", "/api/import/deezer/public"} {
 		if w := e.do("POST", p, `{}`, e.admin); w.Code != 404 {
 			t.Errorf("POST %s: %d %s", p, w.Code, w.Body)
 		}

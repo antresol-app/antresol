@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { Card, Song } from '../../api/types'
+import { registerAddon, resetAddonsForTests, setAddonUser } from '../../addons/registry'
+import type { SearchScope } from '../../app/sections'
 import { audio } from '../../player/audio/engine'
 import { session } from '../../state/session'
 import { Search } from '../Search'
@@ -47,6 +49,8 @@ function setup(u: object, found: object = EMPTY) {
     const url = String(input)
     if (url.endsWith('/api/login')) return json(u)
     if (url.includes('/api/search')) return json({ ...EMPTY, ...found })
+    if (url.includes('/api/requests/search'))
+      return json([{ kind: 'movie', tmdbId: 1, extId: '', title: 'Дюна', subtitle: '', year: 2021, poster: '', explicit: false, aliases: [], kidRequest: { key: 'tmdb:1', allowed: true, request: null } }])
     if (url.includes('/api/discover') && url.includes('kind=music'))
       return json([{ tmdbId: 0, extId: 'mb-1', kind: 'music', title: 'Группа крови', subtitle: 'Кино', year: 1988, poster: '', overview: '', inLibrary: false, libraryItemId: null }])
     if (url.includes('/api/discover'))
@@ -80,8 +84,21 @@ describe('Поиск', () => {
     expect(screen.queryByRole('button', { name: 'На сервер' })).not.toBeInTheDocument()
   })
 
-  it('a library-only server: no «can be added» hint, no catalog search', async () => {
-    const f = setup(user({ libraryOnly: true }))
+  it('a kid with requests open gets the request search', async () => {
+    const f = setup(user({ isKid: true, canRequest: true }))
+    await session.login(2)
+    renderSearch()
+    await userEvent.type(screen.getByRole('searchbox'), 'Дюна')
+    expect(await screen.findByRole('heading', { name: 'Найти и попросить' }, { timeout: 3000 })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 700)) // past the catalog debounce
+    const urls = f.mock.calls.map(([u]) => String(u))
+    expect(urls.some((u) => u.includes('/api/requests/search') && u.includes('kind=video'))).toBe(true)
+    expect(urls.some((u) => u.includes('/api/discover'))).toBe(false)
+    expect(screen.queryByText('Найти и добавить')).not.toBeInTheDocument()
+  })
+
+  it('without an addon: no «can be added» hint, no catalog search', async () => {
+    const f = setup(user({}))
     await session.login(2)
     renderSearch()
     expect(screen.queryByText(/can be added|можно добавить/)).not.toBeInTheDocument()
@@ -90,6 +107,14 @@ describe('Поиск', () => {
     await new Promise((r) => setTimeout(r, 700)) // past the discover debounce
     expect(f.mock.calls.some(([u]) => String(u).includes('/api/discover'))).toBe(false)
     expect(screen.queryByRole('button', { name: 'На сервер' })).not.toBeInTheDocument()
+  })
+
+  it('while the addons still load, neither hint shows (no «no» first, then a flip)', async () => {
+    setup(user({ addons: true }))
+    await session.login(2)
+    renderSearch()
+    expect(screen.queryByText(/можно добавить/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Ищите фильмы, музыку и книги в медиатеке.')).not.toBeInTheDocument()
   })
 
   it('renders music and book sections from search result', async () => {
@@ -145,5 +170,81 @@ describe('Поиск', () => {
     const best = await screen.findByRole('region', { name: 'Лучшее совпадение' }, { timeout: 3000 })
     expect(within(best).getByRole('link')).toHaveAttribute('href', '/music/album/10')
     expect(screen.getByRole('region', { name: 'Фильмы и сериалы' })).toBeInTheDocument()
+  })
+})
+
+describe('search blocks from addons', () => {
+  type Seen = { q: string; scope: SearchScope; text: string; nothing: boolean }
+  let seen: Seen[] = []
+  const block = {
+    element: (p: Seen) => {
+      seen.push(p)
+      return <p>блок: {p.q}</p>
+    },
+  }
+  beforeEach(() => {
+    session.reset()
+    seen = []
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+    resetAddonsForTests()
+  })
+
+  it('renders search blocks for adults with q ≥ 2', async () => {
+    setup(user({}))
+    await session.login(2)
+    registerAddon('dl', { searchBlocks: [block] })
+    renderSearch('/search?scope=music')
+    expect(screen.getByText(/можно добавить/)).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('searchbox'), 'Д')
+    await new Promise((r) => setTimeout(r, 400)) // past the query debounce
+    expect(screen.queryByText(/^блок/)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByRole('searchbox'), 'ю')
+    expect(await screen.findByText('блок: Дю', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(seen.at(-1)).toMatchObject({ q: 'Дю', text: 'Дю', scope: 'music' })
+    await screen.findByText('Ничего не найдено в медиатеке')
+    expect(seen.at(-1)?.nothing).toBe(true)
+  })
+
+  it('a kid never gets a block', async () => {
+    setup(user({ isKid: true }))
+    await session.login(2)
+    registerAddon('dl', { searchBlocks: [block] })
+    renderSearch('/search?q=Дюна')
+    expect(await screen.findByText('Ничего не найдено в медиатеке', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByText(/^блок/)).not.toBeInTheDocument()
+    expect(seen).toEqual([])
+  })
+
+  it('an admin-only block is the admin\'s', async () => {
+    setup(user({ id: 1, isAdmin: true }))
+    await session.login(1)
+    act(() => setAddonUser({ isAdmin: true }))
+    registerAddon('dl', { searchBlocks: [{ ...block, admin: true }] })
+    renderSearch('/search?q=Дюна')
+    expect(await screen.findByText('блок: Дюна', {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('a throwing block leaves the results', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    setup(user({}), { library: [card(1, 'movie', 'Дюна')] })
+    await session.login(2)
+    registerAddon('bad', {
+      searchBlocks: [
+        {
+          element: () => {
+            throw new Error('boom')
+          },
+        },
+      ],
+    })
+    registerAddon('dl', { searchBlocks: [block] })
+    renderSearch('/search?q=Дюна')
+    expect(await screen.findByText('блок: Дюна', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Лучшее совпадение' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

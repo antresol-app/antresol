@@ -53,12 +53,18 @@ func (h *lib) effectiveUILanguage(ctx context.Context, uid int64) (chosen, effec
 	if err != nil {
 		return "", "", err
 	}
-	for _, l := range p.AudioLangs {
-		if l = primaryLang(l); uiLanguages[l] {
-			return "", l, nil
+	return "", firstUILanguage(p.AudioLangs), nil
+}
+
+// firstUILanguage is the first of langs (tags such as "en-US") the apps'
+// interfaces have, "" with none.
+func firstUILanguage(langs []string) string {
+	for _, l := range langs {
+		if l = primaryLang(strings.TrimSpace(l)); uiLanguages[l] {
+			return l
 		}
 	}
-	return "", "", nil
+	return ""
 }
 
 func (h *lib) myUILanguage(w http.ResponseWriter, r *http.Request) {

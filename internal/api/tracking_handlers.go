@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -544,19 +545,40 @@ func (h *lib) trackingCalendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"days": out})
 }
 
-// sourceKindsFor is the source kinds the caller may be shown: a library-only
-// server and a kid have the library's alone (a kid's every other play and
-// download route is nonKid); «Смотреть онлайн» rows need the profile's
-// canWatchOnline.
+// sourceKindsFor is the source kinds the caller may be shown: a kid has the
+// library's alone (a kid's every other play and download route is nonKid);
+// «Смотреть онлайн» rows need the profile's canWatchOnline and a server that
+// is not library-only; the scan kinds of the installed addons the profile
+// has access to, on or off, are shown on every server (E2: a disabled
+// addon's rows stay listed; R9: library-only gates online only).
 func (h *lib) sourceKindsFor(ctx context.Context, u auth.User) map[string]bool {
-	if h.LibraryOnly || u.IsKid {
+	if u.IsKid {
 		return map[string]bool{"library": true}
 	}
-	k := map[string]bool{"library": true, "pinned": true, "torrent": true}
-	if newMeCaps(h.Deps).of(ctx, u).onlineAllowed() {
+	k := map[string]bool{"library": true}
+	for _, a := range h.AddonHooks.ScanKinds(u) {
+		k[a] = true
+	}
+	if !h.LibraryOnly && newMeCaps(h.Deps).of(ctx, u).onlineAllowed() {
 		k["online"] = true
 	}
 	return k
+}
+
+// choiceKindOK: a source choice's kind is empty, library, or for an adult
+// online (not on a library-only server) or an installed addon's scan kind
+// the profile has access to (E2, on every server); a kid's is the
+// library's alone.
+func (h *lib) choiceKindOK(u auth.User, kind string) bool {
+	switch {
+	case kind == "" || kind == "library":
+		return true
+	case u.IsKid:
+		return false
+	case kind == "online":
+		return !h.LibraryOnly
+	}
+	return slices.Contains(h.AddonHooks.ScanKinds(u), kind)
 }
 
 // trackingEpisodes serves GET /api/tracking/{kind}/{tmdbId}/episodes, the
@@ -820,8 +842,9 @@ func (h *lib) getChoice(w http.ResponseWriter, r *http.Request) {
 
 // putChoice serves PUT /api/tracking/{kind}/{tmdbId}/choice. The body is a
 // Choice {kind, provider, voice, lang, quality}, every field optional; kind
-// is one of library|pinned|torrent|online or empty, else 400. 204 on
-// success, 404 when the rating gate hides the title.
+// is empty, library, online or an addon's scan kind (choiceKindOK; a kid's
+// only library), else 400. 204 on success, 404 when the rating gate hides
+// the title.
 func (h *lib) putChoice(w http.ResponseWriter, r *http.Request) {
 	kind, tmdbID, ok := titleParams(w, r)
 	if !ok {
@@ -831,9 +854,7 @@ func (h *lib) putChoice(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	switch in.Kind {
-	case "", "library", "pinned", "torrent", "online":
-	default:
+	if !h.choiceKindOK(userOf(r), in.Kind) {
 		writeErr(w, r, http.StatusBadRequest, "Неизвестный тип источника")
 		return
 	}

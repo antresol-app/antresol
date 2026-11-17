@@ -43,22 +43,27 @@ const (
 	Available = "available"
 	// Requests: a kid's request was approved or is in the library.
 	Requests = "requests"
-	// Downloads is another build's topic (admins).
-	Downloads = "downloads"
 )
 
-// AllTopics in the order letters list them.
-var AllTopics = []string{Episodes, Available, Requests, Downloads}
+// legacyDownloads: a column older servers wrote; addon topics of that name
+// read it (D1: an addon topic without a row takes the column of its topic
+// name). The core has no topic of that name; only unsubscribe-all writes
+// the column (clearing it, so the fallback is off too).
+const legacyDownloads = "downloads"
 
-// TopicsFor are the topics u may turn on: the shared ones, this edition's
-// (editionTopics) and, for a kid, Requests wherever kids' requests are open
-// (RequestsOpen).
+// AllTopics in the order letters list them.
+var AllTopics = []string{Episodes, Available, Requests}
+
+// TopicsFor are the topics u may turn on: the shared ones, for a kid
+// Requests wherever kids' requests are open (RequestsOpen), and the addons'
+// topics whose audience admits u ("addon:<id>:<topic>", by addon id; a kid
+// none).
 func (s *Service) TopicsFor(ctx context.Context, u auth.User) []string {
-	out := append([]string{Episodes, Available}, editionTopics(u)...)
-	if u.IsKid && s != nil && s.RequestsOpen != nil && !slices.Contains(out, Requests) && s.RequestsOpen(ctx) {
+	out := []string{Episodes, Available}
+	if u.IsKid && s != nil && s.RequestsOpen != nil && s.RequestsOpen(ctx) {
 		out = append(out, Requests)
 	}
-	return out
+	return append(out, s.addonTopicsFor(ctx, u)...)
 }
 
 // Prefs are a profile's notification settings.
@@ -69,19 +74,31 @@ type Prefs struct {
 	Episodes   bool   `json:"episodes"`
 	Available  bool   `json:"available"`
 	Requests   bool   `json:"requests"`
-	Downloads  bool   `json:"downloads"`
 	QuietHours bool   `json:"quietHours"`
 	Lang       string `json:"lang"` // ru | en; "" the server's
 	// Bounced: the mail server refused the address for good («Адрес не
 	// принимает письма»); it is unconfirmed until confirmed again.
 	Bounced bool `json:"bounced"`
+	// AddonTopics: answers list the addon topics the profile may turn on
+	// (AddonPrefs); a save changes the rows it lists and no other.
+	AddonTopics []AddonPref `json:"addonTopics"`
+
+	addon addonState
 }
 
 // TopicAll names every topic in an unsubscribe token (List-Unsubscribe).
 const TopicAll = "all"
 
-// On reports whether topic is turned on.
+// On reports whether topic is turned on. An addon topic without a row
+// takes the fixed column of its topic name, else it is off.
 func (p Prefs) On(topic string) bool {
+	if isAddonTopic(topic) {
+		if on, ok := p.addon.rows[topic]; ok {
+			return on
+		}
+		_, name, _ := ParseAddonTopic(topic)
+		return p.addon.legacy[name]
+	}
 	switch topic {
 	case Episodes:
 		return p.Episodes
@@ -89,8 +106,6 @@ func (p Prefs) On(topic string) bool {
 		return p.Available
 	case Requests:
 		return p.Requests
-	case Downloads:
-		return p.Downloads
 	}
 	return false
 }
@@ -103,8 +118,6 @@ func (p *Prefs) set(topic string, on bool) {
 		p.Available = on
 	case Requests:
 		p.Requests = on
-	case Downloads:
-		p.Downloads = on
 	}
 }
 
@@ -195,6 +208,8 @@ type Service struct {
 	Log          *slog.Logger
 
 	collectMu sync.Mutex
+	// addonTopics lists the addons' topics (SetAddonTopics)
+	addonTopics addonTopicsHolder
 }
 
 func (s *Service) now() time.Time {
@@ -290,22 +305,29 @@ func (s *Service) prefs(ctx context.Context, uid int64) (Prefs, prefsRow, error)
 	var p Prefs
 	r := prefsRow{onAt: map[string]int64{}}
 	var ep, av, rq, dl, qh int
-	var epAt, avAt, rqAt, dlAt int64
+	var epAt, avAt, rqAt int64
 	var bounced string
 	err := s.DB.QueryRowContext(ctx, `SELECT email, verified, episodes, available, requests, downloads, quiet_hours, lang, last_sent_at, verify_sent_at,
-		episodes_at, available_at, requests_at, downloads_at, bounced, fail_count, next_try_at
+		episodes_at, available_at, requests_at, bounced, fail_count, next_try_at
 		FROM notify_prefs WHERE user_id=?`, uid).Scan(&p.Email, &r.verified, &ep, &av, &rq, &dl, &qh, &p.Lang, &r.lastSent, &r.verifySentAt,
-		&epAt, &avAt, &rqAt, &dlAt, &bounced, &r.failCount, &r.nextTryAt)
+		&epAt, &avAt, &rqAt, &bounced, &r.failCount, &r.nextTryAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Prefs{QuietHours: true}, r, nil
+		p = Prefs{QuietHours: true}
+		return p, r, s.loadAddonRows(ctx, uid, &p)
 	}
 	if err != nil {
 		return Prefs{}, r, err
 	}
-	p.Episodes, p.Available, p.Requests, p.Downloads, p.QuietHours = ep != 0, av != 0, rq != 0, dl != 0, qh != 0
+	p.Episodes, p.Available, p.Requests, p.QuietHours = ep != 0, av != 0, rq != 0, qh != 0
+	// what an addon topic without a row falls back to (D1: the column of
+	// the same topic name; legacyDownloads keeps the admins' old choice)
+	p.addon.legacy = map[string]bool{Episodes: ep != 0, Available: av != 0, Requests: rq != 0, legacyDownloads: dl != 0}
+	if err := s.loadAddonRows(ctx, uid, &p); err != nil {
+		return Prefs{}, r, err
+	}
 	p.Verified = p.Email != "" && strings.EqualFold(r.verified, p.Email)
 	p.Bounced = !p.Verified && p.Email != "" && strings.EqualFold(bounced, p.Email)
-	r.onAt[Episodes], r.onAt[Available], r.onAt[Requests], r.onAt[Downloads] = epAt, avAt, rqAt, dlAt
+	r.onAt[Episodes], r.onAt[Available], r.onAt[Requests] = epAt, avAt, rqAt
 	return p, r, nil
 }
 
@@ -327,6 +349,7 @@ func b2i(b bool) int {
 
 // SetPrefs saves in for u: topics u may not turn on stay off, a changed
 // address is unconfirmed again, a topic turned off loses what waited for it.
+// Of the addon topics only those in.AddonTopics lists change.
 func (s *Service) SetPrefs(ctx context.Context, u auth.User, in Prefs) (Prefs, error) {
 	in.Email = strings.TrimSpace(in.Email)
 	if in.Email != "" && !ValidEmail(in.Email) {
@@ -353,22 +376,34 @@ func (s *Service) SetPrefs(ctx context.Context, u auth.User, in Prefs) (Prefs, e
 			at[t] = s.now().Unix()
 		}
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO notify_prefs(user_id, email, episodes, available, requests, downloads, quiet_hours, lang,
-		  episodes_at, available_at, requests_at, downloads_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+	// the legacyDownloads column is left as it is (D1 reads it)
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO notify_prefs(user_id, email, episodes, available, requests, quiet_hours, lang,
+		  episodes_at, available_at, requests_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(user_id) DO UPDATE SET email=excluded.email, episodes=excluded.episodes, available=excluded.available,
-		  requests=excluded.requests, downloads=excluded.downloads, quiet_hours=excluded.quiet_hours, lang=excluded.lang,
-		  episodes_at=excluded.episodes_at, available_at=excluded.available_at, requests_at=excluded.requests_at, downloads_at=excluded.downloads_at,
+		  requests=excluded.requests, quiet_hours=excluded.quiet_hours, lang=excluded.lang,
+		  episodes_at=excluded.episodes_at, available_at=excluded.available_at, requests_at=excluded.requests_at,
 		  updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
-		u.ID, in.Email, b2i(in.Episodes), b2i(in.Available), b2i(in.Requests), b2i(in.Downloads), b2i(in.QuietHours), in.Lang,
-		at[Episodes], at[Available], at[Requests], at[Downloads])
+		u.ID, in.Email, b2i(in.Episodes), b2i(in.Available), b2i(in.Requests), b2i(in.QuietHours), in.Lang,
+		at[Episodes], at[Available], at[Requests])
 	if err != nil {
 		return Prefs{}, err
 	}
-	if err := s.dropOff(ctx, u.ID, in); err != nil {
+	for _, a := range in.AddonTopics {
+		if k := AddonTopicKey(a.Addon, a.Topic); slices.Contains(allowed, k) {
+			if err := s.setAddonPref(ctx, u.ID, k, a.On); err != nil {
+				return Prefs{}, err
+			}
+		}
+	}
+	p, err := s.Prefs(ctx, u.ID)
+	if err != nil {
 		return Prefs{}, err
 	}
-	return s.Prefs(ctx, u.ID)
+	if err := s.dropOff(ctx, u.ID, p); err != nil {
+		return Prefs{}, err
+	}
+	return p, nil
 }
 
 // dropOff forgets the unsent events of the topics p has off (or of every
@@ -380,21 +415,43 @@ func (s *Service) dropOff(ctx context.Context, uid int64, p Prefs) error {
 			off = append(off, t)
 		}
 	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT topic FROM notify_events WHERE user_id=? AND sent_at IS NULL AND substr(topic, 1, ?)=?`,
+		uid, len(addonPrefix), addonPrefix)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			rows.Close()
+			return err
+		}
+		if p.Email == "" || !p.On(t) {
+			off = append(off, t)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	if len(off) == 0 {
 		return nil
 	}
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND sent_at IS NULL AND topic IN (?`+
+	_, err = s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND sent_at IS NULL AND topic IN (?`+
 		strings.Repeat(",?", len(off)-1)+`)`, append([]any{uid}, off...)...)
 	return err
 }
 
 // wanting are the profiles with an address and topic on.
 func (s *Service) wanting(ctx context.Context, topic string) (map[int64]Prefs, error) {
-	col := map[string]string{Episodes: "episodes", Available: "available", Requests: "requests", Downloads: "downloads"}[topic]
-	if col == "" {
+	col := map[string]string{Episodes: "episodes", Available: "available", Requests: "requests"}[topic]
+	where := col + `=1`
+	if _, _, ok := ParseAddonTopic(topic); ok {
+		where = `1` // a row, or the fixed column: Prefs.On below decides
+	} else if col == "" {
 		return nil, nil
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE email<>'' AND `+col+`=1`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE email<>'' AND `+where)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +474,9 @@ func (s *Service) wanting(ctx context.Context, topic string) (map[int64]Prefs, e
 		if err != nil {
 			return nil, err
 		}
-		out[id] = p
+		if p.On(topic) {
+			out[id] = p
+		}
 	}
 	return out, nil
 }

@@ -46,13 +46,6 @@ func (r *Repo) claimWhere(ctx context.Context, userID int64, cond string, args .
 	return err
 }
 
-// ClaimTorrent makes userID an owner of the titles of the library files
-// bound to the download ih (files.torrent_infohash): organize calls it once
-// the files are in place.
-func (r *Repo) ClaimTorrent(ctx context.Context, ih string, userID int64) error {
-	return r.claimWhere(ctx, userID, `f.torrent_infohash=?`, strings.ToLower(ih))
-}
-
 // ClaimPaths makes userID an owner of the titles of these library files (a
 // direct download's book). Paths the scanner has no row for are skipped.
 func (r *Repo) ClaimPaths(ctx context.Context, paths []string, userID int64) error {

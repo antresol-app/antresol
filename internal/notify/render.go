@@ -50,6 +50,18 @@ type section struct {
 // renderer lists a topic's events as lines; topicHeading names it.
 type renderer func(lang string, evs []stored, link func(path string) string) []entry
 
+// rendererOf is topic's renderer: its own, renderAddon for every addon
+// topic, else nil (another edition's).
+func rendererOf(topic string) renderer {
+	if r := renderers[topic]; r != nil {
+		return r
+	}
+	if isAddonTopic(topic) {
+		return renderAddon
+	}
+	return nil
+}
+
 var (
 	renderers = map[string]renderer{Episodes: renderEpisodes, Available: renderAvailable}
 	headings  = map[string]func(lang string) string{
@@ -83,15 +95,12 @@ func itemPath(kind string, id int64) string {
 }
 
 // pathOf is the page of an event: its library item's, else its own Path
-// (only a server path: "/..." but not "//...").
+// (only a page of the app: AppPath).
 func pathOf(kind string, itemID int64, d Data) string {
 	if p := itemPath(kind, itemID); p != "" {
 		return p
 	}
-	if strings.HasPrefix(d.Path, "/") && !strings.HasPrefix(d.Path, "//") && !strings.Contains(d.Path, `\`) {
-		return d.Path
-	}
-	return ""
+	return AppPath(d.Path)
 }
 
 func titleYear(d Data) string {

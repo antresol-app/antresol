@@ -61,6 +61,8 @@ export default {
   'mfiles.deleteConfirm': 'Delete “{title}”?',
   'mfiles.deleteText': 'This frees {size}. The files go to the Trash — you can restore them in Files.',
   'mfiles.deleteAnyway': 'Delete Anyway',
+  'mfiles.heldTitle': 'These files are in use',
+  'mfiles.heldText': 'An extension is using them, and it will stop using them:',
   'downloads.loading': 'Loading…',
   // «Управление → Профили»
   'profiles.role.kid': 'Kid · up to {rating}',
@@ -78,7 +80,7 @@ export default {
   'profiles.saveFailed': 'Couldn’t save',
   'profiles.editTitle': 'Edit Profile',
   'profiles.avatarColor': 'Avatar color',
-  'profiles.kidHintLibrary': 'No Manage.',
+  'profiles.kidHint': 'No Manage.',
   'profiles.color': 'Color {n}',
   'profiles.maxAge': 'Age rating up to',
   'profiles.ageLimit': 'Age rating limit',
@@ -108,6 +110,7 @@ export default {
   // Statistics → Media Disk: what a category is made of
   'stats.disk.details': 'Show what takes up the space',
   'stats.disk.hint.library': 'Folders of this section, largest first.',
+  'stats.disk.hint.addon': 'What the extension keeps here, largest first.',
   'stats.disk.hint.other': 'Folders on the media disk outside the library’s sections.',
   'stats.disk.trash': 'Trash',
   'stats.disk.rest': 'System and file system',
@@ -120,6 +123,4 @@ export default {
   'stats.disk.empty': 'Nothing here.',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'manage.section.follows': 'Following',
-  'manage.section.sources': 'Sources',
 } satisfies EnOf<typeof ru>

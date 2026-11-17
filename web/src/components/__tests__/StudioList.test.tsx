@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { addStudio, canonicalStudio, KNOWN_STUDIOS, StudioList } from '../StudioList'
+import { addStudio, canonicalStudio, KNOWN_STUDIOS, STUDIOS, StudioList } from '../StudioList'
 
 function Harness({ initial, onChange }: { initial: string[]; onChange: (s: string[]) => void }) {
   const [list, setList] = useState(initial)
@@ -105,5 +105,18 @@ describe('StudioList', () => {
     expect(addStudio(['LostFilm'], 'LOSTFILM')).toEqual(['LostFilm'])
     expect(addStudio(Array.from({ length: 30 }, (_, i) => `s${i}`), 'one more')).toHaveLength(30)
     expect(KNOWN_STUDIOS[0]).toBe('LostFilm')
+  })
+})
+
+// (from StudioList.full.test.tsx: the same in every build)
+describe('StudioList in every build', () => {
+  it('suggests the core studios only (an addon names its own on the server)', () => {
+    expect(KNOWN_STUDIOS).toEqual(STUDIOS.map(([name]) => name))
+    expect(canonicalStudio('lost film')).toBe('LostFilm')
+  })
+
+  it('an empty list says the core text', () => {
+    render(<StudioList labelledBy="x" studios={[]} onChange={() => {}} />)
+    expect(screen.getByText('Пока ни одной.')).toBeInTheDocument()
   })
 })

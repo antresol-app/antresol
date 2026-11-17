@@ -556,7 +556,7 @@ func (m *HLSManager) Playlist(id string) (string, error) {
 			if s.hw == "none" || s.hw == "" || s.d.VideoCopy || s.retried {
 				msg := s.stderr.String()
 				m.mu.Unlock()
-				return "", fmt.Errorf("media: ffmpeg exited without a playlist: %s", msg)
+				return "", fmt.Errorf("media: ffmpeg exited without a playlist: %s", logInput(msg))
 			}
 			// the GPU's tone mapping refused the picture (tonemap_vaapi
 			// takes only HDR10 with mastering metadata): the same GPU with
@@ -574,7 +574,7 @@ func (m *HLSManager) Playlist(id string) (string, error) {
 				s.d.OutHEVC = false
 			}
 			log.Printf("media: hls %s: %s ffmpeg exited before the first segment, retrying %s: %s",
-				id, s.hw, why, s.stderr.String())
+				id, s.hw, why, logInput(s.stderr.String()))
 			cleanDir(s.dir)
 			err := m.launchLocked(s, hw)
 			m.mu.Unlock()

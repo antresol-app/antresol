@@ -1,0 +1,21 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/jobs/1",
+  "status": 200,
+  "body": {
+    "id": 1,
+    "userId": 2,
+    "service": "file",
+    "account": "",
+    "status": "downloading",
+    "favorites": true,
+    "error": "",
+    "report": {
+      "savedAlbumsMissing": 0,
+      "unresolved": 0
+    },
+    "createdAt": "2026-11-01T12:00:00Z",
+    "updatedAt": "2026-11-01T12:00:00Z",
+    "startedAt": "2026-11-01T12:00:00Z"
+  }
+}

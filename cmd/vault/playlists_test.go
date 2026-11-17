@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/events"
@@ -103,5 +104,85 @@ func TestPlaylistImportWithoutQueueUsesLibrary(t *testing.T) {
 	_, got, err := music.New(database).Playlist(ctx, u.ID, pid)
 	if err != nil || len(got) != 2 || got[0] != ids["a"] || got[1] != ids["b"] {
 		t.Fatalf("playlist songs %v (want a, b = %v) %v", got, ids, err)
+	}
+}
+
+// TestImportsAddonOf: only an addon that is on, declares import.services
+// and has the imports permission takes the import's missing albums.
+func TestImportsAddonOf(t *testing.T) {
+	mk := func(enabled bool, hooks, perms []string) addons.Installed {
+		return addons.Installed{ID: "a", Enabled: enabled, Manifest: addons.Manifest{ID: "a", Hooks: hooks, Permissions: perms}}
+	}
+	hooks, perms := []string{"import.services"}, []string{"imports"}
+	for _, c := range []struct {
+		name string
+		list []addons.Installed
+		want bool
+	}{
+		{"none", nil, false},
+		{"on", []addons.Installed{mk(true, hooks, perms)}, true},
+		{"off", []addons.Installed{mk(false, hooks, perms)}, false},
+		{"no hook", []addons.Installed{mk(true, nil, perms)}, false},
+		{"no permission", []addons.Installed{mk(true, hooks, []string{"events"})}, false},
+		{"one of two", []addons.Installed{mk(true, nil, nil), mk(true, hooks, perms)}, true},
+	} {
+		if got := importsAddonOf(c.list); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+	// addons off: a queue that settles by the library alone
+	svc := newPlaylistImport(nil, &events.Bus{}, nil, nil, nil)
+	setImportQueue(svc, nil, nil)
+	if svc.Queue == nil {
+		t.Fatal("no queue set")
+	}
+}
+
+// The sign-in tiles, the reads' stop, a Takeout's naming and the review's
+// search come from the addons' import.* hooks; with addons off, none.
+func TestSetImportHooks(t *testing.T) {
+	svc := &playlistimport.Service{}
+	setImportHooks(svc, nil)
+	if svc.Connectors != nil || svc.Reads != nil || svc.Resolver != nil || svc.Catalog != nil {
+		t.Fatalf("addons off: %+v", svc)
+	}
+	setImportHooks(svc, &addons.Hooks{})
+	if svc.Connectors == nil || svc.Reads == nil || svc.Resolver == nil || svc.Catalog == nil {
+		t.Fatalf("addons on: %+v", svc)
+	}
+}
+
+// TestImportOffersOf: the page promises downloads by the queue's own rule
+// (importsAddonOf) and a catalog search only while an addon that is on
+// declares import.search; with addons off, neither.
+func TestImportOffersOf(t *testing.T) {
+	mk := func(enabled bool, hooks, perms []string) addons.Installed {
+		return addons.Installed{ID: "a", Enabled: enabled, Manifest: addons.Manifest{ID: "a", Hooks: hooks, Permissions: perms}}
+	}
+	for _, c := range []struct {
+		name string
+		list []addons.Installed
+		want playlistimport.Offers
+	}{
+		{"none", nil, playlistimport.Offers{}},
+		{"downloads", []addons.Installed{mk(true, []string{"import.services"}, []string{"imports"})}, playlistimport.Offers{Downloads: true}},
+		{"no permission", []addons.Installed{mk(true, []string{"import.services", "import.search"}, nil)}, playlistimport.Offers{Catalog: true}},
+		{"catalog", []addons.Installed{mk(true, []string{"import.search"}, nil)}, playlistimport.Offers{Catalog: true}},
+		{"off", []addons.Installed{mk(false, []string{"import.services", "import.search"}, []string{"imports"})}, playlistimport.Offers{}},
+		{"other hooks only", []addons.Installed{mk(true, []string{"migrate.leftovers"}, []string{"events"})}, playlistimport.Offers{}},
+		{"both", []addons.Installed{mk(true, []string{"import.services", "import.search"}, []string{"imports"})}, playlistimport.Offers{Downloads: true, Catalog: true}},
+	} {
+		if got := importOffersOf(c.list); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+	// addons off: Offers answers neither
+	svc := newPlaylistImport(nil, &events.Bus{}, nil, nil, nil)
+	setImportQueue(svc, nil, nil)
+	if svc.Offers == nil {
+		t.Fatal("no Offers set")
+	}
+	if o := svc.Offers(context.Background()); o != (playlistimport.Offers{}) {
+		t.Fatalf("addons off: %+v", o)
 	}
 }

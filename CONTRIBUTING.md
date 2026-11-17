@@ -50,6 +50,8 @@ account's commits are not accepted.
   Contributions there are made under MPL-2.0. They ship in the closed App
   Store app, so never copy code into them from AGPL files;
   `scripts/check-mpl-zone.mjs` checks the reader's imports.
+- **The addon SDK is MIT**: everything in `web/addon-sdk/`. Contributions
+  there are made under MIT; never copy code into it from AGPL files.
 - Do not add code you cannot license this way (copied from a project with an
   incompatible licence, from a site's answers without a licence, or
   generated output you have not checked for that).

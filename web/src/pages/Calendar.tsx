@@ -1,6 +1,6 @@
 // «Календарь»: what comes out of the titles this profile marked, by day,
 // for a week or a month. A row says the episode; «доступно» when it has a
-// source already (on the server, or found by a tracker).
+// source already (on the server, or one an addon found).
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { errorText, getTrackingCalendar } from '../api/client'
@@ -30,10 +30,10 @@ function shift(span: Span, anchor: Date, dir: 1 | -1): Date {
   return span === 'month' ? new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1) : new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 7 * dir)
 }
 
-/** Where a title's row leads: its library page, or (sources build) its TMDB page; none otherwise. */
-function titleHref(it: TrackingItem): string | null {
+/** Where a title's row leads: its library page, else its core title page. */
+function titleHref(it: TrackingItem): string {
   if (it.title.itemId) return itemHref(it.title.kind, it.title.itemId)
-  return __LIBRARY_EDITION__ ? null : `/title/${it.title.kind}/${it.title.tmdbId}`
+  return `/title/${it.title.kind}/${it.title.tmdbId}`
 }
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; days: CalendarDay[] }
@@ -106,18 +106,15 @@ export function Calendar() {
           <div className={styles.days}>
             {state.days.map((d) => (
               <GroupedSection key={d.date} title={day.format(parse(d.date))} id={`cal-${d.date}`}>
-                {d.items.map((it) => {
-                  const href = titleHref(it)
-                  return (
-                    <ListRow
-                      key={`${it.title.kind}-${it.title.tmdbId}-${it.season}-${it.episode}`}
-                      label={href ? <Link to={href} className={styles.link}>{it.title.name}</Link> : it.title.name}
-                      hint={episode(it)}
-                    >
-                      {it.firstSeen && <Badge tone="success">{t('tracking.calendar.available')}</Badge>}
-                    </ListRow>
-                  )
-                })}
+                {d.items.map((it) => (
+                  <ListRow
+                    key={`${it.title.kind}-${it.title.tmdbId}-${it.season}-${it.episode}`}
+                    label={<Link to={titleHref(it)} className={styles.link}>{it.title.name}</Link>}
+                    hint={episode(it)}
+                  >
+                    {it.firstSeen && <Badge tone="success">{t('tracking.calendar.available')}</Badge>}
+                  </ListRow>
+                ))}
               </GroupedSection>
             ))}
           </div>

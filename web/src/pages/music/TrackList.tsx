@@ -5,13 +5,17 @@
 // small cover instead of the number and always the artist. Every row has
 // the song's «Ещё» menu. A playlist can add the songs its import has not
 // brought as dimmed rows in their places: «Ещё не скачано» while on its way,
-// otherwise why not («Пропущено», «не найдено в источниках», …). A server
-// that downloads nothing says «Нет в медиатеке» for what its library lacks.
-import { Fragment, type ReactNode } from 'react'
+// otherwise why not («Пропущено», «не найдено в источниках», …). Where the
+// server fetches nothing (an admin: GET /api/import/services `downloads`;
+// another profile: no addon that adds titles, useCanAdd) it says «Нет в
+// медиатеке» for what the library lacks.
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { Artwork } from '../../ui/Artwork'
 import type { Song } from '../../api/types'
+import { getImportServices } from '../../api/client'
 import { Icon } from '../../components/Icon'
-import { useCanDownload } from '../../state/canDownload'
+import { useCanAddState } from '../../addons/slots'
+import { useSession } from '../../state/session'
 import { useAudioSelect } from '../../player/audio/useAudio'
 import { clock } from '../../player/timeline'
 import { SongMenu } from './SongMenu'
@@ -37,10 +41,11 @@ export interface TrackListProps {
 
 /**
  * What a pending row says: why the song is not here; «Ещё не скачано» only
- * while it is on its way. `local`: the server downloads nothing, so every song
- * its library lacks is «Нет в медиатеке».
+ * while it is on its way. `local`: nothing can bring it (the server
+ * downloads nothing, useServerDownloads), so every song the library lacks is
+ * «Нет в медиатеке».
  */
-export function pendingLabel(state: string | undefined, waitingFor?: string, local = __LIBRARY_EDITION__): string {
+export function pendingLabel(state: string | undefined, waitingFor: string | undefined, local: boolean): string {
   if (state === 'skipped') return tr('music.pending.skipped')
   if (state === 'failed') return tr('common.error')
   if (local) return tr('music.pending.notInLibrary')
@@ -64,9 +69,34 @@ export function pendingSlots(pending: { position: number }[], tracks: number): n
   return pending.map((p, k) => Math.max(0, Math.min(tracks, p.position - k)))
 }
 
-function PendingRow({ artist, title, state, waitingFor }: { artist: string; title: string; state?: string; waitingFor?: string }) {
+/**
+ * Whether the server brings what the library lacks, asked only when `asked`
+ * (a list with pending rows). An admin: the import's own answer (GET
+ * /api/import/services `downloads`: false where no addon takes the albums).
+ * Another profile cannot ask it (the route is the admins'): whether an addon
+ * adds titles (useCanAdd). Not known yet (loading, or the answer failed):
+ * true, so a pending row is not «Нет в медиатеке» first.
+ */
+function useServerDownloads(asked: boolean): boolean {
+  const { user } = useSession()
+  const canAdd = useCanAddState()
+  const admin = asked && Boolean(user?.isAdmin)
+  const [answer, setAnswer] = useState<{ user: number; downloads: boolean } | null>(null)
+  useEffect(() => {
+    if (!admin || !user) return
+    const ctl = new AbortController()
+    getImportServices(ctl.signal).then(
+      (r) => setAnswer({ user: user.id, downloads: r.downloads }),
+      () => undefined,
+    )
+    return () => ctl.abort()
+  }, [admin, user?.id])
+  if (admin) return answer && answer.user === user?.id ? answer.downloads : true
+  return canAdd ?? true
+}
+
+function PendingRow({ artist, title, state, waitingFor, downloads }: { artist: string; title: string; state?: string; waitingFor?: string; downloads: boolean }) {
   useLang() // pendingLabel speaks the interface language
-  const downloads = useCanDownload()
   return (
     <li className={`${styles.item} ${styles.pending}`}>
       <span className={styles.row} aria-disabled="true">
@@ -114,8 +144,9 @@ export function TrackList({ tracks, albumArtist, onPlay, variant = 'album', menu
   const multi = discs.length > 1
   const waiting = songs && pending?.length ? [...pending].sort((a, b) => a.position - b.position) : []
   const slots = pendingSlots(waiting, tracks.length)
+  const downloads = useServerDownloads(waiting.length > 0)
   const pendingAt = (i: number) =>
-    waiting.map((p, k) => (slots[k] === i ? <PendingRow key={`pending-${p.position}-${k}`} artist={p.artist} title={p.title} state={p.state} waitingFor={p.waitingFor} /> : null))
+    waiting.map((p, k) => (slots[k] === i ? <PendingRow key={`pending-${p.position}-${k}`} artist={p.artist} title={p.title} state={p.state} waitingFor={p.waitingFor} downloads={downloads} /> : null))
   const menuOf = (t: Song, i: number) =>
     menu === false ? null : <span className={styles.menu}>{menu ? menu(t, i) : <SongMenu song={t} hide={{ album: !songs }} />}</span>
 

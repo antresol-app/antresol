@@ -33,8 +33,9 @@ const (
 // Worker fits the tracks «Найти озвучку…» placed beside their videos (the
 // rows Queue made; a release's own tracks, stage A, are never measured):
 // the pending ones even while something plays (ffmpeg at the lowest
-// priority), the failed ones due again once nothing plays. It runs in the
-// sources build only (the core build has no stage B).
+// priority), the failed ones due again once nothing plays. It runs in
+// every build that has ffmpeg; addons queue the tracks they place through
+// the core API (/voiceover/fit).
 type Worker struct {
 	DB     *sql.DB
 	FFmpeg string

@@ -9,7 +9,6 @@ import { useT } from '../i18n'
 import { Badges } from '../ui/Badge'
 import { Icon } from './Icon'
 import { PendingOverlay, pendingLabel } from './PendingOverlay'
-import { useSession } from '../state/session'
 import styles from './Card.module.css'
 
 export type CardVariant = 'poster' | 'wide' | 'square'
@@ -19,11 +18,6 @@ export interface CardProps {
   variant?: CardVariant
   /** Eager-load images for the first visible cards. */
   priority?: boolean
-  /**
-   * A TMDB title off the library is not a link in the core build (it has no
-   * page there): the tracked «Вышло новое» shelf.
-   */
-  offLibraryUnlinked?: boolean
 }
 
 export function cardHref(c: CardData) {
@@ -31,7 +25,7 @@ export function cardHref(c: CardData) {
   if (!__LIBRARY_EDITION__ && c.online && c.tmdbId && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')) {
     return onlineCardHref(c.tmdbKind, c.tmdbId, c.season ?? 0, c.episode ?? 0, c.resumeSec ?? 0)
   }
-  if (!__LIBRARY_EDITION__ && isTitleCard(c)) return titleCardHref(c)
+  if (isTitleCard(c)) return titleCardHref(c)
   return itemHref(c.kind, c.id)
 }
 
@@ -43,29 +37,24 @@ function titleCardHref(c: CardData): string {
 
 /**
  * A TMDB title that is not in the library («Похожие», a missing part of a
- * collection; sources build): id 0, its title page by tmdbKind and tmdbId.
+ * collection, «Вышло новое»): id 0, its core title page by tmdbKind and tmdbId.
  */
 export function isTitleCard(c: CardData): boolean {
   return !(c.id > 0) && !c.online && !c.pending && !c.onServer && Boolean(c.tmdbId) && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')
 }
 
-/**
- * Where a card of a title still downloading leads: a movie or series to its
- * title page (the download button's ring is there too), anything else to
- * «Загрузки» for an admin; null: nowhere (not a link).
- */
-export function pendingHref(c: CardData, isAdmin: boolean): string | null {
-  if (c.tmdbId && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')) return `/title/${c.tmdbKind}/${c.tmdbId}`
-  return isAdmin ? '/manage/downloads' : null
+/** Where a card of a title on its way leads: the page its addon names (D3); null: nowhere (not a link). */
+export function pendingHref(c: CardData): string | null {
+  return c.pending?.href ?? null
 }
 
 /** A stable key of a card in a row (online and pending cards all have id 0). */
 export const cardKey = (c: CardData) =>
   !__LIBRARY_EDITION__ && c.online
     ? `online-${c.tmdbKind}-${c.tmdbId}`
-    : !__LIBRARY_EDITION__ && c.pending && !(c.id > 0)
+    : c.pending && !(c.id > 0)
       ? `pending-${c.pending.key}`
-      : !__LIBRARY_EDITION__ && isTitleCard(c)
+      : isTitleCard(c)
         ? `title-${c.tmdbKind}-${c.tmdbId}`
         : `${c.kind}-${c.id}`
 
@@ -130,20 +119,18 @@ const CARD_SIZES: Record<CardVariant, string> = {
   wide: '(max-width: 699px) 80vw, (max-width: 1099px) 34vw, 26vw',
 }
 
-export function Card({ card, variant = 'poster', priority = false, offLibraryUnlinked = false }: CardProps) {
+export function Card({ card, variant = 'poster', priority = false }: CardProps) {
   const t = useT()
-  const { user } = useSession()
   const art = variant === 'wide' ? card.backdrop || card.poster : card.poster || card.backdrop
   const src = imageUrl(art, 480)
   const [failed, setFailed] = useState(false)
   const showImage = src && !failed
   const pct = Math.round(Math.min(Math.max(card.progress || 0, 0), 1) * 100)
   // a title on its way into the library: its own tinted card, or the progress on the library's card
-  const pending = !__LIBRARY_EDITION__ ? card.pending : undefined
+  const pending = card.pending
   const own = !!pending && !(card.id > 0)
   const sub = own ? pendingLabel(t, pending) : secondaryLine(card)
-  const unlinked = offLibraryUnlinked && __LIBRARY_EDITION__ && !(card.id > 0) && !!card.tmdbId
-  const href = own ? pendingHref(card, !!user?.isAdmin) : unlinked ? null : cardHref(card)
+  const href = own ? pendingHref(card) : cardHref(card)
 
   const className = [
     styles.card,

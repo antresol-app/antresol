@@ -165,8 +165,9 @@ export default {
   'files.undo': 'Отменить',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'files.info.downloading': 'загружается',
-  'files.info.yes': 'да',
   'files.op.andMore': 'и ещё {n}',
   'files.op.continue': 'Продолжить',
+  // the server's warnings before touching files an extension holds
+  'files.op.heldTitle': 'Эти файлы используются',
+  'files.op.heldWarning': 'Эти файлы использует расширение. После этого оно перестанет с ними работать:',
 } as const

@@ -1,0 +1,29 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3) 0 9px;
+  border-radius: var(--r-pill);
+  color: var(--label);
+  font: 600 14px / 1 var(--font-text);
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.badge:hover {
+  background: var(--glass-fill-hover);
+}
+.count {
+  min-width: 8px;
+}
+/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+@media (pointer: coarse) {
+  .badge {
+    position: relative;
+  }
+  .badge::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-h-sm) - var(--touch-target)) / 2 - var(--hairline-w)) 0;
+  }
+}

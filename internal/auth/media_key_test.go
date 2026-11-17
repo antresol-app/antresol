@@ -237,7 +237,7 @@ func TestGuardMediaKeyRoutes(t *testing.T) {
 		{"GET", "/api/channels/live/3/index.m3u8", 204}, {"GET", "/api/channels/live/3/seg9.ts", 204}, {"GET", "/api/channels/3/guide", 401},
 		{"POST", "/api/stream/1", 401}, {"PUT", "/api/hls/s", 401}, {"DELETE", "/api/hls/s", 401},
 		{"GET", "/api/tracks/5/lyrics", 401}, {"GET", "/api/download/1", 401}, {"GET", "/api/subs/1/0.vtt", 401},
-		{"GET", "/api/images/x", 401}, {"GET", "/api/torrent-stream/ih/0", 204}, {"POST", "/api/torrent-stream/ih/0", 401},
+		{"GET", "/api/images/x", 401}, {"GET", "/api/other-stream/ih/0", 401}, {"POST", "/api/other-stream/ih/0", 401},
 		{"GET", "/api/streamx", 401},
 	} {
 		w := httptest.NewRecorder()
@@ -251,5 +251,27 @@ func TestGuardMediaKeyRoutes(t *testing.T) {
 	(&Guard{Sessions: ss}).Require(h).ServeHTTP(w, httptest.NewRequest("GET", "/api/stream/1"+q, nil))
 	if w.Code != 401 {
 		t.Fatalf("guard without keys: %d", w.Code)
+	}
+}
+
+func TestMediaKeyRoute_InputDirect(t *testing.T) {
+	for _, c := range []struct {
+		method, path string
+		want         bool
+	}{
+		{"GET", "/api/play/input/ab/direct", true},
+		{"HEAD", "/api/play/input/ab/direct", true},
+		{"POST", "/api/play/input/ab/direct", false},
+		{"GET", "/api/play/input/ab", false},
+		{"POST", "/api/play/input/ab", false},
+		{"GET", "/api/play/input/ab/info", false},
+		{"PUT", "/api/play/input/ab/progress", false},
+		{"GET", "/api/play/input/ab/subs/0.vtt", false},
+		{"GET", "/api/play/input/ab/x/direct", false},
+		{"GET", "/api/addon-input/ab/0", false},
+	} {
+		if got := mediaKeyRoute(httptest.NewRequest(c.method, c.path, nil)); got != c.want {
+			t.Errorf("%s %s: %v, want %v", c.method, c.path, got, c.want)
+		}
 	}
 }

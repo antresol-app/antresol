@@ -27,7 +27,7 @@ func feedFixture(t *testing.T) (*Store, int64, Title) {
 		t.Fatal(err)
 	}
 	day := func(d int) time.Time { return time.Date(2026, 3, d, 10, 0, 0, 0, time.UTC) }
-	s.UpsertSources(ctx, ti.ID, "torrent", []Source{{Season: 1, Episode: 1, Ref: "a"}, {Season: 2, Episode: 1, Ref: "b"}}, day(2))
+	s.UpsertSources(ctx, ti.ID, "alpha", []Source{{Season: 1, Episode: 1, Ref: "a"}, {Season: 2, Episode: 1, Ref: "b"}}, day(2))
 	s.UpsertSources(ctx, ti.ID, "library", []Source{{Season: 2, Episode: 1, Ref: "9"}}, day(9))
 	s.UpsertSources(ctx, ti.ID, "online", []Source{{Season: 2, Episode: 2, Ref: "c"}}, day(9))
 	return s, u, ti
@@ -46,7 +46,7 @@ func TestFeedNewestFirstWithKinds(t *testing.T) {
 	if got[0].Name != "Two" || got[0].Title.Name != "Show" || !got[1].FirstSeen.Equal(time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)) {
 		t.Fatalf("%+v", got)
 	}
-	if !slices.Equal(got[1].Kinds, []string{"library", "torrent"}) {
+	if !slices.Equal(got[1].Kinds, []string{"alpha", "library"}) {
 		t.Fatalf("kinds %v", got[1].Kinds)
 	}
 	// since after S2E1's first source: only S2E2
@@ -95,7 +95,7 @@ func TestCalendarRange(t *testing.T) {
 	if len(days) != 3 || days[0].Date != "2026-03-01" || days[2].Date != "2026-03-15" {
 		t.Fatalf("%+v", days)
 	}
-	if it := days[0].Items[0]; it.FirstSeen.IsZero() || it.Name != "One" || !slices.Equal(it.Kinds, []string{"library", "torrent"}) {
+	if it := days[0].Items[0]; it.FirstSeen.IsZero() || it.Name != "One" || !slices.Equal(it.Kinds, []string{"alpha", "library"}) {
 		t.Fatalf("%+v", it)
 	}
 	if it := days[2].Items[0]; !it.FirstSeen.IsZero() || it.Episode != 3 || it.Kinds == nil {
@@ -250,7 +250,7 @@ func TestWatchlistedLibraryTitleIsTracked(t *testing.T) {
 		t.Fatalf("interested %v", got)
 	}
 	s.ReplaceEpisodes(ctx, ti.ID, []Episode{{Season: 1, Number: 1, AirDate: "2026-03-01"}})
-	s.UpsertSources(ctx, ti.ID, "torrent", []Source{{Season: 1, Episode: 1, Ref: "a"}}, time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
+	s.UpsertSources(ctx, ti.ID, "alpha", []Source{{Season: 1, Episode: 1, Ref: "a"}}, time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
 	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	if feed, err := s.Feed(ctx, u, since, nil); err != nil || len(feed) != 1 {
 		t.Fatalf("feed %+v %v", feed, err)

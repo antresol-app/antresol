@@ -50,7 +50,7 @@ func (s Store) Save(ctx context.Context, p Prefs) error {
 	if p.MP3Bitrate != "" && !ValidMP3Bitrate(p.MP3Bitrate) {
 		return i18n.Errorf("Неизвестный битрейт: %s", p.MP3Bitrate)
 	}
-	if p.MinSeeders < 0 || p.MaxSizeGB < 0 {
+	if p.MinSources < 0 || p.MaxSizeGB < 0 {
 		return i18n.Errorf("Значения не могут быть отрицательными")
 	}
 	studios, err := CleanStudios(p.Studios)

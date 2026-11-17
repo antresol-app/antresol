@@ -103,7 +103,7 @@ func TestListLinksLibraryItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &Browser{Sandbox: s, Library: repo, Seeds: fakeSeeds{movie: "abc"},
+	b := &Browser{Sandbox: s, Library: repo,
 		ThumbURL: func(root, rel string, v int64) string { return "/t/" + root + "/" + rel }}
 
 	l, err := b.List(context.Background(), "movies", "", ListOptions{})
@@ -117,19 +117,16 @@ func TestListLinksLibraryItem(t *testing.T) {
 	if dir.Item == nil || dir.Item.ID != id || dir.Item.Title != "Дюна" || dir.Item.Kind != "movie" {
 		t.Fatalf("dir item %+v", dir.Item)
 	}
-	if dir.Torrent == nil || dir.Torrent.Infohash != "abc" {
-		t.Fatalf("dir torrent %+v", dir.Torrent)
-	}
 	if dir.Thumb != "/t/movies/Дюна (2024)" {
 		t.Fatalf("dir thumb %q", dir.Thumb)
 	}
-	if l.Entries[1].Item != nil || l.Entries[1].Torrent != nil {
+	if l.Entries[1].Item != nil {
 		t.Fatalf("unknown file linked: %+v", l.Entries[1])
 	}
 
 	l, _ = b.List(context.Background(), "movies", "Дюна (2024)", ListOptions{})
 	f := l.Entries[1]
-	if f.Name != "Дюна.mkv" || f.Item == nil || f.Item.ID != id || f.Torrent == nil || !f.Torrent.Seeding {
+	if f.Name != "Дюна.mkv" || f.Item == nil || f.Item.ID != id {
 		t.Fatalf("file entry %+v", f)
 	}
 	e, err := b.Stat(context.Background(), "movies", "Дюна (2024)/Дюна.mkv")
@@ -155,7 +152,7 @@ func TestListLinksTrackToItsAlbum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &Browser{Sandbox: s, Library: repo, Seeds: fakeSeeds{}, ThumbURL: func(root, rel string, v int64) string { return "" }}
+	b := &Browser{Sandbox: s, Library: repo, ThumbURL: func(root, rel string, v int64) string { return "" }}
 	l, err := b.List(context.Background(), "movies", "Кино - Группа крови", ListOptions{})
 	if err != nil || len(l.Entries) != 1 {
 		t.Fatalf("%+v %v", l.Entries, err)

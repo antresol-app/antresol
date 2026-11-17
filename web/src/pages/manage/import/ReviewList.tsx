@@ -7,7 +7,6 @@ import { getImportCandidates, getImportReview, imageUrl, resolveImportTrack, sea
 import type { Candidate, ReviewTrack } from '../../../api/types'
 import { Button } from '../../../ui/Button'
 import { Icon } from '../../../components/Icon'
-import { useCanDownload } from '../../../state/canDownload'
 import { TextField } from '../../../ui/TextField'
 import m from '../Manage.module.css'
 import { t as tr, useT } from '../../../i18n'
@@ -35,10 +34,8 @@ function CandidateCard({ c, busy, onChoose }: { c: Candidate; busy: boolean; onC
   )
 }
 
-function TrackRow({ track, onResolved }: { track: ReviewTrack; onResolved: (id: number) => void }) {
+function TrackRow({ track, catalog, onResolved }: { track: ReviewTrack; catalog: boolean; onResolved: (id: number) => void }) {
   const t = useT()
-  // a server with no downloads has no music catalog to look in: only «Пропустить»
-  const catalog = useCanDownload()
   const [mode, setMode] = useState<'' | 'search' | 'albums'>('')
   const [q, setQ] = useState(`${track.artist} ${track.title}`)
   const [found, setFound] = useState<Found>({ status: 'idle' })
@@ -140,11 +137,13 @@ function TrackRow({ track, onResolved }: { track: ReviewTrack; onResolved: (id: 
 
 export interface ReviewListProps {
   jobId: number
+  /** An addon answers the catalog search (GET /api/import/services); false: only «Пропустить». */
+  catalog: boolean
   /** A song was resolved or skipped (the job's counts changed). */
   onChanged: () => void
 }
 
-export function ReviewList({ jobId, onChanged }: ReviewListProps) {
+export function ReviewList({ jobId, catalog, onChanged }: ReviewListProps) {
   const t = useT()
   const [tracks, setTracks] = useState<ReviewTrack[] | null>(null)
   const [error, setError] = useState('')
@@ -199,7 +198,7 @@ export function ReviewList({ jobId, onChanged }: ReviewListProps) {
   return (
     <ul ref={listRef} className={styles.tracks} aria-label={t('import.reviewList.aria')}>
       {tracks.map((track) => (
-        <TrackRow key={track.id} track={track} onResolved={resolved} />
+        <TrackRow key={track.id} track={track} catalog={catalog} onResolved={resolved} />
       ))}
     </ul>
   )

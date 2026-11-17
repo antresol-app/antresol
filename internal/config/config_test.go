@@ -6,7 +6,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	for _, k := range []string{"VAULT_LISTEN", "VAULT_MEDIA_ROOT", "VAULT_DATA_DIR", "VAULT_TMDB_KEY", "VAULT_HWACCEL", "VAULT_TORRENT_PORT", "VAULT_TMDB_BASEURL", "VAULT_TMDB_IMAGEBASE"} {
+	for _, k := range []string{"VAULT_LISTEN", "VAULT_MEDIA_ROOT", "VAULT_DATA_DIR", "VAULT_TMDB_KEY", "VAULT_HWACCEL", "VAULT_TMDB_BASEURL", "VAULT_TMDB_IMAGEBASE"} {
 		t.Setenv(k, "")
 	}
 	t.Setenv("VAULT_MEDIA_ROOT", "/srv/media")
@@ -153,5 +153,19 @@ func TestLoadMediaRootEnvWins(t *testing.T) {
 	}
 	if c.MediaRoot != "/x" {
 		t.Fatalf("media root %q", c.MediaRoot)
+	}
+}
+
+func TestLoadExtraRoots(t *testing.T) {
+	t.Setenv("VAULT_MEDIA_ROOT", "/srv/media")
+	t.Setenv("VAULT_EXTRA_ROOTS", "")
+	c, err := Load()
+	if err != nil || c.ExtraRoots != "" {
+		t.Fatalf("default: %q %v", c.ExtraRoots, err)
+	}
+	t.Setenv("VAULT_EXTRA_ROOTS", "downloads=/media/dl")
+	c, err = Load()
+	if err != nil || c.ExtraRoots != "downloads=/media/dl" {
+		t.Fatalf("set: %q %v", c.ExtraRoots, err)
 	}
 }

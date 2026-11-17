@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/library/import",
+  "status": 200,
+  "body": {
+    "files": [
+      {
+        "path": "{root}/movies/Дюна (2021)/Дюна (2021).mkv",
+        "fileId": 7,
+        "itemId": 11
+      }
+    ],
+    "missing": [],
+    "taken": []
+  }
+}

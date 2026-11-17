@@ -27,11 +27,11 @@ export interface User extends Profile {
   canRequest?: boolean
   /** An admin has kids' requests to answer here («Управление → Просьбы»). */
   requests?: boolean
-  /** The profile may bring titles from outside the library here (another build; never a kid). */
-  canAcquire?: boolean
   /** The server serves its library only (VAULT_LIBRARY_ONLY): no «Найти и
    * добавить», «Следить», downloads, sources, import or migration. */
   libraryOnly?: boolean
+  /** The server runs addons (not VAULT_ADDONS=off): «Управление → Расширения». */
+  addons?: boolean
   /** «Общая медиатека» (all) or «Моя медиатека» (mine): the library this
    * profile's pages show (always all for a kid; older servers send none). */
   libraryScope?: LibraryScope
@@ -134,19 +134,18 @@ export interface Card {
   pending?: PendingState
 }
 
-/** A download into the library behind a pending card. */
+/** What brings a pending card's title into the library (an addon's download, D3). */
 export interface PendingState {
+  /** The addon's own key, namespaced by the core («<addon>:<key>»). */
   key: string
   /** `error` reaches admins only. */
   status: 'active' | 'waiting' | 'paused' | 'organizing' | 'error'
   done: number
   size: number
-  /** active only: see TorrentStalled. */
-  stalled?: TorrentStalled
-  /** active only: see TorrentHint. */
-  liveness?: TorrentLiveness
-  trackerError?: string
-  trackerErrorKind?: TrackerErrorKind
+  /** A line under the progress, already in the profile's language (why it makes no headway). */
+  hint?: string
+  /** The app page the card opens (checked by the core); absent: the card is no link. */
+  href?: string
 }
 
 export interface Shelf {
@@ -224,8 +223,16 @@ export interface PlaybackPrefs {
   preferCleaned?: boolean
 }
 
-/** «Уведомления на почту»: what a profile may hear about (another build adds the others). */
-export type NotifyTopic = 'episodes' | 'available' | 'requests' | 'downloads'
+/** «Уведомления на почту»: the core's topics a profile may hear about (the addons' are addonTopics). */
+export type NotifyTopic = 'episodes' | 'available' | 'requests' | (string & {})
+
+/** A profile's choice for one addon topic (NotifyPrefs.addonTopics): its title in the profile's language. */
+export interface AddonTopicPref {
+  addon: string
+  topic: string
+  title: string
+  on: boolean
+}
 
 /** A profile's notification settings (GET /api/me/notify, an admin's /api/users/{id}/notify). */
 export interface NotifyPrefs {
@@ -235,13 +242,14 @@ export interface NotifyPrefs {
   episodes: boolean
   available: boolean
   requests: boolean
-  downloads: boolean
   /** Letters wait from 22:00 to 08:00 (server time). */
   quietHours: boolean
   /** The letters' language: ru | en; '' the server's. */
   lang: string
   /** The topics this profile may turn on. */
   topics: NotifyTopic[]
+  /** The addons' topics this profile may turn on, shown after the core's (none: absent). */
+  addonTopics?: AddonTopicPref[]
   /** The server has a mail account. */
   mailReady: boolean
   /** Letters carry links (the server knows its public address). */
@@ -329,11 +337,6 @@ export interface ItemDetail extends Card {
   tmdbId?: number
   /** Movies and series: the IMDb id ("tt0816692"), the key of GET /api/ratings/{imdbId}. */
   imdbId?: string
-  /**
-   * «Следить»: the follow of this title, null when not followed. Left out
-   * (no button) without a TMDB key, for kid profiles and for other kinds.
-   */
-  follow?: FollowRef | null
 }
 
 /** A season a series delete may be narrowed to (DeletePlan.seasons). */
@@ -380,100 +383,6 @@ export interface Ratings {
   imdb?: { rating: number; votes: number }
   /** Rotten Tomatoes via Wikidata, in percent: critics (Tomatometer) and the audience (Popcornmeter). */
   rottenTomatoes?: { tomatometer?: number; audience?: number }
-}
-
-/** The follow of a title page (ItemDetail.follow, TitleInfo.follow). */
-export interface FollowRef {
-  id: number
-  active: boolean
-  /** Profile that added it ('' = unknown or deleted): another adult's follow is shown, not changed. */
-  addedBy?: string
-}
-
-/** GET /api/follow: a followed series (new episodes) or movie (once released). */
-export interface Follow {
-  id: number
-  kind: 'series' | 'movie'
-  tmdbId: number
-  title: string
-  /** Full TMDB poster URL, '' = none. */
-  poster: string
-  active: boolean
-  /** RFC 3339; null = not checked yet. */
-  lastChecked: string | null
-  lastError: string
-  /** Aired episodes (a released movie: 1) not in the library and not downloading. */
-  missing: number
-  /** Profile that added it ('' = unknown or deleted). */
-  addedBy: string
-  /** vault, or sonarr | radarr: taken over by «Переезд» (inactive until «Перейти на Vault»). */
-  source?: 'vault' | 'sonarr' | 'radarr' | (string & {})
-}
-
-/** What a voice-over release covers of the title on the server (GET /api/items/{id}/voiceovers). */
-export interface VoiceOverCoverage {
-  /** Episodes of the server it has a track for, of `total` (a film: 1 of 1, `film`). */
-  have: number
-  total: number
-  /** The release says which seasons (its name, or its file list: `exact`). */
-  known: boolean
-  exact: boolean
-  film?: boolean
-}
-
-/** «Найти озвучку…»: a release with a voice-over of the title (`video`: a video release that may hold separate tracks). */
-export interface VoiceOverCandidate {
-  /** Names it in the search (POST takes it back). */
-  id: string
-  sourceId: number
-  sourceName: string
-  title: string
-  studio: string
-  studios: string[]
-  seeders: number
-  size: number
-  infoHash?: string
-  coverage: VoiceOverCoverage
-  video?: boolean
-}
-
-export interface VoiceOvers {
-  candidates: VoiceOverCandidate[]
-  videoReleases: VoiceOverCandidate[]
-  failed: { sourceId: number; name: string; message: string }[]
-}
-
-/** A voice-over's episode (season/episode absent: the film) and what became of its track. */
-export interface VoiceOverEpisode {
-  season?: number
-  episode?: number
-  fileId: number
-  state?: 'downloading' | 'placed' | 'fitted' | 'unmeasured' | 'misfit' | 'skipped' | 'had'
-  /** fitted: ms, positive = later on the video's timeline. */
-  offsetMs?: number
-  /** fitted: the speed correction (atempo; 1 or absent = none). */
-  tempo?: number
-}
-
-/** POST /api/items/{id}/voiceovers/files: a release's file list as the episodes it covers. */
-export interface VoiceOverPreview {
-  id: string
-  coverage: VoiceOverCoverage
-  episodes: VoiceOverEpisode[]
-  /** Why nothing can be taken from it. */
-  message?: string
-}
-
-/** GET /api/items/{id}/voiceovers/downloads: a voice-over download of the title. */
-export interface VoiceOverDownload {
-  infoHash: string
-  title: string
-  studio: string
-  status: string
-  /** 0…1 */
-  progress: number
-  done: boolean
-  episodes: VoiceOverEpisode[]
 }
 
 /** GET /api/subtitles/{fileId}/search: one OpenSubtitles result, best first. */
@@ -538,6 +447,25 @@ export interface HlsStatus {
   segments: number
   running: boolean
   paused: boolean
+}
+
+/**
+ * GET /api/play/input/{id}: a video an addon serves, registered for this
+ * profile (/play/input/:id). `itemId` 0: no library item; `startSec` is
+ * the profile's saved position of that item.
+ */
+export interface PlayerInput {
+  id: string
+  addonId: string
+  /** The file's place in the addon's collection («Show/Show.S01E01.mkv»). */
+  name: string
+  itemId: number
+  title?: { kind: 'movie' | 'series'; tmdbId: number; season: number; episode: number }
+  /** A slow source: a slow start or a stall is the source, not the device. */
+  slow: boolean
+  /** The addon's own data, as it registered it. */
+  meta?: unknown
+  startSec: number
 }
 
 export interface PlayResponse {
@@ -766,6 +694,28 @@ export interface KidRequestState {
   request: KidRequest | null
 }
 
+/** What a kid may ask for (GET /api/requests/search): a TMDB movie or series, or an album, book, audiobook or manga of an addon's catalog. */
+export interface RequestCandidate {
+  kind: 'movie' | 'series' | 'music' | 'book' | 'audiobook' | 'comic' | (string & {})
+  /** Movies and series. */
+  tmdbId: number
+  /** The catalog's id (albums, books). */
+  extId: string
+  title: string
+  /** The artist or the author ('' for manga). */
+  subtitle: string
+  year: number
+  /** Movies and series only: albums and books come without a cover. */
+  poster: string
+  explicit: boolean
+  aliases: string[]
+}
+
+/** A kid's request search result: the candidate with its kidRequest. */
+export interface KidCandidate extends RequestCandidate {
+  kidRequest: KidRequestState | null
+}
+
 export interface AcquireRequest {
   tmdbId: number
   kind: string
@@ -809,174 +759,7 @@ export interface ReleaseFilesRequest {
   song?: string
 }
 
-/** One file of a release; `index` is the release's own file index. */
-export interface ReleaseFile {
-  index: number
-  path: string
-  size: number
-  /** A song, or anything else (cover, cue, log…). */
-  kind: 'track' | 'extra'
-  /** The album the file belongs to (the requested one is named as in the catalog). */
-  album: string
-  /** Checked by default (the requested album). */
-  checked: boolean
-  /** A track's disc and number from its file name (absent: unknown). */
-  disc?: number
-  no?: number
-  /** The track is the searched song (ReleaseFilesRequest.song). */
-  matched?: boolean
-  /** In the download «Загрузки» has of this release (ReleaseFiles.inDownload). */
-  downloading?: boolean
-  /** The library's album has this song already. */
-  inLibrary?: boolean
-}
-
-export interface ReleaseFiles {
-  infoHash: string
-  name: string
-  /** The release is already on the server whole (or without its file list yet): no list, `message` says so. */
-  added: boolean
-  /** «Загрузки» has this release with some songs (`downloading`): the picked ones join that download. */
-  inDownload?: boolean
-  message?: string
-  files: ReleaseFile[]
-}
-
-export interface AcquireResult {
-  infoHash: string
-  fileIndex: number
-  streamUrl: string
-  status: string
-  /** Picked songs added to the release's download in «Загрузки» (or the album was downloading already). */
-  existing?: boolean
-  /** Where the songs go, when it is worth saying (localized). */
-  note?: string
-}
-
-export type TorrentStatus = 'queued' | 'downloading' | 'seeding' | 'paused' | 'waiting_space' | 'error' | (string & {})
-
-/**
- * Why a running download makes no headway (torrent.Status.Stalled): `no_peers`
- * — nobody to download from for a while (a magnet then has no metadata either);
- * `no_metadata` — a magnet has peers but still no metadata. Absent: nothing to say.
- */
-export type TorrentStalled = 'no_peers' | 'no_metadata' | (string & {})
-
-/**
- * What a short probe of the swarm found when the release was picked
- * (torrent.Status.Liveness): advisory only — a seeder may still connect in later.
- * `unseen`: no tracker and no DHT node knew a peer. Absent: never probed.
- */
-export type TorrentLiveness = 'checking' | 'alive' | 'unseen' | (string & {})
-
-/** torrent.Status.TrackerErrorKind: what a tracker's refusal means. */
-export type TrackerErrorKind = 'bad_passkey' | 'not_registered' | 'rejected' | (string & {})
-
-/** Why a download makes no headway, as far as the server knows (StalledNote). */
-export interface TorrentHint {
-  stalled?: TorrentStalled
-  liveness?: TorrentLiveness
-  /** The tracker's own words, passkeys hidden. */
-  trackerError?: string
-  trackerErrorKind?: TrackerErrorKind
-}
-
-/**
- * acquire.TorrentView.AutoReplace: `switched` — Antresol started this download
- * itself in place of a release nobody seeded; `none_alive` — no peer and no live
- * alternative was found.
- */
-export type AutoReplaceNote = 'switched' | 'none_alive' | (string & {})
-
-/** GET /api/torrent-engine (admin): can peers on the internet reach the server? */
-export interface TorrentEngineStatus {
-  listenPort: number
-  /** The engine asks the router for the port by UPnP. */
-  portForwarding: boolean
-  /** Incoming peer handshakes since start. */
-  incomingConns: number
-  /** Downloads ran for a while and no peer ever connected in: the port is most likely closed. */
-  incomingBlocked: boolean
-}
-
-/** GET /api/torrents (admin): torrent.Status plus the library side (acquire.TorrentView). */
-export interface Torrent {
-  infoHash: string
-  name: string
-  mode: 'stream' | 'download' | 'seed' | (string & {})
-  status: TorrentStatus
-  size: number
-  done: number
-  downRate: number
-  upRate: number
-  uploaded: number
-  downloaded: number
-  peers: number
-  seeds: number
-  ratio: number
-  itemId: number | null
-  /** RFC 3339. */
-  addedAt: string
-  completedAt?: string
-  saveDir: string
-  error?: string
-  kind?: 'movie' | 'series' | (string & {})
-  /** The TMDB title it was added for. */
-  title?: string
-  organized: boolean
-  organizeError?: string
-  /** All its files were gone at start: «Продолжить» downloads them again. */
-  dataMissing?: boolean
-  /** Profile id that added it. */
-  addedBy?: number
-  /** Profile name that added it (admin: «Добавил: …»). */
-  addedByName?: string
-  /** What organize did besides placing files, e.g. «Уже есть в медиатеке». */
-  note?: string
-  /** A direct download of an OPDS source (infoHash «direct-…»): status queued, downloading, done or error; no pause. */
-  direct?: boolean
-  /** Files chosen in the track step and files in the release (equal = the whole release). */
-  selectedFiles?: number
-  totalFiles?: number
-  /** Music with a partial selection: the songs chosen and the release's songs (covers and CUE sheets left out). */
-  selectedTracks?: number
-  totalTracks?: number
-  /** The cover, a file of the server's image cache (served by /api/images/{poster}); absent = none known. */
-  poster?: string
-  /** GET /api/torrents only: this profile finished the movie or every episode of the series (absent: other kinds, not in the library). */
-  watched?: boolean
-  stalled?: TorrentStalled
-  /** See TorrentHint. */
-  liveness?: TorrentLiveness
-  trackerError?: string
-  trackerErrorKind?: TrackerErrorKind
-  /** The movie or series it was added for (and its season; absent = all or not a TMDB title). */
-  tmdbId?: number
-  season?: number
-  autoReplace?: AutoReplaceNote
-}
-
-/** GET /api/torrents/{ih}/status: progress for a viewer waiting for «Смотреть сейчас». */
-export interface StreamStatus {
-  status: TorrentStatus
-  mode: string
-  size: number
-  done: number
-  downRate: number
-  peers: number
-  seeds: number
-  /** Downloaded of needed bytes where the player reads next (?file=; 0 = unknown). */
-  bufferHave?: number
-  bufferWant?: number
-  stalled?: TorrentStalled
-}
-
-/** POST /api/torrents/{ih}/promote. */
-export interface PromoteResult {
-  status: TorrentStatus
-}
-
-/** GET /api/discover/{kind}/{tmdbId}: a TMDB title that may not be in the library. */
+/** GET /api/title/{kind}/{tmdbId}: a TMDB title that may not be in the library (the core title page). */
 export interface TitleInfo extends Candidate {
   originalTitle?: string
   backdrop: string
@@ -989,126 +772,6 @@ export interface TitleInfo extends Candidate {
   cast?: CastMember[]
   /** Series: regular seasons with their episode counts (empty when TMDB has none). */
   seasons: { number: number; episodes: number }[]
-  /** «Следить» (see ItemDetail.follow). */
-  follow?: FollowRef | null
-}
-
-/** A configured torrent source (indexer.Source; secrets are redacted). */
-export interface Source {
-  id: number
-  definitionId: string
-  name: string
-  enabled: boolean
-  settings: Record<string, string>
-  status: 'ok' | 'error' | 'unknown' | (string & {})
-  lastError?: string
-  /** RFC 3339. */
-  lastChecked?: string
-  /** Lower = preferred. */
-  priority: number
-  /** This source is the backup way into that one (the same site signed in another way): searched only when it fails, shown inside it. */
-  fallbackFor?: number
-}
-
-export interface CatalogOption {
-  value: string
-  label: string
-}
-
-/** One form field of a tracker definition. */
-export interface CatalogField {
-  name: string
-  type: string
-  label: string
-  default?: string
-  help?: string
-  required: boolean
-  advanced: boolean
-  secret: boolean
-  options?: CatalogOption[]
-}
-
-/** A tracker definition from the catalog (fields only in GET /api/sources/catalog/{id}). */
-export interface CatalogEntry {
-  id: string
-  name: string
-  description: string
-  language: string
-  type: 'public' | 'semi-private' | 'private' | (string & {})
-  links: string[]
-  custom: boolean
-  fields?: CatalogField[]
-}
-
-export interface ImportedSource {
-  name: string
-  definitionId?: string
-  source?: Source
-  reason?: string
-}
-
-/** A found release (indexer.ScoredRelease). */
-export interface Release {
-  title: string
-  details?: string
-  link?: string
-  magnet?: string
-  infoHash?: string
-  size: number
-  seeders: number
-  leechers: number
-  publishDate?: string
-  freeleech?: boolean
-  sourceId: number
-  sourceName: string
-  resolution?: number
-  source?: string
-  codec?: string
-  hdr?: boolean
-  audio?: string[]
-  /** Subtitle languages (ru, en, uk, ...) or ["sub"] when named without one; absent = none. */
-  subs?: string[]
-  /** Voice-over studios named by the release (LostFilm, Кубик в Кубе), in order of appearance. */
-  studios?: string[]
-  season?: number
-  episode?: number
-  episodeEnd?: number
-  seasonPack?: boolean
-  score: number
-  excluded?: boolean
-  reasons: string[]
-  /** A file of an OPDS catalog, not a download. */
-  direct?: boolean
-  /** Books and audiobooks: the language (ru, en, ja); absent = unknown. */
-  lang?: string
-  /** Music: the format badge («FLAC», «MP3 320», «MP3 V0»); absent = not named. */
-  audioFormat?: string
-  /** Music: another format than «Формат загрузки» — listed last, never picked by itself. */
-  formatMismatch?: boolean
-}
-
-/** GET /api/acquire/progress: aggregate download progress of one title (numbers only). */
-export interface TitleProgress {
-  status: 'active' | 'paused' | 'done'
-  done: number
-  size: number
-  /** active only: every active download of the title is stalled. */
-  stalled?: TorrentStalled
-  /** active only: see TorrentHint. */
-  liveness?: TorrentLiveness
-  trackerError?: string
-  trackerErrorKind?: TrackerErrorKind
-}
-
-export interface ReleaseSearch {
-  releases: Release[]
-  rejected: Release[]
-  failed: { sourceId: number; name: string; message: string }[]
-}
-
-/** A line of the release stream: the sources that answered so far, and those still searched. */
-export interface ReleaseProgress extends ReleaseSearch {
-  pending: { sourceId: number; name: string }[]
 }
 
 /** GET/PUT /api/settings (admin). */
@@ -1126,25 +789,10 @@ export interface Settings {
   studios?: string[]
   /** «Языки»: the viewer's languages, best first; every other language choice offers only these. */
   languages?: LangCode[]
-  /** Languages of new books, audiobooks and comics/manga: a subset of `languages`, in its order. */
-  bookLangs?: LangCode[]
-  audiobookLangs?: LangCode[]
-  comicLangs?: LangCode[]
-  /** 0 = no limit. */
-  maxSizeGB: number
-  uploadLimited: boolean
-  uploadLimitKBs: number
-  streamCacheGB: number
   /** «Качество вне дома»: the cap of «Авто» outside the home network. */
   remoteQuality: 'original' | '1080' | '720' | '480'
   /** «Музыка вне дома»: the original, AAC 256 or AAC 128 кбит/с. */
   remoteMusic: 'lossless' | 'high' | 'low'
-  /** New music: FLAC (true) or MP3 (legacy; musicFormat says more). */
-  preferLossless: boolean
-  /** «Формат загрузки»: FLAC, MP3 or the best of any. */
-  musicFormat?: 'lossless' | 'mp3' | 'any'
-  /** «Битрейт» of MP3: 320, V0, 256 and more, any. */
-  mp3Bitrate?: '320' | 'v0' | '256' | 'any'
   /** «Превью при перемотке»: the server makes scrub previews in the background (on by default). */
   trickplay?: boolean
   /** «Место для превью», GB (10 by default; the least recently viewed go first). */
@@ -1253,14 +901,12 @@ export interface MailSettings {
 
 /** GET /api/stats (admin). */
 export interface Stats {
-  disk: { total: number; used: number; free: number; categories: { id: string; bytes: number }[] }
+  disk: { total: number; used: number; free: number; categories: { id: string; bytes: number; label?: string }[] }
   counts: { movies: number; series: number; episodes: number; albums: number; tracks: number; books: number; audiobooks: number; comics: number }
   watchedByUser: { user: string; avatar: string; hours30d: number }[]
   topItems30d: { id: number; kind: CardKind; title: string; year?: number; poster: string; viewers: number; hours: number }[]
   /** what re-encodes video: mode qsv, vaapi, nvenc, videotoolbox or none (the CPU) */
   transcoding?: { mode: string; name: string; requested: string; device?: string }
-  // the sources build's (none from the core build)
-  seeding?: { count: number; uploadedTotal: number; ratio: number }
 }
 
 /** A title in GET /api/stats/storage (a movie, series, album, book, audiobook or comic), with what to trash to delete it. */
@@ -1335,7 +981,7 @@ export interface DiskUsage {
 
 /** Server-sent event from GET /api/events. */
 export interface ServerEvent<T = unknown> {
-  type: 'torrent.progress' | 'library.updated' | 'disk.warning' | 'source.status' | (string & {})
+  type: 'library.updated' | 'disk.warning' | (string & {})
   data: T
 }
 
@@ -1351,7 +997,6 @@ export type FileKind =
   | 'book'
   | 'comic'
   | 'archive'
-  | 'torrent'
   | 'other'
   | (string & {})
 
@@ -1368,9 +1013,12 @@ export interface FileItemRef {
   title: string
 }
 
-export interface FileTorrentRef {
-  infohash: string
-  seeding: boolean
+/** The addon holding a file or folder: its name, its words for it, and
+ * whether it uses the data now. */
+export interface FileHoldRef {
+  addon: string
+  label: string
+  active: boolean
 }
 
 /** One file or folder. `path` is relative to the root. */
@@ -1385,7 +1033,7 @@ export interface FileEntry {
   childCount?: number
   thumb?: string
   item?: FileItemRef
-  torrent?: FileTorrentRef
+  hold?: FileHoldRef
 }
 
 export interface FileCrumb {
@@ -1423,7 +1071,7 @@ export interface FileUsage {
   total: number
   used: number
   free: number
-  categories: { id: string; bytes: number }[]
+  categories: { id: string; bytes: number; label?: string }[]
 }
 
 export interface TrashItem {
@@ -1700,7 +1348,8 @@ export type MigrateStatusKind = 'planned' | 'imported' | 'skipped' | 'failed' | 
 
 export interface MigrateLine {
   source: string
-  kind: 'torrent' | 'source' | 'follow' | 'progress' | 'user' | 'leftover' | (string & {})
+  /** The core's kinds; an addon's migration names its own. */
+  kind: 'progress' | 'user' | 'leftover' | (string & {})
   name: string
   status: MigrateStatusKind
   reason: string
@@ -1732,8 +1381,6 @@ export interface MigrateReport {
   finishedAt: string
   lines: MigrateLine[] | null
   counts: Partial<Record<MigrateStatusKind, number>> | null
-  /** History only: the downloads this run moved (a build's own source). */
-  torrents?: number
 }
 
 /** What changes during a run or a scan (GET /api/migrate/state reads no old database). */
@@ -1782,6 +1429,15 @@ export interface ImportService {
   /** Russian steps; empty when configured. */
   setup: string[]
   files: string[]
+}
+
+/** GET /api/import/services: the tiles and what the page may promise. */
+export interface ImportServicesReply {
+  services: ImportService[]
+  /** An addon takes the albums the library lacks (else they are «Нет в медиатеке»). */
+  downloads: boolean
+  /** The review can search a catalog («Найти вручную», «Выбрать альбом…»). */
+  catalog: boolean
 }
 
 /** «Подключить»: the service's sign-in page and how the browser comes back (to this server, or a loopback address to paste). */
@@ -2128,7 +1784,8 @@ export interface SourceMeta {
   fileIndex?: number
 }
 
-export type SourceKind = 'library' | 'pinned' | 'torrent' | 'online'
+/** The core's kinds, or an addon's (its scanners' `tracking.scan:<kind>`; opaque to the core). */
+export type SourceKind = 'library' | 'online' | (string & {})
 
 export interface EpisodeSource {
   kind: SourceKind
@@ -2206,4 +1863,41 @@ export interface ShikimoriAdminSettings {
   fromEnv: boolean
   redirectUri: string
   scope: string
+}
+
+// --- «Расширения» (addons; admin) ---
+export type AddonStatus = 'starting' | 'running' | 'crashed' | 'stopped' | 'incompatible'
+
+/** An installed addon (GET /api/addons). */
+export interface AddonInfo {
+  id: string
+  name: string
+  description: string
+  version: string
+  /** The GitHub URL it was installed from. */
+  source: string
+  enabled: boolean
+  status: AddonStatus
+  /** A newer release's version, or null. */
+  update: string | null
+  /** Installed by the deployment (VAULT_ADDONS_PIN): it cannot be
+   * updated or removed here, only switched. Missing from older servers. */
+  pinned?: boolean
+  /** Its pin could not be applied at boot (the server log says why): it
+   * stays stopped and cannot be switched on. */
+  pinFailed?: boolean
+}
+
+/** What an addon's release says about itself, before it is installed. */
+export interface AddonPreview {
+  id: string
+  name: string
+  description: string
+  version: string
+  author: string
+  homepage: string
+  permissions: string[]
+  hasWeb: boolean
+  /** The version already installed, '' when it is not. */
+  installed: string
 }

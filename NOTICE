@@ -16,6 +16,9 @@ web/reader-native.html, nine files in web/src/reader, and everything in
 web/src/i18n. LICENSING.md lists them; web/src/reader/LICENSE and
 web/src/i18n/LICENSE hold the licence text.
 
+The addon SDK, web/addon-sdk, is under the MIT License instead (SPDX: MIT);
+web/addon-sdk/LICENSE holds the text.
+
 Third-party software in the server binary and the web bundle, each with its
 licence: THIRD_PARTY_LICENSES.md. Vendored code keeps its own notices:
 web/src/vendor/foliate (foliate-js, MIT; zip.js, BSD-3-Clause; fflate, MIT)

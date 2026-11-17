@@ -88,7 +88,7 @@ func (r *Repo) DeleteSet(ctx context.Context, id int64) (DeleteSet, error) {
 	for rows.Next() {
 		var f File
 		var shared bool
-		if err := rows.Scan(&f.ID, &f.ItemID, &f.Path, &f.Size, &f.Mtime, &f.DurationMs, &f.ProbeJSON, &f.TorrentInfohash, &shared); err != nil {
+		if err := rows.Scan(&f.ID, &f.ItemID, &f.Path, &f.Size, &f.Mtime, &f.DurationMs, &f.ProbeJSON, &shared); err != nil {
 			return d, err
 		}
 		if shared {
@@ -98,25 +98,6 @@ func (r *Repo) DeleteSet(ctx context.Context, id int64) (DeleteSet, error) {
 		}
 	}
 	return d, rows.Err()
-}
-
-// FilesOfLink lists the shown files made from the download ih
-// (files.torrent_infohash, any case).
-func (r *Repo) FilesOfLink(ctx context.Context, ih string) ([]File, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files WHERE lower(torrent_infohash)=lower(?) AND missing_since IS NULL ORDER BY path`, ih)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
 }
 
 // Forget hides items and files at once, as a scan does when their files

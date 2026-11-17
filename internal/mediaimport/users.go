@@ -57,7 +57,7 @@ func ProposeUsers(ctx context.Context, o ProgressOptions, users *auth.Store) ([]
 			unreadable = append(unreadable, failed)
 			return nil
 		}
-		defer d.close()
+		defer d.Close()
 		if err := fn(d); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

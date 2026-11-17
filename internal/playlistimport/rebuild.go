@@ -87,7 +87,7 @@ func fingerprint(name string, ids []int64) string {
 }
 
 // errTakenOver: the user changed the playlist while the rebuild worked.
-var errTakenOver = errors.New("musicimport: playlist changed by the user")
+var errTakenOver = errors.New("playlistimport: playlist changed by the user")
 
 // rebuildPlaylist writes an import playlist into its Vault playlist. The
 // first rebuild of a job applies the service's name and order (creating

@@ -1,0 +1,23 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/find/album?album=%D0%93%D1%80%D1%83%D0%BF%D0%BF%D0%B0+%D0%BA%D1%80%D0%BE%D0%B2%D0%B8\u0026artist=%D0%9A%D0%B8%D0%BD%D0%BE",
+  "status": 200,
+  "body": {
+    "id": 7,
+    "kind": "album",
+    "parentId": 6,
+    "title": "Группа крови",
+    "originalTitle": "",
+    "year": 0,
+    "rating": "",
+    "tmdbId": 0,
+    "seasonNo": 0,
+    "episodeNo": 0,
+    "poster": "",
+    "addedAt": "{time}",
+    "meta": {
+      "compilation": false,
+      "scan_sig": "{sig}"
+    }
+  }
+}

@@ -5,8 +5,9 @@ import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { getItems } from '../api/client'
 import type { Card, ItemSort } from '../api/types'
-import { Button, ButtonLink } from '../ui/Button'
+import { Button } from '../ui/Button'
 import { RescanLink } from '../components/RescanLink'
+import { EmptyStateActions } from '../components/EmptyStateActions'
 import { Icon } from '../components/Icon'
 import { PosterGrid, PosterGridSkeleton } from '../components/PosterGrid'
 import { LibraryTools, MineEmpty } from '../components/LibraryScopeMenu'
@@ -95,14 +96,9 @@ export function Browse({ kind, title, emptyTitle }: BrowseProps) {
           <h2>{emptyTitle}</h2>
           {user?.isAdmin ? (
             <>
-              <p>{t(__LIBRARY_EDITION__ ? 'browse.emptyAdmin' : 'browse.emptyAdminFull')}</p>
-              {__LIBRARY_EDITION__ ? (
-                <RescanLink variant="secondary" />
-              ) : (
-                <ButtonLink to="/search" icon="search" variant="secondary">
-                  {t('browse.find')}
-                </ButtonLink>
-              )}
+              <p>{t('browse.emptyAdmin')}</p>
+              <RescanLink variant="secondary" />
+              <EmptyStateActions scope="video" variant="secondary" />
             </>
           ) : (
             <p>{t('browse.emptyOthers')}</p>

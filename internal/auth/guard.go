@@ -37,21 +37,27 @@ func ViaMediaKey(ctx context.Context) (string, bool) {
 }
 
 // mediaKeyRoute: the paths a media key opens (file streams, HLS playlists
-// and segments, a live channel's playlist and segments, music tracks, audiobook parts, the app's «Смотреть
-// сейчас» file of a release that is still arriving, and the online
-// stream proxy with its subtitles, a cached trailer), for GET and HEAD only.
+// and segments, a live channel's playlist and segments, music tracks,
+// audiobook parts, the online stream proxy with its subtitles, an addon
+// input's direct stream, a cached trailer), for GET and HEAD only.
 func mediaKeyRoute(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
 	p := r.URL.Path
 	return strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/hls/") ||
-		strings.HasPrefix(p, "/api/torrent-stream/") ||
 		strings.HasPrefix(p, "/api/audio/") ||
 		strings.HasPrefix(p, "/api/online/s/") ||
 		strings.HasPrefix(p, "/api/channels/live/") ||
 		(strings.HasPrefix(p, "/api/trailers/") && strings.HasSuffix(p, ".mp4")) ||
-		(strings.HasPrefix(p, "/api/tracks/") && strings.HasSuffix(p, "/stream"))
+		(strings.HasPrefix(p, "/api/tracks/") && strings.HasSuffix(p, "/stream")) ||
+		inputDirect(p)
+}
+
+// inputDirect: /api/play/input/{id}/direct, an addon input's file as it is.
+func inputDirect(p string) bool {
+	id, ok := strings.CutSuffix(strings.TrimPrefix(p, "/api/play/input/"), "/direct")
+	return ok && strings.HasPrefix(p, "/api/play/input/") && id != "" && !strings.Contains(id, "/")
 }
 
 // SessionFrom returns the session put into ctx by Guard.Require.

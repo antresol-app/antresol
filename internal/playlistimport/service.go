@@ -12,6 +12,7 @@ import (
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata"
+	"github.com/antresol-app/antresol/internal/playlistimport/model"
 )
 
 // ErrCatalogOffline: Start without MusicBrainz (VAULT_MUSICBRAINZ_BASEURL
@@ -27,19 +28,8 @@ type Matcher interface {
 	Match(ctx context.Context, t Track) (Decision, error)
 }
 
-// Decision is what matching decided for a song: State matched (with the
-// recording and release group) or review (with the Russian Reason).
-type Decision struct {
-	State        string
-	Reason       string
-	RecordingID  string
-	ReleaseGroup string
-	Title        string
-	Artist       string
-	Album        string
-	Year         int
-	Aliases      []string
-}
+// Decision is what matching decided for a song (model.Decision).
+type Decision = model.Decision
 
 // matchBatch is how many songs one tick matches at most (MusicBrainz
 // allows 1 request/s: about 20 s of work).
@@ -57,37 +47,16 @@ const maxMatchFails = 3
 // (429, 502, 503, 504) many times in a row, as a multiple of MatchPause.
 const maxBackoff = 16
 
-// Candidate is an album the catalog offers for a song in review (the
-// fields the import's search and candidates endpoints serialize).
-type Candidate struct {
-	TMDBID        int    `json:"tmdbId"`
-	ExtID         string `json:"extId"`
-	Kind          string `json:"kind"`
-	Title         string `json:"title"`
-	Subtitle      string `json:"subtitle"`
-	Year          int    `json:"year"`
-	Poster        string `json:"poster"`
-	Overview      string `json:"overview"`
-	InLibrary     bool   `json:"inLibrary"`
-	LibraryItemID *int64 `json:"libraryItemId"`
-	// Aliases: other names of the album, sent back with the request.
-	Aliases []string `json:"aliases,omitempty"`
-	// MatchedTrack: music found by a song title — the song of the query
-	// the album holds; omitted otherwise.
-	MatchedTrack string `json:"matchedTrack,omitempty"`
-	// ByArtist: music of the artist the query names, listed first; omitted
-	// for the other matches.
-	ByArtist string `json:"byArtist,omitempty"`
-}
+// Candidate is an album the catalog offers for a song in review
+// (model.Candidate).
+type Candidate = model.Candidate
 
 // Catalog is the music catalog search for the review list (in the full
-// build acquire.Service.DiscoverMedia, adapted).
-type Catalog interface {
-	DiscoverMedia(ctx context.Context, kind, q string) ([]Candidate, error)
-}
+// build, the download addon's catalog search, adapted).
+type Catalog = model.Catalog
 
 // Downloader fetches the albums of a downloading job that the library
-// lacks (*musicimport.Queue); nil in Service.Queue means LibraryStep.
+// lacks (the import addon's queue); nil in Service.Queue means LibraryStep.
 type Downloader interface {
 	Step(ctx context.Context, jobID int64) error
 }
@@ -98,22 +67,14 @@ type DownloadProgress interface {
 	Downloaded(ctx context.Context, infoHash string) (done int64, known bool, err error)
 }
 
-// Stopper stops a library still being read for a job (musicimport.OAuth).
+// Stopper stops a library still being read for a job (the import addon's sign-ins).
 type Stopper interface{ Stop(jobID int64) }
 
-// ServiceInfo is a tile of «Импорт»: how the service connects (redirect,
-// paste, device code, a file, the app), the owner's setup steps while it is
-// not configured, and the files it can also be read from.
-type ServiceInfo struct {
-	ID         string   `json:"id"`
-	Configured bool     `json:"configured"`
-	Connect    string   `json:"connect"`
-	Setup      []string `json:"setup"`
-	Files      []string `json:"files"`
-}
+// ServiceInfo is a tile of «Импорт» (model.ServiceInfo).
+type ServiceInfo = model.ServiceInfo
 
 // ConnectorStatus lists the tiles for GET /api/import/services
-// (musicimport.OAuth).
+// (the import addon's sign-ins).
 type ConnectorStatus interface {
 	Services(ctx context.Context) []ServiceInfo
 }
@@ -125,13 +86,10 @@ type IDResolver interface {
 }
 
 // PublicPlaylist is a playlist anyone with its link can open.
-type PublicPlaylist struct {
-	ID   string
-	Name string
-}
+type PublicPlaylist = model.PublicPlaylist
 
 // ErrBadLink: the text is not a link to a playlist of the service.
-var ErrBadLink = errors.New("musicimport: not a playlist link")
+var ErrBadLink = model.ErrBadLink
 
 // PublicReader reads a public playlist by its link, with no sign-in
 // (connect.Deezer).
@@ -140,6 +98,14 @@ type PublicReader interface {
 	FindPublic(ctx context.Context, link string) (PublicPlaylist, error)
 	// ReadPublic reads its songs: one playlist, nothing liked.
 	ReadPublic(ctx context.Context, p PublicPlaylist) (Snapshot, error)
+}
+
+// Offers is what the server does beyond the library: Downloads, an
+// addon takes the albums the library lacks (Queue leaves them to it);
+// Catalog, an addon answers the review's album search.
+type Offers struct {
+	Downloads bool `json:"downloads"`
+	Catalog   bool `json:"catalog"`
 }
 
 // Service runs import jobs: one job at a time goes through matching and
@@ -159,7 +125,13 @@ type Service struct {
 	// Connectors lists the sign-in services of GET /api/import/services; nil:
 	// none.
 	Connectors ConnectorStatus
-	// Reads stops the library read of a cancelled or deleted job; nil: no-op.
+	// Offers says what the page may promise (GET /api/import/services):
+	// whether the albums the library lacks are downloaded, and whether the
+	// review can search a catalog; nil: neither.
+	Offers func(ctx context.Context) Offers
+	// Reads stops the addons' library read of a cancelled or deleted job
+	// (the core's own reads, ReadInBackground, are stopped as well); nil:
+	// no-op.
 	Reads Stopper
 	// Resolver names the videos an uploaded Google Takeout gives only by
 	// id (connect.YouTubeResolver); nil: they stay unknown.
@@ -180,9 +152,15 @@ type Service struct {
 	ungrouped int                 // matches since the last AssignGroups
 	fails     map[int64]int       // bad answers per song (track id)
 	outages   int                 // offline/overloaded answers in a row
+	queueLog  time.Time           // the last «import: queue» error logged (zero: the queue works)
+
+	readMu   sync.Mutex
+	readBase context.Context // Run's: ends the reads (nil: not running yet)
+	reads    coreReads
 }
 
 func (s *Service) stop(id int64) {
+	s.stopRead(id)
 	if s.Reads != nil {
 		s.Reads.Stop(id)
 	}
@@ -330,6 +308,7 @@ func (s *Service) SetStatus(ctx context.Context, id int64, status, errText strin
 // Run works on the active job every tick until ctx ends. A release search
 // a stop interrupted starts again (the attempt is not counted).
 func (s *Service) Run(ctx context.Context) {
+	s.setReadBase(ctx)
 	if err := s.Store.ResetSearching(ctx); err != nil && ctx.Err() == nil {
 		s.Logger().Error("import: reset searching groups", "err", err)
 	}
@@ -370,9 +349,7 @@ func (s *Service) step(ctx context.Context) {
 			s.advance(ctx, j.ID, StatusMatching, StatusDownloading)
 		}
 	case StatusDownloading:
-		if err := s.downloader().Step(ctx, j.ID); err != nil {
-			s.logErr(ctx, "queue", j.ID, err)
-		}
+		s.queueErr(ctx, j.ID, s.downloader().Step(ctx, j.ID))
 		s.rematchStep(ctx, j.ID)
 		if busy, err := s.Store.Unfinished(ctx, j.ID); err != nil {
 			s.logErr(ctx, "unfinished", j.ID, err)
@@ -612,6 +589,34 @@ func (s *Service) still(ctx context.Context, jobID int64, status string) bool {
 func (s *Service) advance(ctx context.Context, jobID int64, from, to string) {
 	if _, err := s.Advance(ctx, jobID, from, to, ""); err != nil {
 		s.logErr(ctx, "status "+to, jobID, err)
+	}
+}
+
+// queueErrEvery is how often a queue that keeps failing is logged again.
+const queueErrEvery = time.Minute
+
+// queueErr logs a failing queue step (err nil: it worked) once, then at
+// most once a queueErrEvery while it keeps failing (it runs every tick),
+// and once when it works again.
+func (s *Service) queueErr(ctx context.Context, jobID int64, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	now := time.Now()
+	s.mu.Lock()
+	last := s.queueLog
+	switch {
+	case err == nil:
+		s.queueLog = time.Time{}
+	case last.IsZero() || now.Sub(last) >= queueErrEvery:
+		s.queueLog = now
+	}
+	s.mu.Unlock()
+	switch {
+	case err == nil && !last.IsZero():
+		s.Logger().Info("import: queue works again", "job", jobID)
+	case err != nil && (last.IsZero() || now.Sub(last) >= queueErrEvery):
+		s.logErr(ctx, "queue", jobID, err)
 	}
 }
 

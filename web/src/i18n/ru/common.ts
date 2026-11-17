@@ -101,11 +101,6 @@ export default {
   // the sources build's, but named by core code (were in ./full.ts)
   'common.downloads': 'Загрузки',
   'common.kind.folder': 'Папка',
-  'common.myFollows': 'Мои слежения',
   'common.perSecond': '{size}/с',
-  'common.download.downloading': 'Загружается',
-  'common.download.paused': 'На паузе',
-  'common.download.queued': 'Ищет участников',
-  'common.download.streaming': 'Смотрят сейчас',
   'common.download.waitingSpace': 'Ждёт места на диске',
 } as const

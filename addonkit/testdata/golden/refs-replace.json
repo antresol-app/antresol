@@ -1,0 +1,10 @@
+{
+  "method": "PUT",
+  "path": "/api/addon-core/v1/library/refs/k-0003",
+  "status": 200,
+  "body": {
+    "bound": 1,
+    "missing": [],
+    "taken": []
+  }
+}

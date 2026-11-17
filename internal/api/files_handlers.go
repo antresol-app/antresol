@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/i18n"
@@ -62,7 +63,11 @@ func noKids(next http.Handler) http.Handler {
 
 // filesErr maps files errors to responses. Messages never carry server paths.
 func filesErr(w http.ResponseWriter, r *http.Request, what string, err error) {
+	var held *addons.HoldError
 	switch {
+	case errors.As(err, &held):
+		// an addon holding the data refused or did not answer
+		writeErr(w, r, http.StatusConflict, held.Message)
 	case errors.Is(err, files.ErrUnknownRoot):
 		writeErr(w, r, http.StatusNotFound, "Раздел не найден")
 	case errors.Is(err, files.ErrOutside):
@@ -77,6 +82,9 @@ func filesErr(w http.ResponseWriter, r *http.Request, what string, err error) {
 		writeErr(w, r, http.StatusBadRequest, "Недопустимое имя")
 	case errors.Is(err, files.ErrIsRoot):
 		writeErr(w, r, http.StatusBadRequest, "Этот раздел нельзя изменить")
+	case errors.Is(err, files.ErrHeldAlias):
+		// data in use, reached through a symlinked folder: nothing was moved
+		writeErr(w, r, http.StatusConflict, "Эти данные используются, а путь к ним идёт через ссылку: переместите их по их собственному пути")
 	case errors.Is(err, files.ErrIntoSelf):
 		writeErr(w, r, http.StatusBadRequest, "Нельзя переместить папку в саму себя")
 	case errors.Is(err, files.ErrCrossDevice):
@@ -87,7 +95,7 @@ func filesErr(w http.ResponseWriter, r *http.Request, what string, err error) {
 		writeErr(w, r, http.StatusNotFound, "Нет миниатюры")
 	case errors.Is(err, os.ErrPermission):
 		writeErr(w, r, http.StatusForbidden, "Нет доступа к файлу")
-	case errors.Is(err, files.ErrTorrent):
+	case errors.Is(err, files.ErrHeld):
 		// a download using the data could not be stopped: nothing was moved
 		writeErr(w, r, http.StatusConflict, fileOpConflict(r, err))
 	default:
@@ -386,7 +394,7 @@ func (h *filesAPI) usage(w http.ResponseWriter, r *http.Request) {
 		filesErr(w, r, "usage", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rep)
+	writeJSON(w, http.StatusOK, rep.Localized(i18n.FromContext(r.Context()))) // addon segments' names
 }
 
 // entryAt replies with the entry at root/rel after a change.

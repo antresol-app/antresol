@@ -34,7 +34,14 @@ export default {
   'requests.admin.declined': 'Declined',
   'requests.badge': { one: '{count} request waiting', other: '{count} requests waiting' },
   'requests.approveFailed': 'Couldn’t approve. Try again.',
+  'requests.sheetFailed': 'The extension couldn’t open its choice. Try again.',
+
+  // a kid's search for something to ask for (Search, RequestSearch)
+  'requests.search.title': 'Find and Ask',
+  'requests.search.video': 'Movies & TV',
+  'requests.search.failed': 'Search isn’t available right now',
+  'requests.search.nothingMore': 'Nothing else found.',
+  'requests.search.searching': 'Searching',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'requests.leadFull': 'What the kids ask to add. Approve opens the release picker: once the download starts the request is approved, and the kid sees it when it arrives in the library.',
 } satisfies EnOf<typeof ru>

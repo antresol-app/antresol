@@ -2,9 +2,6 @@ package mediaimport
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -23,89 +20,44 @@ import (
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/mediaimport/runkit"
 	"github.com/antresol-app/antresol/internal/progress"
 )
 
-// Source is one service a run takes over from. The Service registers
-// Jellyfin, Kavita and Audiobookshelf itself; the sources build registers
-// its own (Register).
-type Source interface {
-	ID() string   // "jellyfin": Line.Source, RunRequest.Sources, UserMap keys "<id>:<user>"
-	Name() string // "Jellyfin"
-	Order() int   // run order: Jellyfin 40, Kavita 50, Audiobookshelf 60 (a build's own sources take other numbers)
-	Path() string // where its data is mounted (read only)
-	IsDir() bool  // Path is a folder, not a file
-	Detail(ctx context.Context, tmp string) (string, error)
-	Problem(ctx context.Context) string // an error to show once found ("" = none)
-	Import(ctx context.Context, r Run) error
-}
+// Source is one service a run takes over from (runkit.Source). The Service
+// registers Jellyfin, Kavita and Audiobookshelf itself; the sources build
+// registers its own (Register).
+type Source = runkit.Source
 
-// Run is what a source gets to import: the report to add lines to, the
-// run's private folder for database snapshots, and the request's choices.
-type Run struct {
-	Report     *Report
-	Tmp        string
-	DryRun     bool
-	UserMap    map[string]int64
-	AdminID    int64
-	Checkpoint func() // saves the report (a long import calls it between steps)
-}
-
-// UserError is an error of a source whose text is shown to the admin as
-// it is (already in the request's language), instead of the general
-// «Не удалось прочитать базу».
-type UserError struct {
-	Msg string
-	Err error
-}
-
-func (e *UserError) Error() string { return e.Msg + ": " + e.Err.Error() }
-func (e *UserError) Unwrap() error { return e.Err }
+// Run is what a source gets to import; UserError an error of a source whose
+// text is shown to the admin as it is (runkit).
+type (
+	Run       = runkit.Run
+	UserError = runkit.UserError
+)
 
 // Errors of the service; the API maps them with errors.Is.
 var (
-	ErrNeedsDryRun    = errors.New("migrate: no recent dry run of the same plan")
-	ErrNotReady       = errors.New("migrate: the library is not scanned yet")
-	ErrBusy           = errors.New("migrate: a migration is running")
-	ErrUnknownSource  = errors.New("migrate: unknown source")
-	ErrNoSources      = errors.New("migrate: no source chosen")
-	ErrUnknownProfile = errors.New("migrate: unknown Vault profile")
-	ErrNotFound       = errors.New("migrate: report not found")
+	ErrNeedsDryRun    = runkit.ErrNeedsDryRun
+	ErrNotReady       = runkit.ErrNotReady
+	ErrBusy           = runkit.ErrBusy
+	ErrUnknownSource  = runkit.ErrUnknownSource
+	ErrNoSources      = runkit.ErrNoSources
+	ErrUnknownProfile = runkit.ErrUnknownProfile
+	ErrNotFound       = runkit.ErrNotFound
 )
 
 // planTTL: how long a dry run allows the real run.
 const planTTL = time.Hour
 
-// SourceStatus is one old service as the «Переезд» screen shows it.
-type SourceStatus struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Found  bool   `json:"found"`
-	Path   string `json:"path"`
-	Detail string `json:"detail"`
-	Error  string `json:"error"`
-}
-
-// RunRequest starts a run. UserMap: "<source>:<sourceUserID>" → Vault
-// profile (missing = «Не переносить»). AdminID comes from the session.
-type RunRequest struct {
-	Sources []string         `json:"sources"`
-	DryRun  bool             `json:"dryRun"`
-	PlanID  string           `json:"planId"`
-	UserMap map[string]int64 `json:"userMap"`
-	AdminID int64            `json:"-"`
-}
-
-// Progress is the data of the migrate.progress event, sent after each
-// source (Finished on the last one).
-type Progress struct {
-	ReportID string         `json:"reportId"`
-	Source   string         `json:"source"`
-	Done     int            `json:"done"`
-	Total    int            `json:"total"`
-	Counts   map[string]int `json:"counts"`
-	Finished bool           `json:"finished"`
-}
+// SourceStatus is one old service as the «Переезд» screen shows it;
+// RunRequest starts a run; Progress is the data of the migrate.progress
+// event (runkit).
+type (
+	SourceStatus = runkit.SourceStatus
+	RunRequest   = runkit.RunRequest
+	Progress     = runkit.Progress
+)
 
 // Service runs «Переезд»: what the old services have, a dry run and the
 // run itself (in the background). Create it with NewService.
@@ -132,12 +84,11 @@ type Service struct {
 	LibraryReady func() (bool, string)
 	Log          *slog.Logger
 
-	// ExtraLeftovers: what the sources build's old services have that does not
-	// move; running are the sources of the run (nil on the screen). nil:
-	// none. LeftoverFiles are the files it reads: the screen's cache is
-	// dropped when one changes.
-	ExtraLeftovers func(ctx context.Context, tmp string, running []string) []Line
-	LeftoverFiles  []string
+	// ExtraLeftovers: what the addons' old services have that does not
+	// move (migrate.leftovers), shown first on the screen. It is asked on
+	// every look, outside the screen's cache (it keeps its own), and never
+	// by a run. nil: none.
+	ExtraLeftovers func(ctx context.Context) []Line
 
 	mu        sync.Mutex
 	running   string // report id of the run in progress
@@ -434,7 +385,7 @@ func progressUsers(ctx context.Context, tmp, id, path string) (users, rows, epub
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	defer d.close()
+	defer d.Close()
 	seen := map[string]bool{}
 	switch id {
 	case SourceJellyfin:
@@ -471,10 +422,21 @@ func progressUsers(ctx context.Context, tmp, id, path string) (users, rows, epub
 	return len(seen), rows, epubs, nil
 }
 
-// Leftovers is what the old services have that does not move (the last
-// look while their files are unchanged).
+// Leftovers is what the old services have that does not move: the
+// addons' lines (ExtraLeftovers), then the core's (the last look while
+// their files are unchanged).
 func (s *Service) Leftovers(ctx context.Context) []Line {
-	key := fingerprint(append([]string{s.Jellyfin}, s.LeftoverFiles...)...) + "\n" + i18n.FromContext(ctx)
+	var out []Line
+	if s.ExtraLeftovers != nil {
+		out = s.ExtraLeftovers(ctx)
+	}
+	return append(out, s.coreLeftovers(ctx)...)
+}
+
+// coreLeftovers is the core's part of Leftovers, kept in the screen's
+// cache.
+func (s *Service) coreLeftovers(ctx context.Context) []Line {
+	key := fingerprint(s.Jellyfin) + "\n" + i18n.FromContext(ctx)
 	if v, ok := s.cache.get("leftovers", key); ok {
 		return slices.Clone(v.([]Line))
 	}
@@ -492,19 +454,16 @@ func (s *Service) Leftovers(ctx context.Context) []Line {
 	return out
 }
 
-// leftovers lists what stays behind: the sources build's (ExtraLeftovers), then
-// Jellyfin's TV channels — unless Jellyfin is among running, whose importer
-// writes that line itself.
+// leftovers lists what stays behind of the core's own services: Jellyfin's
+// TV channels — unless Jellyfin is among running, whose importer writes
+// that line itself.
 func (s *Service) leftovers(ctx context.Context, tmp string, running []string) []Line {
-	var out []Line
-	if s.ExtraLeftovers != nil {
-		out = s.ExtraLeftovers(ctx, tmp, running)
-	}
 	if slices.Contains(running, SourceJellyfin) {
-		return out
+		return nil
 	}
+	var out []Line
 	lang := i18n.FromContext(ctx)
-	if n, err := CountIn(ctx, tmp, s.Jellyfin, TableCount{"BaseItems", "Type LIKE '%LiveTvChannel'"}); err != nil {
+	if n, err := CountIn(ctx, tmp, s.Jellyfin, TableCount{Table: "BaseItems", Where: "Type LIKE '%LiveTvChannel'"}); err != nil {
 		impLog().Warn("leftovers", "source", SourceJellyfin, "err", err)
 		out = append(out, Line{Source: SourceJellyfin, Kind: "leftover", Name: "Jellyfin", Status: StatusWarning,
 			Reason: i18n.TL(lang, "Не удалось проверить %s — посмотрите там вручную, что не переносится", "Jellyfin")})
@@ -556,16 +515,7 @@ func (s *Service) progressOptions(tmp string, um map[string]int64, dry bool) Pro
 
 // PlanHash identifies what a run does: the sources (in any order) and the
 // profile mapping. A real run needs a dry run with the same hash.
-func PlanHash(sources []string, userMap map[string]int64) string {
-	src := slices.Clone(sources)
-	sort.Strings(src)
-	if userMap == nil {
-		userMap = map[string]int64{}
-	}
-	um, _ := json.Marshal(userMap) // map keys are sorted: canonical
-	h := sha256.Sum256([]byte(strings.Join(src, ",") + "\n" + string(um)))
-	return hex.EncodeToString(h[:])
-}
+var PlanHash = runkit.PlanHash
 
 // checkSources checks the chosen sources and puts them in run order.
 func (s *Service) checkSources(in []string) ([]string, error) {

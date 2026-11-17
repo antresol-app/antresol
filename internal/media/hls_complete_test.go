@@ -31,7 +31,7 @@ func TestCompleteTotalOnlyForTranscodes(t *testing.T) {
 		{"transcode from 70:00", transcode, "/media/film.mkv", 7200, 4200, 3000},
 		{"copied video: segment lengths unknown", Decision{Mode: "remux", VideoCopy: true, VideoCodec: "hevc"}, "/media/film.mkv", 7200, 0, 0},
 		{"no video stream", Decision{Mode: "transcode"}, "/media/a.mkv", 7200, 0, 0},
-		{"torrent may stall", transcode, "http://127.0.0.1:8421/stream/x", 7200, 0, 0},
+		{"a loopback http input may stall", transcode, "http://127.0.0.1:8421/stream/x", 7200, 0, 0},
 		{"unknown duration", transcode, "/media/film.mkv", 0, 0, 0},
 		{"start at the very end", transcode, "/media/film.mkv", 100, 99.5, 0},
 	}

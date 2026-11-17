@@ -123,8 +123,6 @@ export function kindLabel(e: Pick<FileEntry, 'name' | 'isDir' | 'kind'>): string
   const ext = extOf(e.name)
   const x = ext ? upper(ext) : ''
   const of = (plain: Key, withExt: Key) => (x ? t(withExt, { ext: x }) : t(plain))
-  // a kind of another build's server only
-  if (!__LIBRARY_EDITION__ && e.kind === 'torrent') return t('files.kind.torrent')
   switch (e.kind) {
     case 'video':
       return of('files.kind.video', 'files.kind.videoExt')

@@ -6,8 +6,8 @@ import { providerOf } from '../AISettings'
 import { renderSettings } from './settingsHarness'
 
 const base: Values = {
-  quality: 1080, voice: 'dub', maxSizeGB: 0, uploadLimited: false, uploadLimitKBs: 0, streamCacheGB: 50, remoteQuality: '1080',
-  remoteMusic: 'high', preferLossless: true, autoSubtitles: true, subtitleLangs: ['ru'], subtitlesAvailable: false,
+  quality: 1080, voice: 'dub', remoteQuality: '1080',
+  remoteMusic: 'high', autoSubtitles: true, subtitleLangs: ['ru'], subtitlesAvailable: false,
 }
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
 

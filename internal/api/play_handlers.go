@@ -218,7 +218,7 @@ func (h *lib) segmentsOf(ctx context.Context, f library.File, it library.Item, d
 	return h.Segments.ForPlay(ctx, f.ID, durationMs, it.Kind == library.KindMovie)
 }
 
-// playRequest is the body of POST /api/play and /api/torrent-play.
+// playRequest is the body of POST /api/play and of an addon input's play.
 type playRequest struct {
 	Caps       media.ClientCaps `json:"caps"`
 	AudioIndex *int             `json:"audioIndex"`
@@ -276,7 +276,8 @@ func (h *lib) startHLS(w http.ResponseWriter, r *http.Request, out map[string]an
 		writeErr(w, r, http.StatusInsufficientStorage, "На диске не хватает места, чтобы подготовить видео.")
 		return false
 	case err != nil:
-		internalErr(w, r, "hls start", err)
+		// the error may name the loopback input, its token in it
+		internalErr(w, r, "hls start", errors.New(redactToken(err.Error())))
 		return false
 	}
 	out["url"] = "/api/hls/" + sid + "/index.m3u8"
@@ -324,7 +325,7 @@ func (h *lib) startSession(r *http.Request, fileID, itemID int64, input string, 
 			// lands on it, not on the GOP before (checked with ffmpeg 7.1).
 			ffStart = k + keyframeLead
 		} else if err != nil && r.Context().Err() == nil {
-			log.Printf("api: keyframe before %.1fs: %v", start, err)
+			log.Printf("api: keyframe before %.1fs: %s", start, redactToken(err.Error())) // a loopback input's URL carries the token
 		}
 	}
 	if replace != "" && !h.sessions.owns(replace, uid) {

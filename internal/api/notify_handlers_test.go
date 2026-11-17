@@ -67,7 +67,8 @@ func TestNotifyPrefsOwnAndKids(t *testing.T) {
 	}
 	w = e.do("PUT", "/api/me/notify", `{"email":"mama@example.com","episodes":true,"downloads":true,"quietHours":false,"lang":"en"}`, mom)
 	got = decodeJSON[notifyOut](t, w.Body.Bytes())
-	if w.Code != 200 || got.Email != "mama@example.com" || !got.Episodes || got.Downloads || got.QuietHours || got.Lang != "en" || got.Verified {
+	if w.Code != 200 || got.Email != "mama@example.com" || !got.Episodes || got.QuietHours || got.Lang != "en" || got.Verified ||
+		strings.Contains(w.Body.String(), `"downloads"`) {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
 	if w := e.do("PUT", "/api/me/notify", `{"email":"not an address"}`, mom); w.Code != http.StatusBadRequest {
@@ -101,7 +102,7 @@ func TestNotifyPrefsOwnAndKids(t *testing.T) {
 	}
 	w = e.do("PUT", path, `{"email":"kid@example.com","episodes":true,"downloads":true}`, e.admin)
 	got = decodeJSON[notifyOut](t, w.Body.Bytes())
-	if w.Code != 200 || !got.Episodes || got.Downloads {
+	if w.Code != 200 || !got.Episodes || strings.Contains(w.Body.String(), `"downloads"`) {
 		t.Fatalf("admin put: %d %s", w.Code, w.Body)
 	}
 	if w := e.do("POST", path+"/verify", "", e.admin); w.Code != http.StatusNoContent || fm.last().To != "kid@example.com" {
@@ -128,9 +129,9 @@ func TestNotifyPrefsOwnAndKids(t *testing.T) {
 	if got := decodeJSON[notifyOut](t, w.Body.Bytes()); got.Email != "mama@example.com" {
 		t.Fatalf("an adult's address changed: %s", w.Body)
 	}
-	// the admin's own may have one more topic (another build only)
+	// the admin's own are the shared ones too (an addon's come with addonTopics)
 	w = e.do("GET", "/api/me/notify", "", e.admin)
-	if got := decodeJSON[notifyOut](t, w.Body.Bytes()); slices.Contains(got.Topics, "downloads") == libraryEdition {
+	if got := decodeJSON[notifyOut](t, w.Body.Bytes()); slices.Contains(got.Topics, "downloads") {
 		t.Fatalf("admin topics %v", got.Topics)
 	}
 }

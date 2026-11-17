@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/watched?items=1\u0026series=2\u0026userId=2",
+  "status": 200,
+  "body": {
+    "watched": {
+      "1": true
+    }
+  }
+}

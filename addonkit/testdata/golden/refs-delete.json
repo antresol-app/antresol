@@ -1,0 +1,5 @@
+{
+  "method": "DELETE",
+  "path": "/api/addon-core/v1/library/refs/k-0003",
+  "status": 204
+}

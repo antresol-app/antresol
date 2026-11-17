@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { registerAddon, resetAddonsForTests } from '../../addons/registry'
 import { MemoryRouter } from 'react-router'
 import type { Card } from '../../api/types'
-import { scopeOf, searchHref } from '../../app/sections'
+import { scopeOf, searchHref, type SearchScope } from '../../app/sections'
 import { Badges } from '../../ui/Badge'
 import { session } from '../../state/session'
 import { Search, inScope, topResult } from '../Search'
@@ -12,7 +13,10 @@ const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, head
 const card = (id: number, kind: string, title: string): Card => ({ id, kind, title, subtitle: '', poster: '', backdrop: '', logo: '', progress: 0, onServer: true })
 const EMPTY = { library: [], artists: [], albums: [], songs: [], books: [], audiobooks: [], comics: [] }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  resetAddonsForTests()
+})
 
 describe('search scope', () => {
   it('follows the section the search was opened from', () => {
@@ -142,5 +146,43 @@ describe('search scope', () => {
   it('renders badges', () => {
     render(<Badges items={['FLAC 24/96', 'RU']} />)
     expect(screen.getByRole('list', { name: 'Характеристики' })).toHaveTextContent('FLAC 24/96')
+  })
+
+  it('one filter drives the library and the search blocks: no second switcher', async () => {
+    const scopes: SearchScope[] = []
+    registerAddon('dl', {
+      searchBlocks: [
+        {
+          element: ({ scope }) => {
+            scopes.push(scope)
+            return <p>блок: {scope}</p>
+          },
+        },
+      ],
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('/api/login')) return json({ id: 2, name: 'М', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null })
+        if (url.includes('/api/search')) return json({ ...EMPTY, library: [card(1, 'movie', 'Дюна'), card(2, 'movie', 'Дюна: Часть вторая')], audiobooks: [card(4, 'audiobook', 'Дюна')] })
+        return json([])
+      }),
+    )
+    await session.login(2)
+    render(
+      <MemoryRouter initialEntries={['/search?q=дюна']}>
+        <Search />
+      </MemoryRouter>,
+    )
+    await screen.findByRole('region', { name: 'Фильмы и сериалы' }, { timeout: 3000 })
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1)
+    expect(await screen.findByText('блок: all')).toBeInTheDocument()
+    within(screen.getByRole('radiogroup', { name: 'Что искать' })).getByRole('radio', { name: 'Аудиокниги' }).click()
+    expect(await screen.findByText('блок: audiobooks')).toBeInTheDocument()
+    // the one audiobook is the top result (and not repeated below it)
+    expect(within(await screen.findByRole('region', { name: 'Лучшее совпадение' })).getByText(/Аудиокнига/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Фильмы и сериалы' })).not.toBeInTheDocument()
+    await waitFor(() => expect(scopes.at(-1)).toBe('audiobooks'))
   })
 })

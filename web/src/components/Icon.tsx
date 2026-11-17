@@ -270,6 +270,8 @@ const paths = {
       <circle cx="9" cy="17" r="2" />
     </>
   ),
+  // an addon (SF Symbols' puzzlepiece.extension)
+  puzzle: <path d="M5 9h3.5a2 2 0 1 1 4 0H16v3a2 2 0 1 1 0 4v3.5H5z" />,
   plug: (
     <>
       <path d="M9 3.5v4M15 3.5v4" />

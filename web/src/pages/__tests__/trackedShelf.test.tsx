@@ -45,10 +45,8 @@ describe('Главная: «Вышло новое»', () => {
     expect(await screen.findByRole('heading', { name: 'Вышло новое' })).toBeTruthy()
     expect(screen.getByRole('link', { name: /Вышло новое/ }).getAttribute('href')).toBe('/calendar')
     expect(screen.getByRole('link', { name: /Тихая гавань/ }).getAttribute('href')).toBe('/item/5')
-    // off the library: a TMDB page only in the sources build; the core build has none (not a link)
-    const far = screen.queryByRole('link', { name: /Дальний берег/ })
-    if (__LIBRARY_EDITION__) expect(far).toBeNull()
-    else expect(far?.getAttribute('href')).toBe('/title/series/77?season=1&episode=1')
+    // off the library: its core title page, on the new episode
+    expect(screen.getByRole('link', { name: /Дальний берег/ }).getAttribute('href')).toBe('/title/series/77?season=1&episode=1')
     expect(screen.getAllByText('Дальний берег').length).toBeGreaterThan(0)
   })
 })

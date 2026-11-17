@@ -52,6 +52,11 @@ describe('Календарь', () => {
     expect(screen.getByRole('link', { name: /Тихая гавань/ }).getAttribute('href')).toBe('/item/7')
   })
 
+  it('an off-library title links to /title/...', async () => {
+    show()
+    expect(await screen.findByRole('link', { name: /Дальний берег/ })).toHaveAttribute('href', '/title/series/1')
+  })
+
   it('«Позже» and «Раньше» move the week, «Месяц» widens it', async () => {
     show()
     await screen.findByText('Тихая гавань')

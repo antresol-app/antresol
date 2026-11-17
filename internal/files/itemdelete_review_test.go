@@ -12,13 +12,31 @@ import (
 	"github.com/antresol-app/antresol/internal/library"
 )
 
-// setLink marks library files as made from the download key.
+// setLink makes key's holder list these library files as made from its
+// data (LinkFiles, what an addon's ref gives through FileHooks).
 func (e *itemEnv) setLink(t *testing.T, key string, paths ...string) {
 	t.Helper()
-	for _, p := range paths {
-		if _, err := e.d.Ops.DB.Exec(`UPDATE files SET torrent_infohash=? WHERE path=?`, key, p); err != nil {
-			t.Fatal(err)
+	prev := e.d.LinkFiles
+	repo := library.NewRepo(e.d.Ops.DB)
+	e.d.LinkFiles = func(ctx context.Context, k string) ([]library.File, error) {
+		if k != key {
+			if prev != nil {
+				return prev(ctx, k)
+			}
+			return nil, nil
 		}
+		var out []library.File
+		for _, p := range paths {
+			f, err := repo.FileByPath(ctx, p)
+			if errors.Is(err, library.ErrNotFound) {
+				continue // gone already (an earlier delete)
+			}
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, f)
+		}
+		return out, nil
 	}
 }
 
@@ -32,15 +50,15 @@ func TestDeleteLinkedDataOnlyWhenCoveredWhole(t *testing.T) {
 	b := filepath.Join(e.mv, "Брат 2 (2000)", "Брат 2 (2000).mkv")
 	write(t, a, 4)
 	write(t, b, 4)
-	data := filepath.Join(e.mr, "torrents", "Brat.Collection")
+	data := filepath.Join(e.mr, "downloads", "Brat.Collection")
 	write(t, filepath.Join(data, "Brat.mkv"), 4)
 	write(t, filepath.Join(data, "Brat2.mkv"), 4)
 	e.rescan(t)
 	e.setLink(t, "aa", a, b)
 	ia, ib := e.itemOf(t, a), e.itemOf(t, b)
 	// (the fake answers every path: it only holds the download's data)
-	ft := &fakeTorrents{watch: data}
-	e.d.Ops.Torrents = ft
+	ft := &fakeHolders{watch: data}
+	e.d.Ops.Holders = ft
 	e.d.Linked = func(context.Context, library.DeleteSet) []Linked { return []Linked{{Path: data, Key: "aa"}} }
 
 	res, err := e.d.Delete(ctx, ia.ID, 1)
@@ -76,12 +94,12 @@ func TestDeletePreflightMovesNothing(t *testing.T) {
 	ctx := context.Background()
 	f := filepath.Join(e.mv, "Брат (1997)", "Брат (1997).mkv")
 	write(t, f, 4)
-	data := filepath.Join(e.mr, "torrents", "Brat.1997")
+	data := filepath.Join(e.mr, "downloads", "Brat.1997")
 	write(t, filepath.Join(data, "Brat.mkv"), 4)
 	e.rescan(t)
 	e.setLink(t, "aa", f)
 	it := e.itemOf(t, f)
-	e.d.Ops.Torrents = &fakeTorrents{stop: []string{"aa"}}
+	e.d.Ops.Holders = &fakeHolders{stop: []string{"aa"}}
 	e.d.Linked = func(context.Context, library.DeleteSet) []Linked { return []Linked{{Path: data, Key: "aa"}} }
 
 	old := devOf

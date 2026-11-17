@@ -1,0 +1,30 @@
+.overlay {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+.center {
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.corner {
+  top: 8px;
+  right: 8px;
+}
+
+.wrap {
+  position: relative;
+  display: block;
+}
+.disc {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--label);
+}
+.error {
+  color: var(--label-2);
+}

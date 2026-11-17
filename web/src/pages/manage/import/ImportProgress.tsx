@@ -5,7 +5,6 @@ import { useState } from 'react'
 import type { ImportGroup, ImportGroupState, ImportJob } from '../../../api/types'
 import { Button } from '../../../ui/Button'
 import { Icon } from '../../../components/Icon'
-import { useCanDownload } from '../../../state/canDownload'
 import { formatSize } from '../../../state/format'
 import { locale, t as tr, useT, type Key } from '../../../i18n'
 import m from '../Manage.module.css'
@@ -59,6 +58,8 @@ const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour:
 export interface ImportProgressProps {
   job: ImportJob
   groups: ImportGroup[]
+  /** The server downloads the albums the library lacks; false: they are «Нет в медиатеке». */
+  downloads: boolean
   /** anyFormat: «Скачать в другом формате». Absent where the server downloads nothing: no retry. */
   onRetry?: (groupId: number, anyFormat?: boolean) => Promise<void>
   onReview: () => void
@@ -66,9 +67,9 @@ export interface ImportProgressProps {
   onDone: () => void
 }
 
-export function ImportProgress({ job, groups, onRetry, onReview, onCancel, onDone }: ImportProgressProps) {
+export function ImportProgress({ job, groups, downloads, onRetry, onReview, onCancel, onDone }: ImportProgressProps) {
   const t = useT()
-  const local = !useCanDownload()
+  const local = !downloads
   const [retrying, setRetrying] = useState<number | null>(null)
   const p = job.progress
   const { ready, of } = readyCounts(job)

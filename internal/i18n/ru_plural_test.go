@@ -12,8 +12,8 @@ func TestRuPluralForms(t *testing.T) {
 			t.Errorf("%d: %q, want %q", n, got, want)
 		}
 	}
-	for n, want := range map[int]string{1: "1 раздача", 2: "2 раздачи", 5: "5 раздач", 11: "11 раздач", 21: "21 раздача"} {
-		if got := ruPlural(n, "раздача", "раздачи", "раздач"); got != want {
+	for n, want := range map[int]string{1: "1 серия", 2: "2 серии", 5: "5 серий", 11: "11 серий", 21: "21 серия"} {
+		if got := ruPlural(n, "серия", "серии", "серий"); got != want {
 			t.Errorf("%d: %q, want %q", n, got, want)
 		}
 	}

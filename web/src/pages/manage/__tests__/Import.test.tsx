@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ImportGroup, ImportJob, ImportService } from '../../../api/types'
+import { registerAddon, resetAddonsForTests, setAddonUser, setAddonsLoading, type ImportSourcesProps } from '../../../addons/registry'
+import { session } from '../../../state/session'
 import { Import } from '../Import'
 import { unreadableHint } from '../import/ImportPreview'
 import { groupStateLabel } from '../import/ImportProgress'
@@ -97,6 +99,7 @@ beforeEach(() => {
       const method = init?.method ?? 'GET'
       const body = init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push({ url, method, body, headers: init?.headers })
+      if (url === '/api/login') return json(admin)
       if (url === '/api/import/services') return json({ services: serviceList })
       if (url === '/api/import/connect/spotify' && method === 'POST') {
         const redirectUri = connectMode === 'paste' ? 'http://127.0.0.1:8765/vault-import/spotify' : 'https://vault.example.org/api/import/oauth/spotify/callback'
@@ -186,7 +189,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
+  session.reset()
+  resetAddonsForTests()
 })
+
+const admin = { id: 1, name: 'Папа', avatar: 'grad-3', hasPassword: false, isAdmin: true, isKid: false, maxRating: null }
+
+async function signInAdmin() {
+  await session.login(admin.id)
+  act(() => setAddonUser({ isAdmin: true }))
+}
 
 function renderImport(at = '/manage/import') {
   return render(
@@ -266,6 +278,115 @@ describe('Import', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Не удалось подключиться к сервису. Попробуйте ещё раз.')
     expect(alert.textContent).not.toContain('заблокирован')
+  })
+})
+
+describe('Import with an import source', () => {
+  /** What the addon got from the page, last render. */
+  let got: ImportSourcesProps | null = null
+  function Source(p: ImportSourcesProps) {
+    got = p
+    return (
+      <div data-testid="addon-import">
+        {p.services.map((s) => s.id).join(',')}
+        <button type="button" onClick={() => p.onFiles([new File(['x'], 'a.csv')])} disabled={p.uploading}>
+          Из расширения
+        </button>
+      </div>
+    )
+  }
+  beforeEach(() => {
+    got = null
+  })
+
+  it('an import source replaces the file tiles when services are listed', async () => {
+    await signInAdmin()
+    registerAddon('alpha', { importSources: [{ element: Source, admin: true }] })
+    registerAddon('beta', { importSources: [{ element: () => <p>второй</p> }] })
+    renderImport()
+    const el = await screen.findByTestId('addon-import')
+    expect(el.textContent).toContain(services.map((s) => s.id).join(','))
+    // only the first source is drawn, in place of the file import
+    expect(screen.queryByText('второй')).toBeNull()
+    expect(screen.queryByLabelText('Файл медиатеки')).toBeNull()
+    fireEvent.click(within(el).getByRole('button', { name: 'Из расширения' }))
+    expect(await screen.findByText('Песен: 12')).toBeTruthy()
+    expect(calls.filter((c) => c.url === '/api/import/files')).toHaveLength(1)
+    expect(got).not.toBeNull()
+  })
+
+  it('a job the source starts is shown, and its problem is said over it', async () => {
+    await signInAdmin()
+    registerAddon('alpha', { importSources: [{ element: Source }] })
+    renderImport()
+    await screen.findByTestId('addon-import')
+    act(() => got!.onProblem('Сервис недоступен'))
+    expect((await screen.findByRole('alert')).textContent).toContain('Сервис недоступен')
+    act(() => got!.onStart())
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    current = job({ id: 9, status: 'reading' })
+    jobs = [current]
+    act(() => got!.onJob(current))
+    expect(await screen.findByText('Читаем медиатеку…')).toBeTruthy()
+  })
+
+  it('waits for the addons still loading before it offers the file import', async () => {
+    await signInAdmin()
+    act(() => setAddonsLoading(true))
+    renderImport()
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/import/services')).toBe(true))
+    expect(await screen.findByText('Загружаем…')).toBeTruthy()
+    expect(screen.queryByLabelText('Файл медиатеки')).toBeNull()
+    act(() => {
+      registerAddon('alpha', { importSources: [{ element: Source }] })
+      setAddonsLoading(false)
+    })
+    expect(await screen.findByTestId('addon-import')).toBeTruthy()
+  })
+
+  it('offers the file import once the addons have loaded with no source', async () => {
+    await signInAdmin()
+    act(() => setAddonsLoading(true))
+    renderImport()
+    expect(await screen.findByText('Загружаем…')).toBeTruthy()
+    expect(screen.queryByLabelText('Файл медиатеки')).toBeNull()
+    act(() => setAddonsLoading(false))
+    expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
+    expect(screen.getAllByTestId('import-tile')).toHaveLength(1)
+    expect(screen.queryByTestId('addon-import')).toBeNull()
+  })
+
+  it('falls back to the file import without one', async () => {
+    await signInAdmin()
+    renderImport()
+    expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
+    expect(screen.queryByTestId('addon-import')).toBeNull()
+  })
+
+  it('falls back to the file import when no service is listed', async () => {
+    serviceList = []
+    await signInAdmin()
+    registerAddon('alpha', { importSources: [{ element: Source }] })
+    renderImport()
+    expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
+    expect(screen.queryByTestId('addon-import')).toBeNull()
+  })
+
+  it('falls back to the file import when the source throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await signInAdmin()
+    registerAddon('alpha', {
+      importSources: [
+        {
+          element: () => {
+            throw new Error('boom')
+          },
+        },
+      ],
+    })
+    renderImport()
+    expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
   })
 })
 

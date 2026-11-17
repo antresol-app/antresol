@@ -1,7 +1,22 @@
 // Which source plays by default, and how sources group in the picker.
 import type { EpisodeSource, SourceChoice, SourceKind } from '../api/types'
 
-const KIND_ORDER: Record<string, number> = { library: 0, pinned: 1, online: 2, torrent: 3 }
+/**
+ * Where a source kind sorts: the core's kinds on a fixed scale (library 0,
+ * online 20); an addon's kind takes the `order` of its episodeActions entry
+ * (useSourceKinds; above 0, so the library always ranks first); a kind
+ * with none sorts last.
+ */
+export type KindOrder = Readonly<Record<string, number>>
+export const CORE_KIND_ORDER: KindOrder = { library: 0, online: 20 }
+const UNKNOWN = Number.MAX_SAFE_INTEGER
+// the library always ranks first: an addon's order counts only above its 0
+const rankOf = (kind: string, order: KindOrder) => {
+  const core = CORE_KIND_ORDER[kind]
+  if (core !== undefined) return core
+  const o = order[kind]
+  return typeof o === 'number' && o > 0 ? o : UNKNOWN
+}
 
 /** "2160p"/"4K" > "1080p" > "720p" > "480p" > unknown. */
 export function qualityRank(q?: string): number {
@@ -24,12 +39,12 @@ export function choiceOf(s: EpisodeSource): SourceChoice {
   return c
 }
 
-function compare(a: EpisodeSource, b: EpisodeSource): number {
-  return (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || qualityRank(b.quality) - qualityRank(a.quality)
-}
+const compareBy = (order: KindOrder) => (a: EpisodeSource, b: EpisodeSource): number =>
+  rankOf(a.kind, order) - rankOf(b.kind, order) || qualityRank(b.quality) - qualityRank(a.quality)
 
-/** Library, then pinned, online, torrent; the better quality first; input order breaks ties. */
-export function bestSource(sources: EpisodeSource[]): EpisodeSource | null {
+/** The kind first by `order` (the library first), then the better quality; input order breaks ties. */
+export function bestSource(sources: EpisodeSource[], order: KindOrder = {}): EpisodeSource | null {
+  const compare = compareBy(order)
   let best: EpisodeSource | null = null
   for (const s of sources) if (!best || compare(s, best) < 0) best = s
   return best
@@ -47,11 +62,12 @@ function bestQuality(sources: EpisodeSource[]): EpisodeSource | null {
  * watch, e.g. its remembered way) wins over the default order, the library's
  * own file still first.
  */
-export function pickSource(sources: EpisodeSource[], choice: SourceChoice | null, prefer?: readonly SourceKind[]): EpisodeSource | null {
+export function pickSource(sources: EpisodeSource[], choice: SourceChoice | null, prefer?: readonly SourceKind[], order: KindOrder = {}): EpisodeSource | null {
+  const best = (ss: EpisodeSource[]) => bestSource(ss, order)
   if (!choice) {
-    const best = bestSource(sources)
-    if (!prefer?.length || best?.kind === 'library') return best
-    return bestSource(sources.filter((s) => prefer.includes(s.kind))) ?? best
+    const top = best(sources)
+    if (!prefer?.length || top?.kind === 'library') return top
+    return best(sources.filter((s) => prefer.includes(s.kind))) ?? top
   }
   if (choice.kind) {
     const exact = sources.filter(
@@ -62,14 +78,14 @@ export function pickSource(sources: EpisodeSource[], choice: SourceChoice | null
     if (hit) return hit
   }
   if (choice.voice) {
-    const hit = bestSource(sources.filter((s) => dubOf(s) === choice.voice))
+    const hit = best(sources.filter((s) => dubOf(s) === choice.voice))
     if (hit) return hit
   }
   if (choice.lang) {
-    const hit = bestSource(sources.filter((s) => langOf(s) === choice.lang))
+    const hit = best(sources.filter((s) => langOf(s) === choice.lang))
     if (hit) return hit
   }
-  return bestSource(sources)
+  return best(sources)
 }
 
 export type SourceGroup = { lang: string; dubs: { dub: string; items: EpisodeSource[] }[] }
@@ -78,9 +94,10 @@ export type SourceGroup = { lang: string; dubs: { dub: string; items: EpisodeSou
  * Language, then dub. The group and the dub that hold the household's pinned
  * release come first (it is shown first to every profile); then groups sort
  * by the UI language, then by size, unknown language ('') last; dubs by
- * size; a dub's items follow bestSource order.
+ * size; a dub's items follow bestSource order (`order` as there).
  */
-export function groupSources(sources: EpisodeSource[], uiLang = ''): SourceGroup[] {
+export function groupSources(sources: EpisodeSource[], uiLang = '', order: KindOrder = {}): SourceGroup[] {
+  const compare = compareBy(order)
   const byLang = new Map<string, Map<string, EpisodeSource[]>>()
   for (const s of sources) {
     const l = langOf(s)

@@ -4,7 +4,7 @@
 // text made earlier in Russian).
 //
 // Keys are the Russian source text itself, so a call site reads as the
-// message it shows: i18n.T(ctx, "Раздача не найдена"). The Russian catalog
+// message it shows: i18n.T(ctx, "Папка не найдена"). The Russian catalog
 // is the key (identity); other languages are maps from the Russian text to
 // the translation (catalog_*.go, registered with Register). Format verbs
 // work as in fmt: i18n.T(ctx, "Файл %s не найден", name). A key whose

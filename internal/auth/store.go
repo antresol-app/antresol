@@ -3,7 +3,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,6 +51,9 @@ type User struct {
 	// KindleEmail: the profile's Send to Kindle address, set by an admin.
 	// Only the profile and admins see it (never /api/profiles).
 	KindleEmail string `json:"kindleEmail"`
+	// UID: the profile's stable key (users.uid), for addons only: an id
+	// may be given to a new profile once this one is deleted, a uid never.
+	UID string `json:"-"`
 
 	hash sql.NullString
 }
@@ -82,7 +87,7 @@ type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-const cols = `id, name, avatar, password_hash, is_admin, is_kid, max_rating, hide_progress, library_scope, kindle_email`
+const cols = `id, name, avatar, password_hash, is_admin, is_kid, max_rating, hide_progress, library_scope, kindle_email, COALESCE(uid, '')`
 
 type scanner interface{ Scan(...any) error }
 
@@ -90,7 +95,7 @@ func scan(s scanner) (User, error) {
 	var u User
 	var admin, kid, hide int
 	var mr sql.NullString
-	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail); err != nil {
+	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -209,9 +214,13 @@ func (s *Store) create(ctx context.Context, n NewUser, first bool) (User, error)
 	if n.MaxRating != "" {
 		mr = n.MaxRating
 	}
+	uid, err := newUID()
+	if err != nil {
+		return User{}, err
+	}
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO users(name, avatar, password_hash, is_admin, is_kid, max_rating) VALUES(?,?,?,?,?,?)`,
-		n.Name, n.Avatar, hash, b2i(n.IsAdmin), b2i(n.IsKid), mr)
+		`INSERT INTO users(name, avatar, password_hash, is_admin, is_kid, max_rating, uid) VALUES(?,?,?,?,?,?,?)`,
+		n.Name, n.Avatar, hash, b2i(n.IsAdmin), b2i(n.IsKid), mr, uid)
 	if err != nil {
 		if isUnique(err) {
 			return User{}, ErrExists
@@ -224,6 +233,15 @@ func (s *Store) create(ctx context.Context, n NewUser, first bool) (User, error)
 		return User{}, err
 	}
 	return u, tx.Commit()
+}
+
+// newUID is a fresh users.uid: 16 random bytes in lower-case hex.
+func newUID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func b2i(b bool) int {

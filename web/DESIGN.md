@@ -53,7 +53,7 @@ build).
 | Fills | `--fill-1` … `--fill-4`, `--fill-hover` | controls on a surface: 1 pressed/hovered, 2 at rest (fields, switch track), 3 tracks and placeholders, 4 faintest (inset lists); a menu item under the pointer |
 | Labels | `--label`, `--label-2`, `--label-3`, `--label-4`, `--label-inverse`, `--label-on-tint` | primary text; secondary (hints, meta); tertiary (placeholders, de-emphasised numbers); quaternary; text on white; text on a tint |
 | Separators | `--separator`, `--hairline` | lines between rows; outlines (badges, rings' tracks) |
-| Tints | `--accent`, `--destructive`, `--success`, `--warning`, `--destructive-text` | meaning, never decoration: links, plain buttons, progress; delete and errors; done, on, seeding; problems that need attention; error text in small type |
+| Tints | `--accent`, `--destructive`, `--success`, `--warning`, `--destructive-text` | meaning, never decoration: links, plain buttons, progress; delete and errors; done and on; problems that need attention; error text in small type |
 | Tinted grounds | `--accent-fill`, `--destructive-fill`, `--success-fill`, `--warning-fill` | a notice or a status badge |
 | Art | `--identity-*`, `--grad-1..8`, `--file-*`, `--folder-*` | the identity tile; avatar gradients; the file browser's Finder-like icons (a white paper document with a kind colour, a two-tone folder: deeper hues than the palette, for white paper) |
 | Palette | `--blue`, `--green`, `--indigo`, `--orange`, `--pink`, `--purple`, `--red`, `--teal`, `--cyan`, `--yellow`, `--gray`… | data (the disk meter's categories) and art (avatar gradients, the coloured icon tiles of the Manage sidebar and the import services) only |

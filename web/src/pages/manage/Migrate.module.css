@@ -322,3 +322,19 @@
     transition: none;
   }
 }
+
+/* ---------- an addon's card: a link to its own page ---------- */
+.addonLink {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  color: inherit;
+  text-decoration: none;
+  border-radius: inherit;
+}
+.addonLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.addonChevron {
+  align-self: center;
+  color: var(--label-3);
+}

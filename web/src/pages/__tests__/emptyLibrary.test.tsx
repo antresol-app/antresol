@@ -1,8 +1,9 @@
-// An empty library in the core build: it has no way to bring titles in from
-// Search, so its empty pages say where files go and lead to the rescan. (The
-// other build keeps its own text: emptyLibrary.full.test.tsx.)
+// An empty library: the page says where files go and leads to the rescan;
+// an addon's `emptyStateActions` of the page's scope add their buttons
+// (every build the same, D15).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
+import { registerAddon, resetAddonsForTests, setAddonUser } from '../../addons/registry'
 import { en } from '../../i18n/en'
 import { ru } from '../../i18n/ru'
 import { session } from '../../state/session'
@@ -17,11 +18,14 @@ const TEXT: Record<Page, string> = {
   grid: 'Добавьте EPUB, FB2 или PDF со своего устройства или положите их в папку «Книги» на сервере',
 }
 const ALL = Object.keys(TEXT) as Page[]
+// the scope each page asks the addons for
+const SCOPE = { home: 'home', movies: 'video', music: 'music', albums: 'music', books: 'book', grid: 'book' } as const
 
 beforeEach(() => session.reset())
 afterEach(() => {
   vi.unstubAllGlobals()
   session.reset()
+  resetAddonsForTests()
 })
 
 describe('the texts every build ships', () => {
@@ -34,8 +38,8 @@ describe('the texts every build ships', () => {
   })
 })
 
-describe('core build: an empty library', () => {
-  it.runIf(__LIBRARY_EDITION__).each(ALL)('%s: the admin gets the folder and the rescan, not Search', async (page) => {
+describe('an empty library without addons', () => {
+  it.each(ALL)('%s: the admin gets the folder and the rescan, not Search', async (page) => {
     await renderEmpty(page, admin)
     expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
     const link = screen.getByRole('link', { name: 'Пересканировать в настройках' })
@@ -44,9 +48,38 @@ describe('core build: an empty library', () => {
   })
 
   // only the pages that show an adult the hint: the rest have their own line
-  it.runIf(__LIBRARY_EDITION__).each(['music', 'books', 'grid'] as Page[])('%s: another adult has no link to Settings, nor to Search', async (page) => {
+  it.each(['music', 'books', 'grid'] as Page[])('%s: another adult has no link to Settings, nor to Search', async (page) => {
     await renderEmpty(page, adult)
     expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
     expect(screen.queryByRole('link')).toBeNull()
+  })
+})
+
+describe('an empty library with an addon', () => {
+  const register = () =>
+    registerAddon('dl', {
+      strings: { ru: { find: 'Найти и добавить' }, en: { find: 'Find and add' } },
+      emptyStateActions: (['home', 'video', 'music', 'book'] as const).map((scope) => ({
+        scope,
+        label: 'find',
+        to: scope === 'home' ? '/search' : `/search?dk=${scope}`,
+      })),
+    })
+
+  it.each(ALL)('%s: the admin gets the rescan and the addon\'s button', async (page) => {
+    register()
+    act(() => setAddonUser({ isAdmin: true }))
+    await renderEmpty(page, admin)
+    expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Пересканировать в настройках' })).toBeInTheDocument()
+    const href = SCOPE[page] === 'home' ? '/search' : `/search?dk=${SCOPE[page]}`
+    expect(screen.getByRole('link', { name: 'Найти и добавить' })).toHaveAttribute('href', href)
+  })
+
+  it.each(['music', 'books', 'grid'] as Page[])('%s: another adult gets the addon\'s button only', async (page) => {
+    register()
+    await renderEmpty(page, adult)
+    expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
+    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['Найти и добавить'])
   })
 })

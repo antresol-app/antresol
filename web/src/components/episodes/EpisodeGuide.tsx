@@ -1,15 +1,19 @@
 // Episode-first guide of a series: seasons, every episode with the sources it
-// can be watched from (disk, pinned torrent, online, torrent). A tap plays the
-// profile's remembered source, else the best one (of the kinds the build's
-// player prefers, when it says); a long press, a right-click
+// can be watched from (disk, online, an addon's kinds). A tap plays the
+// profile's remembered source, else the best one (of the kinds the players
+// prefer, when they say). A library source plays here, an online one through
+// the build's player (EpisodePlay), any other kind through the addon whose
+// episodeActions declare it (useEpisodeActions); a long press, a right-click
 // or ▾ opens the source sheet. Renders nothing when the server has no guide
 // for the title: the caller keeps its own UI then.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { getSourceChoice, getTitleEpisodes, putSourceChoice } from '../../api/client'
-import type { EpisodeSource, SourceChoice, TitleEpisode, TitleEpisodes } from '../../api/types'
+import type { EpisodeSource, SourceChoice, SourceKind, TitleEpisode, TitleEpisodes } from '../../api/types'
+import type { EpisodeCtx, EpisodePlay } from './episodeTypes'
 import { clock } from '../../player/timeline'
 import { locale, useLang, useT } from '../../i18n'
+import { useSourceKinds } from '../../addons/slots'
 import { bestSource, choiceOf, groupSources, pickSource } from '../../state/pickSource'
 import { Badge } from '../../ui/Badge'
 import { IconButton } from '../../ui/IconButton'
@@ -17,7 +21,7 @@ import { GroupedSection } from '../../ui/List'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import { useLongPress } from '../../ui/useLongPress'
 import { episodeTitle, seasonLabel } from '../EpisodeList'
-import { useEpisodePlay } from './EpisodePlay'
+import { useEpisodePlayers } from './useEpisodePlayers'
 import { SourceSheet } from './SourceSheet'
 import styles from './episodes.module.css'
 
@@ -62,7 +66,7 @@ function tagsOf(sources: EpisodeSource[], kindLabel: (k: string) => string): str
   return [...seen.values()]
 }
 
-function EpisodeRow({ ep, canOther, onTap, onSheet }: { ep: TitleEpisode; canOther: boolean; onTap: () => void; onSheet: () => void }) {
+function EpisodeRow({ ep, canOther, kindLabel, onTap, onSheet }: { ep: TitleEpisode; canOther: boolean; kindLabel: (kind: string) => string; onTap: () => void; onSheet: () => void }) {
   const t = useT()
   const press = useLongPress(onSheet)
   const name = episodeTitle({ title: ep.name, episodeNo: ep.number })
@@ -70,7 +74,7 @@ function EpisodeRow({ ep, canOther, onTap, onSheet }: { ep: TitleEpisode; canOth
   // nothing to play and nowhere to look (a kid's row with no disk file): no sheet to open
   const inert = upcoming || (ep.sources.length === 0 && !canOther)
   const state = ep.watched ? t('episodes.watched') : ep.new ? t('episodes.new') : ep.positionSec ? t('episodes.progress', { time: clock(ep.positionSec) }) : ''
-  const tags = tagsOf(ep.sources, (k) => t(`episodes.kind.${k}` as 'episodes.kind.library'))
+  const tags = tagsOf(ep.sources, kindLabel)
   const shown = tags.slice(0, MAX_TAGS)
   const date = upcoming ? new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'long' }).format(new Date(`${ep.airDate}T00:00:00`)) : ''
   const body = (
@@ -134,9 +138,19 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
   useEffect(() => {
     if (loaded) loadedRef.current?.(episodes.length > 0 ? { episodes, choice } : null)
   }, [loaded, episodes, choice])
-  const play = useEpisodePlay({ kind, tmdbId, title, poster, episodes, choice })
+  // the guide's context, stable while nothing in it changes (each addon's Host re-runs on a new one)
+  const ctx = useMemo<EpisodeCtx>(() => ({ kind, tmdbId, title, poster, episodes, choice }), [kind, tmdbId, title, poster, episodes, choice])
+  // the build's and the addons' players by source kind (each addon Host draws its own sheets)
+  const players = useEpisodePlayers(ctx)
+  const { core, anyPlay, prefer, canDownload } = players
+  /** The player of a source kind (library: none, the guide plays it). */
+  const playerFor = (k: SourceKind): EpisodePlay | null => (k === 'library' ? null : players.playerFor(k))
+  const addonHosts = players.hosts
+  // how the kinds sort and what they are called (the core's, and the addons' entries')
+  const kinds = useSourceKinds()
   const seasons = useMemo(() => [...new Set(episodes.map((e) => e.season))].sort(seasonOrder), [episodes])
-  if (!data || episodes.length === 0) return null
+  // the Hosts stay first in the same fragment, so a guide that loads keeps their hook state
+  if (!data || episodes.length === 0) return <>{addonHosts}</>
 
   const firstOpen = episodes.find((e) => !e.watched && !isUpcoming(e))
   const wanted = season ?? initialSeason ?? firstOpen?.season ?? seasons[0]!
@@ -154,12 +168,14 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
   /** Plays src; false when this build cannot. */
   const run = (ep: TitleEpisode, s: EpisodeSource): boolean => {
     if (s.kind === 'library') return playLibrary(s)
-    if (!play) return false
-    play.play(ep, s)
+    const p = playerFor(s.kind)
+    if (!p) return false
+    p.play(ep, s)
     return true
   }
   const tap = (ep: TitleEpisode) => {
-    const picked = pickSource(ep.sources, choice, play?.prefer)
+    // only among what plays here: a kind with no live player never takes the tap
+    const picked = pickSource(ep.sources.filter((s) => s.kind === 'library' || playerFor(s.kind)), choice, prefer, kinds.order)
     if (picked && run(ep, picked)) return
     const lib = bestSource(ep.sources.filter((s) => s.kind === 'library'))
     if (!(lib && playLibrary(lib))) setSheet(ep)
@@ -174,37 +190,40 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
 
   const open = sheet ? (rows.concat(episodes).find((e) => e.season === sheet.season && e.number === sheet.number) ?? sheet) : null
   return (
-    <section className={styles.guide} aria-label={t('episodes.guide')}>
-      {seasons.length > 1 && (
-        <SegmentedControl label={t('common.kind.season')} segments={seasons.map((n) => ({ value: String(n), label: seasonLabel({ number: n }) }))} value={String(current)} onChange={(v) => setSeason(Number(v))} row align="start" />
-      )}
-      <GroupedSection title={seasons.length > 1 ? undefined : seasonLabel({ number: current })}>
-        {rows.map((e) => (
-          <EpisodeRow key={`${e.season}:${e.number}`} ep={e} canOther={Boolean(play)} onTap={() => tap(e)} onSheet={() => setSheet(e)} />
-        ))}
-      </GroupedSection>
-      {open && (
-        <SourceSheet
-          episode={{ number: open.number, name: open.name }}
-          groups={groupSources(open.sources, lang)}
-          current={pickSource(open.sources, choice, play?.prefer)}
-          onPick={(s) => choose(open, s)}
-          onOther={play ? () => (setSheet(null), play.other(open)) : undefined}
-          onDownload={play?.download ? (s) => (setSheet(null), play.download?.(open, s)) : undefined}
-          onDownloadLibrary={
-            onDownloadLibrary
-              ? (s) => {
-                  const itemId = s.meta.itemId ?? data.title.itemId
-                  if (!itemId) return
-                  setSheet(null)
-                  onDownloadLibrary(itemId, s.meta.fileId ?? 0)
-                }
-              : undefined
-          }
-          onClose={() => setSheet(null)}
-        />
-      )}
-      {play?.node}
-    </section>
+    <>
+      {addonHosts}
+      <section className={styles.guide} aria-label={t('episodes.guide')}>
+        {seasons.length > 1 && (
+          <SegmentedControl label={t('common.kind.season')} segments={seasons.map((n) => ({ value: String(n), label: seasonLabel({ number: n }) }))} value={String(current)} onChange={(v) => setSeason(Number(v))} row align="start" />
+        )}
+        <GroupedSection title={seasons.length > 1 ? undefined : seasonLabel({ number: current })}>
+          {rows.map((e) => (
+            <EpisodeRow key={`${e.season}:${e.number}`} ep={e} canOther={Boolean(anyPlay)} kindLabel={kinds.label} onTap={() => tap(e)} onSheet={() => setSheet(e)} />
+          ))}
+        </GroupedSection>
+        {open && (
+          <SourceSheet
+            episode={{ number: open.number, name: open.name }}
+            groups={groupSources(open.sources, lang, kinds.order)}
+            current={pickSource(open.sources, choice, prefer, kinds.order)}
+            onPick={(s) => choose(open, s)}
+            onOther={anyPlay ? () => (setSheet(null), anyPlay.other(open)) : undefined}
+            onDownload={canDownload ? (s) => (setSheet(null), playerFor(s.kind)?.download?.(open, s)) : undefined}
+            onDownloadLibrary={
+              onDownloadLibrary
+                ? (s) => {
+                    const itemId = s.meta.itemId ?? data.title.itemId
+                    if (!itemId) return
+                    setSheet(null)
+                    onDownloadLibrary(itemId, s.meta.fileId ?? 0)
+                  }
+                : undefined
+            }
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {core?.node}
+      </section>
+    </>
   )
 }

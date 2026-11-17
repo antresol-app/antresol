@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/open?service=file\u0026userId=2",
+  "status": 200,
+  "body": {
+    "open": true
+  }
+}

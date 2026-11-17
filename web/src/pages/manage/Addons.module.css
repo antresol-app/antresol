@@ -1,0 +1,79 @@
+/* «Расширения»: the rows' glyph and controls, the add sheet's preview and
+   the log. */
+/* the list-row glyph: a neutral --fill-3 tile, as SortableRowText's */
+.glyph {
+  display: grid;
+  place-items: center;
+  width: var(--control-h-xs);
+  height: var(--control-h-xs);
+  border-radius: var(--r-sm);
+  background: var(--fill-3);
+  color: var(--label-2);
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.update {
+  color: var(--accent);
+}
+/* a pin that failed at boot */
+.pinFailed {
+  color: var(--destructive-text);
+}
+
+.form {
+  width: 100%;
+  margin-top: var(--s-4);
+  text-align: left;
+}
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+  margin-top: var(--s-4);
+}
+.previewName {
+  font: var(--t-headline);
+  color: var(--label);
+}
+.previewVersion {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.previewMeta {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.previewText {
+  font: var(--t-subhead);
+  color: var(--label);
+}
+.permTitle {
+  margin-top: var(--s-2);
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+.perms {
+  margin: 0 0 var(--s-2);
+  padding-left: var(--s-4);
+  font: var(--t-subhead);
+  color: var(--label);
+}
+.error {
+  font: var(--t-footnote);
+  color: var(--destructive-text);
+}
+
+.log {
+  margin: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--fill-3);
+  font: var(--t-mono);
+  color: var(--label);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

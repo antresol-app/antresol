@@ -198,12 +198,12 @@ func TestCompression(t *testing.T) {
 	}
 	// media routes are never wrapped (sendfile), whatever they answer
 	for _, p := range []string{"/api/stream/5", "/api/tracks/9/stream", "/api/hls/s/seg-1.m4s", "/api/images/a.jpg", "/api/events",
-		"/api/music/albums/3/zip", "/api/files/5/trickplay/0.jpg", "/api/subs/5/2.vtt", "/api/torrent-stream/ih/0"} {
+		"/api/music/albums/3/zip", "/api/files/5/trickplay/0.jpg", "/api/subs/5/2.vtt"} {
 		if !mediaRoute(p) {
 			t.Errorf("%s: not a media route", p)
 		}
 	}
-	for _, p := range []string{"/api/home", "/api/items/5", "/api/torrents", "/api/music/albums/3", "/api/files/list"} {
+	for _, p := range []string{"/api/home", "/api/items/5", "/api/other-stream/ih/0", "/api/music/albums/3", "/api/files/list"} {
 		if mediaRoute(p) {
 			t.Errorf("%s: a media route", p)
 		}

@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/paths",
+  "status": 200,
+  "body": [
+    "{root}/books/Михаил Булгаков/Мастер и Маргарита.fb2",
+    "{root}/movies/Дюна (2021)/Дюна (2021).mkv",
+    "{root}/movies/Матрица (1999)/Матрица (1999).mkv",
+    "{root}/music/Кино/Группа крови/01 - Группа крови.mp3",
+    "{root}/music/Кино/Группа крови/02 - Закрой за мной дверь.mp3",
+    "{root}/series/Сёгун (2024)/Season 1/Сёгун.S01E01.mkv",
+    "{root}/series/Сёгун (2024)/Season 1/Сёгун.S01E02.mkv"
+  ]
+}

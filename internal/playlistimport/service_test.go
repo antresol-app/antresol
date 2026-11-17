@@ -1,9 +1,13 @@
 package playlistimport
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -204,5 +208,44 @@ func TestRematchAfterMatcherUpgrade(t *testing.T) {
 	}
 	if len(asked) != 3 {
 		t.Fatalf("asked again %v", asked)
+	}
+}
+
+// failingDownloader's Step fails while fail is set (the addons list
+// cannot be read).
+type failingDownloader struct{ fail *bool }
+
+func (d failingDownloader) Step(context.Context, int64) error {
+	if *d.fail {
+		return errors.New("addons list: disk I/O error")
+	}
+	return nil
+}
+
+// A queue that keeps failing (every 1 s tick while a job downloads) is
+// logged once, then at most once a minute, and its recovery once.
+func TestQueueErrorLoggedOnce(t *testing.T) {
+	ctx := context.Background()
+	st, uid := newTestStore(t)
+	id, err := st.CreateJob(ctx, uid, Snapshot{Service: "file", Tracks: []SnapTrack{{Key: "a", Artist: "Кино", Title: "Кукушка", Liked: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, st.DB, `UPDATE import_jobs SET status = 'downloading' WHERE id = ?`, id)
+	mustExec(t, st.DB, `UPDATE import_tracks SET state = 'matched' WHERE job_id = ?`, id)
+	var buf bytes.Buffer
+	fail := true
+	svc := &Service{Store: st, Queue: failingDownloader{&fail}, Log: slog.New(slog.NewTextHandler(&buf, nil))}
+	for range 5 {
+		svc.step(ctx)
+	}
+	if n := strings.Count(buf.String(), "import: queue"); n != 1 {
+		t.Fatalf("logged %d times:\n%s", n, buf.String())
+	}
+	fail = false
+	svc.step(ctx)
+	svc.step(ctx)
+	if n := strings.Count(buf.String(), "import: queue works again"); n != 1 {
+		t.Fatalf("recovery logged %d times:\n%s", n, buf.String())
 	}
 }

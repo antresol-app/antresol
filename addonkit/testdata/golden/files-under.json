@@ -1,0 +1,27 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/files?under=%7Broot%7D%2Fmovies",
+  "status": 200,
+  "body": [
+    {
+      "id": 7,
+      "itemId": 11,
+      "path": "{root}/movies/Дюна (2021)/Дюна (2021).mkv",
+      "size": 5,
+      "mtime": 1793534400,
+      "durationMs": 0,
+      "season": 0,
+      "episode": 0
+    },
+    {
+      "id": 1,
+      "itemId": 1,
+      "path": "{root}/movies/Матрица (1999)/Матрица (1999).mkv",
+      "size": 5,
+      "mtime": 1793534400,
+      "durationMs": 8160000,
+      "season": 0,
+      "episode": 0
+    }
+  ]
+}

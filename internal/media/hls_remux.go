@@ -892,12 +892,12 @@ func (m *HLSManager) remuxFor(d Decision, o StartOptions) *remuxState {
 	ki, built, err := KeyIndexCache{Dir: m.IndexDir}.Get(o.Input)
 	if err != nil {
 		if built {
-			log.Printf("media: %s: no complete playlist for the remux (EVENT instead): %v", filepath.Base(o.Input), err)
+			log.Printf("media: %s: no complete playlist for the remux (EVENT instead): %v", logInput(filepath.Base(o.Input)), err)
 		}
 		return nil
 	}
 	if built {
-		log.Printf("media: %s: keyframe index of %d keyframes read in %v", filepath.Base(o.Input), len(ki.Keyframes), time.Since(start).Round(time.Millisecond))
+		log.Printf("media: %s: keyframe index of %d keyframes read in %v", logInput(filepath.Base(o.Input)), len(ki.Keyframes), time.Since(start).Round(time.Millisecond))
 	}
 	streamStart := max(o.StreamStart, 0)
 	if streamStart == 0 {
@@ -910,7 +910,7 @@ func (m *HLSManager) remuxFor(d Decision, o StartOptions) *remuxState {
 	} else if !indexed(ki.Keyframes, streamStart) {
 		// the stream starts on a keyframe the index does not know (the API's
 		// ffprobe found it): segment 0 could never be assembled
-		log.Printf("media: %s: start %.3f s is not an indexed keyframe: EVENT playlist", filepath.Base(o.Input), streamStart)
+		log.Printf("media: %s: start %.3f s is not an indexed keyframe: EVENT playlist", logInput(filepath.Base(o.Input)), streamStart)
 		return nil
 	}
 	grid, ok := newRemuxGrid(ki, streamStart, o.DurationSec)

@@ -54,7 +54,7 @@ func ImportKavita(ctx context.Context, o ProgressOptions, lib LibraryLookup, ps 
 	if d == nil {
 		return nil
 	}
-	defer d.close()
+	defer d.Close()
 	list, err := readKavita(ctx, d.DB)
 	if err != nil {
 		if ctx.Err() != nil {

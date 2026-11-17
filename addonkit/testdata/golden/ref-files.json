@@ -1,0 +1,12 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/refs/k-0001",
+  "status": 200,
+  "body": [
+    {
+      "fileId": 7,
+      "itemId": 11,
+      "path": "{root}/movies/Дюна (2021)/Дюна (2021).mkv"
+    }
+  ]
+}

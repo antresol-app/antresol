@@ -4,14 +4,16 @@
 // otherwise (someone else may start one), and at once when the library
 // changes (an organized title turns into its library card). They follow
 // «Моя медиатека» (state/libraryScope): there only the profile's own
-// titles. Another build only: the hook is a constant [] in the core build.
+// titles. The cards come from the addons (library.pending); without any,
+// the list is empty.
 import { useEffect, useState } from 'react'
 import { getLibraryPending, useEvents } from '../api/client'
 import type { Card, CardKind, Shelf } from '../api/types'
 import { answerSlot, lastAnswer, rememberAnswer } from './lastAnswer'
 import { useLibraryScope } from './libraryScope'
-import { POLL_MS } from './useTitleProgress'
 
+/** How often the list is asked while a title is on its way. */
+export const POLL_MS = 2000
 export const IDLE_MS = 15_000
 
 const NONE: readonly Card[] = []
@@ -31,10 +33,8 @@ function same(a: readonly Card[], b: readonly Card[]) {
         x.pending?.status === y.pending?.status &&
         x.pending?.done === y.pending?.done &&
         x.pending?.size === y.pending?.size &&
-        x.pending?.stalled === y.pending?.stalled &&
-        x.pending?.liveness === y.pending?.liveness &&
-        x.pending?.trackerErrorKind === y.pending?.trackerErrorKind &&
-        x.pending?.trackerError === y.pending?.trackerError
+        x.pending?.hint === y.pending?.hint &&
+        x.pending?.href === y.pending?.href
       )
     })
   )
@@ -48,7 +48,6 @@ export function usePendingCards(): readonly Card[] {
   useEvents(() => setKick((k) => k + 1), ['library.updated'])
 
   useEffect(() => {
-    if (__LIBRARY_EDITION__) return
     const ac = new AbortController()
     let timer: number | undefined
     const tick = async () => {
@@ -91,7 +90,7 @@ export function usePendingCards(): readonly Card[] {
  * come first, as cards of their own.
  */
 export function withPending(cards: Card[], pending: readonly Card[], kinds: readonly CardKind[]): Card[] {
-  if (__LIBRARY_EDITION__ || pending.length === 0) return cards
+  if (pending.length === 0) return cards
   const mine = pending.filter((p) => kinds.includes(p.kind))
   if (mine.length === 0) return cards
   const onCard = new Map(mine.filter((p) => p.id > 0).map((p) => [p.id, p.pending]))
@@ -114,7 +113,7 @@ export interface PendingShelf {
  * after the leading shelves named in `after` («Читаю сейчас»…).
  */
 export function shelvesWithPending(shelves: Shelf[], pending: readonly Card[], spec: readonly PendingShelf[], after: readonly string[] = []): Shelf[] {
-  if (__LIBRARY_EDITION__ || pending.length === 0) return shelves
+  if (pending.length === 0) return shelves
   const out = shelves.map((s) => {
     const sp = spec.find((x) => x.id === s.id)
     return sp ? { ...s, cards: withPending(s.cards, pending, sp.kinds) } : s

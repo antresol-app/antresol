@@ -1,5 +1,5 @@
 // «Статистика»: the disk, how much is in the library, who watched how much
-// in the last 30 days, what was watched most, and (another build's) activity.
+// in the last 30 days, what was watched most, and the addons' blocks (statsBlocks).
 import { APP_NAME } from '../../brand'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
@@ -11,8 +11,8 @@ import { DiskMeter, segmentsOf, type DiskSegment } from '../../components/DiskMe
 import { Card } from '../../ui/Card'
 import { DiskBreakdownSheet } from './DiskBreakdown'
 import { Icon } from '../../components/Icon'
-import { formatSize } from '../../state/format'
 import { useSession } from '../../state/session'
+import { AddonBoundary, useAddonSlot } from '../../addons/slots'
 import { getLanguage, t, useT } from '../../i18n'
 import m from './Manage.module.css'
 import styles from './Stats.module.css'
@@ -28,6 +28,7 @@ export function Stats() {
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState('')
   const { user } = useSession()
+  const blocks = useAddonSlot('statsBlocks')
   // the disk category whose breakdown is open
   const [picked, setPicked] = useState<DiskSegment | null>(null)
   const t = useT()
@@ -46,7 +47,7 @@ export function Stats() {
           <h2 id="stats-title" className={m.title}>
             {t('stats.title')}
           </h2>
-          <p className={m.subtitle}>{t(__LIBRARY_EDITION__ ? 'stats.subtitleLibrary' : 'stats.subtitle')}</p>
+          <p className={m.subtitle}>{t('stats.subtitleLibrary')}</p>
         </div>
       </header>
       {error && (
@@ -72,22 +73,6 @@ export function Stats() {
                 {t('stats.tile.series', { count: data.counts.series })} · {t('stats.episodes', { count: data.counts.episodes })}
               </span>
             </Card>
-            {/* another build's block (none in the core build) */}
-            {!__LIBRARY_EDITION__ && data.seeding && (
-              <>
-                <Card className={styles.tile}>
-                  <span className={styles.tileValue}>{data.seeding.count}</span>
-                  <span className={styles.tileLabel}>{t('stats.tile.seeding', { count: data.seeding.count })}</span>
-                </Card>
-                <Card className={styles.tile}>
-                  <span className={styles.tileValue}>{formatSize(data.seeding.uploadedTotal)}</span>
-                  <span className={styles.tileLabel}>
-                    {t('stats.uploaded')}
-                    {data.seeding.ratio >= 1.05 ? t('stats.ratio', { n: decimal(data.seeding.ratio.toFixed(1)) }) : ''}
-                  </span>
-                </Card>
-              </>
-            )}
           </div>
 
           <p className={styles.libraryLine}>{libraryLine(data.counts)}</p>
@@ -96,6 +81,15 @@ export function Stats() {
               {data.transcoding.mode === 'none' ? t('stats.transcoding.cpu') : t('stats.transcoding.gpu', { name: data.transcoding.name })}
             </p>
           )}
+
+          {blocks.map((b, i) => {
+            const Block = b.element
+            return (
+              <AddonBoundary key={`${b.addonId}:${i}`} addonId={b.addonId} fallback={null}>
+                <Block />
+              </AddonBoundary>
+            )
+          })}
 
           {data.disk.total > 0 && (
             <Card>

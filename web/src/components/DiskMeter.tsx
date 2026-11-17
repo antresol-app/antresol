@@ -31,22 +31,26 @@ export const DISK_CATEGORIES: Record<string, { label: Key; color: string }> = {
   series: { label: 'comp.disk.series', color: 'var(--purple)' },
   music: { label: 'comp.disk.music', color: 'var(--pink)' },
   books: { label: 'comp.disk.books', color: 'var(--orange)' },
-  // another build's own folders
-  ...(__LIBRARY_EDITION__
-    ? {}
-    : {
-        downloads: { label: 'comp.disk.downloads' as Key, color: 'var(--green)' },
-        'stream-cache': { label: 'comp.disk.cache' as Key, color: 'var(--teal)' },
-      }),
   other: { label: 'comp.disk.other', color: 'var(--gray)' },
 }
 
-export function segmentsOf(categories: { id: string; bytes: number }[]): DiskSegment[] {
+/** The colours the addons' categories take in turn (D4). */
+export const ADDON_COLORS = ['var(--green)', 'var(--teal)', 'var(--indigo)', 'var(--yellow)']
+
+/**
+ * The meter's segments of a usage report's categories: the core's by their
+ * names and colours, an addon's (addon:<id>:<segment>) by the server's
+ * label in the request's language and the next colour of ADDON_COLORS.
+ */
+export function segmentsOf(categories: { id: string; bytes: number; label?: string }[]): DiskSegment[] {
+  let addon = 0
   return categories
     .filter((c) => c.bytes > 0)
     .map((c) => {
       const cat = DISK_CATEGORIES[c.id]
-      return { id: c.id, bytes: c.bytes, label: cat ? tr(cat.label) : c.id, color: cat?.color ?? 'var(--gray)' }
+      if (cat) return { id: c.id, bytes: c.bytes, label: c.label || tr(cat.label), color: cat.color }
+      const color = ADDON_COLORS[addon++ % ADDON_COLORS.length]!
+      return { id: c.id, bytes: c.bytes, label: c.label || c.id, color }
     })
 }
 

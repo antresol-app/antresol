@@ -106,6 +106,11 @@ describe('formatting', () => {
     expect(kindLabel(e('x.ru.srt', { kind: 'subtitle' }))).toBe('Субтитры SRT')
   })
 
+  it('a kind the page does not know is an ordinary file', () => {
+    expect(kindLabel(e('a.xyz', { kind: 'other' }))).toBe('Файл XYZ')
+    expect(kindLabel(e('a.xyz', { kind: 'unknown' }))).toBe('Файл XYZ')
+  })
+
   it('long names are truncated in the middle, keeping the extension', () => {
     const name = 'Interstellar.2014.1080p.BluRay.x264.DTS-HD.MA.5.1-GRP.mkv'
     const short = fitMiddle(name, 24)

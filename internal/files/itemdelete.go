@@ -44,8 +44,8 @@ var waitLock = 5 * time.Second
 // build: a download's data in «Загрузки»).
 type Linked struct {
 	Path string
-	// Key: the library files made from it carry it (files.torrent_infohash);
-	// "" when only ItemID links it.
+	// Key: its holder's key (LinkFiles lists the library files made from
+	// it); "" when only ItemID links it.
 	Key    string
 	ItemID int64 // the item it was added for, 0 = none
 	// Files: its media and other files (another build: its own
@@ -53,6 +53,12 @@ type Linked struct {
 	Files []LinkedFile
 	// Busy: it is being put into the library right now.
 	Busy bool
+	// Paths (optional): the files of it to trash instead of Path, each
+	// inside Path (an addon's selected files; Path is never trashed then).
+	Paths []string
+	// Listed: Paths is the complete list of what may go (an addon's
+	// hold); Path is never trashed, and with no usable path nothing is.
+	Listed bool
 }
 
 // LinkedFile is one file of linked data.
@@ -91,6 +97,9 @@ type ItemDelete struct {
 	// Hold (optional) keeps the scans off until release; it gives up when
 	// a scan does not let go soon (library.ErrScanBusy) or ctx ends.
 	Hold func(ctx context.Context) (release func(), err error)
+	// LinkFiles (optional) lists the library files made from the data of
+	// key; nil: none known (the files are compared by size).
+	LinkFiles func(ctx context.Context, key string) ([]library.File, error)
 
 	mu       sync.Mutex // one delete at a time
 	inflight sync.Map   // item id → deleting
@@ -120,15 +129,39 @@ func (d *ItemDelete) Notes(ctx context.Context, set library.DeleteSet) []string 
 		return out
 	}
 	for _, l := range d.links(ctx, set) {
-		w := keptWarningText(ctx, filepath.Base(l.Path))
+		name := filepath.Base(l.Path)
+		w := d.keptText(ctx, l.Key, l.Path, name)
 		if d.coversLinked(ctx, set, l) {
-			w = seedWarningText(ctx, filepath.Base(l.Path))
+			w = d.Ops.moveText(ctx, l.Path, name)
 		}
 		if w != "" {
 			out = append(out, w)
 		}
 	}
 	return out
+}
+
+// keptText is the note of a delete that leaves the data of key (at path,
+// named name) in place: the holding addon's text, else the neutral one
+// (heldText), else none.
+func (d *ItemDelete) keptText(ctx context.Context, key, path, name string) string {
+	if t := d.Ops.Texts; t != nil {
+		if w := t.KeptWarning(ctx, key, name); w != "" {
+			return w
+		}
+		if w := d.Ops.heldText(ctx, path); w != "" {
+			return w
+		}
+	}
+	return ""
+}
+
+// linkFiles lists the library files made from the data of key.
+func (d *ItemDelete) linkFiles(ctx context.Context, key string) ([]library.File, error) {
+	if d.LinkFiles != nil {
+		return d.LinkFiles(ctx, key)
+	}
+	return nil, nil
 }
 
 func (d *ItemDelete) links(ctx context.Context, set library.DeleteSet) []Linked {
@@ -139,7 +172,7 @@ func (d *ItemDelete) links(ctx context.Context, set library.DeleteSet) []Linked 
 }
 
 // coversLinked reports whether everything the library made from l is in
-// set: the files that carry its Key; with none, its media files matched
+// set: the files made from its Key (LinkFiles); with none, its media files matched
 // by size; and its item, if it names one, goes as well (or keeps nothing
 // outside set: the last season of a series pack).
 func (d *ItemDelete) coversLinked(ctx context.Context, set library.DeleteSet, l Linked) bool {
@@ -153,7 +186,7 @@ func (d *ItemDelete) coversLinked(ctx context.Context, set library.DeleteSet, l 
 	var made []library.File
 	if l.Key != "" {
 		var err error
-		if made, err = d.Library.FilesOfLink(ctx, l.Key); err != nil {
+		if made, err = d.linkFiles(ctx, l.Key); err != nil {
 			return false
 		}
 	}
@@ -546,7 +579,8 @@ func topmost(paths []string) []string {
 // linked returns the data of d.Linked to trash before paths: only what
 // the set covers whole (coversLinked), lies in the file browser's roots,
 // holds no library file outside set, and is not inside one of paths
-// already. Paths inside one of them are dropped from paths (it takes them
+// already; of a Linked with Paths, only those (listedPaths), never its
+// Path. Paths inside one of them are dropped from paths (it takes them
 // along).
 func (d *ItemDelete) linked(ctx context.Context, set library.DeleteSet, links []Linked, paths []string) (srcs, rest []string) {
 	if len(links) == 0 {
@@ -558,7 +592,12 @@ func (d *ItemDelete) linked(ctx context.Context, set library.DeleteSet, links []
 	}
 	var cands []string
 	for _, l := range links {
-		if d.coversLinked(ctx, set, l) {
+		if !d.coversLinked(ctx, set, l) {
+			continue
+		}
+		if l.Listed || len(l.Paths) > 0 {
+			cands = append(cands, d.listedPaths(l)...)
+		} else {
 			cands = append(cands, filepath.Clean(l.Path))
 		}
 	}
@@ -607,6 +646,38 @@ func (d *ItemDelete) linked(ctx context.Context, set library.DeleteSet, links []
 		}
 	}
 	return srcs, rest
+}
+
+// listedPaths are the Paths of l that may go to the trash for it:
+// regular files (a listed folder would take unselected files along),
+// absolute and clean, strictly inside its Path, and, symlinks resolved,
+// still inside its Path and in the file browser's roots (outside its
+// trash). Others are left alone (and logged).
+func (d *ItemDelete) listedPaths(l Linked) []string {
+	base := filepath.Clean(l.Path)
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range l.Paths {
+		ok := filepath.IsAbs(p) && filepath.Clean(p) == p && within(base, p) && p != base
+		if ok {
+			fi, err := os.Lstat(p)
+			ok = err == nil && fi.Mode().IsRegular()
+		}
+		if ok {
+			// what a rename of p moves: p in its real folder
+			dir, err := filepath.EvalSymlinks(filepath.Dir(p))
+			ok = err == nil && within(realBase, filepath.Join(dir, filepath.Base(p))) && d.Ops.Sandbox.holdable(p)
+		}
+		if !ok {
+			log.Printf("files: %s is not a file of %s that can go: left in place", p, base)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // devOf is the device of the file system p is on (a variable for tests).
@@ -830,15 +901,20 @@ func (d *ItemDelete) Delete(ctx context.Context, id, userID int64) (ItemDeleteRe
 	if beforeMove != nil {
 		beforeMove()
 	}
+	// one hold deadline for all the moves (see Ops.begin); forgetting
+	// below keeps the request's ctx
+	op := d.Ops.begin(ctx)
+	defer op.cancel()
+	mctx := op.req
 	if len(pl.srcs) > 0 {
 		// the data the files came from first: what holds it stops
-		moved, err := d.trashAll(ctx, pl.srcs, userID)
+		moved, err := d.trashAll(mctx, pl.srcs, userID)
 		res.Trashed = append(res.Trashed, moved...)
 		if err != nil {
 			return res, err
 		}
 	}
-	moved, err := d.trashAll(ctx, pl.paths, userID)
+	moved, err := d.trashAll(mctx, pl.paths, userID)
 	res.Trashed = append(res.Trashed, moved...)
 	for _, t := range moved {
 		res.Size += t.Size

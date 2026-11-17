@@ -8,27 +8,39 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
 
-// slowExitFFmpeg is a fake ffmpeg that takes ~2 s to be reaped after the
-// kill (a child holds its stderr until cmd.WaitDelay): a restart's wait for
-// the old run is a window other requests can land in.
+// slowExitFFmpeg is a fake ffmpeg that takes cmd.WaitDelay (2 s) to be
+// reaped after the kill: a child holds its stderr well past that, so the
+// window does not depend on how loaded the machine is. A restart's wait
+// for the old run is a window other requests can land in. Each run notes
+// its child's pid in <fake>.children (startSlow waits for it; the test's
+// cleanup kills them).
 func slowExitFFmpeg(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("process tests skipped in -short")
 	}
 	p := filepath.Join(t.TempDir(), "ffmpeg")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\nsleep 3 &\nexec sleep 1000\n"), 0o755); err != nil {
+	if err := os.WriteFile(p, []byte("#!/bin/sh\nsleep 20 &\necho $! >> \"$0.children\"\nexec sleep 1000\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		b, _ := os.ReadFile(p + ".children")
+		for _, f := range strings.Fields(string(b)) {
+			if pid, err := strconv.Atoi(f); err == nil {
+				syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
 	return p
 }
 
 // startSlow starts a 10-minute transcode session on slowExitFFmpeg and
-// gives the fake time to start its stderr-holding child.
+// waits until the fake has started its stderr-holding child.
 func startSlow(t *testing.T, m *HLSManager) string {
 	t.Helper()
 	id, err := m.Start(context.Background(), StartOptions{FileID: 1, Input: "in", AudioIndex: -1, DurationSec: 600,
@@ -36,7 +48,10 @@ func startSlow(t *testing.T, m *HLSManager) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(300 * time.Millisecond)
+	waitFor(t, 10*time.Second, "the fake ffmpeg's child", func() bool {
+		b, _ := os.ReadFile(m.FFmpeg + ".children")
+		return len(strings.Fields(string(b))) > 0
+	})
 	return id
 }
 
@@ -58,23 +73,28 @@ func list(t *testing.T, dir, name string) {
 // A far request that lands while another far request is restarting
 // ffmpeg gets its own restart check once that one is done, instead of
 // waiting the whole SegmentWait for a segment the new run will not reach.
+//
+// Each restart waits out the old run's 2 s reap (slowExitFFmpeg), so B's
+// restart lands about 4 s in; the waits leave room for a loaded machine
+// (it failed 1 in 4 under load with 6 s), and B's own restart still has
+// to come well before SegmentWait would have run out.
 func TestConcurrentFarRequestRestartsAgain(t *testing.T) {
-	m := &HLSManager{FFmpeg: slowExitFFmpeg(t), WorkDir: t.TempDir(), HW: "none", SegmentWait: 8 * time.Second}
+	m := &HLSManager{FFmpeg: slowExitFFmpeg(t), WorkDir: t.TempDir(), HW: "none", SegmentWait: 20 * time.Second}
 	defer m.Close()
 	id := startSlow(t, m)
 	dir := filepath.Join(m.WorkDir, id)
 	go m.Segment(id, "seg00010.ts") // A: restarts at 10, waits ~2 s for the old run
-	waitFor(t, time.Second, "A's restart", func() bool { _, _, _, r := m.state(id); return r })
+	waitFor(t, 10*time.Second, "A's restart", func() bool { _, _, _, r := m.state(id); return r })
 	got := make(chan error, 1)
 	go func() { _, err := m.Segment(id, "seg00050.ts"); got <- err }() // B, during A's restart
-	waitFor(t, 6*time.Second, "B's own restart", func() bool { _, _, f, r := m.state(id); return f == 50 && !r })
+	waitFor(t, 15*time.Second, "B's own restart", func() bool { _, _, f, r := m.state(id); return f == 50 && !r })
 	list(t, dir, "seg00050.ts")
 	select {
 	case err := <-got:
 		if err != nil {
 			t.Fatalf("B: %v", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("B was not served")
 	}
 }
@@ -89,7 +109,7 @@ func TestRestartDoesNotOrphanAReplacedRun(t *testing.T) {
 	dir := filepath.Join(m.WorkDir, id)
 	got := make(chan error, 1)
 	go func() { _, err := m.Segment(id, "seg00010.ts"); got <- err }()
-	waitFor(t, time.Second, "the restart", func() bool { _, _, _, r := m.state(id); return r })
+	waitFor(t, 5*time.Second, "the restart", func() bool { _, _, _, r := m.state(id); return r })
 	// the fallback relaunches while the restart waits for the old run
 	m.mu.Lock()
 	s := m.sessions[id]

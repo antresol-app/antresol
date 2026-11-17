@@ -1,0 +1,51 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/groups/1/tracks?state=matched",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "jobId": 1,
+      "key": "a",
+      "artist": "Кино",
+      "title": "Кукушка",
+      "album": "",
+      "albumArtist": "",
+      "isrc": "",
+      "durationMs": 0,
+      "liked": true,
+      "state": "matched",
+      "reason": "",
+      "mbRecording": "rec-a",
+      "mbReleaseGroup": "rg-one",
+      "mbTitle": "a",
+      "mbArtist": "Кино",
+      "mbAlbum": "Группа крови",
+      "mbYear": 1988,
+      "groupId": 1,
+      "itemId": 0
+    },
+    {
+      "id": 2,
+      "jobId": 1,
+      "key": "b",
+      "artist": "Кино",
+      "title": "Звезда",
+      "album": "",
+      "albumArtist": "",
+      "isrc": "",
+      "durationMs": 0,
+      "liked": true,
+      "state": "matched",
+      "reason": "",
+      "mbRecording": "rec-b",
+      "mbReleaseGroup": "rg-one",
+      "mbTitle": "b",
+      "mbArtist": "Кино",
+      "mbAlbum": "Группа крови",
+      "mbYear": 1988,
+      "groupId": 1,
+      "itemId": 0
+    }
+  ]
+}

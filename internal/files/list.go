@@ -23,11 +23,10 @@ type Library interface {
 	Item(ctx context.Context, id int64) (library.Item, error)
 }
 
-// SeedInfo reports whether path (a file, or a directory containing files)
-// belongs to a managed download and whether it is shared. *torrent.Engine
-// is adapted by EngineSeeds.
-type SeedInfo interface {
-	SeedInfo(path string) (infohash string, seeding bool, ok bool)
+// HeldInfo reports whether path (a file, or a directory containing files)
+// is held, by which key, and whether its holder uses it now (active).
+type HeldInfo interface {
+	HeldInfo(path string) (key string, active bool, ok bool)
 }
 
 type ItemRef struct {
@@ -36,23 +35,18 @@ type ItemRef struct {
 	Title string `json:"title"`
 }
 
-type TorrentRef struct {
-	Infohash string `json:"infohash"`
-	Seeding  bool   `json:"seeding"`
-}
-
 // Entry is one file or folder. Path is relative to the listing's root.
 type Entry struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	IsDir      bool        `json:"isDir"`
-	Size       int64       `json:"size"`
-	Mtime      time.Time   `json:"mtime"`
-	Kind       string      `json:"kind"`
-	ChildCount *int        `json:"childCount,omitempty"`
-	Thumb      string      `json:"thumb,omitempty"`
-	Item       *ItemRef    `json:"item,omitempty"`
-	Torrent    *TorrentRef `json:"torrent,omitempty"`
+	Name       string    `json:"name"`
+	Path       string    `json:"path"`
+	IsDir      bool      `json:"isDir"`
+	Size       int64     `json:"size"`
+	Mtime      time.Time `json:"mtime"`
+	Kind       string    `json:"kind"`
+	ChildCount *int      `json:"childCount,omitempty"`
+	Thumb      string    `json:"thumb,omitempty"`
+	Item       *ItemRef  `json:"item,omitempty"`
+	Hold       *HoldRef  `json:"hold,omitempty"`
 
 	abs string
 }
@@ -85,11 +79,12 @@ const (
 // a download can unpack hundreds of thousands of files into one folder.
 var listLimit = 5000
 
-// Browser lists folders. Library, Seeds and ThumbURL are optional.
+// Browser lists folders. Library, Texts and ThumbURL are optional.
 type Browser struct {
 	Sandbox *Sandbox
 	Library Library
-	Seeds   SeedInfo
+	// Texts (optional) names the addon holding an entry (Entry.Hold).
+	Texts HoldTexts
 	// ThumbURL builds the thumbnail URL of an entry (v changes when the file does).
 	ThumbURL func(root, rel string, v int64) string
 }
@@ -345,14 +340,18 @@ func (b *Browser) decorate(ctx context.Context, root, base string, es []Entry) {
 	if b.Library != nil && len(es) > 0 {
 		b.linkItems(ctx, base, es)
 	}
+	var roots []realRoot
+	if b.Texts != nil {
+		roots = b.Sandbox.realRoots()
+	}
 	for i := range es {
 		if ctx.Err() != nil {
 			return
 		}
 		e := &es[i]
-		if b.Seeds != nil {
-			if ih, seeding, ok := b.Seeds.SeedInfo(e.abs); ok {
-				e.Torrent = &TorrentRef{Infohash: ih, Seeding: seeding}
+		if b.Texts != nil && b.Sandbox.holdableIn(roots, e.abs) {
+			if h, ok := b.Texts.HoldOf(ctx, e.abs); ok {
+				e.Hold = &h
 			}
 		}
 		if b.ThumbURL != nil && hasThumb(e.abs, e.Kind) {

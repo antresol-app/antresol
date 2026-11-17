@@ -4,7 +4,9 @@ package events
 
 import "sync"
 
-// Event types (the sources build's own: types_full.go).
+// Event types (the sources build's own: types_full.go). Addons publish
+// addon.<id>.<name> (signed-in non-kids) and addon.<id>.admin.<name>
+// (admins only) through the core API (internal/api).
 const (
 	LibraryUpdated  = "library.updated"  // data: what changed
 	DiskWarning     = "disk.warning"     // data: disk usage when the level is warn or full

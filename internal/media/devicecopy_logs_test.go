@@ -21,6 +21,9 @@ func captureLog(t *testing.T) *bytes.Buffer {
 // A comic zip's access time that cannot be kept (the sidecar cannot be
 // made) is logged, not dropped: eviction would see a stale time.
 func TestRecordZipAccessLogsErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root creates files in a read-only folder")
+	}
 	dir := filepath.Join(t.TempDir(), "comics")
 	os.MkdirAll(dir, 0o755)
 	zip := filepath.Join(dir, "1-2.zip")
@@ -36,6 +39,9 @@ func TestRecordZipAccessLogsErrors(t *testing.T) {
 
 // A folder of device copies that cannot be listed at start-up is logged.
 func TestDeviceCopiesLoadLogsReadDirErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root lists a folder without read permission")
+	}
 	root := t.TempDir()
 	for _, d := range []string{"comics", "subs"} {
 		os.MkdirAll(filepath.Join(root, d), 0o755)

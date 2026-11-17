@@ -1,6 +1,6 @@
 // Route table. The root gate sends people to first-run setup, the profile picker
 // or the app depending on the session; admin-only sections are guarded too.
-import { lazy, Suspense, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Navigate, Outlet, createBrowserRouter, useLocation, type RouteObject } from 'react-router'
 import { Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
@@ -14,7 +14,7 @@ import { session, useSession } from '../state/session'
 import { ChunkBoundary } from './ChunkBoundary'
 import { auth, books, browse, calendar, music, search, tv } from './chunks'
 import { chunk, lazyFrom, type Chunk } from './lazyChunk'
-import { FullSectionPrefetch, fullManageRoutes, fullNoKidsRoutes, fullPlayerRoutes, fullShellRoutes } from './routesFull'
+import { fullPlayerRoutes } from './routesFull'
 import { Shell } from './Shell'
 import styles from './App.module.css'
 import { useT } from '../i18n'
@@ -73,6 +73,13 @@ const PlayerRoute = () => (
     <Player />
   </Suspense>
 )
+// An addon's video (/play/input/:id): the same player, its own small page.
+const InputPlayer = lazy(() => import('../pages/InputPlayer').then((m) => ({ default: m.InputPlayer })))
+const InputPlayerRoute = () => (
+  <Suspense fallback={<div className={styles.playerFallback} />}>
+    <InputPlayer />
+  </Suspense>
+)
 
 // «Файлы» load on first visit too (Finder-style browser of the media disk).
 const FilesPage = lazy(() => import('../pages/files/FilesPage').then((m) => ({ default: m.FilesPage })))
@@ -82,23 +89,27 @@ const FilesRoute = () => (
   </ChunkBoundary>
 )
 
-// «Управление» (admins): one chunk with the library's sections; the full
-// build's own sections are another (routesFull.tsx), asked for at the same
-// time when «Управление» opens on one of them (a section is rendered inside
-// «Управление», so its chunk would otherwise wait for this one).
+// «Управление» (admins): one chunk with the library's sections.
 // A section inside «Управление» (same chunk) draws at once once «Управление» is in (lazyChunk).
 const manage = chunk(() => import('../pages/manage'))
-const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import') => {
+const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import' | 'Addons') => {
   const C = lazyFrom(manage, (m) => m[name])
   return (
     <ChunkBoundary>
-      {!__LIBRARY_EDITION__ && name === 'Manage' && <FullSectionPrefetch />}
       <Suspense fallback={null}>
         <C />
       </Suspense>
     </ChunkBoundary>
   )
 }
+
+// An addon's page (/addons/<id>/<path>, not for kids): its own small chunk.
+const AddonPage = lazy(() => import('../pages/AddonPage'))
+const AddonRoute = () => (
+  <ChunkBoundary>
+    <AddonPage />
+  </ChunkBoundary>
+)
 
 // «Мои просьбы» (kids) load on first visit too.
 const MyRequests = lazy(() => import('../pages/MyRequests'))
@@ -126,8 +137,17 @@ const ReaderRoute = () => (
 const AUTH_PATHS = ['/welcome', '/profiles']
 
 function Gate() {
-  const { status } = useSession()
+  const { status, user } = useSession()
   const { pathname, search } = useLocation()
+  // the profile's addons (once per profile: sign-in and a profile switch load them anew);
+  // the loader is its own chunk, off the first load
+  const addonUser = status === 'signed-in' && user ? user : null
+  useEffect(() => {
+    if (addonUser)
+      void import('../addons/loader')
+        .then((m) => m.initAddons(addonUser))
+        .catch((e: unknown) => console.warn('antresol: addon loader unavailable', e))
+  }, [addonUser?.id])
   if (status === 'loading') return <Splash />
   if (status === 'offline') {
     // saved on this device: listen and read without the server (the reader opens full window)
@@ -170,6 +190,8 @@ export const routes: RouteObject[] = [
       { path: '/profiles', element: page(auth, (m) => m.ProfilePicker) },
       // The player covers the whole window: no navigation around it.
       { path: '/watch/:id', element: <PlayerRoute /> },
+      // An addon's video too.
+      { path: '/play/input/:id', element: <InputPlayerRoute /> },
       // A live channel too («ТВ»).
       { path: '/tv/:id', element: page(tv, (m) => m.LivePlayer) },
       // The reader too; the music engine keeps playing.
@@ -231,8 +253,8 @@ export const routes: RouteObject[] = [
           },
           { path: 'item/:id', element: <ItemDetail /> },
           { path: 'item/:id/collection', element: page(browse, (m) => m.Collection) },
-          // TMDB title pages (none in the core build)
-          ...(__LIBRARY_EDITION__ ? [] : fullShellRoutes()),
+          // a TMDB title that may not be in the library (a kid's has «Попросить»)
+          { path: 'title/:kind/:tmdbId', element: <ItemDetail /> },
           {
             element: <RequestsOnly />,
             children: [
@@ -251,7 +273,8 @@ export const routes: RouteObject[] = [
             children: [
               { path: 'files/*', element: <FilesRoute /> },
               { path: 'tv/manage', element: page(tv, (m) => m.TvManage) },
-              ...(__LIBRARY_EDITION__ ? [] : fullNoKidsRoutes()),
+              // the server lists an addon for the profiles it is for (admins, or adults too)
+              { path: 'addons/:addonId/*', element: <AddonRoute /> },
             ],
           },
           {
@@ -263,7 +286,6 @@ export const routes: RouteObject[] = [
                 path: 'manage',
                 element: section('Manage'),
                 children: [
-                  ...(__LIBRARY_EDITION__ ? [] : fullManageRoutes()),
                   { path: 'files', element: section('Files') },
                   { path: 'stats', element: section('Stats') },
                   { path: 'profiles', element: section('Profiles') },
@@ -271,6 +293,7 @@ export const routes: RouteObject[] = [
                   { path: 'requests', element: section('Requests') },
                   { path: 'migrate', element: section('Migrate') },
                   { path: 'import', element: section('Import') },
+                  { path: 'addons', element: section('Addons') },
                 ],
               },
             ],

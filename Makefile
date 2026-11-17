@@ -20,6 +20,7 @@ go: web
 
 test:
 	go test ./...
+	cd addonkit && GOFLAGS= go test ./...
 
 test-web:
 	npm --prefix web test

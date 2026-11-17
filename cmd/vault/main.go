@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/antresol-app/antresol/internal/accounts"
 	"github.com/antresol-app/antresol/internal/accounts/myshows"
 	"github.com/antresol-app/antresol/internal/accounts/shikimori"
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/animemap"
 	"github.com/antresol-app/antresol/internal/api"
 	"github.com/antresol-app/antresol/internal/audioserve"
@@ -96,6 +99,10 @@ func run() error {
 	}
 	for _, h := range cfg.PathHints(nil) {
 		log.Print(h)
+	}
+	pins, err := addonPins(cfg) // a bad VAULT_ADDONS_PIN stops the start (exit 1)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return err
@@ -245,6 +252,17 @@ func run() error {
 	if cfg.LibraryOnly {
 		fileRoots = files.LibraryOnlyRoots(fileRoots)
 	}
+	extraRoots, err := files.ExtraRoots(cfg.ExtraRoots)
+	if err != nil {
+		return fmt.Errorf("VAULT_EXTRA_ROOTS: %w", err)
+	}
+	fileRoots = append(fileRoots, extraRoots...)
+	// addons' file holds: kept from start (Load below), so the file browser
+	// protects held data before any addon runs
+	var holds *addons.Holds
+	if cfg.Addons {
+		holds = newAddonHolds(database, fileRoots)
+	}
 	fileCfg := files.ServiceConfig{
 		NoDiskUsage: cfg.LibraryOnly,
 		Sandbox:     files.NewSandbox(cfg.MediaRoot, fileRoots),
@@ -264,6 +282,10 @@ func run() error {
 		Hold: jobs.Scanner.Hold, // waits for a running scan a few seconds at most
 	}
 	ext.fileHooks(&fileCfg)
+	if holds != nil {
+		// both builds: the build's own hooks (if any) stay behind the holds
+		holds.Wrap(&fileCfg)
+	}
 	fileSvc := files.NewService(fileCfg)
 
 	if len(cfg.TrustedProxies) == 0 {
@@ -379,7 +401,9 @@ func run() error {
 	// release's own tracks (stage A) are never measured
 	fitWorker := &vofit.Worker{DB: database, FFmpeg: cfg.FFmpeg, Log: slog.Default(), Busy: segWorker.Busy,
 		Fitted: vocWorker.Kick} // a fitted voice-over is cleaned like the file's own
-	runFit := ext.voiceOverFit(fitWorker) // the sources build only (stage B)
+	// in every build, whenever there is a database and ffmpeg: addons
+	// queue the tracks they place (/api/addon-core/v1/voiceover/fit)
+	runFit := fitRuns(database, cfg.FFmpeg)
 	// «ТВ-каналы»: one live encoder per watched channel, beside the HLS
 	// sessions on the media disk; schedules kept 48 h ahead
 	var live *channels.Live
@@ -400,17 +424,11 @@ func run() error {
 	// ongoing tracking: the marked titles' episode lists (TMDB) and where
 	// each episode can be got; new ones go to the profiles that marked them
 	trackStore := &tracking.Store{DB: database}
-	tracker := &tracking.Service{Store: trackStore, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(repo)},
-		Notify: notifier, Interest: trackStore.Interested, Log: slog.Default().With("component", "tracking"),
-		Watched:     []tracking.WatchedFunc{tracking.LibraryWatched(repo, progStore)},
-		WatchStates: []tracking.WatchStateFunc{tracking.LibraryWatchState(repo, progStore)}}
-	if metaSrc.TMDB != nil {
-		tracker.Skeleton = tracking.NewTMDBSkeleton(metaSrc.TMDB)
-	}
-	ext.trackingHooks(tracker)
+	trackSvc := newTrackingService(trackStore, repo, progStore, notifier, metaSrc.TMDB)
+	ext.trackingHooks(trackSvc)
 	// external accounts (Shikimori lists into marks, local changes and
 	// watched episodes pushed back) and the anime map they need
-	accts, err := newAccounts(ctx, database, trackStore, tracker, metaSrc.TMDB, repo, progStore, cfg.PublicURL)
+	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, cfg.PublicURL)
 	if err != nil {
 		return err
 	}
@@ -454,13 +472,14 @@ func run() error {
 		ScreenTime: screenTime,
 		Users:      users, Sessions: sessions, Network: network, Throttle: throttle,
 		MediaKeys: auth.NewMediaKeys(mkSecret, sessions),
-		Library:   repo, Progress: progStore, Jobs: jobs, HLS: hls, Tracking: tracker,
+		Library:   repo, Progress: progStore, Jobs: jobs, HLS: hls, Tracking: trackSvc,
 		AudioTranscoder: audioTr, DeviceCopies: deviceCopies,
 		Music: musicStore, ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),
-		DataDir: cfg.DataDir, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe,
-		Files:  fileSvc,
-		Events: bus,
-		DB:     database, SettingsDefaults: settingsDefaults, ApplySettings: applySettings,
+		DataDir: cfg.DataDir, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe, PublicURL: cfg.PublicURL,
+		MediaRoot: cfg.MediaRoot,
+		Files:     fileSvc,
+		Events:    bus,
+		DB:        database, SettingsDefaults: settingsDefaults, ApplySettings: applySettings,
 		Subtitles:    metaSrc.Subtitles,
 		Genres:       genreNamer,
 		Translations: translator,
@@ -486,13 +505,13 @@ func run() error {
 			return err == nil && l.Any()
 		}}
 	deps.ExtIPTV = extTV
-	// kids' requests: titles from TMDB, answered by the library (the full
-	// build's own catalog replaces this in ext.apiDeps)
+	// kids' requests: titles from TMDB, answered by the library
 	if metaSrc.TMDB != nil {
 		deps.Requests = api.TMDBRequests(metaSrc.TMDB, repo)
+		deps.Titles = metaSrc.TMDB // the title page of one not in the library
 	}
 	if !cfg.LibraryOnly {
-		deps.DiskUsage = mon.Usage // another build's own replaces it in ext.apiDeps
+		deps.DiskUsage = mon.Usage
 	}
 	if related != nil { // never a typed nil in the interface
 		deps.Related = related
@@ -517,7 +536,83 @@ func run() error {
 		deps.Artwork = artwork
 	}
 	mediaImport.Profiles = users
+	// addons: separate programs the server installs and supervises; the
+	// interface stays nil when they are off (a typed nil would mount routes)
+	var addonMgr *addons.Manager
+	if cfg.Addons {
+		addonMgr = newAddonManager(cfg, database)
+		addonMgr.SetPins(pins) // locked before the API serves
+		addonMgr.Refs, addonMgr.Holds = holds.Refs, holds
+		holds.Hooks = &addons.Hooks{T: addonMgr}
+		// the addons' segments of the disk meter (disk.usage), walked with
+		// the library's hardlinks and checked against the file roots
+		fileSvc.Usage.Extra = holds.Hooks.DiskUsage
+		if err := holds.Load(ctx); err != nil {
+			return fmt.Errorf("addon holds: %w", err)
+		}
+		deps.Addons = addonMgr
+		deps.AddonRefs, deps.AddonHolds, deps.Images = addonMgr.Refs, holds, images
+		deps.Metadata = addonMetadata(metaSrc)
+		deps.AddonInputs = &addons.Inputs{Serving: addonMgr.Serving}
+		// the addons' notification topics: of those installed and on (a
+		// crashed one keeps its toggles); removing one forgets its own
+		notifier.SetAddonTopics(addonNotifyTopics(addonMgr.Store))
+		addonMgr.OnRemove = func(ctx context.Context, id string) {
+			if err := notifier.DropAddon(ctx, id); err != nil {
+				log.Printf("addons: %s: drop notifications: %v", id, err)
+			}
+		}
+		deps.AddonHooks = holds.Hooks // play.progress of inputs, the addons' source kinds
+		// «Переезд» lists what the addons' old services leave behind
+		// (migrate.leftovers, kept 60 s) before the core's own
+		mediaImport.ExtraLeftovers = holds.Hooks.MigrateLeftovers()
+		// trailers inside the apps: fetched and served by an addon that
+		// declares trailers.fetch; the core keeps none
+		deps.TrailerAddons = &addons.Trailers{H: holds.Hooks}
+		// a fit queued without the title's original language asks the
+		// addons (voiceover.origLang); none answering: fitted without it
+		fitWorker.OrigLang = api.AddonOrigLang(holds.Hooks)
+		// ongoing tracking: the scan kinds of the addons on and running,
+		// asked for again every round, after the core's own scanners
+		trackSvc.SetScanners(holds.Hooks.Scanners)
+		// the titles the addons track beside the marks (tracking.titles),
+		// and their profiles' watch states (tracking.watched)
+		trackStore.ExtraTracked = holds.Hooks.ExtraTracked(func(ctx context.Context, kind string, tmdbID int64, name, poster string) (int64, error) {
+			t, err := trackStore.EnsureTitle(ctx, kind, tmdbID, name, poster)
+			return t.ID, err
+		})
+		trackSvc.Watched = append(trackSvc.Watched, holds.Hooks.Watched())
+		trackSvc.WatchStates = append(trackSvc.WatchStates, holds.Hooks.WatchStates())
+		// the profiles an addon names for a title's new episodes
+		// (notify.interest), beside those who marked it
+		notifier.Interest = append(notifier.Interest, holds.Hooks.Interest())
+		// kids' requests are open while an addon opens them (requests.open,
+		// kept 60 s; any addon's status change asks again), in both builds
+		addonReqs := api.NewAddonRequests(holds.Hooks)
+		addonMgr.Sup.OnStatus(addonReqs.StatusChanged)
+		// a restarted, stopped or crashed addon's hooks are no longer down
+		addonMgr.Sup.OnStatus(holds.Hooks.StatusChanged)
+		deps.RequestsOpen = addonReqs.Open
+		// ffmpeg and ffprobe read inputs only through the loopback relay
+		if deps.InputBase = inputLoopbackBase(cfg.Listen); deps.InputBase == "" {
+			log.Printf("addon inputs cannot play: VAULT_LISTEN is not reachable on loopback")
+		}
+		tok, err := newInputToken()
+		if err != nil {
+			return fmt.Errorf("addon input token: %w", err)
+		}
+		deps.InputToken = tok
+	}
 	deps.MediaImport = mediaImport
+	if runFit {
+		deps.VoiceOverFit = fitWorker // /voiceover/fit queues tracks and kicks it
+	}
+	// the albums an import lacks: an addon's (import.services, imports)
+	// while one is on, else the library alone; set once, before Run
+	setImportQueue(playlists, repo, addonMgr)
+	// the sign-ins, a Takeout's naming and the review's search: the
+	// addons' import.* hooks (none with addons off)
+	setImportHooks(playlists, deps.AddonHooks)
 	deps.PlaylistImport = playlists
 	if err := ext.apiDeps(&deps, users); err != nil {
 		return err
@@ -598,9 +693,9 @@ func run() error {
 	go func() { defer wg.Done(); segWorker.Run(ctx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); notifier.Run(ctx) }()
-	if tracker.Skeleton != nil { // episode lists need TMDB
+	if trackSvc.Skeleton != nil { // episode lists need TMDB
 		wg.Add(1)
-		go func() { defer wg.Done(); tracker.Run(ctx) }()
+		go func() { defer wg.Done(); trackSvc.Run(ctx) }()
 	}
 	wg.Add(1)
 	go func() { defer wg.Done(); trickWorker.Run(ctx) }()
@@ -621,6 +716,11 @@ func run() error {
 	go func() { defer wg.Done(); runDiscovery(ctx, cfg, serverID) }()
 
 	errc := make(chan error, len(servers))
+	stopAddons := func() {
+		if addonMgr != nil {
+			addonMgr.Sup.StopAll()
+		}
+	}
 	for i, s := range servers {
 		if i == 0 {
 			log.Printf("%s %s listening on %s (hw: %s)", serverName, version.Version, s.Addr, accel.Mode())
@@ -629,6 +729,15 @@ func run() error {
 		// by a Jellyfin still running) never stops Vault
 		go runListener(s, i > 0, errc)
 	}
+	if addonMgr != nil {
+		// the server never waits for an addon: the pins first (a failed
+		// one is logged and that addon stays stopped), then the others
+		go func() {
+			for _, err := range addonMgr.Boot(ctx, pins) {
+				log.Printf("addons: pin %v", err)
+			}
+		}()
+	}
 
 	select {
 	case err = <-errc:
@@ -636,6 +745,7 @@ func run() error {
 		for _, s := range servers {
 			s.Close()
 		}
+		stopAddons()
 	case <-ctx.Done():
 		// Docker gives 30 s (stop_grace_period): ffmpeg first (a few
 		// seconds at most, nothing to save), then 5 s for open requests,
@@ -644,12 +754,16 @@ func run() error {
 		hls.Close()
 		deviceCopies.Close()
 		err = shutdownAll(servers, 5*time.Second)
+		stopAddons()
 	}
 	hls.Close() // (again, after a failed start) kill ffmpeg before the jobs and the db
 	deviceCopies.Close()
 	wg.Wait()  // the jobs (and the sources build's loops) end with ctx
 	ext.wait() // the sources build's background work saves and stops
 	mediaImport.Wait()
+	// the import's background reads end with ctx too: a read a shutdown
+	// cut short fails its job, written before the database closes
+	playlists.WaitReads()
 	if errors.Is(err, http.ErrServerClosed) {
 		err = nil
 	}
@@ -719,11 +833,29 @@ type accountsWiring struct {
 	start  func(ctx context.Context, wg *sync.WaitGroup)
 }
 
+// newTrackingService is ongoing tracking over the library (its scanner and
+// watched states); the editions' hooks and the addons add more.
+func newTrackingService(st *tracking.Store, repo *library.Repo, prog *progress.Store, n tracking.Notifier, tm *tmdb.Client) *tracking.Service {
+	s := &tracking.Service{Store: st, Scanners: []tracking.Scanner{tracking.NewLibraryScanner(repo)},
+		Notify: n, Interest: st.Interested, Log: slog.Default().With("component", "tracking"),
+		Watched:     []tracking.WatchedFunc{tracking.LibraryWatched(repo, prog)},
+		WatchStates: []tracking.WatchStateFunc{tracking.LibraryWatchState(repo, prog)}}
+	if tm != nil {
+		s.Skeleton = tracking.NewTMDBSkeleton(tm)
+	}
+	// a letter about a title off the library links to its page
+	// (/title/:kind/:tmdbId, GET /api/title/…)
+	s.TitlePath = func(t tracking.Title) string {
+		return "/title/" + t.Kind + "/" + strconv.FormatInt(t.TMDBID, 10)
+	}
+	return s
+}
+
 // newAccounts builds the anime map, the Shikimori sync (pull, outbox push,
 // OAuth) and its routes, the MyShows puller (read only, hourly, under the
 // Shikimori sync's per-profile lock), and subscribes the sync to the
 // tracking store's mark changes and the progress store's watched changes.
-func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, tracker *tracking.Service, tm *tmdb.Client,
+func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, trackSvc *tracking.Service, tm *tmdb.Client,
 	repo *library.Repo, prog *progress.Store, publicURL string) (*accountsWiring, error) {
 	keyHex, err := auth.LoadOrCreateSetting(ctx, database, "accounts_token_key", 32)
 	if err != nil {
@@ -742,11 +874,11 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 	shiki := shikimoriAccount{shikimori.New(cmp.Or(os.Getenv("VAULT_SHIKIMORI_URL"), shikimori.DefaultBase), nil)}
 	store := &accounts.Store{DB: database, Key: key}
 	syncer := &accounts.Syncer{Accounts: store, Tracking: accountTracker{trackStore},
-		Remote: shikimoriRemote{shiki.c}, Map: amap, Kick: tracker.Kick, Log: log, Writer: shiki,
+		Remote: shikimoriRemote{shiki.c}, Map: amap, Kick: trackSvc.Kick, Log: log, Writer: shiki,
 		OAuth: &accounts.OAuth{Store: store, PublicURL: publicURL,
 			EnvClientID: os.Getenv("VAULT_SHIKIMORI_CLIENT_ID"), EnvClientSecret: os.Getenv("VAULT_SHIKIMORI_CLIENT_SECRET")},
 		Watched: func(ctx context.Context, uid int64, ref accounts.TitleRef) (map[[2]int]bool, error) {
-			w := tracker.WatchedBy()
+			w := trackSvc.WatchedBy()
 			t, ok, err := trackStore.TitleByID(ctx, ref.ID)
 			if w == nil || err != nil || !ok {
 				return nil, err
@@ -777,7 +909,7 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 	if tm != nil {
 		msc := myshows.New(cmp.Or(os.Getenv("VAULT_MYSHOWS_URL"), myshows.DefaultBase), nil)
 		mshows = &myshows.Puller{Accounts: store, Tracker: accountTracker{trackStore}, Remote: msc,
-			Map: &myshows.Mapper{DB: database, Client: msc, Find: tmdbIMDbFind(tm)}, Kick: tracker.Kick,
+			Map: &myshows.Mapper{DB: database, Client: msc, Find: tmdbIMDbFind(tm)}, Kick: trackSvc.Kick,
 			Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
 		acctAPI.MyShows = myShowsAccount{p: mshows, c: msc}
 	}
@@ -1016,6 +1148,114 @@ func (s tmdbAnimeSearch) SearchMovie(ctx context.Context, q string, year int) ([
 	return animeCandidates(rs), err
 }
 
+// addonPins reads VAULT_ADDONS_PIN. A malformed one, or a pin while
+// VAULT_ADDONS=off, is an error: the server does not start.
+func addonPins(cfg config.Config) ([]addons.Pin, error) {
+	pins, err := addons.ParsePins(cfg.AddonsPin)
+	if err != nil {
+		return nil, fmt.Errorf("VAULT_ADDONS_PIN: %w", err)
+	}
+	if len(pins) > 0 && !cfg.Addons {
+		return nil, fmt.Errorf("VAULT_ADDONS_PIN is set but VAULT_ADDONS=off")
+	}
+	return pins, nil
+}
+
+// newAddonManager builds the addon manager: the catalog in the database,
+// the processes under cfg.AddonsDir.
+func newAddonManager(cfg config.Config, database *sql.DB) *addons.Manager {
+	m := &addons.Manager{
+		Store:    &addons.Store{DB: database},
+		Resolver: &addons.Resolver{},
+		Refs:     &addons.RefStore{DB: database},
+		Dev:      cfg.AddonsDev,
+		Sup: &addons.Supervisor{
+			Dir:     cfg.AddonsDir,
+			CoreURL: cfg.AddonsCoreURL(),
+			Locale:  i18n.Default,
+		},
+	}
+	m.Sup.Mint = m.Mint
+	return m
+}
+
+// addonNotifyTopics lists the notify topics of the addons installed and on.
+func addonNotifyTopics(store *addons.Store) notify.AddonTopics {
+	return func(ctx context.Context) []notify.AddonTopic {
+		list, err := store.List(ctx)
+		if err != nil {
+			log.Printf("addons: notify topics: %v", err)
+			return nil
+		}
+		return notifyTopicsOf(list)
+	}
+}
+
+// notifyTopicsOf are the manifest topics of the addons in list that are on
+// and may post to them (permission notify).
+func notifyTopicsOf(list []addons.Installed) []notify.AddonTopic {
+	var out []notify.AddonTopic
+	for _, in := range list {
+		if !in.Enabled || !slices.Contains(in.Manifest.Permissions, "notify") {
+			continue
+		}
+		for _, n := range in.Manifest.Notify {
+			out = append(out, notify.AddonTopic{Addon: in.ID, Topic: n.Topic, Audience: n.Audience,
+				Title: map[string]string{"ru": n.Title.RU, "en": n.Title.EN}})
+		}
+	}
+	return out
+}
+
+// newAddonHolds is the index of the files addons hold, over the file
+// browser's roots; it knows the installed addons by their names.
+func newAddonHolds(database *sql.DB, roots []files.Root) *addons.Holds {
+	dirs := make([]string, len(roots))
+	for i, r := range roots {
+		dirs[i] = r.Dir
+	}
+	store := &addons.Store{DB: database}
+	return &addons.Holds{
+		Refs:  &addons.RefStore{DB: database},
+		Roots: dirs,
+		Installed: func(ctx context.Context) (map[string]string, error) {
+			list, err := store.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			en := i18n.FromContext(ctx) == i18n.EN
+			out := make(map[string]string, len(list))
+			for _, in := range list {
+				n := in.Manifest.Name
+				out[in.ID] = n.RU
+				if en && n.EN != "" || n.RU == "" {
+					out[in.ID] = n.EN
+				}
+			}
+			return out, nil
+		},
+	}
+}
+
+// addonMetadata: the metadata pass-through's sources, the ones that are on
+// (no typed nil reaches an interface).
+func addonMetadata(m metaSources) api.AddonMetadata {
+	var out api.AddonMetadata
+	if m.TMDB != nil {
+		out.TMDB = m.TMDB
+	}
+	if m.MusicBrainz != nil {
+		out.MusicBrainz = m.MusicBrainz
+	}
+	if m.OpenLibrary != nil {
+		out.OpenLibrary = m.OpenLibrary
+	}
+	if m.Wikidata != nil {
+		out.Wikidata = m.Wikidata
+	}
+	return out
+}
+
 // myShowsAccount adapts the MyShows client and puller to the accounts API.
 type myShowsAccount struct {
 	p *myshows.Puller
@@ -1036,4 +1276,14 @@ func (m myShowsAccount) Check(ctx context.Context, login string) error {
 func (m myShowsAccount) Pull(ctx context.Context, uid int64) error {
 	_, err := m.p.PullOne(ctx, uid)
 	return err
+}
+
+// fitRuns: the voice-over fit worker runs (in every build) when the
+// server has a database and ffmpeg can be found.
+func fitRuns(db *sql.DB, ffmpeg string) bool {
+	if db == nil || ffmpeg == "" {
+		return false
+	}
+	_, err := exec.LookPath(ffmpeg)
+	return err == nil
 }

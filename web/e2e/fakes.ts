@@ -1,5 +1,5 @@
 // Fake outside world for the metadata and import tests: a TMDB API that
-// knows one movie and one aired series, an OPDS catalog with one book,
+// knows two movies and two aired series, an OPDS catalog with one book,
 // MusicBrainz (+ Cover Art Archive) that knows three albums, Open Library
 // (+ covers) that knows three books. A build's own e2e adds routes
 // (startFakes(routes), vault.ts fakesExtension).
@@ -18,6 +18,14 @@ export const FAKE_MOVIE = {
   original: 'Test Movie',
   year: 2024,
 }
+/** A second TMDB movie, found by «второй» or «second» (a title of its own beside FAKE_MOVIE). */
+export const FAKE_MOVIE_2 = {
+  id: 4245,
+  title: 'Второй тестовый фильм',
+  original: 'Second Test Movie',
+  year: 2023,
+}
+const FAKE_MOVIES = [FAKE_MOVIE, FAKE_MOVIE_2]
 /** A TMDB series whose first season has aired (follow.spec: «Следить»). */
 export const FAKE_SERIES = {
   id: 4343,
@@ -26,7 +34,7 @@ export const FAKE_SERIES = {
   year: 2023,
   episodes: 3,
 }
-/** A second aired series (migrate.spec: two series taken over from Sonarr). */
+/** A second aired series (two series taken over by «Переезд»). */
 export const FAKE_SERIES_2 = {
   id: 4344,
   title: 'Второй тестовый сериал',
@@ -117,20 +125,17 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
     const p = u.pathname
     if (p === '/3/search/movie') {
       const q = (u.searchParams.get('query') ?? '').toLowerCase()
+      const second = q.includes('втор') || q.includes('second')
+      const hits = second ? [FAKE_MOVIE_2] : q.includes('тест') || q.includes('test') ? [FAKE_MOVIE] : []
       return json({
-        results:
-          q.includes('тест') || q.includes('test')
-            ? [
-                {
-                  id: FAKE_MOVIE.id,
-                  title: FAKE_MOVIE.title,
-                  original_title: FAKE_MOVIE.original,
-                  release_date: `${FAKE_MOVIE.year}-03-01`,
-                  overview: 'Фильм для проверки поиска.',
-                  poster_path: '',
-                },
-              ]
-            : [],
+        results: hits.map((m) => ({
+          id: m.id,
+          title: m.title,
+          original_title: m.original,
+          release_date: `${m.year}-03-01`,
+          overview: 'Фильм для проверки поиска.',
+          poster_path: '',
+        })),
       })
     }
     if (p === '/3/search/tv') return json({ results: [] })
@@ -146,6 +151,8 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
         genres: [{ name: 'Драма' }],
         episode_run_time: [45],
         seasons: [{ season_number: 1, episode_count: show.episodes }],
+        // rated: a kid profile may ask for it
+        content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
       })
     }
     if (show) {
@@ -162,12 +169,14 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
         })),
       })
     }
-    if (p === `/3/movie/${FAKE_MOVIE.id}`) {
+    const movie = /^\/3\/movie\/(\d+)$/.exec(p)
+    const film = movie ? FAKE_MOVIES.find((m) => m.id === Number(movie[1])) : undefined
+    if (film) {
       return json({
-        id: FAKE_MOVIE.id,
-        title: FAKE_MOVIE.title,
-        original_title: FAKE_MOVIE.original,
-        release_date: `${FAKE_MOVIE.year}-03-01`,
+        id: film.id,
+        title: film.title,
+        original_title: film.original,
+        release_date: `${film.year}-03-01`,
         overview: 'Фильм для проверки поиска.',
         genres: [{ name: 'Драма' }],
         runtime: 101,
@@ -375,7 +384,6 @@ export async function fakeImportRun(page: Page, base: Json, opts: { poster?: str
     bytes: 0,
     done: 0,
     error: '',
-    infoHash: '',
     ...o,
   })
   const groups = () =>

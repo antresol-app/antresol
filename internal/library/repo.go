@@ -17,9 +17,6 @@ import (
 	"github.com/antresol-app/antresol/internal/release"
 )
 
-// ErrNotFound is returned when an item or file does not exist.
-var ErrNotFound = errors.New("library: not found")
-
 // Repo stores the library in SQLite.
 type Repo struct{ db *sql.DB }
 
@@ -31,7 +28,7 @@ const itemCols = `i.id, i.kind, COALESCE(i.parent_id,0), i.title, i.original_tit
   COALESCE(i.tmdb_id,0), COALESCE(i.season_no,0), COALESCE(i.episode_no,0), COALESCE(i.poster,''), COALESCE(i.backdrop,''),
   i.added_at, i.updated_at, i.meta_json`
 
-const fileCols = `id, item_id, path, size, mtime, COALESCE(duration_ms,0), COALESCE(probe_json,''), COALESCE(torrent_infohash,'')`
+const fileCols = `id, item_id, path, size, mtime, COALESCE(duration_ms,0), COALESCE(probe_json,'')`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -54,7 +51,7 @@ func scanItem(s scanner) (Item, error) {
 
 func scanFile(s scanner) (File, error) {
 	var f File
-	err := s.Scan(&f.ID, &f.ItemID, &f.Path, &f.Size, &f.Mtime, &f.DurationMs, &f.ProbeJSON, &f.TorrentInfohash)
+	err := s.Scan(&f.ID, &f.ItemID, &f.Path, &f.Size, &f.Mtime, &f.DurationMs, &f.ProbeJSON)
 	return f, err
 }
 
@@ -119,13 +116,12 @@ func upsertFile(ctx context.Context, x execer, itemID int64, f FileInput) error 
 // existing), e.g. for tracks.file_id and chapters.file_id.
 func upsertFileID(ctx context.Context, x execer, itemID int64, f FileInput) (int64, error) {
 	var id int64
-	err := x.QueryRowContext(ctx, `INSERT INTO files(item_id,path,size,mtime,torrent_infohash) VALUES(?,?,?,?,?)
-	  ON CONFLICT(path) DO UPDATE SET item_id=excluded.item_id, size=excluded.size, mtime=excluded.mtime,
-	  torrent_infohash=COALESCE(excluded.torrent_infohash, files.torrent_infohash), missing_since=NULL,
+	err := x.QueryRowContext(ctx, `INSERT INTO files(item_id,path,size,mtime) VALUES(?,?,?,?)
+	  ON CONFLICT(path) DO UPDATE SET item_id=excluded.item_id, size=excluded.size, mtime=excluded.mtime, missing_since=NULL,
 	  probe_json  = CASE WHEN files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime THEN NULL ELSE files.probe_json END,
 	  duration_ms = CASE WHEN files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime THEN NULL ELSE files.duration_ms END
 	  RETURNING id`,
-		itemID, f.Path, f.Size, f.Mtime, nullStr(f.Infohash)).Scan(&id)
+		itemID, f.Path, f.Size, f.Mtime).Scan(&id)
 	return id, err
 }
 
@@ -1010,6 +1006,11 @@ func (r *Repo) VideoFiles(ctx context.Context, beforeID int64, limit int) ([]Fil
 
 // FilesUnder lists files whose path is below dir (any depth).
 func (r *Repo) FilesUnder(ctx context.Context, dir string) ([]File, error) {
+	return r.filesUnder(ctx, dir, fileCols)
+}
+
+// filesUnder is FilesUnder selecting cols (fileCols or one in its shape).
+func (r *Repo) filesUnder(ctx context.Context, dir, cols string) ([]File, error) {
 	prefix := filepath.Clean(dir)
 	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
 		prefix += string(filepath.Separator)
@@ -1017,7 +1018,7 @@ func (r *Repo) FilesUnder(ctx context.Context, dir string) ([]File, error) {
 	// [prefix, prefix with the separator bumped) is exactly "starts with prefix"
 	// under SQLite's bytewise BINARY collation, and uses the path index.
 	upper := prefix[:len(prefix)-1] + string(rune(filepath.Separator)+1)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files WHERE path >= ? AND path < ? AND missing_since IS NULL ORDER BY path`, prefix, upper)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+cols+` FROM files WHERE path >= ? AND path < ? AND missing_since IS NULL ORDER BY path`, prefix, upper)
 	if err != nil {
 		return nil, err
 	}

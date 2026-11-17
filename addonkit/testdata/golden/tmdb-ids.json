@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/tmdb/series?ids=126308%2C603%2C7",
+  "status": 200,
+  "body": {
+    "126308": 2
+  }
+}

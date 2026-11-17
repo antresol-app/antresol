@@ -8,7 +8,7 @@ on 2026-10-25 and has no fix for the problem below.
 
 ## Why
 
-The 7z header is untrusted input (manga comes from torrent trackers). In
+The 7z header is untrusted input (manga comes from anywhere online). In
 v1.6.5 every count read from the header (files, streams, folders, coders…)
 becomes the length of a slice that is allocated *before* the data it
 describes is read, bounded only by `math.MaxUint32`. A 41-byte `.cb7` whose

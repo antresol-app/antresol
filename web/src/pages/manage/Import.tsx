@@ -1,18 +1,19 @@
 // «Импорт» (admin): songs, playlists and «Избранное» from files, once, in
 // both editions. In this order:
-//   1. the way in: upload a file (CSV, M3U, Library.xml, a Takeout zip). The
-//      sources build shows a tile per streaming service instead (./import/Services:
-//      sign-ins, a pasted token, a public playlist), loaded lazily; the
-//      core build's bundle has none of it;
+//   1. the way in: upload a file (CSV, M3U, Library.xml, a Takeout zip). When
+//      the server lists import services, an addon's `importSources` entry is
+//      drawn instead (its tiles and sign-ins; the first entry, and the file
+//      import again if it throws);
 //   2. the preview: what would come, «Избранное» on or off, which playlists
-//      (and, where the server downloads, the size against the free space) —
+//      (and, where the server downloads — GET /api/import/services says so —
+//      the size against the free space) —
 //      «Начать импорт»;
 //   3. the progress: songs ready, the albums, the songs that need a decision
 //      («Нужно ваше решение») and what could not be done. Where nothing is
 //      downloaded the albums the library has are linked and the rest are
 //      «Нет в медиатеке».
 import { APP_NAME } from '../../brand'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ApiError, cancelImportJob, getImportJobs, patchImportJob, retryImportGroup, startImportJob, uploadImportFiles, errorText as apiErrorText } from '../../api/client'
 import type { ImportJob, ImportJobPatch } from '../../api/types'
@@ -28,16 +29,15 @@ import { isActive, isOpen, useImportJob } from './import/useImportJob'
 import styles from './Import.module.css'
 import m from './Manage.module.css'
 import { LANGS, t as tr, translate, useT, type Key } from '../../i18n'
-import { useCanDownload } from '../../state/canDownload'
-
-/** The sources build's service tiles and sign-ins; the core build has none. */
-const Services = __LIBRARY_EDITION__ ? null : lazy(() => import('./import/Services'))
+import { AddonBoundary, useAddonSlot } from '../../addons/slots'
+import { useAddonsLoading } from '../../addons/registry'
 
 const errorText = (e: unknown, fallback = tr('sources.failedRetry')) => apiErrorText(e, fallback)
 /** What a cancel keeps (said before and after it). */
 const kept = (downloads: boolean) => tr(downloads ? 'import.kept' : 'import.keptLocal')
 
-function Header({ downloads }: { downloads: boolean }) {
+/** `downloads` undefined: the server has not said yet (no intro, so it does not flip). */
+function Header({ downloads }: { downloads?: boolean }) {
   const t = useT()
   return (
     <header className={m.header}>
@@ -45,7 +45,7 @@ function Header({ downloads }: { downloads: boolean }) {
         <h2 id="import-title" className={m.title}>
           {t('import.title')}
         </h2>
-        <p className={`${m.subtitle} ${styles.intro}`}>{t(downloads ? 'import.intro' : 'import.introLocal')}</p>
+        {downloads !== undefined && <p className={`${m.subtitle} ${styles.intro}`}>{t(downloads ? 'import.intro' : 'import.introLocal')}</p>}
       </div>
     </header>
   )
@@ -66,11 +66,14 @@ const signInError = (e: string | null) => {
 
 export function Import() {
   const t = useT()
-  const downloads = useCanDownload()
+  const source = useAddonSlot('importSources')[0]
+  const addonsLoading = useAddonsLoading()
   // back from a sign-in: ?job=<the job reading the library> or ?error=<why not>
   const [params, setParams] = useSearchParams()
   const [back] = useState(() => ({ job: Number(params.get('job')) || undefined, error: signInError(params.get('error')) }))
-  const { services, job, groups, loaded, error, stale, load, refresh, show, dismiss } = useImportJob(back.job)
+  const { services, offers, job, groups, loaded, error, stale, load, refresh, show, dismiss } = useImportJob(back.job)
+  // the server's own answer: an addon takes the albums the library lacks
+  const { downloads, catalog } = offers
   const [busy, setBusy] = useState<Busy>('')
   const [problem, setProblem] = useState(back.error)
   /** A one-line outcome over the tiles («Импорт отменён…»). */
@@ -212,17 +215,21 @@ export function Import() {
         </Button>
       </div>
     )
-  } else if (!job) {
+  } else if (!job && !source && addonsLoading && services && services.length > 0) {
+    // the services are an addon's: its way in may still be on its way
     body = (
-      Services && services && services.length > 0 ? (
-        <Suspense
-          fallback={
-            <div className={m.spinnerRow} role="status">
-              <span className={m.spinner} aria-hidden /> {t('sources.loading')}
-            </div>
-          }
-        >
-          <Services
+      <div className={m.spinnerRow} role="status">
+        <span className={m.spinner} aria-hidden /> {t('sources.loading')}
+      </div>
+    )
+  } else if (!job) {
+    const files = <FileImport onFiles={(f) => void upload(f)} busy={busy === 'upload'} />
+    const Source = source?.element
+    body =
+      source && Source && services && services.length > 0 ? (
+        // an addon's way in that throws leaves the file import
+        <AddonBoundary key={source.addonId} addonId={source.addonId} fallback={files}>
+          <Source
             services={services}
             onFiles={(f) => void upload(f)}
             uploading={busy === 'upload'}
@@ -233,11 +240,10 @@ export function Import() {
             }}
             onProblem={setProblem}
           />
-        </Suspense>
+        </AddonBoundary>
       ) : (
-        <FileImport onFiles={(f) => void upload(f)} busy={busy === 'upload'} />
+        files
       )
-    )
   } else if (job.status === 'reading') {
     body = (
       <div className={styles.reading}>
@@ -256,6 +262,7 @@ export function Import() {
         <h3 className={m.groupTitle}>{serviceName(job.service)}</h3>
         <ImportPreview
           job={job}
+          downloads={downloads}
           busy={busy === 'start' || busy === 'cancel' ? busy : ''}
           onPatch={(p) => void patch(p)}
           onStart={() => void start()}
@@ -270,6 +277,7 @@ export function Import() {
         <ImportProgress
           job={job}
           groups={groups}
+          downloads={downloads}
           onRetry={downloads ? retry : undefined}
           onReview={() => setReviewing(true)}
           onCancel={() => setConfirmCancel(true)}
@@ -281,7 +289,7 @@ export function Import() {
 
   return (
     <section aria-labelledby="import-title" className={styles.page}>
-      <Header downloads={downloads} />
+      <Header downloads={loaded ? downloads : undefined} />
       {problem && (
         <div className={`${m.problem} ${styles.error}`} role="alert">
           <Icon name="warning" size={18} /> {problem}
@@ -339,7 +347,7 @@ export function Import() {
           size="large"
           onCancel={closeReview}
         >
-          <ReviewList jobId={job.id} onChanged={() => void refresh()} />
+          <ReviewList jobId={job.id} catalog={catalog} onChanged={() => void refresh()} />
         </Sheet>
       )}
     </section>

@@ -8,6 +8,7 @@ import { getBooksHome, useEvents, errorText } from '../../api/client'
 import type { BooksHome as BooksHomeData } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
+import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { BookDropZone, BookUploadButton, BookUploadStatus, useBookUpload } from './BookUpload'
@@ -154,14 +155,9 @@ export function BooksHome() {
             <p>{t('books.empty.kid')}</p>
           ) : (
             <>
-              <p>{t(__LIBRARY_EDITION__ ? 'books.empty.hint' : 'books.empty.hintFull')}</p>
-              {__LIBRARY_EDITION__ ? (
-                <RescanLink variant="secondary" />
-              ) : (
-                <ButtonLink to="/search?dk=book" icon="search" variant="secondary">
-                  {t('books.empty.find')}
-                </ButtonLink>
-              )}
+              <p>{t('books.empty.hint')}</p>
+              <RescanLink variant="secondary" />
+              <EmptyStateActions scope="book" variant="secondary" />
             </>
           )}
         </div>

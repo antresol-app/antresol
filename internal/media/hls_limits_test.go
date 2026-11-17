@@ -252,7 +252,7 @@ func TestHLSCloseIsQuickWithManySessions(t *testing.T) {
 	}
 }
 
-func TestBuildArgsThrottleAndTorrentInput(t *testing.T) {
+func TestBuildArgsThrottleAndRemoteInput(t *testing.T) {
 	d := Decision{Mode: "remux", VideoCopy: true, AudioCopy: true, VideoCodec: "h264", AudioIndex: 1}
 	args := strings.Join(BuildArgsThrottled("none", "http://127.0.0.1:1/s", d, 30, "/w", Throttle{Rate: 2, Burst: 30}), " ")
 	i := strings.Index(args, "-i http://")
@@ -262,10 +262,10 @@ func TestBuildArgsThrottleAndTorrentInput(t *testing.T) {
 			t.Errorf("%q missing or after -i: %s", want, args)
 		}
 	}
-	// A swarm stall must not end the stream: no short I/O timeout, reconnects
+	// A stalled source must not end the stream: no short I/O timeout, reconnects
 	// do not give up after a few seconds.
 	if strings.Contains(args, "-rw_timeout 30000000") || strings.Contains(args, "-reconnect_delay_max 5 ") {
-		t.Errorf("short torrent timeouts: %s", args)
+		t.Errorf("short loopback input timeouts: %s", args)
 	}
 	for _, want := range []string{"-reconnect_max_retries -1", "-reconnect_delay_max 30"} {
 		if !strings.Contains(args, want) {

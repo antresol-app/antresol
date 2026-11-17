@@ -31,7 +31,14 @@ export default {
   'requests.admin.declined': 'Отказано',
   'requests.badge': { one: '{count} просьба ждёт ответа', few: '{count} просьбы ждут ответа', many: '{count} просьб ждут ответа' },
   'requests.approveFailed': 'Не получилось одобрить. Попробуйте ещё раз.',
+  'requests.sheetFailed': 'Расширение не смогло открыть выбор — попробуйте ещё раз',
+
+  // a kid's search for something to ask for («Поиск», RequestSearch)
+  'requests.search.title': 'Найти и попросить',
+  'requests.search.video': 'Кино и сериалы',
+  'requests.search.failed': 'Поиск сейчас недоступен',
+  'requests.search.nothingMore': 'Больше ничего не нашлось.',
+  'requests.search.searching': 'Ищем',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'requests.leadFull': 'Что дети просят добавить. «Одобрить» открывает выбор релиза: когда загрузка начнётся, просьба станет одобренной, а когда появится в медиатеке — ребёнок увидит это сам.',
 }

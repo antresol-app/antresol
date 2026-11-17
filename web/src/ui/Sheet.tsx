@@ -11,7 +11,7 @@
 // edge across the width, clear of the home indicator, with its buttons
 // stacked full width at the thumb; the on-screen keyboard lifts it
 // (keyboard.ts), so a field and its buttons are never covered.
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { MaterialContext } from './Button'
 import { useT } from '../i18n'
@@ -21,6 +21,13 @@ import { useKeyboardInset } from './keyboard'
 import { menuTrigger, recentMenuTrigger } from './Menu'
 import { useScrollLock } from './scrollLock'
 import styles from './Sheet.module.css'
+
+/**
+ * Where a sheet without a `container` of its own mounts (default
+ * document.body): the video player provides its root, so the sheets an
+ * addon draws over it show in full screen too.
+ */
+export const SheetContainer = createContext<Element | null>(null)
 
 /** How long a bottom sheet takes to slide away. */
 const CLOSE_MS = 240
@@ -51,7 +58,7 @@ export interface SheetProps {
   size?: 'alert' | 'wide' | 'large'
   /** Hides the button row (the content has its own controls). */
   noButtons?: boolean
-  /** Where to mount it (default document.body); the video player passes its own root so the sheet shows in full screen. */
+  /** Where to mount it (default SheetContainer's, else document.body); the video player passes its own root so the sheet shows in full screen. */
   container?: Element | null
   /** A click on the dimmed area closes it: only for read-only pickers (release table, contents, devices), never for forms or confirmations. */
   dismissOnOutside?: boolean
@@ -60,6 +67,7 @@ export interface SheetProps {
 }
 
 export function Sheet({ title, message, icon, actions = [], onCancel, children, role = 'alertdialog', busy, wide, size, noButtons, container, dismissOnOutside, closeButton }: SheetProps) {
+  const inherited = useContext(SheetContainer)
   const t = useT()
   const kind = size ?? (wide ? 'wide' : 'alert')
   const ref = useRef<HTMLDivElement>(null)
@@ -289,7 +297,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
       </div>
     </div>
     </MaterialContext.Provider>,
-    container ?? document.body,
+    container ?? inherited ?? document.body,
   )
 }
 

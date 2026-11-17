@@ -12,18 +12,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/metadata"
 	"github.com/antresol-app/antresol/internal/notify"
 	"github.com/go-chi/chi/v5"
 )
 
 // kidRequests is «Попросить»: a kid profile, which gets nothing from outside
 // the library, asks for a title; an admin («Управление → Просьбы») approves
-// it (another build has another way too: approveFor, from the
-// acquire handler) or declines it. «Уже в медиатеке» is not stored: the
+// it (or an addon does, after the admin's download: approveFor) or
+// declines it. «Уже в медиатеке» is not stored: the
 // library is asked whenever a request is shown. Table kid_requests (0052).
 type kidRequests struct {
 	db  *sql.DB
@@ -36,6 +38,9 @@ type kidRequests struct {
 	// open says whether requests are open on this server (Deps.RequestsOpen);
 	// nil or false: ask answers 403 and touches nothing
 	open func(context.Context) bool
+	// addons name albums and books asked for and find them for a kid's
+	// search (nil: neither)
+	addons *AddonRequests
 
 	mu      sync.Mutex
 	lastAsk map[int64]time.Time // a kid's last new request (mayAsk)
@@ -102,6 +107,7 @@ type requestState struct {
 
 func mountKidRequests(r chi.Router, k *kidRequests) {
 	r.Get("/api/requests/mine", k.mine)
+	r.Get("/api/requests/search", k.search)
 	r.Post("/api/requests", k.ask)
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
@@ -178,7 +184,9 @@ func ratingBlock(ctx context.Context, u auth.User, rating string) string {
 // aliases} (kids) → KidRequest: the kid's request of the title, made if it
 // has none (asking again changes nothing, a declined one included). A movie
 // or series is taken from TMDB (its rating checked: 403 {code: "rating"});
-// an album or book as the catalog result the client showed.
+// an album or book with a catalog id as an addon names it (requests.title:
+// its text, not the client's, makes the keys; explicit: 403), else as the
+// catalog result the client showed.
 func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 	if k.open == nil || !k.open(r.Context()) {
 		writeErr(w, r, http.StatusForbidden, "Просьбы здесь не принимаются")
@@ -219,7 +227,9 @@ func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 		if in.Kind == library.KindComic {
 			row.Subtitle = ""
 		}
-		if row.Title == "" {
+		// with a catalog id the key is that id (an addon names the title
+		// below), else the client's text
+		if row.Title == "" && row.ExtID == "" {
 			writeErr(w, r, http.StatusBadRequest, "Не указано название")
 			return
 		}
@@ -257,6 +267,33 @@ func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusTooManyRequests, "Уже много просьб ждут ответа. Подожди, пока родители ответят")
 		return
 	}
+	// an album or book with a catalog id is named by an addon (after the
+	// limits: a kid tapping on never runs the hook); its text makes the
+	// name key, and the client's aliases (of its own text) are dropped
+	if !video && row.ExtID != "" {
+		t, named, err := k.addons.Title(ctx, row.Kind, row.ExtID)
+		if !addonTitleOK(w, r, err) {
+			return
+		}
+		if named {
+			if t.Explicit {
+				writeErr(w, r, http.StatusForbidden, "Недоступно для этого профиля")
+				return
+			}
+			row.Title, row.Subtitle, row.Year, row.Aliases = clip(t.Title, 300), clip(t.Subtitle, 300), 0, nil
+			if t.Year > 0 && t.Year < 10000 {
+				row.Year = t.Year
+			}
+			if row.Kind == library.KindComic {
+				row.Subtitle = ""
+			}
+			row.Poster = metadata.CatalogPoster(t.Poster)
+		}
+		if row.Title == "" {
+			writeErr(w, r, http.StatusBadRequest, "Не указано название")
+			return
+		}
+	}
 	if video {
 		t, err := k.cat.RequestTitle(liveTMDB(r), in.Kind, in.TMDBID)
 		if err != nil {
@@ -291,6 +328,27 @@ func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 		k.publish(got[0].ID, u.ID)
 	}
 	writeJSON(w, http.StatusOK, k.view(ctx, got[0], u))
+}
+
+// addonTitleOK answers a failed requests.title (false): an addon's refusal
+// is a 400 with its text, an addon that did not answer a 503 naming it.
+func addonTitleOK(w http.ResponseWriter, r *http.Request, err error) bool {
+	var refusal *addons.HookRefusal
+	var down errRequestAddonDown
+	switch {
+	case err == nil:
+		return true
+	case r.Context().Err() != nil:
+		return false // the client went away
+	case errors.As(err, &refusal):
+		writeErr(w, r, http.StatusBadRequest, refusal.Message)
+	case errors.As(err, &down):
+		writeErr(w, r, http.StatusServiceUnavailable, i18n.T(r.Context(), msgRequestAddonDown, down.name))
+	default:
+		log.Printf("api: request title: %v", err)
+		writeErr(w, r, http.StatusServiceUnavailable, "Что-то пошло не так")
+	}
+	return false
 }
 
 // maxPendingPerKid: a kid's requests waiting for an answer, at most (the
@@ -580,7 +638,7 @@ func (c *ratingCache) put(kind string, id int, rating string, adult bool) {
 	c.m[ratingCacheKey(kind, id)] = ratingEntry{rating: rating, adult: adult, at: time.Now()}
 }
 
-// kidMaySee says whether a kid profile may see a movie or series at all
+// kidMaySee says whether a kid (or any rating-limited) profile may see a movie or series at all
 // (its title, poster, overview): not adult, and a known rating within the
 // profile's limit — unrated video is hidden, as in a kid's library.
 func kidMaySee(ctx context.Context, u auth.User, rating string, adult bool) bool {

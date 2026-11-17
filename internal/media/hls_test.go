@@ -335,7 +335,7 @@ func TestHLSFlacRemuxUsesFMP4(t *testing.T) {
 
 func TestTailBufRedactsStreamToken(t *testing.T) {
 	tb := &tailBuf{max: 4096}
-	tb.Write([]byte(`http://127.0.0.1:8420/api/torrent-stream/ab/0?k=0123abcd: Connection refused`))
+	tb.Write([]byte(`http://127.0.0.1:8420/api/addon-input/ab/0?k=0123abcd: Connection refused`))
 	if s := tb.String(); strings.Contains(s, "0123abcd") || !strings.Contains(s, "?k=…") {
 		t.Fatalf("%q", s)
 	}

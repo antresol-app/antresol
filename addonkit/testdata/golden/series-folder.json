@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/series/126308/folder?root=%7Broot%7D%2Fseries",
+  "status": 200,
+  "body": {
+    "path": "{root}/series/Сёгун (2024)"
+  }
+}

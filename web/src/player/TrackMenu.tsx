@@ -3,12 +3,20 @@
 // Under the subtitles: «Субтитры раньше / позже» (the menu stays open).
 import { useId } from 'react'
 import type { SubTrack, Track } from '../api/types'
-import { Icon } from '../components/Icon'
+import { Icon, type IconName } from '../components/Icon'
 import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
 import { audioLabel, audioMenuOrder, subtitleLabel } from './timeline'
 import { offsetSeconds, OFFSET_STEP_MS } from './lrc'
 import styles from './TrackMenu.module.css'
 import { locale, useT } from '../i18n'
+
+/** A row an addon adds to the audio column. */
+export interface TrackMenuAction {
+  key: string
+  label: string
+  icon?: IconName
+  run: () => void
+}
 
 export interface TrackMenuProps {
   audio: Track[]
@@ -21,20 +29,19 @@ export interface TrackMenuProps {
   onOpenChange?: (open: boolean) => void
   /** Admin: «Найти субтитры…» (OpenSubtitles search for this file). */
   onFindSubtitles?: () => void
-  /** Sources build, adults: «Найти озвучку…», the audio column's last row. */
-  onFindVoiceOvers?: () => void
+  /** Rows the addons add (playerTrackActions), the audio column's last ones: labels resolved. */
+  actions?: TrackMenuAction[]
   /** «Субтитры раньше / позже» now, ms (positive: later). */
   subOffsetMs?: number
   /** Moves the subtitles (shown while a subtitle track is on); the menu stays open. */
   onSubOffset?: (ms: number) => void
 }
 
-export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onSubtitle, onOpenChange, onFindSubtitles, onFindVoiceOvers, subOffsetMs = 0, onSubOffset }: TrackMenuProps) {
+export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onSubtitle, onOpenChange, onFindSubtitles, actions = [], subOffsetMs = 0, onSubOffset }: TrackMenuProps) {
   const t = useT()
   const loc = locale()
   const offsetId = useId()
   const step = offsetSeconds(OFFSET_STEP_MS, loc).replace(/^\+/, '')
-  const findVoices = !__LIBRARY_EDITION__ && onFindVoiceOvers
   // a cleaned voice-over is not a row of its own: «Очищенный перевод» under
   // the list turns it on for the chosen voice-over (as Apple's «Усиление
   // речи» is a switch, not a track)
@@ -45,8 +52,8 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
   const cleanedOn = Boolean(current && hasBase(current))
   const twin = twinOf(base)
   const rows = audioMenuOrder(audio).filter(({ tr }) => !hasBase(tr))
-  // one track and «Найти озвучку…»: the column shows to offer it
-  const showAudio = rows.length > 1 || Boolean(twin) || Boolean(findVoices)
+  // one track and an addon's row: the column shows to offer it
+  const showAudio = rows.length > 1 || Boolean(twin) || actions.length > 0
   return (
     <Menu
       label={t('player.tracks.title')}
@@ -98,19 +105,18 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
                   />
                 </>
               )}
-              {findVoices && (
-                <>
-                  <MenuSeparator />
-                  <MenuItem
-                    icon={<Icon name="search" size={16} />}
-                    label={t('vo.find')}
-                    onSelect={() => {
-                      close()
-                      findVoices()
-                    }}
-                  />
-                </>
-              )}
+              {actions.length > 0 && <MenuSeparator />}
+              {actions.map((a) => (
+                <MenuItem
+                  key={a.key}
+                  icon={<Icon name={a.icon ?? 'search'} size={16} />}
+                  label={a.label}
+                  onSelect={() => {
+                    close()
+                    a.run()
+                  }}
+                />
+              ))}
             </div>
           )}
           <div role="group" aria-label={t('common.subtitles')} className={styles.group}>

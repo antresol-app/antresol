@@ -5,8 +5,9 @@ import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { getAlbums } from '../../api/client'
 import type { AlbumSort, Card } from '../../api/types'
-import { Button, ButtonLink } from '../../ui/Button'
+import { Button } from '../../ui/Button'
 import { RescanLink } from '../../components/RescanLink'
+import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
 import { PosterGrid, PosterGridSkeleton } from '../../components/PosterGrid'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
@@ -93,14 +94,9 @@ export function Albums() {
           <h2>{t('music.emptyTitle')}</h2>
           {user?.isAdmin ? (
             <>
-              <p>{t(__LIBRARY_EDITION__ ? 'music.emptyHint' : 'music.emptyHintFull')}</p>
-              {__LIBRARY_EDITION__ ? (
-                <RescanLink variant="secondary" />
-              ) : (
-                <ButtonLink to="/search" icon="search" variant="secondary">
-                  {t('music.find')}
-                </ButtonLink>
-              )}
+              <p>{t('music.emptyHint')}</p>
+              <RescanLink variant="secondary" />
+              <EmptyStateActions scope="music" variant="secondary" />
             </>
           ) : (
             <p>{t('music.emptySoon')}</p>

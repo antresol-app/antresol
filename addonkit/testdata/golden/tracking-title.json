@@ -1,0 +1,15 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/tracking/titles",
+  "status": 200,
+  "body": {
+    "id": 1,
+    "kind": "series",
+    "tmdbId": 126308,
+    "imdbId": "",
+    "name": "Сёгун",
+    "poster": "/shogun.jpg",
+    "status": "ended",
+    "cert": "18+"
+  }
+}

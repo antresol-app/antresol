@@ -2,28 +2,26 @@
 // opens on a short list of its groups (System Settings style); each group is
 // its own screen, /manage/settings/<group>, one row per setting. A profile's own settings (the language,
 // sound, mail) are in pages/ProfileSettings.tsx. Changes save
-// by themselves (like iOS); «Качество вне дома» (and the sources build's upload
-// limit and cache size) apply at once on the server. The core build
-// has only the library's settings: no release preferences, online viewing
-// or sharing (docs/build-tags.md).
+// by themselves (like iOS); «Качество вне дома» applies at once on the
+// server. The core build has only the library's settings: no online viewing
+// (docs/build-tags.md). An addon's own settings are its pages.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getLibraryStatus, getSettings, getTorrentEngine, onlineStatus, saveSettings, scanLibrary, errorText } from '../../api/client'
-import type { LangCode, LibraryStatus, MailSettings, OnlineStatus, Settings as Values, TorrentEngineStatus, Voice } from '../../api/types'
+import { getLibraryStatus, getSettings, onlineStatus, saveSettings, scanLibrary, errorText } from '../../api/client'
+import type { LangCode, LibraryStatus, MailSettings, OnlineStatus, Settings as Values } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Sheet } from '../../ui/Sheet'
 import { langChoices, langLabel } from '../../components/langs'
 import { Icon } from '../../components/Icon'
 import { RankedList } from '../../components/RankedList'
 import { SegmentedControl } from '../../ui/SegmentedControl'
-import { MultiSelect, Select } from '../../ui/Select'
+import { MultiSelect } from '../../ui/Select'
 import { StudioList } from '../../components/StudioList'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
 import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import type { IconName } from '../../components/Icon'
 import { Navigate, NavLink, useNavigate, useParams } from 'react-router'
-import { NumberField } from '../../ui/NumberField'
 import { t, useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
@@ -32,66 +30,38 @@ import { VocleanSection } from './VocleanSettings'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
-/** Slider stops for the movie size limit, GB; the last one means no limit. */
-export const SIZE_STOPS = [2, 4, 6, 8, 10, 15, 20, 30, 40, 60, 80, 0]
-
-export function sizeStop(gb: number): number {
-  if (gb <= 0) return SIZE_STOPS.length - 1
-  let best = 0
-  for (let i = 0; i < SIZE_STOPS.length - 1; i++) if (Math.abs(SIZE_STOPS[i]! - gb) < Math.abs(SIZE_STOPS[best]! - gb)) best = i
-  return best
-}
-
-const sizeLabel = (gb: number) => (gb <= 0 ? t('settings.size.noLimit') : t('settings.size.upTo', { gb }))
-
 const DEFAULT_LANGS: LangCode[] = ['ru', 'en']
 
 /**
- * «Языки» changed: every other choice keeps only these, in their order
- * (the server does the same); subtitles keep at least the first, «Озвучка»
- * keeps the original without Russian.
+ * «Языки» changed: subtitles keep only these, in their order (the server
+ * does the same), and at least the first.
  */
 export function withLanguages(v: Values, languages: LangCode[]): Partial<Values> {
-  const keep = (l: LangCode[] | undefined) => languages.filter((c) => (l ?? []).includes(c))
-  const subs = keep(v.subtitleLangs)
-  let voices = (v.voices ?? [v.voice]).filter((x) => x !== 'dub' || languages.includes('ru'))
-  if (voices.length === 0) voices = ['original']
-  const out: Partial<Values> = { languages, subtitleLangs: subs.length ? subs : [languages[0]!] }
-  if (__LIBRARY_EDITION__) return out
-  return {
-    ...out,
-    bookLangs: keep(v.bookLangs),
-    audiobookLangs: keep(v.audiobookLangs),
-    comicLangs: keep(v.comicLangs),
-    voices,
-    voice: voices[0]!,
-  }
+  const subs = languages.filter((c) => (v.subtitleLangs ?? []).includes(c))
+  return { languages, subtitleLangs: subs.length ? subs : [languages[0]!] }
 }
 
 /** The screens of «Настройки сервера», in their order on its first screen. */
-export type SettingsGroup = 'library' | 'downloads' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'seeding' | 'kindle' | 'ai'
+export type SettingsGroup = 'library' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'kindle' | 'ai'
 
 interface GroupInfo {
   id: SettingsGroup
-  label: 'settings.group.library' | 'settings.group.downloads' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.seedingGroup' | 'settings.mailGroup' | 'settings.group.ai'
+  label: 'settings.group.library' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai'
   icon: IconName
   tint: string
 }
 
-/** The groups this build has (the core build downloads nothing and seeds nothing). */
+/** The groups of the page. */
 export function settingsGroups(): GroupInfo[] {
-  const all: (GroupInfo & { fullOnly?: boolean })[] = [
+  return [
     { id: 'library', label: 'settings.group.library', icon: 'film', tint: 'var(--blue)' },
-    { id: 'downloads', label: 'settings.group.downloads', icon: 'download', tint: 'var(--green)', fullOnly: true },
     { id: 'watching', label: 'settings.watching', icon: 'play', tint: 'var(--indigo)' },
     { id: 'transcoding', label: 'settings.group.transcoding', icon: 'speed', tint: 'var(--red)' },
     { id: 'music', label: 'common.music', icon: 'music', tint: 'var(--pink)' },
     { id: 'subtitles', label: 'common.subtitles', icon: 'captions', tint: 'var(--teal)' },
-    { id: 'seeding', label: 'settings.seedingGroup', icon: 'arrowUp', tint: 'var(--cyan)', fullOnly: true },
     { id: 'kindle', label: 'settings.mailGroup', icon: 'send', tint: 'var(--orange)' },
     { id: 'ai', label: 'settings.group.ai', icon: 'sparkles', tint: 'var(--purple)' },
   ]
-  return all.filter((g) => !(__LIBRARY_EDITION__ && g.fullOnly))
 }
 
 /** The current choice of a group, dimmed on its row of the first screen. */
@@ -99,8 +69,6 @@ function summary(id: SettingsGroup, v: Values): string {
   switch (id) {
     case 'library':
       return (v.languages?.length ? v.languages : DEFAULT_LANGS).map((c) => langLabel(c)).join(', ')
-    case 'downloads':
-      return v.quality === 2160 ? '4K' : `${v.quality}p`
     case 'watching':
       return v.remoteQuality === 'original' ? t('common.original') : `${v.remoteQuality ?? '1080'}p`
     case 'music':
@@ -122,7 +90,6 @@ function summary(id: SettingsGroup, v: Values): string {
 const TRICKPLAY_BUDGETS = [5, 10, 20, 50]
 
 export function Settings() {
-  type MusicFormat = NonNullable<Values['musicFormat']>
   const [values, setValues] = useState<Values | null>(null)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState<'' | 'saving' | 'saved'>('')
@@ -203,28 +170,8 @@ export function Settings() {
     )
   }
 
-  const stop = sizeStop(values.maxSizeGB)
-  const musicFormat: MusicFormat = values.musicFormat ?? (values.preferLossless === false ? 'mp3' : 'lossless')
-  const mbs = values.uploadLimitKBs / 1024
   const languages = values.languages?.length ? values.languages : DEFAULT_LANGS
   const mine = languages.map((c) => ({ value: c, label: langLabel(c) }))
-  const voices: Voice[] = values.voices?.length ? values.voices : [values.voice]
-  const voiceOptions: { value: Voice; label: string }[] = __LIBRARY_EDITION__
-    ? []
-    : [...(languages.includes('ru') ? [{ value: 'dub' as const, label: t('settings.voice.dub') }] : []), { value: 'original', label: t('common.original') }]
-  // the languages of one kind of media: a subset of «Мои языки», in their order
-  const kindLangs = (key: 'bookLangs' | 'audiobookLangs' | 'comicLangs', label: string) => (
-    <ListRow stack label={label} hint={__LIBRARY_EDITION__ ? '' : t('settings.kindLangs.hint')}>
-      <MultiSelect
-        label={label}
-        placement="bottom-end"
-        options={mine}
-        value={languages.filter((c) => (values[key] ?? []).includes(c))}
-        none={t('settings.kindLangs.none')}
-        onChange={(v) => change({ [key]: v })}
-      />
-    </ListRow>
-  )
   const groups = settingsGroups()
   const current = groups.find((g) => g.id === group)
   if (!current) {
@@ -306,48 +253,6 @@ export function Settings() {
       </GroupedSection>
       )}
 
-      {/* the sources build's release preferences */}
-      {!__LIBRARY_EDITION__ && at('downloads') && (
-        <>
-          <GroupedSection title={t('settings.newVideo')}>
-            <ListRow stack label={t('settings.videoQuality')} hint={t('settings.videoQuality.hint', { app: APP_NAME })}>
-              <SegmentedControl
-                label={t('settings.videoQuality')}
-                segments={[
-                  { value: '720', label: '720p' },
-                  { value: '1080', label: '1080p' },
-                  { value: '2160', label: '4K' },
-                ]}
-                value={String(values.quality)}
-                onChange={(v) => change({ quality: Number(v) as Values['quality'] })}
-              />
-            </ListRow>
-            <ListRow wide label={t('settings.voices')} hint={t('settings.voices.hint')} id="voices">
-              <RankedList
-                labelledBy="voices"
-                items={voices}
-                itemLabel={(v) => voiceOptions.find((o) => o.value === v)?.label ?? v}
-                min={1}
-                onChange={(next) => change({ voices: next as Voice[], voice: next[0] as Voice })}
-                choices={() => voiceOptions.filter((o) => !voices.includes(o.value))}
-                onAdd={(v) => change({ voices: [...voices, v as Voice], voice: voices[0] ?? (v as Voice) })}
-                addLabel={t('settings.voices.add')}
-              />
-            </ListRow>
-            <ListRow stack label={t('settings.maxSize')} hint={t('settings.maxSize.hint')}>
-              {/* a dozen fixed sizes: a pop-up, not a slider that only looks continuous */}
-              <Select
-                label={t('settings.maxSize')}
-                placement="bottom-end"
-                value={String(SIZE_STOPS[stop])}
-                options={SIZE_STOPS.map((gb) => ({ value: String(gb), label: sizeLabel(gb) }))}
-                onChange={(v) => change({ maxSizeGB: Number(v) })}
-              />
-            </ListRow>
-          </GroupedSection>
-        </>
-      )}
-
       {at('watching') && (
       <GroupedSection>
         <ListRow
@@ -384,7 +289,7 @@ export function Settings() {
           <ListRow
             wide
             label={t('settings.studios')}
-            hint={t(__LIBRARY_EDITION__ ? 'settings.studios.hint' : 'settings.studios.hintFull')}
+            hint={t('settings.studios.hint')}
             id="studios"
           >
             <StudioList labelledBy="studios" studios={values.studios ?? []} onChange={(studios) => change({ studios })} />
@@ -408,42 +313,6 @@ export function Settings() {
             onChange={(v) => change({ remoteMusic: v as Values['remoteMusic'] })}
           />
         </ListRow>
-        {!__LIBRARY_EDITION__ && (
-          <>
-            <ListRow
-              stack
-              label={t('settings.musicFormat')}
-              hint={t('settings.musicFormat.hint')}
-            >
-              <SegmentedControl
-                label={t('settings.musicFormat')}
-                segments={[
-                  { value: 'lossless', label: t('settings.musicFormat.lossless') },
-                  { value: 'mp3', label: 'MP3' },
-                  { value: 'any', label: t('settings.musicFormat.any') },
-                ]}
-                value={musicFormat}
-                onChange={(v) => change({ musicFormat: v as MusicFormat, preferLossless: v === 'lossless' })}
-              />
-            </ListRow>
-            {musicFormat === 'mp3' && (
-              <ListRow stack label={t('settings.bitrate')} hint={t('settings.bitrate.hint')}>
-                <Select
-                  label={t('settings.bitrate')}
-                  placement="bottom-end"
-                  options={[
-                    { value: '320', label: t('settings.bitrate.320') },
-                    { value: 'v0', label: 'V0 (VBR)' },
-                    { value: '256', label: t('settings.bitrate.256') },
-                    { value: 'any', label: t('settings.bitrate.any') },
-                  ]}
-                  value={values.mp3Bitrate ?? '320'}
-                  onChange={(v) => change({ mp3Bitrate: v as Values['mp3Bitrate'] })}
-                />
-              </ListRow>
-            )}
-          </>
-        )}
       </GroupedSection>
       )}
 
@@ -471,45 +340,6 @@ export function Settings() {
           />
         </ListRow>
       </GroupedSection>
-      )}
-
-      {/* another build's settings */}
-      {!__LIBRARY_EDITION__ && (
-        <>
-          {at('downloads') && (
-          <GroupedSection title={t('settings.booksGroup')}>
-            {kindLangs('bookLangs', t('settings.bookLangs'))}
-            {kindLangs('audiobookLangs', t('settings.audiobookLangs'))}
-            {kindLangs('comicLangs', t('settings.comicLangs'))}
-          </GroupedSection>
-          )}
-
-          {at('seeding') && (
-          // a neutral mark: another build's row joins this group (data-settings-group)
-          <div data-settings-group="seeding">
-          <GroupedSection>
-            <IncomingRow />
-            <ListRow label={t('settings.uploadLimit')} hint={t('settings.uploadLimit.hint')}>
-              {values.uploadLimited && <UploadLimitField mbs={mbs} onChange={(v) => change({ uploadLimitKBs: Math.round(v * 1024) }, 700)} />}
-              <Toggle
-                label={t('settings.uploadLimit.toggle')}
-                checked={values.uploadLimited}
-                onChange={(on) => change({ uploadLimited: on, uploadLimitKBs: values.uploadLimitKBs > 0 ? values.uploadLimitKBs : 2048 })}
-              />
-            </ListRow>
-            <ListRow label={t('settings.streamCache')} hint={t('settings.streamCache.hint')}>
-              <NumberField
-                label={t('settings.streamCache.aria')}
-                unit={t('common.unit.GB')}
-                min={1}
-                value={Math.round(values.streamCacheGB)}
-                onChange={(v) => change({ streamCacheGB: v }, 700)}
-              />
-            </ListRow>
-          </GroupedSection>
-          </div>
-          )}
-        </>
       )}
 
       {at('kindle') && (
@@ -686,47 +516,6 @@ function OnlineRow({ enabled, onChange }: { enabled: boolean; onChange: (on: boo
     <ListRow label={t('common.watchOnline')} hint={t('settings.online.hint')} status={onlineLine(st)}>
       <Toggle label={t('common.watchOnline')} checked={enabled} disabled={notConfigured && !enabled} onChange={onChange} />
     </ListRow>
-  )
-}
-
-/**
- * «Входящие подключения» (admin): only when the server sees that no peer
- * has ever connected in (GET /api/torrent-engine), with the port to open.
- * Read once; nothing while it is fine, unknown or from an older server.
- */
-function IncomingRow() {
-  const [st, setSt] = useState<TorrentEngineStatus | null>(null)
-  const t = useT()
-  useEffect(() => {
-    const ac = new AbortController()
-    getTorrentEngine(ac.signal).then(setSt, () => {})
-    return () => ac.abort()
-  }, [])
-  if (!st?.incomingBlocked) return null
-  return (
-    <ListRow
-      label={
-        <>
-          <Icon name="warning" size={16} className={styles.incomingIcon} /> {t('settings.incoming')}
-        </>
-      }
-      status={t('settings.incoming.blocked', { port: st.listenPort })}
-    />
-  )
-}
-
-/** The upload limit in МБ/с (more than 0; a hundredth at the finest). */
-export function UploadLimitField({ mbs, onChange }: { mbs: number; onChange: (v: number) => void }) {
-  const t = useT()
-  return (
-    <NumberField
-      label={t('settings.uploadLimit.aria')}
-      unit={t('common.perSecond', { size: t('common.unit.MB') })}
-      value={mbs}
-      min={0.01}
-      decimals={2}
-      onChange={onChange}
-    />
   )
 }
 

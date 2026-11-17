@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
@@ -14,8 +15,8 @@ import (
 
 // RequestCatalog is where kids' requests get what they name: the TMDB title
 // of a movie or series, covers, and the library's own copy of a title.
-// TMDBRequests is the core one; the sources build's (AcquireRequests) also
-// knows the catalogs of albums and books.
+// TMDBRequests is the core one (it also finds movies and series for a kid's
+// search: requestSearcher); the addons name albums and books (requests.title).
 type RequestCatalog interface {
 	// RequestTitle is a TMDB movie or series (errUnknownTitle when TMDB has
 	// none).
@@ -112,4 +113,45 @@ func (c tmdbRequests) RequestPoster(_, _, clientPoster string) string {
 
 func (c tmdbRequests) LibraryItemOf(ctx context.Context, kind string, tmdbID int, title, subtitle string) (int64, bool) {
 	return c.Library.FindTitleID(ctx, kind, tmdbID, title, subtitle)
+}
+
+// requestSearchLimit: the movies and the series of a kid's search taken
+// from TMDB, each (TMDB orders them by relevance).
+const requestSearchLimit = 20
+
+// Search is a kid's search of movies and series: TMDB's movies and series
+// interleaved, adult titles dropped. It fails only when both searches do.
+func (c tmdbRequests) Search(ctx context.Context, q string) ([]RequestCandidate, error) {
+	var movies, shows []tmdb.Result
+	var merr, terr error
+	var wg sync.WaitGroup
+	wg.Go(func() { movies, merr = c.TMDB.SearchMovie(ctx, q, 0) })
+	wg.Go(func() { shows, terr = c.TMDB.SearchTV(ctx, q, 0) })
+	wg.Wait()
+	if merr != nil && terr != nil {
+		return nil, merr
+	}
+	out := []RequestCandidate{}
+	add := func(kind string, r tmdb.Result) {
+		if r.Adult {
+			return // adult content: never offered
+		}
+		rc := RequestCandidate{Kind: kind, TMDBID: r.ID, Title: r.Title, Year: r.Year, Aliases: []string{}}
+		if rc.Title == "" {
+			rc.Title = r.OriginalTitle
+		}
+		if r.Poster != "" {
+			rc.Poster = c.TMDB.ImageURL("w342", r.Poster)
+		}
+		out = append(out, rc)
+	}
+	for i := 0; i < requestSearchLimit && (i < len(movies) || i < len(shows)); i++ {
+		if i < len(movies) {
+			add(library.KindMovie, movies[i])
+		}
+		if i < len(shows) {
+			add(library.KindSeries, shows[i])
+		}
+	}
+	return out, nil
 }

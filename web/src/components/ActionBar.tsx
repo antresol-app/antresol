@@ -3,7 +3,8 @@
 // button (to this device), «Хочу посмотреть». A title that is not on the
 // server brings its own «Смотреть ▾» and download button (`primary`,
 // `download`). Less frequent actions (start over, another version, mark as
-// watched) live in the «Ещё» menu.
+// watched) live in the «Ещё» menu. The addons' actions follow the core
+// round buttons (AddonItemActions).
 import { useEffect, useState, type ReactNode } from 'react'
 import { addToWatchlist, downloadUrl, removeFromWatchlist, setWatched, errorText } from '../api/client'
 import type { Episode, ItemDetail, MediaFile, Trailer } from '../api/types'
@@ -14,6 +15,8 @@ import { IconButton } from '../ui/IconButton'
 import { ProgressBar } from '../ui/ProgressBar'
 import { DeleteItem, DeleteItemSheet, type Deleted } from './DeleteItem'
 import { DownloadButton } from './DownloadButton'
+import { AddonItemActions } from './AddonItemActions'
+import { Notice } from '../ui/Notice'
 import { episodeCode } from './EpisodeList'
 import { Icon } from './Icon'
 import { MenuItem, MenuSeparator, Menu } from '../ui/Menu'
@@ -52,8 +55,6 @@ export interface ActionBarProps {
   deletion?: { itemId: number; title: string; onDeleted: (d: Deleted) => void }
   /** Admin: «Найти субтитры…» in «Ещё» (OpenSubtitles search for the file). */
   onFindSubtitles?: () => void
-  /** Sources build, adults: «Найти озвучку…» in «Ещё» (VoiceOverSheet). */
-  onFindVoiceOvers?: () => void
   /** «Трейлер» in «Ещё» (GET /api/items/{id}/trailers, best first): plays inside the app (TrailerSheet). */
   trailers?: Trailer[]
 }
@@ -103,12 +104,22 @@ function fileBadges(f: MediaFile, quality = true): string {
   return [quality && f.resolution, langs(f.audio), subs && t('comp.action.subs', { langs: subs }), formatSize(f.size)].filter(Boolean).join(' · ')
 }
 
-export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, onFindVoiceOvers, trailers = [] }: ActionBarProps) {
+export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, trailers = [] }: ActionBarProps) {
   const t = useT()
   const [inList, setInList] = useState(item.inWatchlist)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState('')
   const [deleting, setDeleting] = useState(false)
+  // an addon's action that failed to draw (its place is left out) or to run
+  const [addonBroken, setAddonBroken] = useState(false)
+  const [addonProblem, setAddonProblem] = useState('')
+  // what an addon's action said when it ran
+  const [addonNotice, setAddonNotice] = useState('')
+  // they spoke of the title shown before
+  useEffect(() => {
+    setAddonProblem('')
+    setAddonNotice('')
+  }, [item.id])
   const [trailer, setTrailer] = useState<Trailer | null>(null)
   const compact = useIsCompact()
   useEffect(() => setInList(item.inWatchlist), [item.inWatchlist])
@@ -242,6 +253,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
               onClick={() => void toggleList()}
             />
           )}
+          <AddonItemActions item={item} onProblem={setAddonProblem} onNotice={setAddonNotice} onBroken={() => setAddonBroken(true)} />
           {hasMore && (
             <Menu
               label={t('comp.action.more')}
@@ -308,16 +320,6 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
                       }}
                     />
                   )}
-                  {!__LIBRARY_EDITION__ && onFindVoiceOvers && (
-                    <MenuItem
-                      icon={<Icon name="speaker" size={18} />}
-                      label={t('vo.find')}
-                      onSelect={() => {
-                        close(false)
-                        onFindVoiceOvers()
-                      }}
-                    />
-                  )}
                   {deleteInMenu && (
                     <>
                       <MenuSeparator />
@@ -349,6 +351,13 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
           {problem}
         </p>
       )}
+      {addonProblem && (
+        <p className={styles.problem} role="alert">
+          {addonProblem}
+        </p>
+      )}
+      {addonNotice && <Notice tone="accent">{addonNotice}</Notice>}
+      {addonBroken && <Notice tone="destructive">{t('addons.slotFailed')}</Notice>}
       {!lead && progressRow}
     </div>
   )

@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/jobs?status=downloading",
+  "status": 200,
+  "body": {
+    "ids": [
+      1
+    ]
+  }
+}

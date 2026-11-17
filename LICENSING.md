@@ -10,7 +10,8 @@ everyone who has contributed to this repository; each keeps the copyright in
 their own contribution. The commit history records who contributed what.
 
 Two parts of the web code are under the **Mozilla Public License 2.0**
-(`MPL-2.0`) instead, and some third-party code keeps its own licence. This
+(`MPL-2.0`) instead, the addon SDK is under the **MIT License**, and some
+third-party code keeps its own licence. This
 file says exactly which files are which. When this file and a header in a
 file disagree, tell us: it is a bug.
 
@@ -18,8 +19,8 @@ file disagree, tell us: it is a bug.
 
 Every file in this repository is `AGPL-3.0-or-later` unless the table below
 or a file's own header says otherwise. That includes all of `cmd/`,
-`internal/`, `scripts/`, the web interface outside the MPL-2.0 zones, the
-build files and the documentation.
+`internal/`, `scripts/`, the web interface outside the MPL-2.0 zones and the
+MIT addon SDK, the build files and the documentation.
 
 One exception to the whole of this file: the logo artwork in
 `web/public/icons/` and `web/src/components/logoArt.ts` is under no licence
@@ -80,6 +81,21 @@ The header of an MPL-2.0 file:
 No zone file is "Incompatible With Secondary Licenses" (MPL Exhibit B is not
 used).
 
+## MIT zone: the addon SDK
+
+`web/addon-sdk/**` (the `@antresol/addon-sdk` package: its Vite plugin, its
+package files and the type declarations `npm run sdk:types` writes there) is
+under the MIT License, so that an addon of any licence can build on it;
+`web/addon-sdk/LICENSE` has the text. The addon template made from it is MIT
+too. The server it talks to stays `AGPL-3.0-or-later`; the addon contract
+(`docs/addons/contract.md`) is the boundary. Contributions to
+`web/addon-sdk/` are made under MIT, and code never moves into it from an
+AGPL file.
+
+`addonkit/**` (the Go module `github.com/antresol-app/antresol/addonkit`: the
+data types of the addon contract, standard library only) is MIT for the same
+reason; `addonkit/LICENSE` has the text.
+
 ## The table
 
 The gate reads this table. The most specific row wins: a file row beats a
@@ -99,6 +115,8 @@ directory row (`/**`), and a deeper directory beats a shallower one.
 | `web/src/reader/native/protocol.ts` | MPL-2.0 | messages between the app and the reader |
 | `web/src/reader/native/screenPages.ts` | MPL-2.0 | screen page counts |
 | `web/src/i18n/**` | MPL-2.0 | translations (directory rule) |
+| `web/addon-sdk/**` | MIT | the addon SDK (directory rule) |
+| `addonkit/**` | MIT | the addon contract types, Go (directory rule) |
 | `web/src/vendor/foliate/**` | MIT | foliate-js, vendored |
 | `web/src/vendor/foliate/vendor/zip.js` | BSD-3-Clause | zip.js 2.8.22, as bundled by foliate-js |
 | `web/src/vendor/foliate/vendor/fflate.js` | MIT | fflate 0.8.2, as bundled by foliate-js |

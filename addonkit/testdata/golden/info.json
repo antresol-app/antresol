@@ -1,0 +1,30 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/info",
+  "status": 200,
+  "body": {
+    "id": "kit",
+    "version": "1.0.0",
+    "contract": 1,
+    "ffmpeg": "/usr/bin/ffmpeg",
+    "ffprobe": "/usr/bin/ffprobe",
+    "publicUrl": "",
+    "libraryRoots": {
+      "movies": "{root}/movies",
+      "series": "{root}/series",
+      "music": "{root}/music",
+      "ebooks": "{root}/books",
+      "audiobooks": "",
+      "comics": ""
+    },
+    "mediaRoot": "{root}",
+    "fileRoots": [
+      "{root}/movies",
+      "{root}/series",
+      "{root}/music",
+      "{root}/books",
+      "{root}"
+    ],
+    "missingRoots": []
+  }
+}

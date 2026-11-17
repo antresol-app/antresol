@@ -8,6 +8,7 @@ import type { FileEntry } from '../../api/types'
 import { formatDate, formatShortDate, formatSize, kindLabel, objects } from './model'
 import { Glyph } from './glyphs'
 import { Thumb } from './Thumb'
+import { Badge } from '../../ui/Badge'
 import { itemId, type ViewProps } from './views'
 import styles from './ListView.module.css'
 import { useT, type Key } from '../../i18n'
@@ -44,6 +45,18 @@ const COLUMNS: { key: FileSort; label: Key; className: string }[] = [
 const where = (p: string) => {
   const i = p.lastIndexOf('/')
   return i < 0 ? '' : p.slice(0, i).split('/').join(' › ')
+}
+
+/** The addon holding the entry, in its own words. */
+export function HoldBadge({ entry }: { entry: FileEntry }) {
+  const t = useT()
+  const h = entry.hold
+  if (!h) return null
+  return (
+    <Badge tone={h.active ? 'accent' : 'default'} round className={styles.hold} title={t('addons.files.holdTitle', { addon: h.addon })}>
+      {h.label || h.addon}
+    </Badge>
+  )
 }
 
 const DesktopRow = memo(function DesktopRow({
@@ -102,6 +115,7 @@ const DesktopRow = memo(function DesktopRow({
         </span>
         <Thumb entry={e} size={20} />
         <span className={styles.name}>{e.name}</span>
+        <HoldBadge entry={e} />
         {showWhere && where(e.path) && <span className={styles.where}>{where(e.path)}</span>}
         {row.loading && <span className={styles.spinner} aria-label={t('common.loading')} />}
       </div>
@@ -150,7 +164,10 @@ const PhoneRow = memo(function PhoneRow({
       </div>
       <div role="gridcell" className={styles.ptext}>
         <span className={styles.pname}>{e.name}</span>
-        <span className={styles.psub}>{sub}</span>
+        <span className={styles.psub}>
+          {sub}
+          <HoldBadge entry={e} />
+        </span>
       </div>
       <div role="gridcell" className={styles.pmore}>
         <button

@@ -43,6 +43,9 @@ jobs:
         run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" go vet ./...
       - name: go test
         run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" go test -p 2 ./...
+      - name: go test addonkit
+        working-directory: addonkit
+        run: runuser -u ci -- env HOME=/home/ci PATH="$PATH" GOFLAGS= go test ./...
 
   web:
     if: github.repository_owner == 'antresol-app'

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/addons"
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/disk"
@@ -24,6 +25,7 @@ import (
 	"github.com/antresol-app/antresol/internal/lyrics"
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/mediaimport"
+	"github.com/antresol-app/antresol/internal/metadata"
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/music"
 	"github.com/antresol-app/antresol/internal/notify"
@@ -35,6 +37,7 @@ import (
 	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/antresol-app/antresol/internal/trailers"
 	"github.com/antresol-app/antresol/internal/version"
+	"github.com/antresol-app/antresol/internal/vofit"
 	"github.com/antresol-app/antresol/internal/webui"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -60,8 +63,17 @@ type Deps struct {
 	DataDir  string        // images/ (TMDB cache) and subs/ (WebVTT cache) live here
 	FFmpeg   string
 	FFprobe  string
+	// PublicURL is the server's public address (VAULT_PUBLIC_URL; "" when
+	// unset), told to addons by /api/addon-core/v1/info.
+	PublicURL string
+	// MediaRoot is the server's media folder (VAULT_MEDIA_ROOT), told to
+	// addons by /api/addon-core/v1/info ("" when unset).
+	MediaRoot string
 	// Probe overrides media.Probe (tests).
 	Probe func(ctx context.Context, path string) (media.ProbeResult, error)
+	// inputSubWait overrides inputSubWait, how long an input subtitle
+	// conversion waits for a slot (tests).
+	inputSubWait time.Duration
 	// FrameRunner runs the ffmpeg of /api/images/frame (nil: cmd.Run; tests).
 	FrameRunner media.Runner
 	// Keyframe overrides media.KeyframeBefore (tests).
@@ -131,10 +143,13 @@ type Deps struct {
 	// Trailers are the trailers of movie and series pages
 	// (/api/items/{id}/trailers); nil without a TMDB key: none.
 	Trailers TrailerSource
-	// TrailerCache plays those trailers inside the apps (the play URL of
-	// each, /api/trailers/*): a build with a trailer fetcher sets it; nil:
-	// the apps play trailers their own way.
-	TrailerCache *trailers.Cache
+	// TrailerAddons plays those trailers inside the apps (the play URL of
+	// each, /api/trailers/*) through the addons that declare
+	// trailers.fetch (*addons.Trailers); TrailerLocal is a build's own
+	// player, used while no such addon runs. Both nil: the apps play
+	// trailers their own way.
+	TrailerAddons trailers.Provider
+	TrailerLocal  trailers.Provider
 	// Ratings are the IMDb and Rotten Tomatoes ratings of
 	// /api/ratings/{imdbId} (nil: none, the answer is {}).
 	Ratings Ratings
@@ -190,7 +205,12 @@ type Deps struct {
 	Requests RequestCatalog
 	// RequestsOpen says whether kids' requests are offered on this server
 	// (me.canRequest for a kid, me.requests for an admin); nil: closed.
+	// The server sets it to the addons' answer (AddonRequests.Open).
 	RequestsOpen func(context.Context) bool
+	// Titles are TMDB's movies and series for the title page of one that
+	// is not in the library (GET /api/title/{kind}/{tmdbId}); nil without
+	// a TMDB key: the page answers 503.
+	Titles TitleSource
 
 	// MediaImport is «Управление → Переезд» (admin, /api/migrate*): the
 	// import from Jellyfin, Kavita and Audiobookshelf; the sources build adds
@@ -199,8 +219,10 @@ type Deps struct {
 
 	// PlaylistImport is «Импорт медиатеки» (admin, /api/import/*): playlists
 	// and favourites from files, matched and rebuilt in the library, in both
-	// editions; another build adds more to the same
-	// service (Deps.ImportOAuth). nil disables it. Needs Users.
+	// editions; the addons' import.* hooks add the music services to the
+	// same service (its Connectors, Reads, Resolver and Catalog), and their
+	// sign-ins come back through AddonHooks (ServiceOwner). nil disables
+	// it. Needs Users.
 	PlaylistImport *playlistimport.Service
 
 	// LibraryOnly is me.libraryOnly: the server serves its library only
@@ -225,8 +247,44 @@ type Deps struct {
 	// none.
 	Accounts AccountRoutes
 
+	// Addons are the installed addons (usually *addons.Manager): the admin
+	// routes /api/addons*, the proxy /api/addons/{id}/x/…, the web bundles
+	// /addons/{id}/ui/… and the addons' own /api/addon-core/v1/…; nil
+	// disables them all. Needs Sessions.
+	Addons addonRuntime
+	// AddonRefs are the addons' file references and holds (migration
+	// 0090) behind the core API's write routes; nil: those answer 503.
+	AddonRefs *addons.RefStore
+	// AddonHolds is the index of the files addons hold, behind the core
+	// API's PUT /files/holds (it also wraps the file browser's hooks, see
+	// addons.Holds.Wrap); nil: that route answers 503.
+	AddonHolds *addons.Holds
+	// AddonInputs are the external videos addons register for playback
+	// (/api/addon-core/v1/play/inputs); nil: those routes answer 503.
+	AddonInputs *addons.Inputs
+	// AddonHooks calls the hooks addons declare (play.progress of inputs, library.pending);
+	// the tracking routes take the addons' scan kinds from it (ScanKinds).
+	// nil: none is called, and no addon kind is shown.
+	AddonHooks *addons.Hooks
+	// InputBase is how ffmpeg reaches this server ("http://127.0.0.1:8420")
+	// and InputToken the per-process token that lets it read an input
+	// through the loopback relay /api/addon-input/… without a session;
+	// either empty: inputs cannot play.
+	InputBase, InputToken string
+	// Images is the image cache (DataDir/images) the core API's /images
+	// fills for addons; nil: off.
+	Images *metadata.Images
+	// Metadata are the providers the core API's metadata pass-through
+	// (/api/addon-core/v1/metadata/{source}/…) calls with the server's
+	// keys; a nil field is off.
+	Metadata AddonMetadata
+	// VoiceOverFit is the worker that fits the voice-over tracks placed
+	// beside library files (the core API's /voiceover/fit queues them and
+	// kicks it); nil (no ffmpeg): those routes answer 503.
+	VoiceOverFit *vofit.Worker
+
 	// fullDeps are the sources build's own dependencies (deps_full.go); an
-	// empty struct in the core build. Set them by name: deps.Acquire.
+	// empty struct in the core build. Set them by name: deps.Online.
 	fullDeps
 }
 
@@ -274,14 +332,15 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	var requests *kidRequests
 	requestsOpen := deps.RequestsOpen
 	if deps.DB != nil && deps.Requests != nil {
-		requests = &kidRequests{db: deps.DB, cat: deps.Requests, bus: deps.Events, notify: deps.Notify, open: deps.RequestsOpen}
+		requests = &kidRequests{db: deps.DB, cat: deps.Requests, bus: deps.Events, notify: deps.Notify, open: deps.RequestsOpen,
+			addons: NewAddonRequests(deps.AddonHooks)}
 	} else {
 		requestsOpen = nil
 	}
 	// the one session check of every authenticated route
 	guard := &auth.Guard{Sessions: deps.Sessions, Network: deps.Network, Keys: deps.MediaKeys}
 	if deps.Users != nil && deps.Sessions != nil {
-		mountAuth(r, deps.Users, guard, deps.Throttle, newMeCaps(deps), deps.LibraryOnly || libraryEdition, requestsOpen)
+		mountAuth(r, deps.Users, guard, deps.Throttle, newMeCaps(deps), deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen)
 	}
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
@@ -300,6 +359,9 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			deps.ComicsCache = filepath.Join(deps.DataDir, "comics-cache")
 		}
 		h = &lib{Deps: deps, guard: guard, comics: newComicArchives(comicArchivesOpen, deps.ComicsCache), requests: requests}
+		if deps.TrailerAddons != nil || deps.TrailerLocal != nil {
+			h.trailerKeys = trailers.NewListed(trailerKeysFile(deps.DataDir))
+		}
 		if onLib != nil {
 			onLib(h)
 		}
@@ -331,6 +393,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			if requests != nil {
 				mountKidRequests(r, requests)
 			}
+			mountTitle(r, h)
 			if deps.Channels != nil && deps.DB != nil {
 				ca := newChannelsAPI(deps, h)
 				if deps.Translations != nil {
@@ -356,7 +419,20 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	if deps.Sessions != nil && deps.Events != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(guard.Require)
-			mountEvents(r, deps.Events)
+			var forAdults addonForAdults
+			if rt := deps.Addons; rt != nil {
+				forAdults = func(ctx context.Context, id string) bool {
+					in, err := rt.Get(ctx, id)
+					return err == nil && in.Manifest.ForAdults()
+				}
+			}
+			mountEvents(r, deps.Events, forAdults)
+		})
+	}
+	if deps.Sessions != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountPendingCards(r, deps.AddonHooks)
 		})
 	}
 	if deps.Sessions != nil && deps.DiskUsage != nil {
@@ -398,6 +474,23 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			mountItemDelete(r, deps.Files, deps.Events)
 		})
 	}
+	if deps.Sessions != nil && deps.Addons != nil {
+		aa := newAddonsAPI(deps)
+		aa.requests = requests // /requests/approve (nil: 503)
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountAddons(r, aa)
+		})
+		mountAddonCore(r, aa) // an addon's token, no session
+	}
+	if deps.Sessions != nil && deps.AddonInputs != nil && h != nil {
+		ip := newInputPlay(h, deps)
+		mountInputRelay(r, ip) // the per-process token on loopback, no session
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountInputPlay(r, ip)
+		})
+	}
 	r.Handle("/api/*", http.NotFoundHandler())
 	r.NotFound(spa(webui.FS).ServeHTTP)
 	return r
@@ -415,7 +508,7 @@ var compressTypes = []string{"application/json", "text/html", "text/css", "text/
 func compressText(next http.Handler) http.Handler {
 	z := middleware.Compress(5, compressTypes...)(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.Header.Get("Range") != "" || mediaRoute(r.URL.Path) {
+		if r.Method != http.MethodGet || r.Header.Get("Range") != "" || mediaRoute(r.URL.Path) || addonProxyRoute(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -471,12 +564,17 @@ func (v *varyWriter) Unwrap() http.ResponseWriter { return v.ResponseWriter }
 // mediaRoute: the API's binary and streamed responses (files, streams,
 // images, archives, the event stream).
 func mediaRoute(p string) bool {
-	for _, pre := range []string{"/api/stream/", "/api/hls/", "/api/audio/", "/api/download/", "/api/torrent-stream/",
+	for _, pre := range []string{"/api/stream/", "/api/hls/", "/api/audio/", "/api/download/",
 		"/api/images/", "/api/comics/", "/api/device-copies/", "/api/events", "/api/online/s/", "/api/files/content",
-		"/api/files/thumb", "/api/subs/", "/api/channels/live/"} {
+		"/api/files/thumb", "/api/subs/", "/api/channels/live/", "/api/addon-input/"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
+	}
+	if id, ok := strings.CutPrefix(p, "/api/play/input/"); ok {
+		// an addon input's file as it is (its info, play, progress and subtitles are not)
+		id, ok = strings.CutSuffix(id, "/direct")
+		return ok && id != "" && !strings.Contains(id, "/")
 	}
 	if strings.HasPrefix(p, "/iptv/") {
 		// the IPTV players' streams and pictures (their playlist and guide are text)

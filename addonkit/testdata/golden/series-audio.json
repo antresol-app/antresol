@@ -1,0 +1,29 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/series/126308/audio",
+  "status": 200,
+  "body": {
+    "files": [
+      {
+        "season": 1,
+        "episode": 1,
+        "titles": [
+          "Дубляж",
+          "Оригинал"
+        ]
+      },
+      {
+        "season": 1,
+        "episode": 2,
+        "titles": []
+      }
+    ],
+    "profiles": [
+      {
+        "userId": 2,
+        "audioTitle": "Оригинал",
+        "updatedAt": "{time}"
+      }
+    ]
+  }
+}

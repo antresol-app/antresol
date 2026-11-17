@@ -13,7 +13,9 @@ type Prefs struct {
 	PreferDub      bool    `json:"preferDub"`      // true
 	PreferOriginal bool    `json:"preferOriginal"` // false
 	MaxSizeGB      float64 `json:"maxSizeGB"`      // 0 = no limit
-	MinSeeders     int     `json:"minSeeders"`     // 1
+	// MinSources: the fewest sources a release must be offered by (1); the
+	// stored JSON name is the old one (release_prefs, stage 4).
+	MinSources int `json:"minSeeders"`
 	// PreferLossless: music in FLAC/ALAC over MP3 320 (true), or the
 	// other way round.
 	PreferLossless bool `json:"preferLossless"`
@@ -37,10 +39,10 @@ type Prefs struct {
 	ComicLangs     []string `json:"comicLangs"`
 }
 
-// Default: Full HD, Russian dubbing preferred, at least one seeder,
-// lossless music.
+// Default: Full HD, Russian dubbing preferred, a release offered by at
+// least one source (MinSources 1), lossless music.
 func Default() Prefs {
-	return Prefs{MaxHeight: 1080, PreferDub: true, MinSeeders: 1, PreferLossless: true}
+	return Prefs{MaxHeight: 1080, PreferDub: true, MinSources: 1, PreferLossless: true}
 }
 
 // VoiceWeights are the dub and original bonus factors (in tenths) from

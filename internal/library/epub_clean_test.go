@@ -131,7 +131,7 @@ func TestCleanEPUBFileKeepsAHardLinkIntact(t *testing.T) {
 		t.Fatalf("%v %v", ch, err)
 	}
 	if have, _ := os.ReadFile(seed); !bytes.Equal(have, orig) {
-		t.Error("the seeding copy changed")
+		t.Error("the hard-linked copy changed")
 	}
 	st, _ := os.Stat(lib)
 	if st.Mode().Perm() != 0o640 {

@@ -4,9 +4,7 @@
 // headings are plain English, never translated; the components' strings
 // come from the catalogs as everywhere else.
 import { useState, type ReactNode } from 'react'
-import type { Torrent } from '../../api/types'
 import { Icon } from '../../components/Icon'
-import { DownloadRow } from '../../pages/manage/DownloadRow'
 import { ActionTiles } from '../ActionTiles'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
@@ -31,7 +29,6 @@ import { Toggle } from '../Toggle'
 import { FilterChips } from '../FilterChips'
 import { Notice } from '../Notice'
 import { VirtualList } from '../VirtualList'
-import { DownloadTile } from './DownloadTile'
 import styles from './Gallery.module.css'
 
 const COLORS: [string, string[]][] = [
@@ -66,38 +63,6 @@ const SORTABLE: { key: string; icon: 'tv' | 'film' | 'folder'; title: string; de
   { key: 'item:3', icon: 'tv', title: 'Друзья · S1 E7', detail: 'Серия · Отключение электричества' },
   { key: 'folder:a', icon: 'folder', title: 'Season 02', detail: 'Папка · series/Друзья/Season 02' },
   { key: 'item:4', icon: 'film', title: 'Очень длинное название фильма, которое не помещается в одну строку', detail: 'Фильм · 2015' },
-]
-
-const GB = 1024 ** 3
-const tor = (o: Partial<Torrent>): Torrent => ({
-  infoHash: Math.random().toString(16).slice(2).padEnd(40, '0'),
-  name: '',
-  mode: 'download',
-  status: 'downloading',
-  size: 30 * GB,
-  done: 0,
-  downRate: 0,
-  upRate: 0,
-  uploaded: 0,
-  downloaded: 0,
-  peers: 0,
-  seeds: 0,
-  ratio: 0,
-  itemId: null,
-  addedAt: new Date().toISOString(),
-  saveDir: '/t',
-  organized: false,
-  kind: 'movie',
-  addedByName: 'admin',
-  ...o,
-})
-const TORRENTS: Torrent[] = [
-  tor({ title: 'Интерстеллар', poster: 'interstellar-poster.jpg', size: 29.2 * GB, done: 6.7 * GB, downRate: 3.3e6, peers: 15 }),
-  tor({ title: 'Форс-мажоры', kind: 'series', poster: 'catchme-poster.jpg', status: 'paused', size: 1100 * GB, done: 4.3 * GB }),
-  tor({ title: 'Planet Earth II', kind: 'series', poster: 'pe2-poster.jpg', status: 'waiting_space', size: 128 * GB }),
-  tor({ title: 'Seven Worlds, One Planet', poster: 'sevenworlds-poster.jpg', status: 'error', error: 'The files are the same as another download’s' }),
-  tor({ title: 'Deep Purple in Rock', kind: 'music', poster: 'drain-poster.jpg', status: 'done', direct: true, size: 362e6, done: 362e6, uploaded: 367e6 }),
-  tor({ title: 'Countdown to Extinction', kind: 'music', poster: 'tiny-poster.jpg', status: 'done', direct: true, size: 900e6, done: 900e6, uploaded: 23.9e6, upRate: 1.2e6 }),
 ]
 
 function Section({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
@@ -668,29 +633,6 @@ export function Gallery() {
         <SegmentedControl label="Что искать" value={scope} onChange={setScope} segments={SCOPES} row align="start" />
       </Section>
 
-      <Section
-        title="Downloads · option A (chosen): list rows"
-        note="One list, one row height, one trailing column: the row's action (pause, resume, «На сервер»; an empty slot when there is none) and «⋯». A download has a bar; a finished one is quiet."
-      >
-        <GroupedSection title="Загрузки">
-          {TORRENTS.filter((x) => x.status !== 'done').map((x) => (
-            <DownloadRow key={x.infoHash} t={x} onChanged={() => {}} />
-          ))}
-        </GroupedSection>
-        <GroupedSection title="Готово">
-          {TORRENTS.filter((x) => x.status === 'done').map((x) => (
-            <DownloadRow key={x.infoHash} t={x} onChanged={() => {}} />
-          ))}
-        </GroupedSection>
-      </Section>
-
-      <Section title="Downloads · option B: cards" note="A grid of cards with the poster at full height and the App Store ring as the action. Kept for comparison: two columns of cards with a 122-item list read as a wall.">
-        <ul className={styles.tiles}>
-          {TORRENTS.map((x) => (
-            <DownloadTile key={x.infoHash} t={x} />
-          ))}
-        </ul>
-      </Section>
     </main>
   )
 }

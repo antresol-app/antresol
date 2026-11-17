@@ -12,9 +12,10 @@ import { session, useSession } from '../../state/session'
 import { MyRequests } from '../MyRequests'
 import { Manage } from '../manage/Manage'
 import { Requests } from '../manage/Requests'
+import { Search } from '../Search'
 
 const kid: User = { id: 3, name: 'Вася', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: true, maxRating: null, canRequest: true }
-const admin: User = { id: 1, name: 'Папа', avatar: 'grad-1', hasPassword: false, isAdmin: true, isKid: false, maxRating: null, requests: true, canAcquire: true }
+const admin: User = { id: 1, name: 'Папа', avatar: 'grad-1', hasPassword: false, isAdmin: true, isKid: false, maxRating: null, requests: true }
 
 const json = (b: unknown, status = 200) =>
   new Response(b === undefined ? null : JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
@@ -41,12 +42,57 @@ function stub(user: User, handle: Handler = () => undefined) {
   return f
 }
 
+const posts = (f: ReturnType<typeof stub>, path: string) =>
+  f.mock.calls.filter(([u, i]) => String(u).endsWith(path) && i?.method === 'POST').map(([, i]) => JSON.parse(String(i!.body)) as unknown)
+
+// a kid's search result (GET /api/requests/search)
+const dune = (kidRequest: object) => [{ kind: 'movie', tmdbId: 1, extId: '', title: 'Дюна', subtitle: '', year: 2021, poster: '', explicit: false, aliases: [], kidRequest }]
+
 describe('«Попросить» (kid)', () => {
   beforeEach(() => {
     session.reset()
     resetKidRequests()
   })
   afterEach(() => vi.unstubAllGlobals())
+
+  it('search results ask instead of watching or downloading, once', async () => {
+    const f = stub(kid, (url, init) => {
+      if (url.includes('/api/requests/search')) return json(dune({ key: 'tmdb:1', allowed: true, request: null }))
+      if (url.endsWith('/api/requests') && init?.method === 'POST') return json(req({}))
+    })
+    await session.login(3)
+    render(
+      <MemoryRouter initialEntries={['/search']}>
+        <Search />
+      </MemoryRouter>,
+    )
+    await userEvent.type(screen.getByRole('searchbox'), 'Дюна')
+    expect(await screen.findByRole('heading', { name: 'Найти и попросить' }, { timeout: 3000 })).toBeInTheDocument()
+    const ask = await screen.findByRole('button', { name: 'Попросить «Дюна»' }, { timeout: 3000 })
+    for (const name of ['Смотреть', 'Загрузить', 'На сервер']) expect(screen.queryByRole('button', { name })).toBeNull()
+    await userEvent.click(ask)
+    expect(await screen.findByText('Ждёт ответа')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Попросить «Дюна»' })).toBeNull()
+    expect(posts(f, '/api/requests')).toEqual([{ kind: 'movie', tmdbId: 1, title: 'Дюна' }])
+  })
+
+  it('a movie above the age limit: the button is disabled and says why', async () => {
+    stub(kid, (url, init) => {
+      if (url.includes('/api/requests/search')) return json(dune({ key: 'tmdb:1', allowed: true, request: null }))
+      if (url.endsWith('/api/requests') && init?.method === 'POST') return json({ error: 'Это 18+, а в твоём профиле можно до 12+', code: 'rating' }, 403)
+    })
+    await session.login(3)
+    render(
+      <MemoryRouter initialEntries={['/search']}>
+        <Search />
+      </MemoryRouter>,
+    )
+    await userEvent.type(screen.getByRole('searchbox'), 'Дюна')
+    await userEvent.click(await screen.findByRole('button', { name: 'Попросить «Дюна»' }, { timeout: 3000 }))
+    const button = await screen.findByRole('button', { name: 'Попросить «Дюна»' })
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(button).toHaveAccessibleDescription('Это 18+, а в твоём профиле можно до 12+')
+  })
 
   it('«Мои просьбы» lists every answer, a refusal with its reason', async () => {
     stub(kid, (url) => {
@@ -145,9 +191,9 @@ describe('«Просьбы» in both editions (core)', () => {
     expect(screen.getByRole('link', { name: /Просьбы/ })).toHaveAttribute('href', '/manage/requests')
   })
 
-  // canAcquire is false: what the core build has
-  it('core build: without downloads «Одобрить» approves', async () => {
-    const user: User = { ...admin, canAcquire: false }
+  // no addon request action: the core approves at once
+  it('without a request action «Одобрить» approves', async () => {
+    const user: User = admin
     let approved = false
     const asker = { id: 3, name: 'Вася', avatar: 'grad-3' }
     const f = stub(user, (url, init) => {

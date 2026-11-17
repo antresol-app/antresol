@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/notify",
+  "status": 202,
+  "body": {
+    "queued": 1
+  }
+}

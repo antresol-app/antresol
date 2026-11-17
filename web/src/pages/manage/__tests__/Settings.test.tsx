@@ -5,8 +5,8 @@ import type { Settings as Values } from '../../../api/types'
 import { renderSettings } from './settingsHarness'
 
 const base: Values = {
-  quality: 1080, voice: 'dub', maxSizeGB: 0, uploadLimited: false, uploadLimitKBs: 0, streamCacheGB: 50, remoteQuality: '1080',
-  remoteMusic: 'high', preferLossless: true, autoSubtitles: true, subtitleLangs: ['ru', 'en'], subtitlesAvailable: false,
+  quality: 1080, voice: 'dub', remoteQuality: '1080',
+  remoteMusic: 'high', autoSubtitles: true, subtitleLangs: ['ru', 'en'], subtitlesAvailable: false,
 }
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -105,6 +105,26 @@ describe('Настройки: музыка и субтитры', () => {
   })
 })
 
+describe('Настройки сервера: the groups', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('has exactly the core groups, in order; «Просмотр» keeps the studios (and online in the full build)', async () => {
+    stub({ ...base, languages: ['ru', 'en'] })
+    const { go } = renderSettings()
+    await screen.findByRole('button', { name: /Медиатека и языки/ })
+    const groups = ['Медиатека и языки', 'Просмотр', 'Перекодирование', 'Музыка', 'Субтитры', 'Отправка на Kindle', 'ИИ-помощник']
+    const rows = within(screen.getByRole('region', { name: 'Настройки сервера' })).getAllByRole('button')
+    expect(rows).toHaveLength(groups.length)
+    rows.forEach((b, i) => expect(b.textContent).toMatch(new RegExp(`^${groups[i]}`)))
+    // a link to a group the page does not have lands on the list
+    go('nope' as never)
+    expect(await screen.findByRole('button', { name: /Медиатека и языки/ })).toBeInTheDocument()
+    go('watching')
+    expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
+    if (!__LIBRARY_EDITION__) expect(screen.getByRole('switch', { name: 'Смотреть онлайн' })).toBeInTheDocument()
+  })
+})
+
 describe('Настройки сервера: язык описаний', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -148,7 +168,7 @@ describe('Настройки: любимые озвучки', () => {
     setLanguagePref('ru')
   })
 
-  it.runIf(__LIBRARY_EDITION__)('core build: «Любимые озвучки» в «Просмотр», без слов о раздачах', async () => {
+  it.runIf(__LIBRARY_EDITION__)('core build: «Любимые озвучки» в «Просмотр», без настроек загрузок', async () => {
     stub({ ...base, languages: ['ru', 'en'] })
     renderSettings('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()

@@ -1,0 +1,65 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/jobs/1/candidates?retryBefore=2026-11-01T12%3A00%3A00Z",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "jobId": 1,
+      "releaseGroup": "rg-one",
+      "artist": "Кино",
+      "album": "Группа крови",
+      "year": 1988,
+      "aliases": [],
+      "albumItemId": 0,
+      "state": "waiting",
+      "key": "",
+      "bytes": 0,
+      "attempts": 0,
+      "error": "",
+      "updatedAt": "2026-11-01T12:00:00Z",
+      "songs": 2,
+      "waitingFor": "",
+      "skipKey": "",
+      "anyFormat": false,
+      "dead": [],
+      "slow": [],
+      "waitDone": 0,
+      "clock": {
+        "runSec": 0,
+        "quietSec": 0,
+        "base": -1,
+        "done": 0
+      }
+    },
+    {
+      "id": 2,
+      "jobId": 1,
+      "releaseGroup": "rg-two",
+      "artist": "Кино",
+      "album": "Звезда по имени Солнце",
+      "year": 1989,
+      "aliases": [],
+      "albumItemId": 0,
+      "state": "waiting",
+      "key": "",
+      "bytes": 0,
+      "attempts": 0,
+      "error": "",
+      "updatedAt": "2026-11-01T12:00:00Z",
+      "songs": 1,
+      "waitingFor": "",
+      "skipKey": "",
+      "anyFormat": false,
+      "dead": [],
+      "slow": [],
+      "waitDone": 0,
+      "clock": {
+        "runSec": 0,
+        "quietSec": 0,
+        "base": -1,
+        "done": 0
+      }
+    }
+  ]
+}

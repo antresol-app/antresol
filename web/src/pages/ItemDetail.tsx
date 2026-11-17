@@ -2,21 +2,21 @@
 // one line of metadata, the description, actions; for series a season switcher
 // and episodes; then the cast and details. `?play=1` opens the player at once.
 import { APP_NAME } from '../brand'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, downloadUrl, getItem, getTitle, getTrailers, imageSrcSet, imageUrl, useEvents, errorText } from '../api/client'
 import type { Episode, ItemDetail as Detail, MediaFile, SourceChoice, TitleEpisode, TitleInfo, Trailer } from '../api/types'
 import { MarkButton } from '../components/MarkButton'
+import { ItemPanels } from '../components/ItemPanels'
 import { ActionBar, episodeToPlay, type PlayOptions } from '../components/ActionBar'
 import type { WatchWay } from '../components/WatchButton'
 import { ButtonLink, Button } from '../ui/Button'
-import { IconButton } from '../ui/IconButton'
 import { itemHref } from '../components/Card'
 import { SubtitleSearchSheet } from '../player/SubtitleSearchSheet'
-import { VoiceOverSheet } from '../components/VoiceOverSheet'
-// the sources build's parts of the page: TMDB titles, «Следить», the «Онлайн»
-// way, adding seasons, the pinned release (not in the core build: see docs/build-tags.md)
-import { AddSeason, FollowButton, followTarget, fromTitle, OnlineWay, PinnedPanel, TitleActions } from './ItemDetailFull'
+// the sources build's «Онлайн» way (none in the core build: see docs/build-tags.md)
+import { OnlineWay } from './ItemDetailFull'
+import { fromTitle } from './titleDetail'
+import { TitleActionRow, useAddonWatchWays } from './TitleActionRow'
 import { EpisodeList, episodesCount } from '../components/EpisodeList'
 import { EpisodeGuide } from '../components/episodes/EpisodeGuide'
 import { FamilyProgress, useFamily, type FamilyKind } from '../components/FamilyProgress'
@@ -119,9 +119,9 @@ export function ItemDetail() {
   const t = useT()
   const { id: rawId, kind: tmdbKind, tmdbId: rawTmdb } = useParams()
   const id = Number(rawId)
-  // /title/:kind/:tmdbId: a TMDB title found by «Найти и добавить» (sources build).
+  // /title/:kind/:tmdbId: a TMDB title that may not be in the library (the core title page)
   const tmdbId = Number(rawTmdb)
-  const isTitle = !__LIBRARY_EDITION__ && Boolean(tmdbKind && tmdbId > 0)
+  const isTitle = Boolean(tmdbKind && tmdbId > 0)
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useSession()
@@ -129,13 +129,10 @@ export function ItemDetail() {
   const leave = useLeaveDeleted()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [expanded, setExpanded] = useState(false)
-  const [titleSeasons, setTitleSeasons] = useState<TitleInfo['seasons']>([])
-  // a kid's «Попросить» of the title (sources build)
-  const [titleRequest, setTitleRequest] = useState<TitleInfo['kidRequest']>(undefined)
+  // the title of a title page (its seasons, a kid's «Попросить»; the addons' panels get it)
+  const [title, setTitle] = useState<TitleInfo | undefined>(undefined)
   const [problem, setProblem] = useState('')
-  const [addingSeason, setAddingSeason] = useState(false)
   const [findingSubs, setFindingSubs] = useState(false)
-  const [findingVoices, setFindingVoices] = useState(false)
   const [guide, setGuide] = useState<Guide>(undefined)
   const abortRef = useRef<AbortController | null>(null)
   const autoplay = params.get('play') === '1'
@@ -151,14 +148,13 @@ export function ItemDetail() {
       const ac = new AbortController()
       abortRef.current = ac
       if (!quiet) setState({ status: 'loading' })
-      const req: Promise<Detail | null> = !__LIBRARY_EDITION__ && isTitle
+      const req: Promise<Detail | null> = isTitle
         ? getTitle(tmdbKind!, tmdbId, ac.signal).then((ti) => {
             if (ti.inLibrary && ti.libraryItemId) {
               navigate(`/item/${ti.libraryItemId}`, { replace: true })
               return null
             }
-            setTitleSeasons(ti.seasons ?? [])
-            setTitleRequest(ti.kidRequest)
+            setTitle(ti)
             return fromTitle(ti, Boolean(user?.isKid))
           })
         : getItem(id, ac.signal)
@@ -260,19 +256,7 @@ export function ItemDetail() {
   const guideTmdb = it.kind === 'series' ? (isTitle ? tmdbId : (it.tmdbId ?? 0)) : 0
   // the tile rail stays until the guide has episodes (its load can be an on-demand refresh of seconds)
   const showTiles = isShow && it.seasons.length > 0 && (guideTmdb === 0 || !guide)
-  // A series on the server: missing and new seasons come through the same
-  // per-season flow as a title that is not on the server.
-  // (a library-only server has neither «Найти и добавить» nor «Следить»)
-  const canAddSeason = !__LIBRARY_EDITION__ && it.kind === 'series' && Boolean(it.tmdbId) && !user?.isKid && !user?.libraryOnly
-  const followOf = __LIBRARY_EDITION__ || user?.isKid || user?.libraryOnly ? null : followTarget(it, tmdbId)
-  const followButton = !__LIBRARY_EDITION__ && followOf && (
-    <FollowButton key={`${followOf.kind}-${followOf.tmdbId}`} kind={followOf.kind} tmdbId={followOf.tmdbId} initial={it.follow} />
-  )
   const subsFile = user?.isAdmin && !isTitle ? subtitleFile(it) : undefined
-  // «Найти озвучку…»: a film or series on the server, adult profiles of a
-  // server with sources (not a kid, not library-only)
-  const canFindVoices =
-    !__LIBRARY_EDITION__ && !isTitle && it.id > 0 && (it.kind === 'movie' || it.kind === 'series') && Boolean(user) && !user?.isKid && !user?.libraryOnly
   // «Удалить»: admins, items on the server (a TMDB title has no files here)
   const canDelete = Boolean(user?.isAdmin && !user.isKid) && !isTitle && it.id > 0
 
@@ -300,7 +284,8 @@ export function ItemDetail() {
   ]
   const shownInfo = info.filter(([, v]) => v)
 
-  // «Смотреть» plays the server's file; the sources build adds «Онлайн» to its ▾
+  // «Смотреть» plays the server's file; «Онлайн» (the sources build) and the
+  // addons' watch ways join its ▾
   // the mark is the one «Хочу посмотреть» of a library movie or series (it keeps the watchlist in step)
   const marked = (it.kind === 'series' || it.kind === 'movie') && it.id > 0 && Boolean(it.tmdbId)
   const actionBar = (moreWays?: WatchWay[]) => (
@@ -311,7 +296,6 @@ export function ItemDetail() {
       moreWays={moreWays}
       onChanged={() => load(true)}
       onFindSubtitles={subsFile ? () => setFindingSubs(true) : undefined}
-      onFindVoiceOvers={canFindVoices ? () => setFindingVoices(true) : undefined}
       trailers={trailers}
       deletion={
         canDelete
@@ -325,23 +309,9 @@ export function ItemDetail() {
             }
           : undefined
       }
-      // «Добавить сезон…» is one of the round buttons (a tile on phones)
       toggles={
-        <>
-          {canAddSeason && (
-            <IconButton
-              size="lg"
-              icon="plus"
-              label={t('item.addSeason.aria')}
-              tile={t('item.addSeason.tile')}
-              aria-expanded={addingSeason}
-              onClick={() => setAddingSeason((v) => !v)}
-            />
-          )}
-          {/* «Отметка»: the profile's state on the title (tracking) */}
-          {marked ? <MarkButton key={`${it.kind}-${it.tmdbId}`} kind={it.kind === 'movie' ? 'movie' : 'series'} tmdbId={it.tmdbId!} /> : null}
-          {followButton}
-        </>
+        // «Отметка»: the profile's state on the title (tracking)
+        marked ? <MarkButton key={`${it.kind}-${it.tmdbId}`} kind={it.kind === 'movie' ? 'movie' : 'series'} tmdbId={it.tmdbId!} /> : null
       }
     />
   )
@@ -400,22 +370,14 @@ export function ItemDetail() {
               )}
             </div>
           )}
-          {!__LIBRARY_EDITION__ && isTitle ? (
-            <TitleActions
-              item={it}
-              tmdbId={tmdbId}
-              seasons={titleSeasons}
-              kidRequest={titleRequest}
-              isKid={Boolean(user?.isKid)}
-              isAdmin={Boolean(user?.isAdmin)}
-              profileId={user?.id ?? 0}
-              canWatchOnline={Boolean(user?.canWatchOnline)}
-              follow={followButton}
-              guide={guide}
-            />
+          {isTitle ? (
+            <>
+              <TitleActionRow item={it} tmdbId={tmdbId} seasons={title?.seasons ?? []} kidRequest={title?.kidRequest} guide={guide} />
+              <ItemPanels item={it} title={title} />
+            </>
           ) : (
             <>
-              {!__LIBRARY_EDITION__ && (it.kind === 'series' || it.kind === 'movie') && it.tmdbId ? (
+              {(it.kind === 'series' || it.kind === 'movie') && it.tmdbId ? (
                 <OnlineWay
                   kind={it.kind}
                   tmdbId={it.tmdbId}
@@ -425,10 +387,10 @@ export function ItemDetail() {
                   isKid={Boolean(user?.isKid)}
                   openFromUrl
                 >
-                  {actionBar}
+                  {(online) => <LibraryActions item={it} ways={online} render={actionBar} />}
                 </OnlineWay>
               ) : (
-                actionBar()
+                <LibraryActions item={it} ways={[]} render={actionBar} />
               )}
               <FamilyProgress
                 members={family}
@@ -438,11 +400,7 @@ export function ItemDetail() {
               {findingSubs && subsFile && (
                 <SubtitleSearchSheet fileId={subsFile.id} onClose={() => setFindingSubs(false)} onDownloaded={() => load(true)} />
               )}
-              {!__LIBRARY_EDITION__ && findingVoices && canFindVoices && (
-                <VoiceOverSheet itemId={it.id} title={it.title} onClose={() => setFindingVoices(false)} />
-              )}
-              {!__LIBRARY_EDITION__ && canAddSeason && addingSeason && <AddSeason item={it} tmdbId={it.tmdbId!} isAdmin={Boolean(user?.isAdmin)} />}
-              {!__LIBRARY_EDITION__ && followOf && <PinnedPanel key={`${followOf.kind}-${followOf.tmdbId}`} kind={followOf.kind} tmdbId={followOf.tmdbId} name={it.title} poster={it.poster} />}
+              <ItemPanels item={it} />
             </>
           )}
         </div>
@@ -530,6 +488,17 @@ export function ItemDetail() {
         )}
       </div>
     </article>
+  )
+}
+
+/** A library item's action row: its «Смотреть ▾» gets `ways` (online) and the addons' watch ways after them. */
+function LibraryActions({ item, ways, render }: { item: Detail; ways: WatchWay[]; render: (more: WatchWay[]) => ReactNode }) {
+  const addon = useAddonWatchWays(item)
+  return (
+    <>
+      {render([...ways, ...addon.ways])}
+      {addon.node}
+    </>
   )
 }
 

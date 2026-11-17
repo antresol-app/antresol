@@ -169,6 +169,11 @@ export default {
   'player.page.fileMissing': 'The file isn’t on the server.',
   'player.page.openFailedDot': 'Couldn’t open the video.',
   'player.page.openFailed': 'Couldn’t open the video',
+  // an addon's video (/play/input/:id)
+  'player.input.loading': 'Loading…',
+  'player.input.gone': 'This video is no longer available',
+  'player.input.title': 'Video',
+  'player.slowSourceStalled': 'The source is not sending data',
   'player.bookmarks': 'Bookmarks',
   'player.bookmark.add': 'Add Bookmark',
   'player.bookmark.at': 'Bookmark at {time}',
@@ -180,7 +185,6 @@ export default {
   'player.screen.overFallback': 'That’s all for today. You can watch again tomorrow!',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'vo.find': 'Find Voice-Over…',
   'player.track.cleanedToggle': 'Clean voice-over',
   'player.track.cleanedToggleHint': 'Without the original speech under it',
 } satisfies EnOf<typeof ru>

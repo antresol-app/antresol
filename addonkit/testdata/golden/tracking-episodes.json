@@ -1,0 +1,21 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/tracking/titles/1/episodes",
+  "status": 200,
+  "body": [
+    {
+      "titleId": 1,
+      "season": 1,
+      "number": 1,
+      "name": "Анджин",
+      "airDate": "2024-02-27"
+    },
+    {
+      "titleId": 1,
+      "season": 1,
+      "number": 2,
+      "name": "Слуги двух господ",
+      "airDate": "2024-02-27"
+    }
+  ]
+}

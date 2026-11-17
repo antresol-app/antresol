@@ -18,10 +18,12 @@ RUN npm run build
 # 2. Бэкенд (статический бинарь, без CGO)
 FROM --platform=$BUILDPLATFORM golang:1.27 AS go-src
 WORKDIR /src
-# third_party/ holds modules wired in by go.mod `replace` (sevenzip): go needs
-# their go.mod to resolve the module graph, so they go in before the download.
+# third_party/ and addonkit/ hold modules wired in by go.mod `replace` (sevenzip,
+# the addon contract types): go needs their go.mod to resolve the module graph,
+# so they go in before the download.
 COPY go.mod go.sum ./
 COPY third_party/ ./third_party/
+COPY addonkit/ ./addonkit/
 RUN go mod download
 COPY . .
 

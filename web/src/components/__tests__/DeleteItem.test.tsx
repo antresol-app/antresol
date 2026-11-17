@@ -17,7 +17,7 @@ const series: DeletePlan = {
   size: 6 * GB,
   files: 3,
   seasons: [
-    { id: 11, number: 1, title: 'Сезон 1', episodes: 2, size: 4 * GB, notes: ['Раздача «S01» прекратится'] },
+    { id: 11, number: 1, title: 'Сезон 1', episodes: 2, size: 4 * GB, notes: ['Расширение отпустит «S01»'] },
     { id: 12, number: 2, title: 'Сезон 2', episodes: 1, size: 2 * GB, notes: [] },
   ],
   notes: [],
@@ -61,11 +61,11 @@ describe('DeleteItem', () => {
     expect(within(sheet).getByText('Освободится 6,0 ГБ, когда Корзину очистят.')).toBeInTheDocument()
     expect(within(sheet).getByRole('radio', { name: /Весь сериал/ })).toBeChecked()
     // the notes are the chosen season's
-    expect(within(sheet).queryByText('Раздача «S01» прекратится')).toBeNull()
+    expect(within(sheet).queryByText('Расширение отпустит «S01»')).toBeNull()
     fireEvent.click(within(sheet).getByRole('radio', { name: /Сезон 2/ }))
-    expect(within(sheet).queryByText('Раздача «S01» прекратится')).toBeNull()
+    expect(within(sheet).queryByText('Расширение отпустит «S01»')).toBeNull()
     fireEvent.click(within(sheet).getByRole('radio', { name: /Сезон 1/ }))
-    expect(within(sheet).getByText('Раздача «S01» прекратится')).toBeInTheDocument()
+    expect(within(sheet).getByText('Расширение отпустит «S01»')).toBeInTheDocument()
     expect(within(sheet).getByText('Освободится 4,0 ГБ, когда Корзину очистят.')).toBeInTheDocument()
     expect(within(sheet).getByText('2 серии · 4,0 ГБ')).toBeInTheDocument()
     fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить' }))

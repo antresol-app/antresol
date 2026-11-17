@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// fakeTorrents records what Ops asks of the download client.
-type fakeTorrents struct {
+// fakeHolders records what Ops asks of the download client.
+type fakeHolders struct {
 	follow, stop []string
 	stopErr      error
 	plans        [][2]string
@@ -21,7 +21,7 @@ type fakeTorrents struct {
 	watch         string
 }
 
-func (f *fakeTorrents) PlanRelocate(from, to string) ([]string, []string) {
+func (f *fakeHolders) PlanRelocate(from, to string) ([]string, []string) {
 	f.plans = append(f.plans, [2]string{from, to})
 	if to == "" {
 		return nil, append(append([]string{}, f.follow...), f.stop...)
@@ -29,13 +29,13 @@ func (f *fakeTorrents) PlanRelocate(from, to string) ([]string, []string) {
 	return f.follow, f.stop
 }
 
-func (f *fakeTorrents) Relocate(_ context.Context, from, to string, rename func() error) error {
+func (f *fakeHolders) Relocate(_ context.Context, from, to string, rename func() error) error {
 	f.relocated = append(f.relocated, [2]string{from, to})
 	return rename()
 }
 
 // Pause fails with stopErr; the data must still be in place then.
-func (f *fakeTorrents) Pause(_ context.Context, ih string) error {
+func (f *fakeHolders) Pause(_ context.Context, ih string) error {
 	if f.stopErr != nil {
 		return f.stopErr
 	}
@@ -44,24 +44,24 @@ func (f *fakeTorrents) Pause(_ context.Context, ih string) error {
 	return nil
 }
 
-func (f *fakeTorrents) Resume(_ context.Context, ih string) error {
+func (f *fakeHolders) Resume(_ context.Context, ih string) error {
 	f.resumed = append(f.resumed, ih)
 	return nil
 }
 
-func (f *fakeTorrents) Stop(_ context.Context, ih string) error {
+func (f *fakeHolders) Stop(_ context.Context, ih string) error {
 	f.stopped = append(f.stopped, ih)
 	return nil
 }
 
 // F6: trashing download data stops the download (data kept) before the files
 // move, so it can never download them again.
-func TestTrashStopsTorrents(t *testing.T) {
+func TestTrashStopsHolders(t *testing.T) {
 	o, mr, _ := testOps(t)
-	dir := filepath.Join(mr, "torrents/movies/Брат.1997.BDRip")
+	dir := filepath.Join(mr, "downloads/movies/Брат.1997.BDRip")
 	write(t, filepath.Join(dir, "Брат.mkv"), 10)
-	ft := &fakeTorrents{follow: []string{"aa"}, watch: dir}
-	o.Torrents = ft
+	ft := &fakeHolders{follow: []string{"aa"}, watch: dir}
+	o.Holders = ft
 	res, err := o.Trash(context.Background(), "downloads", []string{"movies/Брат.1997.BDRip"}, true, 1)
 	if err != nil || len(res.Trashed) != 1 {
 		t.Fatalf("%+v %v", res, err)
@@ -74,18 +74,18 @@ func TestTrashStopsTorrents(t *testing.T) {
 	}
 }
 
-func TestTrashKeepsDataWhenTorrentCannotStop(t *testing.T) {
+func TestTrashKeepsDataWhenHolderCannotStop(t *testing.T) {
 	o, mr, _ := testOps(t)
-	dir := filepath.Join(mr, "torrents/movies/Брат.1997.BDRip")
+	dir := filepath.Join(mr, "downloads/movies/Брат.1997.BDRip")
 	write(t, filepath.Join(dir, "Брат.mkv"), 10)
 	busy := errors.New("organizing")
-	o.Torrents = &fakeTorrents{stop: []string{"aa"}, stopErr: busy}
+	o.Holders = &fakeHolders{stop: []string{"aa"}, stopErr: busy}
 	_, err := o.Trash(context.Background(), "downloads", []string{"movies/Брат.1997.BDRip"}, true, 1)
-	if !errors.Is(err, ErrTorrent) || !errors.Is(err, busy) {
+	if !errors.Is(err, ErrHeld) || !errors.Is(err, busy) {
 		t.Fatalf("err %v", err)
 	}
 	if !exists(dir) {
-		t.Fatal("data trashed although the torrent kept running")
+		t.Fatal("data trashed although its holder kept running")
 	}
 	if items, _ := o.ListTrash(context.Background()); len(items) != 0 {
 		t.Fatalf("trash rows %+v", items)
@@ -94,17 +94,17 @@ func TestTrashKeepsDataWhenTorrentCannotStop(t *testing.T) {
 
 // F6: a move re-points downloads that can follow and stops the others
 // first; a rename of a file inside a download stops it.
-func TestMoveAndRenameKeepTorrentsInStep(t *testing.T) {
+func TestMoveAndRenameKeepHoldersInStep(t *testing.T) {
 	o, mr, _ := testOps(t)
 	ctx := context.Background()
-	write(t, filepath.Join(mr, "torrents/movies/A/a.mkv"), 1)
-	ft := &fakeTorrents{follow: []string{"aa"}, stop: []string{"bb"}, watch: filepath.Join(mr, "torrents/movies")}
-	o.Torrents = ft
+	write(t, filepath.Join(mr, "downloads/movies/A/a.mkv"), 1)
+	ft := &fakeHolders{follow: []string{"aa"}, stop: []string{"bb"}, watch: filepath.Join(mr, "downloads/movies")}
+	o.Holders = ft
 	write(t, filepath.Join(mr, "media/archive/.keep"), 0)
 	if err := o.Move(ctx, "downloads", "movies", "library", "archive", true); err != nil {
 		t.Fatal(err)
 	}
-	src := filepath.Join(mr, "torrents/movies")
+	src := filepath.Join(mr, "downloads/movies")
 	if len(ft.stopped) != 1 || ft.stopped[0] != "bb" || len(ft.paused) != 1 || !ft.existedAtStop[0] {
 		t.Fatalf("stopped %v", ft.stopped)
 	}
@@ -115,16 +115,16 @@ func TestMoveAndRenameKeepTorrentsInStep(t *testing.T) {
 		t.Fatal("not moved")
 	}
 
-	write(t, filepath.Join(mr, "torrents/B/b.mkv"), 1)
-	ft2 := &fakeTorrents{stop: []string{"cc"}, watch: filepath.Join(mr, "torrents/B/b.mkv")}
-	o.Torrents = ft2
+	write(t, filepath.Join(mr, "downloads/B/b.mkv"), 1)
+	ft2 := &fakeHolders{stop: []string{"cc"}, watch: filepath.Join(mr, "downloads/B/b.mkv")}
+	o.Holders = ft2
 	if err := o.Rename(ctx, "downloads", "B/b.mkv", "c.mkv", true); err != nil {
 		t.Fatal(err)
 	}
-	if len(ft2.stopped) != 1 || len(ft2.relocated) != 0 || !exists(filepath.Join(mr, "torrents/B/c.mkv")) {
+	if len(ft2.stopped) != 1 || len(ft2.relocated) != 0 || !exists(filepath.Join(mr, "downloads/B/c.mkv")) {
 		t.Fatalf("stopped %v relocated %v", ft2.stopped, ft2.relocated)
 	}
-	if p := ft2.plans[0]; p[0] != filepath.Join(mr, "torrents/B/b.mkv") || p[1] != filepath.Join(mr, "torrents/B/c.mkv") {
+	if p := ft2.plans[0]; p[0] != filepath.Join(mr, "downloads/B/b.mkv") || p[1] != filepath.Join(mr, "downloads/B/c.mkv") {
 		t.Fatalf("plan %v", p)
 	}
 }
@@ -152,12 +152,12 @@ func TestStreamCacheMkdirRenameRefused(t *testing.T) {
 
 // C-N2: a rename that fails after the downloads were held releases them: they
 // are not stopped (and their rows not dropped) for a move that never happened.
-func TestFailedMoveReleasesTorrents(t *testing.T) {
+func TestFailedMoveReleasesHolders(t *testing.T) {
 	o, mr, _ := testOps(t)
-	write(t, filepath.Join(mr, "torrents/B/b.mkv"), 1)
-	ft := &fakeTorrents{stop: []string{"cc"}, watch: filepath.Join(mr, "torrents/B/b.mkv")}
-	o.Torrents = ft
-	err := o.moveData(context.Background(), filepath.Join(mr, "torrents/B/missing.mkv"), filepath.Join(mr, "torrents/B/x.mkv"))
+	write(t, filepath.Join(mr, "downloads/B/b.mkv"), 1)
+	ft := &fakeHolders{stop: []string{"cc"}, watch: filepath.Join(mr, "downloads/B/b.mkv")}
+	o.Holders = ft
+	err := o.moveData(context.Background(), filepath.Join(mr, "downloads/B/missing.mkv"), filepath.Join(mr, "downloads/B/x.mkv"))
 	if err == nil {
 		t.Fatal("rename of a missing file worked")
 	}

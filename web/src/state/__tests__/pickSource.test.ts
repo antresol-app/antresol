@@ -30,15 +30,27 @@ describe('pickSource', () => {
     expect(pickSource([onA, libEn], null)).toBe(libEn)
     expect(pickSource([], choice)).toBeNull()
   })
-  it('best prefers library then pinned then online then torrent', () => {
-    const t = src({ kind: 'torrent', quality: '2160p' })
-    const p = src({ kind: 'pinned', quality: '720p' })
+  it('kinds sort on one scale: library, an addon\'s order, online at 20, unknown last', () => {
+    // an addon's kinds alpha (10) and beta (30), from its episodeActions entry
+    const order = { alpha: 10, beta: 30 }
+    const u = src({ kind: 'gamma', quality: '2160p' })
+    const b = src({ kind: 'beta', quality: '2160p' })
+    const a = src({ kind: 'alpha', quality: '720p' })
     const o = src({ kind: 'online', quality: '1080p' })
     const l = src({ kind: 'library', quality: '480p' })
-    expect(bestSource([t, o, p, l])).toBe(l)
-    expect(bestSource([t, o, p])).toBe(p)
-    expect(bestSource([t, o])).toBe(o)
-    expect(bestSource([t])).toBe(t)
+    expect(bestSource([u, b, o, a, l], order)).toBe(l)
+    expect(bestSource([u, b, o, a], order)).toBe(a)
+    expect(bestSource([u, b, o], order)).toBe(o)
+    expect(bestSource([u, b], order)).toBe(b)
+    expect(bestSource([u], order)).toBe(u)
+    // with no addon's order its kinds are unknown: after online
+    expect(bestSource([a, o])).toBe(o)
+    // an order of 0 or below never outranks the library
+    const hiA = src({ kind: 'alpha', quality: '2160p' })
+    expect(bestSource([hiA, l], { alpha: -1 })).toBe(l)
+    expect(bestSource([hiA, l], { alpha: 0 })).toBe(l)
+    // the source sheet's rows follow the same scale
+    expect(groupSources([u, b, o, a, l], '', order)[0]!.dubs[0]!.items).toEqual([l, a, o, b, u])
     const hi = src({ kind: 'online', quality: '1080p' })
     expect(bestSource([o, hi, src({ kind: 'online', quality: '720p' })])).toBe(o)
   })
@@ -76,21 +88,22 @@ describe('qualityRank', () => {
 describe('pickSource with a preferred way', () => {
   const lib1 = src({ kind: 'library', ref: 'item:1', quality: '720p' })
   const on = src({ kind: 'online', ref: 'o', quality: '1080p' })
-  const pin = src({ kind: 'pinned', ref: 'pin:1:0', quality: '1080p' })
-  const tor = src({ kind: 'torrent', ref: 't', quality: '2160p' })
+  const alpha = src({ kind: 'alpha', ref: 'a:1:0', quality: '1080p' })
+  const beta = src({ kind: 'beta', ref: 'b', quality: '2160p' })
+  const order = { alpha: 10, beta: 30 }
   it('no choice: the preferred kinds win over the default order', () => {
-    expect(pickSource([on, tor], null, ['pinned', 'torrent'])).toBe(tor)
-    expect(pickSource([on, pin, tor], null, ['pinned', 'torrent'])).toBe(pin)
-    expect(pickSource([pin, on], null, ['online'])).toBe(on)
+    expect(pickSource([on, beta], null, ['alpha', 'beta'], order)).toBe(beta)
+    expect(pickSource([on, alpha, beta], null, ['alpha', 'beta'], order)).toBe(alpha)
+    expect(pickSource([alpha, on], null, ['online'], order)).toBe(on)
   })
   it('the library stays first', () => {
-    expect(pickSource([on, lib1], null, ['online'])).toBe(lib1)
+    expect(pickSource([on, lib1], null, ['online'], order)).toBe(lib1)
   })
   it('none of the preferred kinds: the best', () => {
-    expect(pickSource([pin, tor], null, ['online'])).toBe(pin)
+    expect(pickSource([alpha, beta], null, ['online'], order)).toBe(alpha)
   })
   it('a saved choice beats the preference', () => {
-    expect(pickSource([on, pin], { kind: 'online' }, ['pinned'])).toBe(on)
+    expect(pickSource([on, alpha], { kind: 'online' }, ['alpha'], order)).toBe(on)
   })
 })
 

@@ -1,0 +1,5 @@
+{
+  "method": "DELETE",
+  "path": "/api/addon-core/v1/play/inputs/{input}",
+  "status": 204
+}

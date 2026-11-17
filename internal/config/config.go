@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -25,6 +26,22 @@ type Config struct {
 	// (VAULT_JELLYFIN_VERSION) as the server version.
 	JellyfinListen  string
 	JellyfinVersion string
+
+	// ExtraRoots (VAULT_EXTRA_ROOTS, "id=/abs/dir;id2=/abs/dir2") adds
+	// admin-only roots to the file browser; parsed by files.ExtraRoots.
+	ExtraRoots string
+
+	// Addons (VAULT_ADDONS, on unless "off") are separate programs the
+	// server installs and supervises. AddonsDir is $VAULT_DATA_DIR/addons;
+	// AddonsDev (VAULT_ADDONS_DEV, relative to the data dir) holds local
+	// addons for development ("": none).
+	Addons    bool
+	AddonsDir string
+	AddonsDev string
+	// AddonsPin (VAULT_ADDONS_PIN, "id@version[,…]", "": none) are the
+	// releases from AddonsDev the server installs at boot and locks
+	// (addons.ParsePins reads it; cmd/vault refuses a bad one).
+	AddonsPin string
 
 	// Relative to MediaRoot.
 	MoviesDir     string
@@ -224,6 +241,7 @@ func Load() (Config, error) {
 		JellyfinVersion:       env("VAULT_JELLYFIN_VERSION", "12.1.0"),
 		DataDir:               env("VAULT_DATA_DIR", "./data"),
 		MediaRoot:             os.Getenv("VAULT_MEDIA_ROOT"),
+		ExtraRoots:            os.Getenv("VAULT_EXTRA_ROOTS"),
 		MoviesDir:             env("VAULT_MOVIES_DIR", "media/movies"),
 		SeriesDir:             env("VAULT_SERIES_DIR", "media/series"),
 		MusicDir:              env("VAULT_MUSIC_DIR", "media/music"),
@@ -251,6 +269,15 @@ func Load() (Config, error) {
 	c.EbooksDir = env("VAULT_EBOOKS_DIR", filepath.Join(c.BooksDir, "ebooks"))
 	c.AudiobooksDir = env("VAULT_AUDIOBOOKS_DIR", filepath.Join(c.BooksDir, "audiobooks"))
 	c.ComicsDir = env("VAULT_COMICS_DIR", filepath.Join(c.BooksDir, "manga"))
+	c.Addons = os.Getenv("VAULT_ADDONS") != "off"
+	c.AddonsDir = filepath.Join(c.DataDir, "addons")
+	c.AddonsPin = strings.TrimSpace(os.Getenv("VAULT_ADDONS_PIN"))
+	if v := os.Getenv("VAULT_ADDONS_DEV"); v != "" {
+		c.AddonsDev = v
+		if !filepath.IsAbs(v) {
+			c.AddonsDev = filepath.Join(c.DataDir, v)
+		}
+	}
 	c.TranscodeDir = filepath.Join(c.DataDir, "hls")
 	if v := os.Getenv("VAULT_TRANSCODE_DIR"); v != "" {
 		c.TranscodeDir = c.Abs(v)
@@ -378,4 +405,18 @@ func (c Config) Abs(rel string) string {
 		return rel
 	}
 	return filepath.Join(c.MediaRoot, rel)
+}
+
+// AddonsCoreURL is where addons reach the server: the host Listen is
+// bound to (loopback when it is empty or unspecified, 0.0.0.0 or ::)
+// and its port.
+func (c Config) AddonsCoreURL() string {
+	host, port, err := net.SplitHostPort(c.Listen)
+	if err != nil {
+		host, port = "", "8420"
+	}
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }

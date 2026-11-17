@@ -30,7 +30,6 @@ var (
 	reComicHash     = regexp.MustCompile(`#\s*(\d+(?:[.,]\d+)?)`)
 	reComicBare     = regexp.MustCompile(`(?:^|[\s_.-])(\d+(?:[.,]\d+)?)\s*$`)
 	reComicYear     = regexp.MustCompile(`^(?:19|20)\d\d$`)
-	reRarPart       = regexp.MustCompile(`(?i)\.part0*([2-9]|[1-9]\d+)\.rar$`)
 )
 
 func comicNum(s string) float64 {

@@ -214,3 +214,95 @@ func TestMergeStudios(t *testing.T) {
 		t.Errorf("MergeStudios = %q, want %q", got, want)
 	}
 }
+
+// keepStudios restores the package's studio tables after a test that adds to them.
+func keepStudios(t *testing.T) {
+	t.Helper()
+	list := make([]studio, len(studios))
+	for i, s := range studios {
+		list[i] = studio{s.name, slices.Clone(s.aliases)}
+	}
+	res, keys := studioRes, studioKeys
+	t.Cleanup(func() {
+		studios, studioRes, studioKeys = list, res, keys
+	})
+}
+
+func TestAddStudios(t *testing.T) {
+	keepStudios(t)
+	if StudioKey("teststudio") != "teststudio" {
+		t.Fatalf("known before AddStudios: %q", StudioKey("teststudio"))
+	}
+	AddStudios(1, "Студия Тест", "teststudio", "test studio")
+	if got := StudioKey("teststudio"); got != "Студия Тест" {
+		t.Errorf("StudioKey = %q", got)
+	}
+	if got := Studios("Сериал S01 1080p | MVO (Test.Studio, LostFilm)"); !slices.Equal(got, []string{"Студия Тест", "LostFilm"}) {
+		t.Errorf("Studios = %v", got)
+	}
+	if got := KnownStudios(); len(got) != len(coreStudios)+1 || got[0] != "LostFilm" || got[1] != "Студия Тест" || got[2] != "Кубик в Кубе" {
+		t.Errorf("KnownStudios = %v", got)
+	}
+	// a second call with the same name adds only spellings it lacks
+	AddStudios(5, "Студия Тест", "teststudio", "тест-студия")
+	if got := KnownStudios(); len(got) != len(coreStudios)+1 || got[1] != "Студия Тест" {
+		t.Errorf("a second AddStudios: %v", got)
+	}
+	if c, ok := CanonicalStudio("Тест студия"); !ok || c != "Студия Тест" {
+		t.Errorf("the added spelling: %q %v", c, ok)
+	}
+	// past the end: last
+	AddStudios(99, "Последняя")
+	if got := KnownStudios(); got[len(got)-1] != "Последняя" {
+		t.Errorf("past the end: %v", got)
+	}
+}
+
+func TestAddAliases(t *testing.T) {
+	keepStudios(t)
+	if _, ok := CanonicalStudio("lostfilm.example"); ok {
+		t.Fatal("known before AddAliases")
+	}
+	AddAliases("LostFilm", "lostfilm.example")
+	AddAliases("LostFilm", "lostfilm.example")
+	if c, ok := CanonicalStudio("LostFilm.Example"); !ok || c != "LostFilm" {
+		t.Errorf("CanonicalStudio = %q %v", c, ok)
+	}
+	if got := Studios("Show.S02E03.Lostfilm.Example.1080p"); !slices.Equal(got, []string{"LostFilm"}) {
+		t.Errorf("Studios = %v", got)
+	}
+	for _, s := range studios {
+		if s.name == "LostFilm" && slices.Index(s.aliases, "lostfilm.example") != len(s.aliases)-1 {
+			t.Errorf("aliases %q: added once, after its own", s.aliases)
+		}
+	}
+	// an unknown studio: nothing added
+	AddAliases("Нет такой", "nope")
+	if _, ok := CanonicalStudio("nope"); ok {
+		t.Error("an alias of an unknown studio")
+	}
+	if len(KnownStudios()) != len(coreStudios) {
+		t.Errorf("KnownStudios = %v", KnownStudios())
+	}
+}
+
+// An empty or blank spelling of a new studio is dropped: it would match
+// almost every release name and own the empty key.
+func TestAddStudios_EmptySpelling(t *testing.T) {
+	keepStudios(t)
+	AddStudios(0, "Пустая", "", "  ", "pustaya")
+	if got := Studios("Сериал S01 1080p | MVO (LostFilm)"); slices.Contains(got, "Пустая") {
+		t.Errorf("an empty spelling matched: %v", got)
+	}
+	if c, ok := CanonicalStudio(""); ok {
+		t.Errorf("the empty key belongs to %q", c)
+	}
+	if c, ok := CanonicalStudio("pustaya"); !ok || c != "Пустая" {
+		t.Errorf("the real spelling: %q %v", c, ok)
+	}
+	for _, s := range studios {
+		if s.name == "Пустая" && !slices.Equal(s.aliases, []string{"pustaya"}) {
+			t.Errorf("aliases %q", s.aliases)
+		}
+	}
+}

@@ -1,9 +1,12 @@
 package files
 
 import (
+	"cmp"
 	"context"
 	"io/fs"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -19,13 +22,51 @@ const (
 )
 
 // usageCategories are the roots counted separately, in priority order: a
-// hardlinked file (a managed download + library copy) is counted once, in the
-// first category that holds it.
-var usageCategories = []string{"movies", "series", "music", "books", "downloads", "stream-cache"}
+// hardlinked file (an addon's download + library copy) is counted once, in
+// the first category that holds it; the addons' segments (Usage.Extra) come
+// after them.
+var usageCategories = []string{"movies", "series", "music", "books"}
+
+// extraDeadline bounds Usage.Extra (the disk.usage hook's own timeout).
+const extraDeadline = 2 * time.Second
+
+// ExtraSegment is a disk segment an addon reports (the disk.usage hook):
+// with Dir, the folder is walked after the library categories; without,
+// Bytes is taken as is. Label is the segment's name by language (ru, en).
+type ExtraSegment struct {
+	ID    string
+	Label map[string]string
+	Dir   string
+	Bytes int64
+
+	forms []string // Dir as given, resolved (Dir once checked), and resolved as below the media root
+}
 
 type Category struct {
 	ID    string `json:"id"`
 	Bytes int64  `json:"bytes"`
+	// Label (an addon's segment): its name in the request's language
+	// (UsageReport.Localized); the library categories have none.
+	Label string `json:"label,omitempty"`
+
+	labels map[string]string
+}
+
+// Localized is r with each addon segment's Label in lang (the other
+// language when the addon gave none in lang).
+func (r UsageReport) Localized(lang string) UsageReport {
+	r.Categories = slices.Clone(r.Categories)
+	for i, c := range r.Categories {
+		if c.labels == nil {
+			continue
+		}
+		l := c.labels[lang]
+		if l == "" {
+			l = cmp.Or(c.labels["ru"], c.labels["en"])
+		}
+		r.Categories[i].Label = l
+	}
+	return r
 }
 
 type UsageReport struct {
@@ -60,6 +101,13 @@ type Usage struct {
 	walkSem chan struct{}
 	// walk overrides treeSize (tests).
 	walk func(ctx context.Context, dir string) int64
+
+	// Extra lists the addons' segments (nil: none); it is called with a
+	// deadline of extraTimeout when the report is recomputed.
+	Extra func(ctx context.Context) []ExtraSegment
+	// extraTimeout overrides extraDeadline; statfs, the disk figures (tests).
+	extraTimeout time.Duration
+	statfs       func(path string) (total, used, free int64, err error)
 }
 
 type dirSize struct {
@@ -116,12 +164,16 @@ func walkFiles(ctx context.Context, dir string, seen map[inode]bool, skip func(p
 }
 
 // usageSnap is one usage walk: the report, each category's first-level
-// entries (sorted, see Breakdown) and the hardlinked inodes it counted.
+// entries (sorted, see Breakdown), the hardlinked inodes it counted, the
+// addons' segments (by id) and the folders they walked (each in every
+// form a walk of the media root may meet it).
 type usageSnap struct {
-	report  UsageReport
-	at      time.Time
-	entries map[string][]UsageEntry
-	seen    map[inode]bool
+	report    UsageReport
+	at        time.Time
+	entries   map[string][]UsageEntry
+	seen      map[inode]bool
+	extra     map[string]bool
+	extraDirs []string
 }
 
 // Report returns total/used/free of the media disk and per-category sizes.
@@ -153,15 +205,12 @@ func (u *Usage) snapshot(ctx context.Context) (*usageSnap, error) {
 
 	r := UsageReport{Categories: []Category{}}
 	if !u.NoDisk {
-		var st syscall.Statfs_t
-		if err := syscall.Statfs(u.Sandbox.MediaRoot(), &st); err != nil {
+		var err error
+		if r.Total, r.Used, r.Free, err = u.disk(); err != nil {
 			return nil, err
 		}
-		bs := int64(st.Bsize)
-		r.Total, r.Free = int64(st.Blocks)*bs, int64(st.Bavail)*bs
-		r.Used = r.Total - int64(st.Bfree)*bs
 	}
-	s := &usageSnap{entries: map[string][]UsageEntry{}, seen: map[inode]bool{}}
+	s := &usageSnap{entries: map[string][]UsageEntry{}, seen: map[inode]bool{}, extra: map[string]bool{}}
 	var sum int64
 	for _, id := range usageCategories {
 		var n int64
@@ -181,6 +230,23 @@ func (u *Usage) snapshot(ctx context.Context) (*usageSnap, error) {
 		sum += n
 		r.Categories = append(r.Categories, Category{ID: id, Bytes: n})
 	}
+	for _, x := range u.extraSegments(ctx) {
+		n := max(x.Bytes, 0)
+		if x.Dir != "" {
+			// the same pass and seen set: a download hardlinked into the
+			// library was counted there
+			acc := entrySums{}
+			n = walkFiles(ctx, x.Dir, s.seen, nil, acc.under(x.Dir, nil))
+			s.entries[x.ID] = acc.sorted()
+			s.extraDirs = append(s.extraDirs, x.forms...)
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		sum += n
+		s.extra[x.ID] = true
+		r.Categories = append(r.Categories, Category{ID: x.ID, Bytes: n, labels: x.Label})
+	}
 	if !u.NoDisk {
 		r.Categories = append(r.Categories, Category{ID: "other", Bytes: max(r.Used-sum, 0)})
 	}
@@ -190,6 +256,91 @@ func (u *Usage) snapshot(ctx context.Context) (*usageSnap, error) {
 	u.snap = s
 	u.mu.Unlock()
 	return s, nil
+}
+
+// disk is the media disk's total, used and free bytes.
+func (u *Usage) disk() (total, used, free int64, err error) {
+	if u.statfs != nil {
+		return u.statfs(u.Sandbox.MediaRoot())
+	}
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(u.Sandbox.MediaRoot(), &st); err != nil {
+		return 0, 0, 0, err
+	}
+	bs := int64(st.Bsize)
+	total, free = int64(st.Blocks)*bs, int64(st.Bavail)*bs
+	return total, total - int64(st.Bfree)*bs, free, nil
+}
+
+// extraSegments asks Extra (within extraDeadline) and keeps the segments
+// it may count: an id not seen before, and a Dir that is absolute, clean,
+// at or inside the media root or a file-browser root (their symlinks
+// resolved, as the dir's), and neither at, inside nor around a library
+// category or an earlier segment's folder (so never the media root
+// itself); "" Dir is a segment by Bytes. A dir that does not resolve (a
+// missing mount) is left out for this report.
+func (u *Usage) extraSegments(ctx context.Context) []ExtraSegment {
+	if u.Extra == nil {
+		return nil
+	}
+	ectx, cancel := context.WithTimeout(ctx, cmp.Or(u.extraTimeout, extraDeadline))
+	defer cancel()
+	segs := u.Extra(ectx)
+	var roots, taken []string
+	rmr, _ := filepath.EvalSymlinks(u.Sandbox.MediaRoot())
+	for _, d := range append([]string{u.Sandbox.MediaRoot()}, rootDirs(u.Sandbox.Roots())...) {
+		if r, err := filepath.EvalSymlinks(d); err == nil {
+			roots = append(roots, r)
+		}
+	}
+	for _, id := range usageCategories {
+		if root, err := u.Sandbox.Root(id); err == nil {
+			if r, err := filepath.EvalSymlinks(root.Dir); err == nil {
+				taken = append(taken, r)
+			}
+		}
+	}
+	ids := map[string]bool{}
+	var out []ExtraSegment
+	for _, x := range segs {
+		if x.ID == "" || ids[x.ID] || slices.Contains(usageCategories, x.ID) || x.ID == "other" {
+			continue
+		}
+		if x.Dir != "" {
+			if !filepath.IsAbs(x.Dir) || filepath.Clean(x.Dir) != x.Dir {
+				continue
+			}
+			d, err := filepath.EvalSymlinks(x.Dir)
+			if err != nil || !slices.ContainsFunc(roots, func(r string) bool { return r == d || strictlyBelow(d, r) }) ||
+				slices.ContainsFunc(taken, func(t string) bool { return t == d || strictlyBelow(d, t) || strictlyBelow(t, d) }) {
+				continue
+			}
+			// walked resolved: a dir that is itself a symlink is walked into
+			x.forms, x.Dir = []string{x.Dir, d}, d
+			if strictlyBelow(d, rmr) {
+				rel, _ := filepath.Rel(rmr, d)
+				x.forms = append(x.forms, filepath.Join(u.Sandbox.MediaRoot(), rel))
+			}
+			taken = append(taken, d)
+		}
+		ids[x.ID] = true
+		out = append(out, x)
+	}
+	return out
+}
+
+func rootDirs(rs []Root) []string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, r.Dir)
+	}
+	return out
+}
+
+// strictlyBelow: p lies inside dir (both clean and absolute), not at it.
+func strictlyBelow(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // sem is the slots of the background walks (folder sizes, «other»).

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,8 +24,8 @@ func TestOpenMigratesIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 		var files []string
-		for _, md := range migrationDirs {
-			f, _ := filepath.Glob(md.dir + "/*.sql")
+		for _, md := range migrationDirs { // the embedded files, not the folder
+			f, _ := fs.Glob(md.fs, md.dir+"/*.sql")
 			files = append(files, f...)
 		}
 		if n != len(files) || n < 3 {

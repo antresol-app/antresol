@@ -1,5 +1,5 @@
 // The six empty library pages over a server with nothing on it, for
-// emptyLibrary.test.tsx (the core build) and emptyLibrary.full.test.tsx.
+// emptyLibrary.test.tsx.
 import { render } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'

@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getItem, getPlaybackPrefs, imageUrl, setSubtitleOffset } from '../api/client'
 import { queueRemember } from './rememberQueue'
+import type { TrackActionItem } from '../addons/registry'
 import type { MediaFile, PlaybackPrefs, PlayRequest, PlayResponse, Quality, SubTrack, TrackChoice, TrackPrefs } from '../api/types'
 import { Icon } from '../components/Icon'
 import { FamilyMarks, ReturnPill } from '../components/FamilyMarks'
@@ -25,7 +26,8 @@ import look from './SubtitleLook.module.css'
 import { OnlineQualityMenu, QualityMenu, QUALITIES } from './QualityMenu'
 import { TrackMenu } from './TrackMenu'
 import { SubtitleSearchSheet, tracksNotRefreshed, type SubtitleLang } from './SubtitleSearchSheet'
-import { VoiceOverSheet } from '../components/VoiceOverSheet'
+import { usePlayerTrackActions } from './trackActions'
+import { SheetContainer } from '../ui/Sheet'
 import { useSession } from '../state/session'
 import { useScreenGuard } from '../state/screenTime'
 import { useCaps } from './useCaps'
@@ -91,10 +93,15 @@ export interface VideoPlayerProps {
    */
   tracks?: TrackPrefs
   /**
-   * Sources build: the film or series «Найти озвучку…» looks for (the audio
-   * menu's last row; adult profiles only).
+   * What the addons' track actions (the audio menu's last rows) are of: the
+   * movie, or the series of an episode (none during online playback).
    */
-  voiceOverItem?: { id: number; title: string }
+  trackActionItem?: TrackActionItem
+  /**
+   * Saves the position somewhere else than the library's /api/progress (an
+   * addon's input: its own route, which saves the item's progress itself).
+   */
+  saveProgress?: (positionMs: number, durationMs: number, keepalive: boolean) => Promise<void>
 }
 
 export interface OnlinePlayback {
@@ -203,7 +210,8 @@ export function VideoPlayer({
   online,
   suspendKeys = false,
   tracks,
-  voiceOverItem,
+  trackActionItem,
+  saveProgress,
 }: VideoPlayerProps) {
   const t = useT()
   const caps = useCaps()
@@ -240,7 +248,7 @@ export function VideoPlayer({
   })
   // a jump to another profile's place is only looked at until it plays on (useProgress)
   const holdRef = useRef<Hold | null>(null)
-  const save = useProgress({ itemId, absRef: p.absRef, durRef: p.durRef, playing: p.playing, saver: online?.saveProgress, holdRef })
+  const save = useProgress({ itemId, absRef: p.absRef, durRef: p.durRef, playing: p.playing, saver: saveProgress ?? online?.saveProgress, holdRef })
   // «Экранное время» of a kid: a toast five minutes before the end, a
   // friendly stop at it (the server stops the stream there anyway)
   const kid = Boolean(useSession().user?.isKid)
@@ -285,7 +293,9 @@ export function VideoPlayer({
   const [visible, setVisible] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
   const [findingSubs, setFindingSubs] = useState(false)
-  const [findingVoices, setFindingVoices] = useState(false)
+  // the addons' rows of the track menu: a library movie or episode (none online; kids none)
+  const trackActions = usePlayerTrackActions(online ? undefined : trackActionItem)
+  const trackSheetOpen = Boolean(trackActions.node)
   const [scrubbing, setScrubbing] = useState(false)
   const hideTimer = useRef<number | undefined>(undefined)
   const poke = useCallback(() => {
@@ -332,7 +342,7 @@ export function VideoPlayer({
   }
 
   const shown =
-    visible || !p.playing || menuOpen || scrubbing || Boolean(p.error) || p.needsTap || findingSubs || findingVoices || overlayOpen || Boolean(ret.back)
+    visible || !p.playing || menuOpen || scrubbing || Boolean(p.error) || p.needsTap || findingSubs || trackSheetOpen || overlayOpen || Boolean(ret.back)
 
   // ---------- volume ----------
   const [volume, setVolume] = useState(() => {
@@ -426,7 +436,6 @@ export function VideoPlayer({
   // the list of this part until the next session brings the server's list.
   const fileId = parts[p.part]?.id ?? 0
   const canFindSubs = Boolean(user?.isAdmin) && itemId > 0 && fileId > 0
-  const canFindVoices = !__LIBRARY_EDITION__ && Boolean(voiceOverItem && user && !user.isKid && !user.libraryOnly && !online)
   const [subsOverride, setSubsOverride] = useState<{ fileId: number; subs: SubTrack[] } | null>(null)
   useEffect(() => setSubsOverride(null), [p.subs])
   const subs = subsOverride && subsOverride.fileId === fileId ? subsOverride.subs : p.subs
@@ -569,7 +578,7 @@ export function VideoPlayer({
       return true
     },
     // stopped by «Экранное время»: no key plays on
-    suspended: findingSubs || findingVoices || suspendKeys || Boolean(screenGuard.over),
+    suspended: findingSubs || trackSheetOpen || suspendKeys || Boolean(screenGuard.over),
   })
 
   // System media controls (lock screen, keyboard media keys).
@@ -764,7 +773,7 @@ export function VideoPlayer({
               onSubtitle={chooseSub}
               onOpenChange={setMenuOpen}
               onFindSubtitles={canFindSubs ? () => setFindingSubs(true) : undefined}
-              onFindVoiceOvers={canFindVoices ? () => setFindingVoices(true) : undefined}
+              actions={trackActions.rows}
               subOffsetMs={offsetMs}
               onSubOffset={(ms) => moveOffset(clampSubtitleOffset(ms))}
             />
@@ -939,14 +948,8 @@ export function VideoPlayer({
           onDownloaded={subtitleDownloaded}
         />
       )}
-      {!__LIBRARY_EDITION__ && findingVoices && canFindVoices && voiceOverItem && (
-        <VoiceOverSheet
-          itemId={voiceOverItem.id}
-          title={voiceOverItem.title}
-          container={rootRef.current}
-          onClose={() => setFindingVoices(false)}
-        />
-      )}
+      {/* an addon's sheet over the player: mounted in it, so it shows in full screen */}
+      <SheetContainer.Provider value={rootRef.current}>{trackActions.node}</SheetContainer.Provider>
       {overlay?.(rootRef.current, () => holdRef.current?.pos ?? p.absRef.current)}
     </div>
   )

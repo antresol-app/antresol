@@ -35,8 +35,8 @@ var coreStudios = []studio{
 	{"IdeaFilm", []string{"idea film"}},
 }
 
-// studios in suggestion order (KnownStudios): coreStudios, plus what a
-// build adds in an init (which then compiles studioRes again).
+// studios in suggestion order (KnownStudios): coreStudios, plus what
+// AddStudios and AddAliases add (each compiles studioRes again).
 var studios = slices.Clone(coreStudios)
 
 // studioRes: one word-bounded regexp per studio, all its spellings;
@@ -62,6 +62,58 @@ func compileStudios() ([]*regexp.Regexp, map[string]string) {
 		res[i] = regexp.MustCompile(`(?i)` + lb + `(` + strings.Join(alts, "|") + `)` + rb)
 	}
 	return res, keys
+}
+
+// AddStudios adds voice-over studios the core does not know, at index at
+// of the suggestion order (past the end: last), each with its other
+// spellings. A name already known (by StudioKey) gains only the spellings
+// it lacks and keeps its place, so a second call changes nothing. An empty
+// spelling (nothing left once folded) is dropped, as by AddAliases. Call it
+// at start, before anything parses release names: the tables are not
+// guarded for concurrent use.
+func AddStudios(at int, name string, aliases ...string) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if !addAliases(name, aliases) {
+		at = max(0, min(at, len(studios)))
+		var own []string
+		for _, a := range aliases {
+			if studioFold(a) != "" && !slices.Contains(own, a) {
+				own = append(own, a)
+			}
+		}
+		studios = slices.Insert(studios, at, studio{name, own})
+	}
+	studioRes, studioKeys = compileStudios()
+}
+
+// AddAliases adds other spellings of a known studio (by StudioKey), after
+// its own; a spelling it has is not added again, an unknown studio is left
+// alone. As AddStudios, call it at start.
+func AddAliases(name string, aliases ...string) {
+	if addAliases(name, aliases) {
+		studioRes, studioKeys = compileStudios()
+	}
+}
+
+// addAliases appends the aliases a studio lacks; false when no studio is name.
+func addAliases(name string, aliases []string) bool {
+	k := StudioKey(name)
+	for i := range studios {
+		if StudioKey(studios[i].name) != k {
+			continue
+		}
+		own := slices.Clone(studios[i].aliases)
+		for _, a := range aliases {
+			if !slices.Contains(own, a) && studioFold(a) != "" {
+				own = append(own, a)
+			}
+		}
+		studios[i].aliases = own
+		return true
+	}
+	return false
 }
 
 // foldYo spells ё as е (same length in UTF-8, so offsets stay valid).

@@ -27,10 +27,11 @@ const POLL_MAX_MS = 15_000
 const POLL_GIVE_UP_MS = 3 * 60_000
 
 const HINTS: Record<string, Key> = {
-  downloads: 'stats.disk.hint.downloads',
-  'stream-cache': 'stats.disk.hint.cache',
   other: 'stats.disk.hint.other',
 }
+
+/** The sheet's line: «Другое»'s own, an addon's segment's, else a library section's. */
+const hintOf = (id: string): Key => HINTS[id] ?? (id.startsWith('addon:') ? 'stats.disk.hint.addon' : 'stats.disk.hint.library')
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: DiskBreakdown }
 
@@ -80,7 +81,7 @@ export function DiskBreakdownSheet({ segment, onClose }: { segment: DiskSegment;
   return (
     <Sheet
       title={`${segment.label} — ${formatSize(total)}`}
-      message={t(HINTS[segment.id] ?? 'stats.disk.hint.library')}
+      message={t(hintOf(segment.id))}
       role="dialog"
       size="large"
       dismissOnOutside

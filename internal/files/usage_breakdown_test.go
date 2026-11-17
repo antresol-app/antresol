@@ -21,27 +21,27 @@ func entriesOf(es []UsageEntry) string {
 }
 
 // The report keeps each category's first-level entries; a hardlinked file
-// counts once, under the first category, so «Торренты» lists only download
-// data that is not in the library.
+// counts once, under the first category, so an addon's download segment
+// lists only download data that is not in the library.
 func TestUsageBreakdownEntries(t *testing.T) {
 	s, mr := testSandbox(t)
 	write(t, filepath.Join(mr, "media/movies/A (2021)/a.mkv"), 3000)
 	write(t, filepath.Join(mr, "media/movies/B/b.mkv"), 1000)
 	write(t, filepath.Join(mr, "media/movies/B/sub/b.srt"), 10)
 	write(t, filepath.Join(mr, "media/movies/loose.mkv"), 500)
-	write(t, filepath.Join(mr, "torrents/Linked/x.mkv"), 2000)
+	write(t, filepath.Join(mr, "downloads/Linked/x.mkv"), 2000)
 	if err := os.MkdirAll(filepath.Join(mr, "media/movies/C"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(filepath.Join(mr, "torrents/Linked/x.mkv"), filepath.Join(mr, "media/movies/C/x.mkv")); err != nil {
+	if err := os.Link(filepath.Join(mr, "downloads/Linked/x.mkv"), filepath.Join(mr, "media/movies/C/x.mkv")); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(mr, "torrents/Seed/s.mkv"), 700)
-	write(t, filepath.Join(mr, "torrents/single.iso"), 300)
+	write(t, filepath.Join(mr, "downloads/Shared/s.mkv"), 700)
+	write(t, filepath.Join(mr, "downloads/single.iso"), 300)
 	for i := range 103 {
 		write(t, filepath.Join(mr, "media/series", fmt.Sprintf("e%03d.mkv", i)), i+1)
 	}
-	u := &Usage{Sandbox: s}
+	u := &Usage{Sandbox: s, Extra: extraOf(ExtraSegment{ID: "addon:dl:data", Label: dlLabel, Dir: filepath.Join(mr, "downloads")})}
 	ctx := context.Background()
 
 	b, err := u.Breakdown(ctx, "movies")
@@ -52,16 +52,12 @@ func TestUsageBreakdownEntries(t *testing.T) {
 		got != "A (2021)=3000,true;C=2000,true;B=1010,true;loose.mkv=500,false;" {
 		t.Fatalf("movies %+v %s", b, got)
 	}
-	b, err = u.Breakdown(ctx, "downloads")
+	b, err = u.Breakdown(ctx, "addon:dl:data")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := entriesOf(b.Entries); b.Bytes != 1000 || got != "Seed=700,true;single.iso=300,false;" {
-		t.Fatalf("downloads %+v %s", b, got)
-	}
-	b, err = u.Breakdown(ctx, "stream-cache")
-	if err != nil || b.Entries == nil || len(b.Entries) != 0 || b.Bytes != 0 {
-		t.Fatalf("stream-cache %+v %v", b, err)
+	if got := entriesOf(b.Entries); b.Bytes != 1000 || got != "Shared=700,true;single.iso=300,false;" {
+		t.Fatalf("addon downloads %+v %s", b, got)
 	}
 	// At most breakdownMax entries; the cut ones are summed.
 	b, err = u.Breakdown(ctx, "series")
@@ -71,7 +67,7 @@ func TestUsageBreakdownEntries(t *testing.T) {
 	if len(b.Entries) != breakdownMax || b.Entries[0].Name != "e102.mkv" || b.More == nil || *b.More != (UsageMore{Count: 3, Bytes: 6}) {
 		t.Fatalf("series %d entries, more %+v", len(b.Entries), b.More)
 	}
-	for _, id := range []string{"nope", "music", "library", "disk", ""} {
+	for _, id := range []string{"nope", "music", "library", "disk", "", "downloads", "stream-cache"} {
 		if _, err := u.Breakdown(ctx, id); !errors.Is(err, ErrUnknownRoot) {
 			t.Errorf("%q: %v", id, err)
 		}
@@ -99,8 +95,8 @@ func otherDone(t *testing.T, u *Usage) UsageBreakdown {
 	}
 }
 
-// «Другое» is what lives on the media disk outside the categories, by the
-// shortest path that is not on the way to a category root.
+// «Другое» is what lives on the media disk outside the categories and the
+// addons' folders, by the shortest path that is not on the way to one.
 func TestUsageBreakdownOther(t *testing.T) {
 	s, mr := testSandbox(t)
 	write(t, filepath.Join(mr, "media/movies/m.mkv"), 1000)
@@ -113,7 +109,7 @@ func TestUsageBreakdownOther(t *testing.T) {
 	write(t, filepath.Join(mr, "media/kids-old/x.mkv"), 400)
 	write(t, filepath.Join(mr, "media/readme.txt"), 50)
 	write(t, filepath.Join(mr, "tmp/other.log"), 60)
-	u := &Usage{Sandbox: s}
+	u := &Usage{Sandbox: s, Extra: extraOf(ExtraSegment{ID: "addon:dl:cache", Label: dlLabel, Dir: filepath.Join(mr, "tmp/vault-stream")})}
 
 	b, err := u.Breakdown(context.Background(), "other")
 	if err != nil {

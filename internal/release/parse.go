@@ -62,7 +62,7 @@ var (
 	reCamCS = rx(lb + `(CAM|TS)` + rb)
 
 	reAudioDub = rx(`(?i)` + lb + `(дубляж\p{L}*|дублирован\p{L}*|dub|dubbed)` + rb)
-	reAudioD   = rx(lb + `(D)` + rb) // одиночная заглавная D (трекерная пометка)
+	reAudioD   = rx(lb + `(D)` + rb) // одиночная заглавная D (пометка в названии релиза)
 	reAudioMVO = rx(`(?i)` + lb + `(mvo|многоголос\p{L}*)` + rb)
 	reAudioAVO = rx(`(?i)` + lb + `(avo|авторск\p{L}*)` + rb)
 	reAudioOrg = rx(`(?i)` + lb + `(original|оригинал\p{L}*)` + rb)
@@ -290,7 +290,7 @@ func parse(name string) (Info, string) {
 			info.Episode = num(s[m[2]:m[3]])
 			if m[4] >= 0 {
 				info.EpisodeEnd = num(s[m[4]:m[5]])
-				// Диапазон с первой серии — пачка сезона; "1-4 из 10" — частичная раздача.
+				// Диапазон с первой серии — пачка сезона; "1-4 из 10" — частичный релиз.
 				rangePack = info.Episode == 1 && info.EpisodeEnd > 1
 				if m[6] >= 0 && info.EpisodeEnd < num(s[m[6]:m[7]]) {
 					rangePack = false
@@ -361,7 +361,7 @@ func parse(name string) (Info, string) {
 		info.HDR = true
 	}
 
-	// Трекерные скобки: " [" после непустого названия.
+	// Скобки с пометками релиза: " [" после непустого названия.
 	if i := strings.Index(s, "["); i > 0 {
 		add(i)
 	}

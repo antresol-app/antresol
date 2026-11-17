@@ -27,20 +27,16 @@ export interface NotifySheetProps {
   onClose: () => void
 }
 
-// The labels of the topics. One is another build's (its strings
-// are not in the core build's bundle).
+// The labels of the core's topics (an unknown one is not shown; the
+// addons' come with their titles, addonTopics).
 const topicLabel = (topic: NotifyTopic): { label: Key; hint?: Key } | null => {
   switch (topic) {
     case 'episodes':
       return { label: 'comp.notify.episodes', hint: 'comp.notify.episodesHint' }
     case 'available':
-      // the core build has no «Хочу посмотреть» of titles outside the
-      // library: only one that went missing from the disk comes back
-      return { label: 'comp.notify.available', hint: __LIBRARY_EDITION__ ? 'comp.notify.availableHint' : 'comp.notify.availableHintFull' }
+      return { label: 'comp.notify.available', hint: 'comp.notify.availableHint' }
     case 'requests':
       return { label: 'comp.notify.requests' }
-    case 'downloads':
-      return __LIBRARY_EDITION__ ? null : { label: 'comp.notify.downloads' }
   }
   return null
 }
@@ -52,9 +48,9 @@ const inputOf = (p: NotifyPrefs): NotifyPrefsInput => ({
   episodes: p.episodes,
   available: p.available,
   requests: p.requests,
-  downloads: p.downloads,
   quietHours: p.quietHours,
   lang: getLanguage(),
+  addonTopics: p.addonTopics?.map(({ addon, topic, on }) => ({ addon, topic, on })),
 })
 
 export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
@@ -245,10 +241,24 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                           </span>
                         )}
                       </div>
-                      <Toggle label={t(l.label)} checked={prefs[topic]} describedBy={hintId} onChange={(on) => flip({ [topic]: on })} />
+                      <Toggle label={t(l.label)} checked={Boolean(prefs[topic as keyof NotifyPrefs])} describedBy={hintId} onChange={(on) => flip({ [topic]: on })} />
                     </li>
                   )
                 })}
+                {prefs.addonTopics?.map((a) => (
+                  <li key={`${a.addon}:${a.topic}`} className={styles.item}>
+                    <div className={styles.itemText}>
+                      <span aria-hidden>{a.title}</span>
+                    </div>
+                    <Toggle
+                      label={a.title}
+                      checked={a.on}
+                      onChange={(on) =>
+                        flip({ addonTopics: prefs.addonTopics?.map((x) => (x.addon === a.addon && x.topic === a.topic ? { ...x, on } : x)) })
+                      }
+                    />
+                  </li>
+                ))}
                 <li className={styles.item}>
                   <div className={styles.itemText}>
                     <span aria-hidden>{t('comp.notify.quiet')}</span>

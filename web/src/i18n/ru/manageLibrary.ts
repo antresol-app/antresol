@@ -59,6 +59,8 @@ export default {
   'mfiles.deleteConfirm': 'Удалить «{title}»?',
   'mfiles.deleteText': 'Освободится {size}. Файлы попадут в Корзину — их можно вернуть в «Файлах».',
   'mfiles.deleteAnyway': 'Удалить всё равно',
+  'mfiles.heldTitle': 'Эти файлы используются',
+  'mfiles.heldText': 'Их использует расширение, и оно перестанет с ними работать:',
   'downloads.loading': 'Загружаем…',
   // «Управление → Профили»
   'profiles.role.kid': 'Детский · до {rating}',
@@ -76,7 +78,7 @@ export default {
   'profiles.saveFailed': 'Не удалось сохранить',
   'profiles.editTitle': 'Изменить профиль',
   'profiles.avatarColor': 'Цвет аватара',
-  'profiles.kidHintLibrary': 'Без «Управления».',
+  'profiles.kidHint': 'Без «Управления».',
   'profiles.color': 'Цвет {n}',
   'profiles.maxAge': 'Возраст не старше',
   'profiles.ageLimit': 'Возрастное ограничение',
@@ -106,6 +108,7 @@ export default {
   // «Статистика → Медиадиск»: из чего состоит категория
   'stats.disk.details': 'Показать, что занимает место',
   'stats.disk.hint.library': 'Папки раздела, самые большие сверху.',
+  'stats.disk.hint.addon': 'Что хранит здесь расширение, самое большое сверху.',
   'stats.disk.hint.other': 'Папки на медиадиске вне разделов медиатеки.',
   'stats.disk.trash': 'Корзина',
   'stats.disk.rest': 'Система и файловая система',
@@ -118,6 +121,4 @@ export default {
   'stats.disk.empty': 'Здесь пусто.',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'manage.section.follows': 'Слежение',
-  'manage.section.sources': 'Источники',
 } as const

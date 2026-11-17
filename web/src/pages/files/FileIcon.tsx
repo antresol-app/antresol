@@ -20,7 +20,6 @@ const KINDS: Record<string, KindStyle> = {
   book: { glyph: 'book', color: 'var(--file-book)' },
   comic: { glyph: 'book', color: 'var(--file-comic)' },
   archive: { glyph: 'disk', color: 'var(--gray)' },
-  ...(__LIBRARY_EDITION__ ? {} : { torrent: { glyph: 'arrowDownCircle' as const, color: 'var(--file-download)' } }),
   other: { glyph: 'listView', color: 'var(--gray)' },
 }
 

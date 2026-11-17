@@ -93,7 +93,7 @@ func ImportABS(ctx context.Context, o ProgressOptions, lib LibraryLookup, ps Pro
 	if d == nil {
 		return nil
 	}
-	defer d.close()
+	defer d.Close()
 	list, err := readABS(ctx, d.DB)
 	var others map[string]int
 	if err == nil {

@@ -1,0 +1,12 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/reads?userId=2",
+  "status": 200,
+  "body": {
+    "ids": [
+      2,
+      3,
+      4
+    ]
+  }
+}

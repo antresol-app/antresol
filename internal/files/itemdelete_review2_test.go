@@ -140,7 +140,7 @@ func TestDeleteLinkedEdges(t *testing.T) {
 	if e.d.coversLinked(ctx, set, Linked{ItemID: it.ID}) {
 		t.Error("a download with no files covered")
 	}
-	data := filepath.Join(e.mr, "torrents", "Brat")
+	data := filepath.Join(e.mr, "downloads", "Brat")
 	write(t, filepath.Join(data, "Brat.mkv"), 4)
 	e.d.Linked = func(context.Context, library.DeleteSet) []Linked {
 		return []Linked{{Path: data, Key: "aa", Busy: true}}

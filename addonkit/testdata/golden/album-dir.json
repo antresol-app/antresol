@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/albums/7/dir",
+  "status": 200,
+  "body": {
+    "path": "{root}/music/Кино/Группа крови"
+  }
+}

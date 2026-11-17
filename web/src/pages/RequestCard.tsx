@@ -18,8 +18,8 @@ export function RequestCard({ request: r, line, children }: { request: KidReques
   const poster = imageUrl(r.poster, 240)
   if (r.hidden) r = { ...r, title: t('requests.hidden') }
   const video = (r.kind === 'movie' || r.kind === 'series') && !r.hidden
-  // a hidden one (above the kid's limit now) has no page to open, nor has a title in the core build
-  const page = video && !__LIBRARY_EDITION__
+  // a hidden one (above the kid's limit now) has no page to open
+  const page = video
   const art =
     poster && !failed ? (
       <img src={poster} alt="" loading="lazy" onError={() => setFailed(true)} />

@@ -1,0 +1,5 @@
+{
+  "method": "POST",
+  "path": "/api/addon-core/v1/voiceover/fit",
+  "status": 202
+}

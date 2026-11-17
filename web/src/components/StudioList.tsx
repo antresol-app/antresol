@@ -3,7 +3,6 @@
 // «Добавить студию» menu offers the known studios and a field for any name.
 import { useT } from '../i18n'
 import { RankedList } from './RankedList'
-import { FULL_ALIASES, FULL_STUDIOS } from './studiosFull'
 
 /**
  * The studios every build knows, in suggestion order, with their other
@@ -28,18 +27,8 @@ export const STUDIOS: [name: string, aliases: string[]][] = [
   ['IdeaFilm', ['idea film']],
 ]
 
-/** STUDIOS with the ones a build adds (studiosFull), as internal/release does. */
-const ALL_STUDIOS: [name: string, aliases: string[]][] = (() => {
-  const out = STUDIOS.map(([name, aliases]): [string, string[]] => [
-    name,
-    [...aliases, ...FULL_ALIASES.filter(([n]) => n === name).flatMap(([, a]) => a)],
-  ])
-  for (const [at, name, aliases] of FULL_STUDIOS) out.splice(at, 0, [name, aliases])
-  return out
-})()
-
-/** The known studios in suggestion order (internal/release KnownStudios). */
-export const KNOWN_STUDIOS = ALL_STUDIOS.map(([name]) => name)
+/** The known studios in suggestion order (the core's own of internal/release KnownStudios; any other can be typed). */
+export const KNOWN_STUDIOS = STUDIOS.map(([name]) => name)
 
 /** The server's limits (internal/releaseprefs CleanStudios). */
 export const MAX_STUDIOS = 30
@@ -53,7 +42,7 @@ const fold = (s: string) =>
     .replace(/[^\p{L}\p{N}]/gu, '')
 
 /** Folded spelling → canonical name, every spelling of every known studio. */
-const CANONICAL = new Map(ALL_STUDIOS.flatMap(([name, aliases]) => [name, ...aliases].map((a) => [fold(a), name] as const)))
+const CANONICAL = new Map(STUDIOS.flatMap(([name, aliases]) => [name, ...aliases].map((a) => [fold(a), name] as const)))
 
 /** The canonical name of a known studio's name or alias; undefined when unknown. */
 export const canonicalStudio = (name: string) => CANONICAL.get(fold(name))
@@ -74,7 +63,7 @@ export function StudioList({ labelledBy, studios, onChange }: { labelledBy: stri
   // typed text filters by any spelling («kubik» → Кубик в Кубе)
   const choices = (text: string) => {
     const q = fold(text)
-    return ALL_STUDIOS.filter(([name, aliases]) => !picked.has(name) && (!q || [name, ...aliases].some((a) => fold(a).includes(q)))).map(([name]) => ({ value: name, label: name }))
+    return STUDIOS.filter(([name, aliases]) => !picked.has(name) && (!q || [name, ...aliases].some((a) => fold(a).includes(q)))).map(([name]) => ({ value: name, label: name }))
   }
   return (
     <RankedList
@@ -89,7 +78,7 @@ export function StudioList({ labelledBy, studios, onChange }: { labelledBy: stri
       }}
       addLabel={t('settings.studios.add')}
       field={{ label: t('settings.studios.name'), maxLength: MAX_STUDIO_LENGTH }}
-      empty={t(__LIBRARY_EDITION__ ? 'settings.studios.empty' : 'settings.studios.emptyFull')}
+      empty={t('settings.studios.empty')}
     />
   )
 }

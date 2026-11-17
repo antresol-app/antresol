@@ -7,10 +7,12 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/playlistimport/model"
 )
 
 // ErrNotReview: the song is not waiting for a decision (shown as is).
-var ErrNotReview = errors.New("Не найдено")
+var ErrNotReview = model.ErrNotReview
 
 // AssignGroups gives every matched song of the job without a group the
 // group of its release group (one per album and job; artist, album and
@@ -140,42 +142,10 @@ func (s *Store) Skip(ctx context.Context, trackID int64) error {
 }
 
 // ErrNotRetryable: the group is not waiting for «Повторить» (shown as is).
-var ErrNotRetryable = errors.New("Не найдено")
+var ErrNotRetryable = model.ErrNotRetryable
 
-// Group is one album of a job to acquire. Songs counts its selected songs.
-type Group struct {
-	ID, JobID     int64
-	ReleaseGroup  string
-	Artist, Album string
-	Year          int
-	Aliases       []string
-	AlbumItemID   int64 // the library album its songs are in (0: none yet)
-	State         string
-	InfoHash      string
-	Bytes         int64
-	Attempts      int
-	Error         string
-	UpdatedAt     time.Time
-	Songs         int
-	// WaitingFor names the download a waiting_download album waits for;
-	// WaitDone, WaitAt: its bytes and when they last grew; SkipInfoHash: a
-	// download given up on (its own search leaves it out).
-	WaitingFor   string
-	SkipInfoHash string
-	// AnyFormat: «Скачать в другом формате» — its search takes a release
-	// of any format.
-	AnyFormat bool
-	// Dead: its own downloads given up for making no headway (oldest
-	// first); its search leaves those releases out. Slow: given up for
-	// being too slow; its search takes them only when nothing else holds
-	// the songs.
-	Dead, Slow []string
-	// WaitDone is also a downloading album's bytes when they last grew;
-	// Clock its download's running time (Queue.headway).
-	WaitDone int64
-	WaitAt   time.Time
-	Clock    RunClock
-}
+// Group is one album of a job to acquire (model.Group).
+type Group = model.Group
 
 const groupCols = `g.id, g.job_id, g.release_group, g.artist, g.album, g.year, g.aliases_json, COALESCE(g.album_item_id, 0), g.state,
 	g.infohash, g.bytes, g.attempts, g.error, g.updated_at, g.wait_title, g.skip_infohash, g.wait_done, COALESCE(g.wait_at, ''), g.any_format,
@@ -291,48 +261,48 @@ func Settle(ctx context.Context, tx *sql.Tx, id int64, state, errText string, at
 	return err
 }
 
-// MarkHave links songs the library has already (track id → library
-// track) and remembers the library album; done: the album is complete
+// MarkHave links songs of the album the library has already (track id →
+// library track; another album's song is left alone) and remembers the
+// library album; done: the album is complete
 // (state have, or waiting again when a song joined it).
 func (s *Store) MarkHave(ctx context.Context, groupID int64, have map[int64]int64, album int64, done bool, at time.Time) error {
-	return s.InTx(ctx, func(tx *sql.Tx) error {
-		ids := make([]int64, 0, len(have))
-		for id := range have {
-			ids = append(ids, id)
-		}
-		if err := SetTracks(ctx, tx, TrackHave, "", ids, have); err != nil {
+	return s.InTx(ctx, func(tx *sql.Tx) error { return markHave(ctx, tx, groupID, have, album, done, at) })
+}
+
+// markHave is MarkHave inside tx.
+func markHave(ctx context.Context, tx *sql.Tx, groupID int64, have map[int64]int64, album int64, done bool, at time.Time) error {
+	ids := make([]int64, 0, len(have))
+	for id := range have {
+		ids = append(ids, id)
+	}
+	if err := setGroupTracks(ctx, tx, groupID, TrackHave, "", ids, have); err != nil {
+		return err
+	}
+	if album != 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE import_groups SET album_item_id = ? WHERE id = ?`, album, groupID); err != nil {
 			return err
 		}
-		if album != 0 {
-			if _, err := tx.ExecContext(ctx, `UPDATE import_groups SET album_item_id = ? WHERE id = ?`, album, groupID); err != nil {
-				return err
-			}
-			// the album the import found is the importer's too («Моя
-			// медиатека»), as one it downloads is (acquire's organize)
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO item_owners (item_id, user_id)
-				SELECT ?, j.user_id FROM import_groups g JOIN import_jobs j ON j.id = g.job_id WHERE g.id = ?`, album, groupID); err != nil {
-				return err
-			}
+		// the album the import found is the importer's too («Моя
+		// медиатека»), as one it downloads is (acquire's organize)
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO item_owners (item_id, user_id)
+			SELECT ?, j.user_id FROM import_groups g JOIN import_jobs j ON j.id = g.job_id WHERE g.id = ?`, album, groupID); err != nil {
+			return err
 		}
-		if !done {
-			return nil
-		}
-		return Settle(ctx, tx, groupID, GroupHave, "", at)
-	})
+	}
+	if !done {
+		return nil
+	}
+	return Settle(ctx, tx, groupID, GroupHave, "", at)
 }
 
-// RunClock is a downloading album's own download's clock (run_s, quiet_s,
-// run_base, wait_done): how long it has run, how long since its bytes
-// last grew, its bytes when the clock started (-1: not yet) and then.
-type RunClock struct {
-	Run, Quiet time.Duration
-	Base, Done int64
-}
+// RunClock is a downloading album's own download's clock (model.RunClock).
+type RunClock = model.RunClock
 
-// NotFound ends an album no release holds: its songs ids are not found.
+// NotFound ends an album no release holds: its songs ids (of this album
+// only) are not found.
 func (s *Store) NotFound(ctx context.Context, groupID int64, ids []int64, msg string, at time.Time) error {
 	return s.InTx(ctx, func(tx *sql.Tx) error {
-		if err := SetTracks(ctx, tx, TrackNotFound, "", ids, nil); err != nil {
+		if err := setGroupTracks(ctx, tx, groupID, TrackNotFound, "", ids, nil); err != nil {
 			return err
 		}
 		return Settle(ctx, tx, groupID, GroupNotFound, msg, at)
@@ -409,4 +379,4 @@ func newerJobOpen(ctx context.Context, tx *sql.Tx, jobID int64) error {
 }
 
 // AutoRetries: a group failed this many times is retried automatically.
-const AutoRetries = 1
+const AutoRetries = model.AutoRetries

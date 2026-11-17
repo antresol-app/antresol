@@ -112,12 +112,6 @@
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
-.seeding {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  color: var(--green);
-}
 .pending {
   display: inline-flex;
   align-items: center;

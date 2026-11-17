@@ -1,4 +1,5 @@
-// The state of «Импорт»: the service tiles and the job the page shows, kept
+// The state of «Импорт»: the service tiles (with what the server does
+// beyond the library: downloads, a catalog) and the job the page shows, kept
 // fresh by import.progress events with a 10 s poll as the fallback (events
 // can be lost). The job shown is the running one, else the newest still in
 // reading or preview, else the newest finished one not yet put away with
@@ -7,6 +8,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, getImportGroups, getImportJob, getImportJobs, getImportServices, useEvents, errorText } from '../../../api/client'
 import type { ImportGroup, ImportJob, ImportProgressEvent, ImportService } from '../../../api/types'
 import { t } from '../../../i18n'
+
+/** What the page may promise: the server downloads what the library lacks; the review has a catalog. */
+export interface ImportOffers {
+  downloads: boolean
+  catalog: boolean
+}
+const NO_OFFERS: ImportOffers = { downloads: false, catalog: false }
 
 export const POLL_MS = 10_000
 /** Events come every 2 s per job at most; one reload of the albums per burst. */
@@ -41,6 +49,8 @@ const message = (e: unknown, fallback: string) => (errorText(e, fallback))
 /** `prefer`: a job to show on the first load (?job= after a sign-in), if it is the profile's. */
 export function useImportJob(prefer?: number) {
   const [services, setServices] = useState<ImportService[] | null>(null)
+  /** From the same answer as the tiles; kept when a reload fails. */
+  const [offers, setOffers] = useState<ImportOffers>(NO_OFFERS)
   const [job, setJobState] = useState<ImportJob | null>(null)
   const [groups, setGroups] = useState<ImportGroup[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -76,7 +86,8 @@ export function useImportJob(prefer?: number) {
   const load = useCallback(async () => {
     try {
       const [ss, jobs] = await Promise.all([getImportServices(), getImportJobs()])
-      setServices(ss)
+      setServices(ss.services)
+      setOffers((o) => (o.downloads === ss.downloads && o.catalog === ss.catalog ? o : { downloads: ss.downloads, catalog: ss.catalog }))
       setStale(false)
       const wanted = preferRef.current
       preferRef.current = undefined // the first load only
@@ -164,5 +175,5 @@ export function useImportJob(prefer?: number) {
     return () => window.clearInterval(id)
   }, [polling, refresh])
 
-  return { services, job, groups, loaded, error, stale, load, refresh, show, dismiss }
+  return { services, offers, job, groups, loaded, error, stale, load, refresh, show, dismiss }
 }

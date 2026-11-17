@@ -12,8 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/i18n"
 )
 
 var (
@@ -21,6 +24,9 @@ var (
 	ErrIntoSelf = errors.New("files: cannot move a folder into itself")
 	// ErrNeedsConfirm: the change would stop sharing; see ConfirmError.
 	ErrNeedsConfirm = errors.New("files: confirmation required")
+	// ErrHeldAlias: the data is in use and reached through a symlinked
+	// folder; it moves or goes to the trash only by its own path.
+	ErrHeldAlias = errors.New("files: data in use reached through a symlink")
 )
 
 // ConfirmError is returned by Rename and Move without confirm when the data
@@ -32,12 +38,39 @@ func (e *ConfirmError) Error() string {
 }
 func (e *ConfirmError) Is(target error) bool { return target == ErrNeedsConfirm }
 
-// seedWarning is the warning shown when p (a file or folder) holds managed download data.
-func (o *Ops) seedWarning(ctx context.Context, p string, fi os.FileInfo) []string {
-	if o.Seeds == nil || !o.inTorrent(ctx, p, fi.IsDir()) {
+// holdWarning is the warning shown when p (a file or folder) holds managed download data.
+func (o *Ops) holdWarning(ctx context.Context, p string, fi os.FileInfo) []string {
+	if o.Held == nil || !o.inHeld(ctx, p, fi.IsDir()) {
 		return nil
 	}
-	return []string{seedWarningText(ctx, fi.Name())}
+	return []string{o.moveText(ctx, p, fi.Name())}
+}
+
+// moveText is the warning of moving or trashing p (named name): the
+// holding addon's own text when it gives one, else the neutral ones (never
+// empty: a held path always asks for confirmation with words).
+func (o *Ops) moveText(ctx context.Context, p, name string) string {
+	if o.Texts != nil && o.Sandbox.holdable(filepath.Clean(p)) {
+		if w := o.Texts.MoveWarning(ctx, filepath.Clean(p), name); w != "" {
+			return w
+		}
+		if w := o.heldText(ctx, p); w != "" {
+			return w
+		}
+	}
+	return i18n.T(ctx, "Эти данные используются")
+}
+
+// heldText is the neutral warning of data an addon holds when the addon
+// gives no text of its own ("" when no addon holds p).
+func (o *Ops) heldText(ctx context.Context, p string) string {
+	if o.Texts == nil || !o.Sandbox.holdable(filepath.Clean(p)) {
+		return ""
+	}
+	if h, ok := o.Texts.HoldOf(ctx, filepath.Clean(p)); ok {
+		return i18n.T(ctx, "Эти данные использует расширение «%s»", h.Addon)
+	}
+	return ""
 }
 
 // needsConfirm returns a ConfirmError when p holds managed download data and the
@@ -46,42 +79,44 @@ func (o *Ops) needsConfirm(ctx context.Context, p string, fi os.FileInfo, confir
 	if confirm {
 		return nil
 	}
-	if w := o.seedWarning(ctx, p, fi); len(w) > 0 {
+	if w := o.holdWarning(ctx, p, fi); len(w) > 0 {
 		return &ConfirmError{Warnings: w}
 	}
 	return nil
 }
 
-// Torrents keeps managed downloads in step with file operations on their data:
-// without it a download whose files are moved away fetches them again.
-// *torrent.Engine provides PlanRelocate and Relocate; Stop removes a download
-// from the client and keeps its data (acquire.Service.Remove).
-type Torrents interface {
+// Holders keeps whatever holds data in step with file operations on it:
+// without it a holder whose files are moved away fetches them again.
+// PlanRelocate says which keys follow a move and which stop; Stop lets go
+// of a key for good and keeps its data.
+type Holders interface {
 	PlanRelocate(from, to string) (follow, stop []string)
 	Relocate(ctx context.Context, from, to string, rename func() error) error
-	Stop(ctx context.Context, infohash string) error
+	Stop(ctx context.Context, key string) error
 	// Pause and Resume hold a download while its files move: it is stopped
 	// for good only once the rename has worked.
-	Pause(ctx context.Context, infohash string) error
-	Resume(ctx context.Context, infohash string) error
+	Pause(ctx context.Context, key string) error
+	Resume(ctx context.Context, key string) error
 }
 
-// ErrTorrent: a download using the data could not be stopped or re-pointed,
-// so nothing was moved. errors.As finds a *TorrentError with the cause.
-var ErrTorrent = errors.New("files: torrent could not be stopped")
+// ErrHeld: a download using the data could not be stopped or re-pointed,
+// so nothing was moved. errors.As finds a *HeldError with the cause.
+var ErrHeld = errors.New("files: held data could not be released")
 
-type TorrentError struct{ Err error }
+type HeldError struct{ Err error }
 
-func (e *TorrentError) Error() string        { return "files: torrent: " + e.Err.Error() }
-func (e *TorrentError) Is(target error) bool { return target == ErrTorrent }
-func (e *TorrentError) Unwrap() error        { return e.Err }
+func (e *HeldError) Error() string        { return "files: held data: " + e.Err.Error() }
+func (e *HeldError) Is(target error) bool { return target == ErrHeld }
+func (e *HeldError) Unwrap() error        { return e.Err }
 
-// Ops performs admin file operations. Seeds, Torrents and Changed are optional.
+// Ops performs admin file operations. Held, Holders and Changed are optional.
 type Ops struct {
-	Sandbox  *Sandbox
-	DB       *sql.DB
-	Seeds    SeedInfo
-	Torrents Torrents
+	Sandbox *Sandbox
+	DB      *sql.DB
+	Held    HeldInfo
+	Holders Holders
+	// Texts (optional) gives the warnings of data an addon holds.
+	Texts HoldTexts
 	// Changed is called with the affected root ids after every change
 	// (the API triggers a library rescan).
 	Changed func(roots ...string)
@@ -109,22 +144,174 @@ func (o *Ops) changed(roots ...string) {
 	}
 }
 
-// stopTorrents holds the downloads (so they touch nothing while the files
+// fileOp is the context of one file operation: ctx for asking and holding
+// what uses the data (the plan, holding, re-pointing), req for the rest of
+// the work (sizes, the trash's rows), settle for what must still happen
+// once the files moved or did not (stopping, releasing). When Holders
+// implements HoldersCtx or BatchHolders, the asking and holding of one
+// operation share one deadline, holdOpTimeout at most (or the caller's,
+// when sooner; a nested operation keeps its outer one), and settling gets
+// a fresh one of its own once the files moved.
+type fileOp struct {
+	ctx, req context.Context
+	timed    bool
+	cancel   func()
+}
+
+// opKey carries an operation's id and hold deadline to the operations
+// nested in it (Rename → moveData, item delete → Trash) and to Holders.
+type opKey struct{}
+
+type opInfo struct {
+	id       uint64
+	deadline time.Time // zero: not set yet
+}
+
+var opSeq atomic.Uint64
+
+// WithOp starts a file operation in ctx: Holders tell the calls of one
+// operation from another's by OpID. A ctx inside an operation keeps it.
+func WithOp(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(opKey{}).(opInfo); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, opKey{}, opInfo{id: opSeq.Add(1)})
+}
+
+// OpID is the id of the file operation ctx belongs to; 0 outside one.
+func OpID(ctx context.Context) uint64 {
+	op, _ := ctx.Value(opKey{}).(opInfo)
+	return op.id
+}
+
+func (o *Ops) begin(ctx context.Context) fileOp {
+	_, withCtx := o.Holders.(HoldersCtx)
+	_, batch := o.Holders.(BatchHolders)
+	if !withCtx && !batch {
+		return fileOp{ctx: ctx, req: ctx, cancel: func() {}}
+	}
+	op, _ := WithOp(ctx).Value(opKey{}).(opInfo)
+	if op.deadline.IsZero() {
+		op.deadline = time.Now().Add(holdOpTimeout)
+		if d, ok := ctx.Deadline(); ok && d.Before(op.deadline) {
+			op.deadline = d
+		}
+	}
+	deadline := op.deadline
+	req := context.WithValue(ctx, opKey{}, op)
+	c, cancel := context.WithDeadline(req, deadline)
+	return fileOp{ctx: c, req: req, timed: true, cancel: cancel}
+}
+
+// settle is the context of stopping or releasing after the move: it runs
+// even when the request has ended, under a deadline of its own.
+func (op fileOp) settle() (context.Context, func()) {
+	after := context.WithoutCancel(op.req)
+	if !op.timed {
+		return after, func() {}
+	}
+	return context.WithTimeout(after, holdOpTimeout)
+}
+
+// plan asks Holders what a move of from to to (to "" = away) keeps and stops.
+func (o *Ops) plan(ctx context.Context, from, to string) (follow, stop []string) {
+	if tc, ok := o.Holders.(HoldersCtx); ok {
+		return tc.PlanRelocateCtx(ctx, from, to)
+	}
+	return o.Holders.PlanRelocate(from, to)
+}
+
+// uniqKeys returns keys sorted, each once.
+func uniqKeys(keys []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, k := range keys {
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// holdAll holds keys in one call (BatchHolders); when that fails it
+// releases them all (some may be held) and nothing may move.
+func holdAll(op fileOp, bt BatchHolders, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	if err := bt.PauseAll(op.ctx, keys); err != nil {
+		after, cancel := op.settle()
+		defer cancel()
+		if rerr := bt.ResumeAll(after, keys); rerr != nil {
+			log.Printf("files: release %d held keys: %v", len(keys), rerr)
+		}
+		return &HeldError{Err: err}
+	}
+	return nil
+}
+
+// settleAll stops the held keys whose data moved and releases the rest,
+// one call each.
+func settleAll(op fileOp, bt BatchHolders, held, moved []string) {
+	stop := uniqKeys(moved)
+	gone := map[string]bool{}
+	for _, k := range stop {
+		gone[k] = true
+	}
+	var rest []string
+	for _, k := range held {
+		if !gone[k] {
+			rest = append(rest, k)
+		}
+	}
+	after, cancel := op.settle()
+	defer cancel()
+	if len(stop) > 0 {
+		if err := bt.StopAll(after, stop); err != nil {
+			log.Printf("files: stop %d keys after the move: %v", len(stop), err) // they stay held
+		}
+	}
+	if len(rest) > 0 {
+		if err := bt.ResumeAll(after, rest); err != nil {
+			log.Printf("files: release %d held keys: %v", len(rest), err)
+		}
+	}
+}
+
+// holdAround holds the downloads (so they touch nothing while the files
 // move), runs move, then stops them (data kept). If a download cannot be held,
 // or move fails, the held ones are released: a failed move loses nothing.
-func (o *Ops) stopTorrents(ctx context.Context, ihs []string, move func() error) error {
+// A BatchHolders gets one call for all of them at each step.
+func (o *Ops) holdAround(op fileOp, ihs []string, move func() error) error {
+	if bt, ok := o.Holders.(BatchHolders); ok {
+		keys := uniqKeys(ihs)
+		if err := holdAll(op, bt, keys); err != nil {
+			return err
+		}
+		if err := move(); err != nil {
+			settleAll(op, bt, keys, nil)
+			return err
+		}
+		settleAll(op, bt, keys, keys)
+		return nil
+	}
+	ctx := op.ctx
 	var held []string
 	release := func() {
+		after, cancel := op.settle()
+		defer cancel()
 		for _, ih := range held {
-			if err := o.Torrents.Resume(context.WithoutCancel(ctx), ih); err != nil {
-				log.Printf("files: resume torrent %s: %v", ih, err)
+			if err := o.Holders.Resume(after, ih); err != nil {
+				log.Printf("files: resume holder of %s: %v", ih, err)
 			}
 		}
 	}
 	for _, ih := range ihs {
-		if err := o.Torrents.Pause(ctx, ih); err != nil {
+		if err := o.Holders.Pause(ctx, ih); err != nil {
 			release()
-			return &TorrentError{Err: err}
+			return &HeldError{Err: err}
 		}
 		held = append(held, ih)
 	}
@@ -132,9 +319,11 @@ func (o *Ops) stopTorrents(ctx context.Context, ihs []string, move func() error)
 		release()
 		return err
 	}
+	after, cancel := op.settle()
+	defer cancel()
 	for _, ih := range held {
-		if err := o.Torrents.Stop(context.WithoutCancel(ctx), ih); err != nil {
-			log.Printf("files: stop torrent %s after the move: %v", ih, err) // it stays paused, nothing is downloaded
+		if err := o.Holders.Stop(after, ih); err != nil {
+			log.Printf("files: stop holder of %s after the move: %v", ih, err) // it stays paused, nothing is downloaded
 		}
 	}
 	return nil
@@ -145,28 +334,33 @@ func (o *Ops) stopTorrents(ctx context.Context, ihs []string, move func() error)
 // (a file taken out of a download, its folder renamed, stream cache
 // entries) are stopped first. A failed rename comes back as is.
 func (o *Ops) moveData(ctx context.Context, src, dst string) error {
-	if o.Torrents == nil {
+	if o.Holders == nil {
 		return os.Rename(src, dst)
 	}
-	follow, stop := o.Torrents.PlanRelocate(src, dst)
-	return o.stopTorrents(ctx, stop, func() error {
+	op := o.begin(ctx) // within the caller's deadline, if it has one
+	defer op.cancel()
+	follow, stop := o.plan(op.ctx, src, dst)
+	if len(follow) == 0 && len(stop) == 0 {
+		return os.Rename(src, dst) // nothing uses the data
+	}
+	return o.holdAround(op, stop, func() error {
 		if len(follow) == 0 {
 			return os.Rename(src, dst)
 		}
 		var rerr error
-		err := o.Torrents.Relocate(ctx, src, dst, func() error { rerr = os.Rename(src, dst); return rerr })
+		err := o.Holders.Relocate(op.ctx, src, dst, func() error { rerr = os.Rename(src, dst); return rerr })
 		if rerr != nil {
 			return rerr
 		}
 		if err != nil {
-			return &TorrentError{Err: err}
+			return &HeldError{Err: err}
 		}
 		return nil
 	})
 }
 
 func renameErr(err error) error {
-	if errors.Is(err, ErrTorrent) {
+	if errors.Is(err, ErrHeld) {
 		return err
 	}
 	var le *os.LinkError
@@ -263,6 +457,9 @@ func (o *Ops) Rename(ctx context.Context, root, rel, newName string, confirm boo
 	if err := free(dst, src); err != nil {
 		return err
 	}
+	if err := o.heldAlias(ctx, src, fi.IsDir()); err != nil {
+		return err
+	}
 	if err := o.needsConfirm(ctx, src, fi, confirm); err != nil {
 		return err
 	}
@@ -319,6 +516,9 @@ func (o *Ops) Move(ctx context.Context, root, rel, toRoot, toPath string, confir
 	if err := free(dst, ""); err != nil {
 		return err
 	}
+	if err := o.heldAlias(ctx, src, fi.IsDir()); err != nil {
+		return err
+	}
 	if err := o.needsConfirm(ctx, src, fi, confirm); err != nil {
 		return err
 	}
@@ -335,6 +535,9 @@ func (o *Ops) Move(ctx context.Context, root, rel, toRoot, toPath string, confir
 // the result still lists them.
 func (o *Ops) Trash(ctx context.Context, root string, rels []string, confirm bool, userID int64) (TrashResult, error) {
 	res := TrashResult{Trashed: []TrashItem{}, Warnings: []string{}}
+	op := o.begin(ctx)
+	defer op.cancel()
+	ctx = op.req // sizes and rows; op.ctx asks and holds
 	type target struct {
 		abs, rel string
 		fi       os.FileInfo
@@ -367,13 +570,56 @@ func (o *Ops) Trash(ctx context.Context, root string, rels []string, confirm boo
 		sel = append(sel, t)
 	}
 	for _, t := range sel {
-		res.Warnings = append(res.Warnings, o.seedWarning(ctx, t.abs, t.fi)...)
+		if err := o.heldAlias(ctx, t.abs, t.fi.IsDir()); err != nil {
+			return res, err
+		}
+	}
+	for _, t := range sel {
+		res.Warnings = append(res.Warnings, o.holdWarning(ctx, t.abs, t.fi)...)
 	}
 	if len(res.Warnings) > 0 && !confirm {
 		return res, nil
 	}
 	if len(sel) == 0 {
 		return res, nil
+	}
+	// a BatchHolders holds what all of sel touches in one call, and once
+	// done stops what moved and releases the rest (one call each)
+	bt, batched := o.Holders.(BatchHolders)
+	if batched {
+		var keys [][]string
+		if bp, ok := o.Holders.(BatchPlan); ok {
+			froms := make([]string, len(sel))
+			for i, t := range sel {
+				froms[i] = t.abs
+			}
+			keys = bp.PlanTrashCtx(op.ctx, froms)
+			if len(keys) != len(sel) {
+				return res, &HeldError{Err: fmt.Errorf("plan of %d paths has %d answers", len(sel), len(keys))}
+			}
+		} else {
+			for _, t := range sel {
+				_, stop := o.plan(op.ctx, t.abs, "")
+				keys = append(keys, stop)
+			}
+		}
+		var all []string
+		for _, k := range keys {
+			all = append(all, k...)
+		}
+		all = uniqKeys(all)
+		if err := holdAll(op, bt, all); err != nil {
+			return res, err
+		}
+		if len(all) > 0 {
+			defer func() {
+				var moved []string
+				for _, k := range keys[:len(res.Trashed)] { // sel moves in order, stopping at a failure
+					moved = append(moved, k...)
+				}
+				settleAll(op, bt, all, moved)
+			}()
+		}
 	}
 	// one batch folder in each trash used (a path goes to the trash of its
 	// own mount: see Sandbox.TrashFor)
@@ -407,16 +653,15 @@ func (o *Ops) Trash(ctx context.Context, root string, rels []string, confirm boo
 		}
 		dst := filepath.Join(sub, t.fi.Name())
 		var rerr error
-		if o.Torrents != nil {
-			// «Раздача … прекратится»: a download left running would
-			// download the trashed files again.
-			_, stop := o.Torrents.PlanRelocate(t.abs, "")
-			rerr = o.stopTorrents(ctx, stop, func() error { return os.Rename(t.abs, dst) })
+		if o.Holders != nil && !batched {
+			// a holder left running would fetch the trashed files again
+			_, stop := o.plan(op.ctx, t.abs, "")
+			rerr = o.holdAround(op, stop, func() error { return os.Rename(t.abs, dst) })
 		} else {
 			rerr = os.Rename(t.abs, dst)
 		}
 		if err := rerr; err != nil {
-			if errors.Is(err, ErrTorrent) {
+			if errors.Is(err, ErrHeld) {
 				os.Remove(sub)
 				if len(res.Trashed) > 0 {
 					o.changed(root)
@@ -469,25 +714,100 @@ func covered(kept map[string]bool, rel string) bool {
 	return false
 }
 
-// TorrentOwner is optionally implemented by a SeedInfo that also knows
-// download files it does not report as shared (unselected files of a partial
-// download, which hold boundary pieces): file operations protect them too.
-type TorrentOwner interface {
-	Owner(path string) (infohash string, ok bool)
+// HoldOwner is optionally implemented by a HeldInfo that also knows
+// files it holds but does not report as active (files a holder needs only
+// in part): file operations protect them too.
+type HoldOwner interface {
+	Owner(path string) (key string, ok bool)
 }
 
 // owned reports whether p is (or contains) data of a live download.
 func (o *Ops) owned(p string) bool {
-	if ow, ok := o.Seeds.(TorrentOwner); ok {
+	if ow, ok := o.Held.(HoldOwner); ok {
 		_, ok := ow.Owner(p)
 		return ok
 	}
-	_, _, ok := o.Seeds.SeedInfo(p)
+	_, _, ok := o.Held.HeldInfo(p)
 	return ok
 }
 
-// inTorrent reports whether p, or for a folder anything inside it, belongs to a managed download.
-func (o *Ops) inTorrent(ctx context.Context, p string, dir bool) bool {
+// heldAlias refuses (ErrHeldAlias) an operation on p when p is reached
+// through a symlinked folder inside the roots and the data it really is
+// is in use. Holds and the build's hooks know data by the path a root
+// names it by; the other path would slip past them (and the addon would
+// never be asked). The paths checked are p with its folder's symlinks
+// resolved, as each root holding it names it; a symlinked root folder
+// itself is not an alias. It fails closed: a folder it cannot resolve or
+// walk counts as in use. p itself being a link is no alias: renaming or
+// trashing a link moves the link only.
+func (o *Ops) heldAlias(ctx context.Context, p string, dir bool) error {
+	if o.Held == nil {
+		return nil
+	}
+	p = filepath.Clean(p)
+	d, err := filepath.EvalSymlinks(filepath.Dir(p))
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrHeldAlias, err)
+	}
+	real := filepath.Join(d, filepath.Base(p))
+	var named []string
+	for _, r := range o.Sandbox.realRoots() {
+		if !within(r.real, real) {
+			continue
+		}
+		rel, err := filepath.Rel(r.real, real)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrHeldAlias, err)
+		}
+		if c := filepath.Join(r.dir, rel); c != p && !containsStr(named, c) {
+			named = append(named, c)
+		}
+	}
+	for _, c := range named {
+		if o.usedAt(ctx, c, dir) {
+			return ErrHeldAlias
+		}
+	}
+	return nil
+}
+
+func containsStr(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// usedAt is the managed-download check failing closed: an error walking the folder, or the
+// request ending, counts as in use.
+func (o *Ops) usedAt(ctx context.Context, p string, dir bool) bool {
+	if o.owned(p) {
+		return true
+	}
+	if !dir {
+		return false
+	}
+	used := false
+	err := filepath.WalkDir(p, func(q string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if o.owned(q) {
+			used = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return used || err != nil
+}
+
+// inHeld reports whether p, or for a folder anything inside it, belongs to a managed download.
+func (o *Ops) inHeld(ctx context.Context, p string, dir bool) bool {
 	if ok := o.owned(p); ok || !dir {
 		return ok
 	}
@@ -644,4 +964,84 @@ func ensureTrash(trash string) error {
 		}
 	}
 	return nil
+}
+
+// HoldRef names the addon holding a file or folder (Entry.Hold): Label is
+// its own words for it, Active whether it still uses the data.
+type HoldRef struct {
+	Addon  string `json:"addon"`
+	Label  string `json:"label"`
+	Active bool   `json:"active"`
+}
+
+// HoldTexts gives the texts of data an addon holds. MoveWarning and
+// KeptWarning return "" to keep the build's own warning.
+type HoldTexts interface {
+	HoldOf(ctx context.Context, path string) (HoldRef, bool)
+	// MoveWarning: moving or trashing path (named name) takes it away.
+	MoveWarning(ctx context.Context, path, name string) string
+	// KeptWarning: a delete leaves the data of key (named name) in place.
+	KeptWarning(ctx context.Context, key, name string) string
+}
+
+// HoldersCtx is optionally implemented by Holders: the plan of a file
+// operation asked under the operation's deadline.
+type HoldersCtx interface {
+	PlanRelocateCtx(ctx context.Context, from, to string) (follow, stop []string)
+}
+
+// BatchHolders is optionally implemented by Holders: the keys of one
+// file operation held, released and stopped in one call each.
+type BatchHolders interface {
+	PauseAll(ctx context.Context, keys []string) error
+	ResumeAll(ctx context.Context, keys []string) error
+	StopAll(ctx context.Context, keys []string) error
+}
+
+// BatchPlan is optionally implemented by a BatchHolders: the plans of
+// trashing every one of froms in one call; stop[i] is what trashing
+// froms[i] stops (as PlanRelocate(froms[i], "")).
+type BatchPlan interface {
+	PlanTrashCtx(ctx context.Context, froms []string) (stop [][]string)
+}
+
+// holdOpTimeout is the one deadline of asking and holding in a file
+// operation, and of settling after it, when Holders implements
+// HoldersCtx or BatchHolders (a variable for tests).
+var holdOpTimeout = 90 * time.Second
+
+// holdable reports whether p, an absolute path, lies in a root of the
+// browser and, its symlinks resolved, stays inside that root and out of
+// the trash: only such paths are looked up among holds or trashed for
+// one.
+func (s *Sandbox) holdable(p string) bool { return s.holdableIn(s.realRoots(), p) }
+
+// realRoot is a root's folder and its folder with symlinks resolved.
+type realRoot struct{ dir, real string }
+
+// realRoots resolves the roots once for many holdableIn checks.
+func (s *Sandbox) realRoots() []realRoot {
+	var out []realRoot
+	for _, r := range s.roots {
+		if real, err := filepath.EvalSymlinks(r.Dir); err == nil {
+			out = append(out, realRoot{dir: filepath.Clean(r.Dir), real: real})
+		}
+	}
+	return out
+}
+
+func (s *Sandbox) holdableIn(rs []realRoot, p string) bool {
+	if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+		return false
+	}
+	real, err := realPath(p)
+	if err != nil || s.inTrash(real) {
+		return false
+	}
+	for _, r := range rs {
+		if within(r.dir, p) && within(r.real, real) {
+			return true
+		}
+	}
+	return false
 }

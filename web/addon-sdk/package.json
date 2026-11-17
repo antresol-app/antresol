@@ -1,0 +1,14 @@
+{
+  "name": "@antresol/addon-sdk",
+  "version": "1.0.0",
+  "description": "Antresol addon SDK: the types of what the app shares with an addon's web bundle, and the Vite plugin that builds one (addon contract 1).",
+  "license": "MIT",
+  "type": "module",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts" },
+    "./vite-plugin": { "types": "./vite-plugin.d.mts", "default": "./vite-plugin.mjs" }
+  },
+  "files": ["index.d.ts", "types", "vite-plugin.mjs", "vite-plugin.d.mts", "README.md", "LICENSE"],
+  "peerDependencies": { "vite": ">=8", "lightningcss": ">=1.30" }
+}

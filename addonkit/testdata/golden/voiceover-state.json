@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/voiceover/fit?path=%7Broot%7D%2Fmovies%2F%D0%9C%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0+%281999%29%2F%D0%9C%D0%B0%D1%82%D1%80%D0%B8%D1%86%D0%B0+%281999%29.rus.mka",
+  "status": 200,
+  "body": {
+    "state": "pending",
+    "offsetMs": 0,
+    "tempo": 0
+  }
+}

@@ -97,11 +97,6 @@ export default {
   // the sources build's, but named by core code (were in ./full.ts)
   'common.downloads': 'Downloads',
   'common.kind.folder': 'Folder',
-  'common.myFollows': 'Following',
   'common.perSecond': '{size}/s',
-  'common.download.downloading': 'Downloading',
-  'common.download.paused': 'Paused',
-  'common.download.queued': 'Looking for peers',
-  'common.download.streaming': 'Being watched',
   'common.download.waitingSpace': 'Waiting for disk space',
 } satisfies EnOf<typeof ru>

@@ -2,6 +2,7 @@
 package tmdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/metadata"
 )
 
 // ErrNotFound is returned for HTTP 404 and for empty /find results.
@@ -42,7 +44,9 @@ const (
 	maxRetries     = 3
 	maxConcurrency = 4
 	maxCertLookups = 3
-	defaultLang    = "ru-RU"
+	// maxAddonLookups: the addons' pass-through calls (Raw) in flight
+	maxAddonLookups = 2
+	defaultLang     = "ru-RU"
 )
 
 type langKey struct{}
@@ -105,8 +109,11 @@ type Client struct {
 	// (Certification), a budget of their own so library scans and admin
 	// searches never queue behind them
 	certSem chan struct{}
-	lang    atomic.Value // string, see SetLanguage
-	genres  genreCache
+	// addonSem: the addons' pass-through calls (Raw), a budget of their
+	// own so bulk addon traffic never starves the library's enrichment
+	addonSem chan struct{}
+	lang     atomic.Value // string, see SetLanguage
+	genres   genreCache
 }
 
 type Result struct {
@@ -186,6 +193,7 @@ func (c *Client) init() {
 	c.once.Do(func() {
 		c.sem = make(chan struct{}, maxConcurrency)
 		c.certSem = make(chan struct{}, maxCertLookups)
+		c.addonSem = make(chan struct{}, maxAddonLookups)
 	})
 }
 
@@ -196,11 +204,34 @@ func (c *Client) get(ctx context.Context, p string, q url.Values, out any) error
 
 // getWith is get holding a slot of sem for the request.
 func (c *Client) getWith(ctx context.Context, sem chan struct{}, p string, q url.Values, out any) error {
+	status, _, body, err := c.do(ctx, sem, c.HTTP, p, q)
+	switch {
+	case err != nil:
+		return err
+	case status == http.StatusTooManyRequests:
+		return fmt.Errorf("tmdb %s: rate limited", p)
+	case status == http.StatusNotFound:
+		return ErrNotFound
+	case status != http.StatusOK:
+		return fmt.Errorf("tmdb %s: %w", p, &StatusError{Code: status})
+	}
+	return json.Unmarshal(body, out)
+}
+
+// maxBody: the largest answer read (Raw refuses a longer one).
+const maxBody = metadata.MaxRaw
+
+// do GETs p (below BaseURL) with q and the key through hc (nil: a 20 s
+// client), holding a slot of sem,
+// repeating after HTTP 429 (at most maxRetries times; then the 429 is the
+// answer). The body is read up to maxBody+1 bytes; errors never hold the
+// key or the URL.
+func (c *Client) do(ctx context.Context, sem chan struct{}, hc *http.Client, p string, q url.Values) (status int, contentType string, body []byte, err error) {
 	select {
 	case sem <- struct{}{}:
 		defer func() { <-sem }()
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, "", nil, ctx.Err()
 	}
 	if q == nil {
 		q = url.Values{}
@@ -210,7 +241,6 @@ func (c *Client) getWith(ctx context.Context, sem chan struct{}, p string, q url
 		q.Set("api_key", c.Key)
 	}
 	u := strings.TrimRight(c.BaseURL, "/") + p + "?" + q.Encode()
-	hc := c.HTTP
 	if hc == nil {
 		hc = &http.Client{Timeout: 20 * time.Second}
 	}
@@ -221,7 +251,7 @@ func (c *Client) getWith(ctx context.Context, sem chan struct{}, p string, q url
 	for attempt := 0; ; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			return fmt.Errorf("tmdb %s: %s", p, redact(err.Error(), c.Key))
+			return 0, "", nil, fmt.Errorf("tmdb %s: %s", p, redact(err.Error(), c.Key))
 		}
 		req.Header.Set("Accept", "application/json")
 		if bearer {
@@ -230,22 +260,18 @@ func (c *Client) getWith(ctx context.Context, sem chan struct{}, p string, q url
 		resp, err := hc.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return 0, "", nil, ctx.Err()
 			}
 			// *url.Error embeds the full URL including api_key: drop it.
 			var ue *url.Error
 			if errors.As(err, &ue) {
 				err = ue.Err
 			}
-			return fmt.Errorf("tmdb %s: %s", p, redact(err.Error(), c.Key))
+			return 0, "", nil, fmt.Errorf("tmdb %s: %s", p, redact(err.Error(), c.Key))
 		}
-		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 		resp.Body.Close()
-		switch {
-		case resp.StatusCode == http.StatusTooManyRequests:
-			if attempt >= maxRetries {
-				return fmt.Errorf("tmdb %s: rate limited", p)
-			}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
 			d := backoff << attempt
 			if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s >= 0 {
 				d = min(time.Duration(s)*time.Second, 30*time.Second)
@@ -254,18 +280,47 @@ func (c *Client) getWith(ctx context.Context, sem chan struct{}, p string, q url
 			case <-time.After(d):
 				continue
 			case <-ctx.Done():
-				return ctx.Err()
+				return 0, "", nil, ctx.Err()
 			}
-		case resp.StatusCode == http.StatusNotFound:
-			return ErrNotFound
-		case resp.StatusCode != http.StatusOK:
-			return fmt.Errorf("tmdb %s: %w", p, &StatusError{Code: resp.StatusCode})
 		}
-		if rerr != nil {
-			return rerr
+		if rerr != nil && resp.StatusCode == http.StatusOK {
+			return 0, "", nil, fmt.Errorf("tmdb %s: %s", p, redact(rerr.Error(), c.Key))
 		}
-		return json.Unmarshal(body, out)
+		return resp.StatusCode, resp.Header.Get("Content-Type"), body, nil
 	}
+}
+
+// Raw is the addons' pass-through: a GET of p (percent-encoded, below
+// BaseURL; metadata.SafeRawPath) with q and the client's key, waiting on
+// addonSem (never on sem, so addons never hold back the library's
+// lookups). Any status is returned as it is, the key replaced by «***» in
+// the type and the body; a body over metadata.MaxRaw is an error; a
+// redirect off BaseURL's host is not followed (its 3xx is returned). The
+// addon's own api_key in q is replaced by the client's.
+func (c *Client) Raw(ctx context.Context, p string, q url.Values) (status int, contentType string, body []byte, err error) {
+	c.init()
+	u, err := metadata.RawURL(c.BaseURL, p, nil)
+	if err != nil {
+		return 0, "", nil, fmt.Errorf("tmdb: %w", err)
+	}
+	base, _ := url.Parse(u) // RawURL parsed it
+	clean := url.Values{}
+	for k, v := range q {
+		if !strings.EqualFold(k, "api_key") {
+			clean[k] = v
+		}
+	}
+	status, contentType, body, err = c.do(ctx, c.addonSem, metadata.StayOn(c.HTTP, base), p, clean)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	if len(body) > maxBody {
+		return 0, "", nil, fmt.Errorf("tmdb %s: %w", p, metadata.ErrTooLarge)
+	}
+	if c.Key != "" {
+		body = bytes.ReplaceAll(body, []byte(c.Key), []byte("***"))
+	}
+	return status, redact(contentType, c.Key), body, nil
 }
 
 type rawResults struct {

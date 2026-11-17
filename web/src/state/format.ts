@@ -1,6 +1,5 @@
 // Number words and byte/speed formatting shared by the admin screens.
 import { formatSize } from '../components/ActionBar'
-import type { TorrentStatus } from '../api/types'
 import { locale, t } from '../i18n'
 
 export { formatSize }
@@ -21,26 +20,6 @@ export function plural(n: number, forms: [string, string, string]): string {
 /** Bytes per second as «2,4 МБ/с» / "2.4 MB/s". */
 export function formatRate(bps: number): string {
   return t('common.perSecond', { size: formatSize(Math.max(0, bps)) })
-}
-
-/** A download's status as the downloads screen says it. */
-export function torrentStatusLabel(status: TorrentStatus, mode?: string): string {
-  switch (status) {
-    case 'queued':
-      return t('common.download.queued')
-    case 'downloading':
-      return mode === 'stream' ? t('common.download.streaming') : t('common.download.downloading')
-    case 'seeding':
-      return __LIBRARY_EDITION__ ? status : t('common.download.seeding')
-    case 'paused':
-      return t('common.download.paused')
-    case 'waiting_space':
-      return t('common.download.waitingSpace')
-    case 'error':
-      return t('common.error')
-    default:
-      return status
-  }
 }
 
 /** «5 мин назад», «вчера», «12 марта». */

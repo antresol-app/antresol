@@ -8,6 +8,8 @@ import type {
   TrailerPlay,
   About,
   AccountsState,
+  AddonInfo,
+  AddonPreview,
   MyShowsState,
   CalendarDay,
   ShikimoriAdminSettings,
@@ -23,6 +25,7 @@ import type {
   ImportJobPatch,
   ImportResolve,
   ImportService,
+  ImportServicesReply,
   Card,
   PendingEntry,
   ReviewTrack,
@@ -49,8 +52,8 @@ import type {
   ShuffleSource,
   MusicHome,
   Candidate,
+  KidCandidate,
   KidRequest,
-  TorrentEngineStatus,
   Settings,
   PlaybackPrefs,
   NotifyPrefs,
@@ -304,7 +307,10 @@ export const touchHls = (session: string) => request<HlsStatus>('PUT', `/api/hls
  * player unmounting), so a beacon to the stop route goes first — Safari
  * cancels a keepalive fetch as it leaves a page, and the session would
  * count against the profile's limit until it idles out; a DELETE when the
- * browser has no beacon or refuses it.
+ * browser has no beacon or refuses it. A beacon that was queued but refused
+ * by the server (a 403: a reverse proxy that rewrites Origin or
+ * Sec-Fetch-Site) gets no DELETE after it: the session lives until it idles
+ * out, which is the proxy's doing, not the player's.
  */
 export const stopHls = (session: string, keepalive = false) => {
   const id = encodeURIComponent(session)
@@ -336,9 +342,9 @@ export const downloadUrl = (fileId: number) => `/api/download/${fileId}`
 // --- «Смотреть онлайн» (not for kid profiles; 404 while it is off; the rest: ./clientFull) ---
 /** Admin: is the sidecar there, how many sources it lists (404: not configured, or switched off). */
 export const onlineStatus = (signal?: AbortSignal) => request<OnlineStatus>('GET', '/api/online/status', undefined, signal)
-// --- Acquisition (not available to kid profiles; the rest: ./clientFull) ---
+// --- The core title page: a TMDB title that may not be in the library (a kid's carries its «Попросить») ---
 export const getTitle = (kind: string, tmdbId: number, signal?: AbortSignal) =>
-  request<TitleInfo>('GET', `/api/discover/${encodeURIComponent(kind)}/${tmdbId}`, undefined, signal)
+  request<TitleInfo>('GET', `/api/title/${encodeURIComponent(kind)}/${tmdbId}`, undefined, signal)
 
 // --- Ongoing tracking: a title's episodes with sources, and the profile's source choice ---
 const trackingPath = (kind: string, tmdbId: number, tail: string) => `/api/tracking/${encodeURIComponent(kind)}/${tmdbId}/${tail}`
@@ -368,6 +374,11 @@ export interface KidRequestAsk {
 }
 /** Kids: the kid's request of the title (made once; asking again returns it). 403 code 'rating': above the age limit. */
 export const askRequest = (ask: KidRequestAsk) => request<KidRequest>('POST', '/api/requests', ask)
+/** Kids, while requests are open: what may be asked for, of one kind (video: movies and series). 403 otherwise. */
+export const searchRequests = (q: string, kind: RequestSearchKind, signal?: AbortSignal) =>
+  request<KidCandidate[]>('GET', `/api/requests/search${qs({ q, kind })}`, undefined, signal)
+/** The ?kind= of GET /api/requests/search. */
+export type RequestSearchKind = 'video' | 'music' | 'book' | 'audiobook' | 'comic'
 /** The profile's own requests, newest first. */
 export const getMyRequests = (signal?: AbortSignal) => request<KidRequest[]>('GET', '/api/requests/mine', undefined, signal)
 /** Admin: pending requests, then those decided in the last 30 days, with who asked. */
@@ -383,9 +394,6 @@ export const declineRequest = (id: number, reason: string) => request<KidRequest
 export const getLibraryPending = (signal?: AbortSignal, scope?: LibraryScope) =>
   request<Card[]>('GET', `/api/library/pending${qs({ scope: scopeParam(scope) })}`, undefined, signal)
 export const getDisk = () => request<DiskUsage>('GET', '/api/disk')
-/** null: the server cannot tell (204, or an older server without the endpoint). */
-export const getTorrentEngine = async (signal?: AbortSignal): Promise<TorrentEngineStatus | null> =>
-  (await request<TorrentEngineStatus | undefined>('GET', '/api/torrent-engine', undefined, signal)) ?? null
 
 export const getUsers = (signal?: AbortSignal) => request<User[]>('GET', '/api/users', undefined, signal)
 export interface UserInput {
@@ -425,7 +433,10 @@ export const setPreferCleaned = (on: boolean, userId?: number) => request<Playba
 export const resetPlaybackPrefs = (userId?: number) => request<PlaybackPrefs>('DELETE', prefsPath(userId))
 // «Уведомления на почту»: a profile's address and topics; a kid's are an administrator's (userId).
 const notifyPath = (userId?: number) => (userId === undefined ? '/api/me/notify' : `/api/users/${userId}/notify`)
-export type NotifyPrefsInput = Pick<NotifyPrefs, 'email' | 'episodes' | 'available' | 'requests' | 'downloads' | 'quietHours' | 'lang'>
+export type NotifyPrefsInput = Pick<NotifyPrefs, 'email' | 'episodes' | 'available' | 'requests' | 'quietHours' | 'lang'> & {
+  /** The addon topics to change ([{addon, topic, on}]); the others stay as they are. */
+  addonTopics?: { addon: string; topic: string; on: boolean }[]
+}
 export const getNotifyPrefs = (userId?: number, signal?: AbortSignal) => request<NotifyPrefs>('GET', notifyPath(userId), undefined, signal)
 export const saveNotifyPrefs = (p: NotifyPrefsInput, userId?: number) => request<NotifyPrefs>('PUT', notifyPath(userId), p)
 /** «Отправить проверочное письмо»: a code (and a link) to the saved address. */
@@ -497,7 +508,8 @@ export const getStats = (signal?: AbortSignal) => request<Stats>('GET', '/api/st
 export const getStorage = (signal?: AbortSignal) => request<StorageReport>('GET', '/api/stats/storage', undefined, signal)
 /** What one disk category is made of (sources build, admin); `pending` while «other» is walked. */
 export const getDiskBreakdown = (category: string, signal?: AbortSignal) =>
-  request<DiskBreakdown>('GET', `/api/stats/disk/${encodeURIComponent(category)}`, undefined, signal)
+  // the ':' of an addon's category (addon:<id>:<segment>) stays as it is: the router matches the raw path
+  request<DiskBreakdown>('GET', `/api/stats/disk/${encodeURIComponent(category).replace(/%3A/gi, ':')}`, undefined, signal)
 
 // --- Music ---
 export const getMusicHome = (signal?: AbortSignal, scope?: LibraryScope) =>
@@ -661,8 +673,13 @@ export const migrateReport = (id: string, signal?: AbortSignal) =>
   request<MigrateReport>('GET', `/api/migrate/reports/${encodeURIComponent(id)}`, undefined, signal)
 
 // «Импорт медиатеки» (admin; the playlist's pending songs: any profile)
-export const getImportServices = (signal?: AbortSignal) =>
-  request<{ services: ImportService[] }>('GET', '/api/import/services', undefined, signal).then((r) => r.services)
+/** The tiles and what the page may promise (an older answer without the flags promises nothing). */
+export const getImportServices = (signal?: AbortSignal): Promise<ImportServicesReply> =>
+  request<Partial<ImportServicesReply> & { services: ImportService[] }>('GET', '/api/import/services', undefined, signal).then((r) => ({
+    services: r.services,
+    downloads: r.downloads === true,
+    catalog: r.catalog === true,
+  }))
 export const getImportJobs = (signal?: AbortSignal) =>
   request<{ jobs: ImportJob[] }>('GET', '/api/import/jobs', undefined, signal).then((r) => r.jobs)
 export const getImportJob = (id: number, signal?: AbortSignal) => request<ImportJob>('GET', `/api/import/jobs/${id}`, undefined, signal)
@@ -722,3 +739,17 @@ export const setShikimoriWrite = (enable: boolean) => request<{ authorizeUrl?: s
 export const markShikimoriAsked = () => request<void>('POST', '/api/accounts/shikimori/asked')
 export const getShikimoriAdmin = (signal?: AbortSignal) => request<ShikimoriAdminSettings>('GET', '/api/accounts/admin/shikimori', undefined, signal)
 export const putShikimoriAdmin = (clientId: string, clientSecret: string) => request<void>('PUT', '/api/accounts/admin/shikimori', { clientId, clientSecret })
+
+// --- «Расширения» (addons; admin) ---
+const addonPath = (id: string) => `/api/addons/${encodeURIComponent(id)}`
+export const getAddons = () => request<AddonInfo[]>('GET', '/api/addons')
+export const previewAddon = (url: string) => request<AddonPreview>('POST', '/api/addons/preview', { url })
+/** `version`: the previewed release; the server refuses another one. */
+export const installAddon = (url: string, version: string) => request<AddonInfo>('POST', '/api/addons', { url, version })
+export const setAddonEnabled = (id: string, on: boolean) => request<AddonInfo>('POST', `${addonPath(id)}/${on ? 'enable' : 'disable'}`)
+/** `version`: the previewed release; the server refuses another one. */
+export const updateAddon = (id: string, version: string) => request<AddonInfo>('POST', `${addonPath(id)}/update`, { version })
+/** `data`: its data directory goes too. */
+export const removeAddon = (id: string, data: boolean) => request<void>('DELETE', `${addonPath(id)}?data=${data ? 1 : 0}`)
+/** The last `n` lines of the addon's log. */
+export const getAddonLog = (id: string, n = 200) => request<{ lines: string[] }>('GET', `${addonPath(id)}/log?n=${n}`).then((r) => r.lines)

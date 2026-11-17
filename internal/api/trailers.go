@@ -54,7 +54,7 @@ func (h *lib) trailers(w http.ResponseWriter, r *http.Request) {
 	if h.Trailers != nil && kind != "" && it.TmdbID > 0 {
 		if vs, ok := h.Trailers.Videos(ctx, kind, int(it.TmdbID)); ok {
 			out = orderTrailers(vs, i18n.FromContext(ctx))
-			h.listTrailers(it, out)
+			h.listTrailers(ctx, it, out)
 		}
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
@@ -104,7 +104,11 @@ func orderTrailers(vs []tmdb.Video, lang string) []Trailer {
 	out := make([]Trailer, 0, len(kept))
 	for _, v := range kept {
 		out = append(out, Trailer{Name: v.Name, Site: v.Site, Key: v.Key, Type: v.Type, Lang: v.Lang, Official: v.Official,
-			URL: "https://www.youtube.com/watch?v=" + v.Key})
+			URL: trailerURL(v.Key)})
 	}
 	return out
 }
+
+// trailerURL is the page of the trailer key: the apps open it, and a
+// trailer provider fetches it.
+func trailerURL(key string) string { return "https://www.youtube.com/watch?v=" + key }

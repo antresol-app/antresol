@@ -6,9 +6,10 @@
 # acquisition code at all — not code that is switched off:
 #
 #   1. no package of the sources build's features in the build graph
-#      (acquire, torrent, indexer, online, follow, migrate, musicimport) and
-#      no torrent or WebRTC module (anacrolix/*, pion/*) in `go version -m`
-#      (the core packages organize, disk, releaseprefs, mediaimport and
+#      (online, and each package of the file LIBRARY_EDITION_PKGS names, one
+#      path under internal/ per line, "#" lines ignored, when it is set) and
+#      no download-engine or WebRTC module (anacrolix/*, pion/*) in
+#      `go version -m` (the core packages disk, releaseprefs, mediaimport and
 #      playlistimport are allowed: both editions build them);
 #   2. no "magnet:" in the binary or in the web bundle embedded in it, nor
 #      any extra word of the file LIBRARY_EDITION_WORDS names (one extended
@@ -17,8 +18,10 @@
 #
 #   scripts/check-library-edition.sh             build both into a temp dir, check
 #   scripts/check-library-edition.sh BINARY...   check built binaries against web/dist
+#   scripts/check-library-edition.sh --graph     check 1's build graph only (no build)
 #
-# Exit status 0: every check passed.
+# Exit status 0: every check passed; 1: a check failed; 2: bad arguments,
+# a missing list file, or a build graph go cannot list.
 set -eu
 # A public build: no GOFLAGS of the caller (vault's GNUmakefile sets the sources build's).
 export GOFLAGS=
@@ -32,7 +35,13 @@ if [ -n "${LIBRARY_EDITION_WORDS:-}" ]; then
 fi
 cd "$(dirname "$0")/.."
 
-FULL_PKGS='internal/(acquire|torrent|indexer|online|follow|migrate|musicimport)($|/)'
+FULL_PKGS='online'
+if [ -n "${LIBRARY_EDITION_PKGS:-}" ]; then
+	[ -f "$LIBRARY_EDITION_PKGS" ] || { echo "check-library-edition: $LIBRARY_EDITION_PKGS: no such file" >&2; exit 2; }
+	extra=$(grep -v -e '^#' -e '^$' "$LIBRARY_EDITION_PKGS" | paste -s -d '|' -)
+	[ -z "$extra" ] || FULL_PKGS="$FULL_PKGS|$extra"
+fi
+FULL_PKGS="internal/($FULL_PKGS)(\$|/)"
 FULL_MODS='anacrolix|pion|/dht'
 
 fail=0
@@ -42,7 +51,12 @@ ok() { echo "check-library-edition: ok: $*"; }
 # words prints how many times the words occur in a file (0: none).
 words() { LC_ALL=C grep -a -o -i -E "$WORDS" "$1" | wc -l | tr -d ' '; }
 
-if [ $# -eq 0 ]; then
+graph=
+if [ "${1:-}" = --graph ]; then
+	[ $# -eq 1 ] || { echo "usage: check-library-edition.sh [--graph | BINARY...]" >&2; exit 2; }
+	graph=1
+	shift
+elif [ $# -eq 0 ]; then
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT
 	echo "check-library-edition: building the web bundle (npm run build)…"
@@ -55,11 +69,19 @@ if [ $# -eq 0 ]; then
 	set -- "$tmp/antresol-server"
 fi
 
-# 1. The build graph.
-pkgs=$(go list -deps ./cmd/vault | grep -E "github.com/antresol-app/antresol/$FULL_PKGS" || true)
+# 1. The build graph. A graph go cannot list is refused (exit 2): read as
+# empty, it would pass.
+deps=$(go list -deps ./cmd/vault) || { echo "check-library-edition: go list -deps ./cmd/vault failed" >&2; exit 2; }
+depmods=$(go list -deps -f '{{with .Module}}{{.Path}}{{end}}' ./cmd/vault) ||
+	{ echo "check-library-edition: go list -deps (modules) ./cmd/vault failed" >&2; exit 2; }
+pkgs=$(printf '%s\n' "$deps" | grep -E "github.com/antresol-app/antresol/$FULL_PKGS" || true)
 [ -z "$pkgs" ] && ok "no sources-build package in the build graph" || bad "sources-build packages in the build graph: $pkgs"
-mods=$(go list -deps -f '{{with .Module}}{{.Path}}{{end}}' ./cmd/vault | sort -u | grep -E "$FULL_MODS" || true)
-[ -z "$mods" ] && ok "no torrent/WebRTC module in the build graph" || bad "modules in the build graph: $mods"
+mods=$(printf '%s\n' "$depmods" | sort -u | grep -E "$FULL_MODS" || true)
+[ -z "$mods" ] && ok "no download-engine/WebRTC module in the build graph" || bad "modules in the build graph: $mods"
+if [ -n "$graph" ]; then
+	[ "$fail" = 0 ] && echo "check-library-edition: PASS (build graph)" || echo "check-library-edition: FAILED" >&2
+	exit "$fail"
+fi
 
 # 2. The web bundle on disk.
 [ -f web/dist/index.html ] || { bad "web/dist/index.html missing: build the web bundle first (npm --prefix web run build)"; exit 1; }

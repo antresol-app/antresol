@@ -11,7 +11,6 @@ const empty = {
   episodes: false,
   available: false,
   requests: false,
-  downloads: false,
   quietHours: true,
   lang: '',
   topics: ['episodes', 'available'],
@@ -66,7 +65,36 @@ describe('NotifySheet', () => {
     expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull()
     const put = calls.filter((c) => c.method === 'PUT').at(-1)!
     expect(put.url).toBe('/api/me/notify')
-    expect(put.body).toEqual({ email: 'anya@example.com', episodes: true, available: false, requests: false, downloads: false, quietHours: true, lang: 'ru' })
+    expect(put.body).toEqual({ email: 'anya@example.com', episodes: true, available: false, requests: false, quietHours: true, lang: 'ru' })
+  })
+
+  it('lists addon topics after the core ones, with their titles, and saves a flip of one', async () => {
+    state = {
+      ...empty,
+      topics: ['episodes', 'available', 'requests', 'downloads'],
+      addonTopics: [
+        { addon: 'dl', topic: 'done', title: 'Готово', on: false },
+        { addon: 'hello', topic: 'news', title: 'Новости', on: true },
+      ],
+    } as typeof empty
+    render(<NotifySheet onClose={() => {}} />)
+    const done = await screen.findByRole('switch', { name: 'Готово' })
+    const names = screen.getAllByRole('switch').map((s) => s.getAttribute('aria-label') ?? s.textContent)
+    const at = (n: string) => names.findIndex((x) => x?.includes(n))
+    // after the core's, before the quiet hours; no row of a topic the core has no words for
+    expect(at('Готово')).toBeGreaterThan(at('Появилось то, что я хотел посмотреть'))
+    expect(at('Новости')).toBeGreaterThan(at('Готово'))
+    expect(at('Не присылать ночью')).toBeGreaterThan(at('Новости'))
+    expect(screen.getByRole('switch', { name: 'Новости' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getAllByRole('switch')).toHaveLength(6)
+    await userEvent.click(done)
+    await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true))
+    const put = calls.filter((c) => c.method === 'PUT').at(-1)!
+    expect((put.body as { addonTopics: unknown }).addonTopics).toEqual([
+      { addon: 'dl', topic: 'done', on: true },
+      { addon: 'hello', topic: 'news', on: true },
+    ])
   })
 
   it('sends the verification letter and confirms the code', async () => {

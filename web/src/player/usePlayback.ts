@@ -66,7 +66,7 @@ export const HEARTBEAT_MS = 20_000
 const NATIVE_PAUSE_LIMIT_MS = 100_000
 
 export const finalError = () => t('player.video.finalError')
-export const stalledError = () => t('player.video.stalledError')
+export const stalledError = () => t('player.slowSourceStalled')
 export const onlineError = () => t('player.video.onlineError')
 const offlineError = () => t('player.video.offline')
 
@@ -135,7 +135,7 @@ export interface PlaybackOptions {
   initialQuality?: Quality
   /** The last part ended. */
   onFinished: () => void
-  /** Starts a session for a part; default POST /api/play/{file.id} (a remote stream uses /api/torrent-play). */
+  /** Starts a session for a part; default POST /api/play/{file.id} (an addon input uses its own). */
   start?: (file: MediaFile, body: PlayRequest) => Promise<PlayResponse>
   /** A remote stream: waiting is the source, not the device. */
   slowSource?: boolean
@@ -507,8 +507,8 @@ export function usePlayback({
     } else {
       teardown()
       setWait(false)
-      // stalls are another build's
-      setError(!__LIBRARY_EDITION__ && reason === 'stalled' ? stalledError() : finalError())
+      // a slow source that stopped sending is the source's fault, not the device's
+      setError(slowSource && reason === 'stalled' ? stalledError() : finalError())
     }
   }
 
@@ -749,7 +749,7 @@ export function usePlayback({
     onEnded: () => {
       const s = session.current
       const v = videoRef.current
-      // A stream that broke off (a long swarm stall) is not the end of the movie.
+      // A stream that broke off (its source stalled for long) is not the end of the movie.
       const endPos = s.offset + (v?.currentTime ?? 0)
       if (isHls() && v && endedEarly(durRef.current[s.part] ?? 0, endPos) && !repeatedEarlyEnd(earlyEnd.current, s.part, endPos)) {
         // Once per place: a second end at the same spot after the restart is

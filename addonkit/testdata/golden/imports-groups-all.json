@@ -1,0 +1,67 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/imports/jobs/1/groups",
+  "status": 200,
+  "body": [
+    {
+      "id": 1,
+      "jobId": 1,
+      "releaseGroup": "rg-one",
+      "artist": "Кино",
+      "album": "Группа крови",
+      "year": 1988,
+      "aliases": [],
+      "albumItemId": 7,
+      "state": "done",
+      "key": "",
+      "bytes": 0,
+      "attempts": 0,
+      "error": "",
+      "updatedAt": "2026-11-01T12:00:00Z",
+      "songs": 2,
+      "waitingFor": "",
+      "skipKey": "",
+      "anyFormat": false,
+      "dead": [],
+      "slow": [],
+      "waitDone": 0,
+      "clock": {
+        "runSec": 0,
+        "quietSec": 0,
+        "base": -1,
+        "done": 0
+      }
+    },
+    {
+      "id": 2,
+      "jobId": 1,
+      "releaseGroup": "rg-two",
+      "artist": "Кино",
+      "album": "Звезда по имени Солнце",
+      "year": 1989,
+      "aliases": [],
+      "albumItemId": 0,
+      "state": "not_found",
+      "key": "k-0002",
+      "bytes": 0,
+      "attempts": 1,
+      "error": "Подходящих релизов не нашлось",
+      "updatedAt": "2026-11-01T12:00:00Z",
+      "songs": 1,
+      "waitingFor": "",
+      "skipKey": "k-0002",
+      "anyFormat": false,
+      "dead": [
+        "k-0001"
+      ],
+      "slow": [],
+      "waitDone": 0,
+      "clock": {
+        "runSec": 0,
+        "quietSec": 0,
+        "base": -1,
+        "done": 0
+      }
+    }
+  ]
+}

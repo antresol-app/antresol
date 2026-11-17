@@ -167,8 +167,8 @@ export default {
   'files.undo': 'Undo',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'files.info.downloading': 'downloading',
-  'files.info.yes': 'yes',
   'files.op.andMore': 'and {n} more',
   'files.op.continue': 'Continue',
+  'files.op.heldTitle': 'These files are in use',
+  'files.op.heldWarning': 'An extension is using these files. After this, it stops using them:',
 } satisfies EnOf<typeof ru>

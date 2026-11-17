@@ -50,7 +50,7 @@ func TestTrashPerMount(t *testing.T) {
 	twoMounts(o.Sandbox, mr)
 	ctx := context.Background()
 	write(t, filepath.Join(mr, "media/movies/Брат (1997)/Брат.mkv"), 5)
-	write(t, filepath.Join(mr, "torrents/x.mkv"), 3)
+	write(t, filepath.Join(mr, "downloads/x.mkv"), 3)
 
 	res, err := o.Trash(ctx, "movies", []string{"Брат (1997)"}, false, 1)
 	if err != nil || len(res.Trashed) != 1 {

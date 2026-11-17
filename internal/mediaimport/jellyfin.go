@@ -12,6 +12,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/mediaimport/runkit"
 	"github.com/antresol-app/antresol/internal/sqlitesnap"
 )
 
@@ -193,8 +194,8 @@ func othersWarning(app string, others map[string]int) string {
 	return fmt.Sprintf(othersKey, app, i18n.PluralL(i18n.RU, n, "отметка", "отметки", "отметок"), strings.Join(kinds, ", "))
 }
 
-// othersKey is the format of othersWarning (see localizeReason).
-const othersKey = "%s: не переносятся %s (%s)"
+// othersKey is the format of othersWarning (see runkit.OthersKey).
+const othersKey = runkit.OthersKey
 
 // ImportJellyfin carries over the watch positions of movies and episodes
 // and the favourite movies and series («Хочу посмотреть») of the mapped
@@ -206,7 +207,7 @@ func ImportJellyfin(ctx context.Context, o ProgressOptions, lib LibraryLookup, p
 	if d == nil {
 		return nil
 	}
-	defer d.close()
+	defer d.Close()
 	data, err := readJellyfin(ctx, d.DB)
 	if err != nil {
 		if ctx.Err() != nil {

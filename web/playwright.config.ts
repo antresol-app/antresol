@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
 // Each test starts its own bin/vault (see e2e/vault.ts); run `make build` first.
 const browsers = [
@@ -7,8 +9,13 @@ const browsers = [
   { name: 'webkit', use: devices['Desktop Safari'] },
 ]
 
+// A build's own preparation before any test (e2e/global-setup.full.ts), when
+// the tree has one.
+const buildSetup = fileURLToPath(new URL('./e2e/global-setup.full.ts', import.meta.url))
+
 export default defineConfig({
   testDir: './e2e',
+  ...(existsSync(buildSetup) ? { globalSetup: buildSetup } : {}),
   // Tests are isolated (own server each), so they may run in parallel.
   fullyParallel: true,
   workers: 2,

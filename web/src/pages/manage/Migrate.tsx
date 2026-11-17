@@ -9,15 +9,19 @@
 //      confirmation; progress comes as migrate.progress.
 // The history keeps every report.
 //
-// Another build adds more services and steps of its own. All of that is ./MigrateFull, loaded lazily and only when
-// the server says it has it (`state` in the status); this file never names
-// those services. The core build's bundle has no MigrateFull at all.
+// Other services move on an addon's own page: the core's page shows a card
+// per `migrateSources` entry that leads there. The page itself is reusable
+// (the SDK's MigratePage): an addon draws it over its own API (`api`) with
+// services and steps of its own (`full`); this file never names those
+// services.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { Link } from 'react-router'
 import { migrateReport, migrateReports, migrateRun, migrateState, migrateStatus, useEvents, errorText as apiErrorText } from '../../api/client'
 import type {
   MigrateLine,
   MigrateReport,
+  MigrateRunRequest,
   MigrateSource,
   MigrateSourceId,
   MigrateState,
@@ -27,6 +31,8 @@ import type {
 } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon, type IconName } from '../../components/Icon'
+import { AddonBoundary, resolveAddonPath, useAddonLabel, useAddonSlot } from '../../addons/slots'
+import type { Contribution } from '../../addons/registry'
 import { Select } from '../../ui/Select'
 import { Sheet } from '../../ui/Sheet'
 import { locale, t, useT, type Key } from '../../i18n'
@@ -47,17 +53,29 @@ const CORE_SOURCES: Record<string, SourceMeta> = {
   audiobookshelf: { icon: 'headphones', what: 'migrate.what.audiobookshelf' },
 }
 
+/**
+ * A text of an addon's part: a key of the core's catalog, or a function
+ * that returns the addon's own text in the interface language (called
+ * while the page draws, so it follows a language change).
+ */
+export type MigrateText = Key | (() => string)
+
+/** The text a MigrateText stands for. */
+function textOf(t: (key: Key, vars?: Record<string, string | number>) => string, x: MigrateText, vars?: Record<string, string | number>) {
+  return typeof x === 'function' ? x() : t(x, vars)
+}
+
 /** A card's icon, its «what» line and an optional note under it. */
 export interface SourceMeta {
   icon: IconName
-  what?: Key
-  note?: Key
+  what?: MigrateText
+  note?: MigrateText
 }
 
-/** Busy: what the page is waiting for ('switch' and 'rollback' are the sources build's). */
+/** Busy: what the page is waiting for ('switch' and 'rollback' are an addon's). */
 export type Busy = '' | 'check' | 'run' | 'switch' | 'rollback'
 
-/** What the sources build's parts get from the page. */
+/** What an addon's parts (`full`) get from the page. */
 export interface MigrateCtx {
   status: MigrateStatus
   running: string | null
@@ -71,7 +89,7 @@ export interface MigrateCtx {
   check: (only: MigrateSourceId[]) => void
 }
 
-/** The sources build's part of the page (./MigrateFull); the core build has none. */
+/** An addon's part of its own instance of this page (`full`); the core's page has none. */
 export interface MigrateFullApi {
   /** Icon and texts of a service the core does not know. */
   source(id: string): SourceMeta | undefined
@@ -79,34 +97,45 @@ export interface MigrateFullApi {
   TopCards: ComponentType<{ ctx: MigrateCtx }>
   /** Next to a history row: giving the items back. */
   HistoryAction: ComponentType<{ ctx: MigrateCtx; report: MigrateReport; rolledBack: boolean; onStarted: (reportId: string) => void }>
-  /** The items of the confirmation that belong to the sources build's services. */
+  /** The items of the confirmation that belong to the addon's services. */
   ConfirmItems: ComponentType<{ sources: string[] }>
   /** Said after «Сейчас: …» while this service is moving. */
   progressNote(current: string | undefined): string
-  subtitle: Key
+  /** The lead under the title, before «only reads» (a core key gets `{app}`). */
+  subtitle: MigrateText
+  /** The title of a run that gave the items back (`rollbackOf`); none: the core's neutral one. */
+  rollbackTitle?: MigrateText
 }
 
-const loadFull = __LIBRARY_EDITION__ ? null : () => import('./MigrateFull').then((m) => m.migrateFull)
-let fullApi: MigrateFullApi | null = null
+/**
+ * Where the page reads and runs a migration: the core's /api/migrate, or an
+ * addon's own routes (the same shapes). `useProgress` is a hook the page
+ * calls once per render: it hands `handler` each progress event's data
+ * (`{reportId}`). Keep the object the same for the page's life.
+ */
+export interface MigrateApi {
+  migrateStatus: () => Promise<MigrateStatus>
+  migrateState: () => Promise<MigrateState>
+  migrateRun: (req: MigrateRunRequest) => Promise<{ reportId: string }>
+  migrateReports: () => Promise<MigrateReport[]>
+  migrateReport: (id: string) => Promise<MigrateReport>
+  useProgress: (handler: (data: unknown) => void) => void
+}
 
-/** The sources build's part, once it has loaded (always null in the core build). */
-function useFull(): MigrateFullApi | null {
-  const [api, setApi] = useState(fullApi)
-  useEffect(() => {
-    if (api || !loadFull) return
-    let live = true
-    loadFull().then(
-      (a) => {
-        fullApi = a
-        if (live) setApi(a)
-      },
-      () => {},
-    )
-    return () => {
-      live = false
-    }
-  }, [api])
-  return api
+/** The core's own: /api/migrate and its migrate.progress events. */
+const coreApi: MigrateApi = {
+  migrateStatus: () => migrateStatus(),
+  migrateState: () => migrateState(),
+  migrateRun,
+  migrateReports: () => migrateReports(),
+  migrateReport: (id) => migrateReport(id),
+  useProgress: (handler) => useEvents((e) => handler(e.data), ['migrate.progress']),
+}
+
+/** The page's props: an addon's API and part, or none (the core's page). */
+export interface MigrateProps {
+  api?: MigrateApi
+  full?: MigrateFullApi
 }
 
 const nameOf = (names: Record<string, string>, id: string | undefined) => (id ? (names[id] ?? CORE_NAMES[id] ?? id) : '')
@@ -271,21 +300,67 @@ function SourceCard({
         </span>
         <span className={styles.sourceText}>
           <span className={styles.sourceName}>{s.name}</span>
-          {meta?.what && <span className={styles.sourceWhat}>{t(meta.what)}</span>}
+          {meta?.what && <span className={styles.sourceWhat}>{textOf(t, meta.what)}</span>}
           <span className={s.found ? styles.sourceFound : styles.sourceDetail}>{s.found ? t('migrate.found', { detail: s.detail }) : s.detail}</span>
           {[s.error, ...problems].filter(Boolean).map((p) => (
             <span key={p} className={styles.sourceError}>
               {p}
             </span>
           ))}
-          {meta?.note && s.found && <span className={styles.sourceNote}>{t(meta.note)}</span>}
+          {meta?.note && s.found && <span className={styles.sourceNote}>{textOf(t, meta.note)}</span>}
         </span>
       </label>
     </li>
   )
 }
 
-export function Migrate() {
+/** A card that leads to an addon's own migration page. */
+function AddonSourceCard({ entry }: { entry: Contribution<'migrateSources'> }) {
+  const label = useAddonLabel(entry.addonId)
+  const Summary = entry.summary
+  return (
+    <li className={styles.source} data-testid="migrate-addon-source">
+      <Link to={resolveAddonPath(entry.addonId, entry.to)} className={`${styles.sourceLabel} ${styles.addonLink}`}>
+        <span className={styles.sourceIcon} aria-hidden>
+          <Icon name={entry.icon} size={18} strokeWidth={2} />
+        </span>
+        <span className={styles.sourceText}>
+          <span className={styles.sourceName}>{label(entry.name)}</span>
+          {Summary && (
+            <AddonBoundary addonId={entry.addonId} fallback={null}>
+              <span className={styles.sourceWhat}>
+                <Summary />
+              </span>
+            </AddonBoundary>
+          )}
+        </span>
+        <Icon name="chevronRight" size={16} strokeWidth={2.2} className={styles.addonChevron} aria-hidden />
+      </Link>
+    </li>
+  )
+}
+
+/** The `migrateSources` cards (the core's page only). */
+function AddonSources() {
+  const t = useT()
+  const entries = useAddonSlot('migrateSources')
+  if (entries.length === 0) return null
+  return (
+    <>
+      <h3 className={m.groupTitle}>{t('migrate.addons')}</h3>
+      <ul className={styles.sources} aria-label={t('migrate.addons')}>
+        {entries.map((e, i) => (
+          <AddonBoundary key={`${e.addonId}:${e.id}:${i}`} addonId={e.addonId} as="li">
+            <AddonSourceCard entry={e} />
+          </AddonBoundary>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+export function Migrate({ api: given, full }: MigrateProps = {}) {
+  const api = given ?? coreApi
   const [status, setStatus] = useState<MigrateStatus | null>(null)
   const [loadError, setLoadError] = useState('')
   const [selected, setSelected] = useState<Set<MigrateSourceId>>(new Set())
@@ -300,14 +375,13 @@ export function Migrate() {
   const inited = useRef(false)
   const reportRef = useRef<HTMLDivElement>(null)
   const t = useT()
-  const api = useFull()
 
   const loadHistory = useCallback(() => {
-    migrateReports().then(setHistory, () => {})
-  }, [])
+    api.migrateReports().then(setHistory, () => {})
+  }, [api])
 
   const load = useCallback(() => {
-    migrateStatus().then(
+    api.migrateStatus().then(
       (st) => {
         setStatus(st)
         setLoadError('')
@@ -322,7 +396,7 @@ export function Migrate() {
       },
       (e: unknown) => setLoadError(errorText(e, t('common.loadFailed'))),
     )
-  }, [t])
+  }, [api, t])
 
   useEffect(() => {
     document.title = `${t('migrate.docTitle')} — ${APP_NAME}`
@@ -336,21 +410,21 @@ export function Migrate() {
   const waitingScan = status != null && !status.libraryReady.ok
   useEffect(() => {
     if (!waitingScan) return
-    const id = window.setInterval(() => migrateState().then(mergeState, () => {}), 3000)
+    const id = window.setInterval(() => api.migrateState().then(mergeState, () => {}), 3000)
     return () => window.clearInterval(id)
-  }, [waitingScan, mergeState])
+  }, [api, waitingScan, mergeState])
 
   // the report being written: poll it (events may be lost) until it ends
   const loadActive = useCallback(
     (id: string) =>
-      migrateReport(id).then(
+      api.migrateReport(id).then(
         (r) => {
           setActive(r)
           return r
         },
         () => null,
       ),
-    [],
+    [api],
   )
   useEffect(() => {
     if (!activeId) return
@@ -359,7 +433,7 @@ export function Migrate() {
     const tick = async () => {
       const r = await loadActive(activeId)
       if (stop) return
-      const st = await migrateState().catch(() => null)
+      const st = await api.migrateState().catch(() => null)
       if (stop) return
       if (st) mergeState(st)
       const over = r && (finished(r) || (st != null && st.running !== activeId))
@@ -375,15 +449,12 @@ export function Migrate() {
       stop = true
       window.clearTimeout(timer)
     }
-  }, [activeId, loadActive, loadHistory, mergeState])
+  }, [api, activeId, loadActive, loadHistory, mergeState])
 
-  useEvents(
-    (e) => {
-      const d = e.data as { reportId?: string } | null
-      if (d?.reportId && d.reportId === activeId) void loadActive(activeId)
-    },
-    ['migrate.progress'],
-  )
+  api.useProgress((data) => {
+    const d = data as { reportId?: string } | null
+    if (d?.reportId && d.reportId === activeId) void loadActive(activeId)
+  })
 
   const sources = useMemo(() => [...selected].sort(), [selected])
   const effectiveMap = useMemo(() => {
@@ -419,7 +490,7 @@ export function Migrate() {
     const um = only ? {} : effectiveMap
     setBusy(dryRun ? 'check' : 'run')
     try {
-      const { reportId } = await migrateRun({ sources: src, dryRun, planId: dryRun ? undefined : plan?.id, userMap: um })
+      const { reportId } = await api.migrateRun({ sources: src, dryRun, planId: dryRun ? undefined : plan?.id, userMap: um })
       pending.current.set(reportId, planKey(src, um))
       if (!dryRun) setPlan(null) // the next run needs its own check
       if (only) setSelected(new Set(only))
@@ -433,7 +504,7 @@ export function Migrate() {
     }
   }
 
-  // the sources build's rollback has started a report of its own
+  // an addon's rollback has started a report of its own
   const startedRollback = (reportId: string) => {
     setActive(null)
     setActiveId(reportId)
@@ -449,7 +520,8 @@ export function Migrate() {
   if (!status) {
     return (
       <section aria-labelledby="migrate-title">
-        <Header subtitle="migrate.subtitle" />
+        <Header subtitle={full?.subtitle ?? 'migrate.subtitle'} />
+        {!given && <AddonSources />}
         {loadError ? (
           <div className={m.problem} role="alert">
             <Icon name="cloud" size={18} /> {loadError}
@@ -472,15 +544,16 @@ export function Migrate() {
   const rolledBack = new Set(history.filter(finished).map((r) => r.rollbackOf).filter(Boolean))
   const activeRunning = active != null && !finished(active) && running === active.id
   const interrupted = active != null && !finished(active) && running !== active.id && busy === ''
-  // the sources build's part only where the server has the old services it is for
-  const ext = api && status.state !== undefined ? api : null
+  // an addon's part only where its server has the old services it is for
+  const ext = full && status.state !== undefined ? full : null
   const names = Object.fromEntries(status.sources.map((s) => [s.id, s.name]))
   const ctx: MigrateCtx = { status, running, ready, busy, setBusy, setProblem, reload: load, check: (only) => void start(true, only) }
   const metaOf = (id: string) => CORE_SOURCES[id] ?? ext?.source(id)
 
   return (
     <section aria-labelledby="migrate-title" className={styles.page}>
-      <Header subtitle={ext?.subtitle ?? 'migrate.subtitle'} />
+      {/* the lead is the page's (as while it loads); the state gates only the parts */}
+      <Header subtitle={full?.subtitle ?? 'migrate.subtitle'} />
 
       {!ready && (
         <div className={m.problem} role="status">
@@ -516,6 +589,8 @@ export function Migrate() {
           />
         ))}
       </ul>
+
+      {!given && <AddonSources />}
 
       {users.length > 0 && (
         <>
@@ -597,7 +672,7 @@ export function Migrate() {
           <div className={`${styles.report} glass`} data-testid="migrate-report" aria-live="polite">
             <header className={styles.reportHead}>
               <div>
-                <h3 className={styles.reportTitle}>{reportTitle(active)}</h3>
+                <h3 className={styles.reportTitle}>{reportTitle(active, full)}</h3>
                 <p className={styles.reportMeta}>
                   {(active.sources ?? []).map((s) => nameOf(names, s)).join(', ')} · {dateText(active.startedAt)}
                 </p>
@@ -624,7 +699,7 @@ export function Migrate() {
               <li key={r.id} className={`${m.row} ${styles.historyRow}`}>
                 <div className={m.rowText}>
                   <p className={m.rowLabel}>
-                    {reportTitle(r)} · {dateText(r.startedAt)}
+                    {reportTitle(r, full)} · {dateText(r.startedAt)}
                   </p>
                   <p className={m.rowHint}>
                     {summaryParts(r)
@@ -636,7 +711,7 @@ export function Migrate() {
                   <Button size="small" variant="plain" onClick={() => openReport(r.id)}>
                     {t('migrate.open')}
                   </Button>
-                  {/* the sources build: a run cut short by a restart keeps what it moved, and can give it back */}
+                  {/* an addon's: a run cut short by a restart keeps what it moved, and can give it back */}
                   {ext && <ext.HistoryAction ctx={ctx} report={r} rolledBack={rolledBack.has(r.id)} onStarted={startedRollback} />}
                 </div>
               </li>
@@ -675,7 +750,7 @@ export function Migrate() {
   )
 }
 
-function Header({ subtitle }: { subtitle: Key }) {
+function Header({ subtitle }: { subtitle: MigrateText }) {
   const t = useT()
   return (
     <header className={m.header}>
@@ -684,7 +759,7 @@ function Header({ subtitle }: { subtitle: Key }) {
           {t('migrate.title', { app: APP_NAME })}
         </h2>
         <p className={`${m.subtitle} ${styles.subtitle}`}>
-          {t(subtitle, { app: APP_NAME })} {t('migrate.readOnly', { app: APP_NAME })}
+          {textOf(t, subtitle, { app: APP_NAME })} {t('migrate.readOnly', { app: APP_NAME })}
         </p>
       </div>
     </header>
@@ -712,8 +787,8 @@ function RunProgress({ report, names, note }: { report: MigrateReport; names: Re
   )
 }
 
-function reportTitle(r: MigrateReport) {
-  if (r.rollbackOf) return t('migrate.report.rollback')
+function reportTitle(r: MigrateReport, full?: MigrateFullApi) {
+  if (r.rollbackOf) return full?.rollbackTitle ? textOf(t, full.rollbackTitle) : t('migrate.report.undo')
   return r.dryRun ? t('migrate.report.check') : t('migrate.report.run')
 }
 

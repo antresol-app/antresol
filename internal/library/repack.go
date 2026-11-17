@@ -30,7 +30,8 @@ import (
 // The file row keeps its id (progress, subtitles and the item stay) and
 // points at the .mkv; the original stays beside it as a hidden
 // ".<name>.vault-original" (scans skip dot files) for Keep, then goes.
-// A file another tool shares, or one hard-linked from another app, is left
+// A file another tool shares (a download's, or one an addon references:
+// addon_file_refs), or one hard-linked from another app, is left
 // as it is; a file ffmpeg cannot repack is not tried again until it
 // changes.
 type Repacker struct {
@@ -102,7 +103,8 @@ func (r *Repacker) Run(ctx context.Context) {
 func (r *Repacker) Pass(ctx context.Context) error {
 	r.init()
 	rows, err := r.DB.QueryContext(ctx, `SELECT f.id, f.path FROM files f JOIN items i ON i.id = f.item_id
-  WHERE i.kind IN ('movie', 'episode') AND f.missing_since IS NULL AND f.torrent_infohash IS NULL`)
+  WHERE i.kind IN ('movie', 'episode') AND f.missing_since IS NULL AND f.torrent_infohash IS NULL
+    AND NOT EXISTS (SELECT 1 FROM addon_file_refs r WHERE r.file_id = f.id)`)
 	if err != nil {
 		return err
 	}

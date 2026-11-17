@@ -4,8 +4,8 @@ import { langKey } from '../timeline'
 
 const base: WaitContext = { phase: 'start', mode: 'remux', slow: false, progressed: false, idleChecks: 0, elapsedSec: 31 }
 
-describe('a slow torrent is not a device problem (F14, F16)', () => {
-  it('keeps waiting while the torrent brings data, however long', () => {
+describe('a slow remote source is not a device problem (F14, F16)', () => {
+  it('keeps waiting while the remote source brings data, however long', () => {
     for (const phase of ['start', 'stall'] as const) {
       for (const mode of ['direct', 'remux', 'transcode']) {
         expect(waitVerdict({ ...base, phase, mode, slow: true, progressed: true, idleChecks: 0, elapsedSec: 900 })).toBe('wait')
@@ -21,12 +21,12 @@ describe('a slow torrent is not a device problem (F14, F16)', () => {
     expect(waitVerdict({ ...c, mode: 'direct', idleChecks: 2 })).toBe('stalled')
   })
 
-  it('restarts a stalled torrent, then shows its own error — no transcode fallback', () => {
+  it('restarts a stalled remote source, then shows its own error — no transcode fallback', () => {
     expect(recover({ restarts: 0, fallbackUsed: false }, 'stalled')).toEqual({ action: 'restart' })
     expect(recover({ restarts: 2, fallbackUsed: false }, 'stalled')).toEqual({ action: 'error' })
   })
 
-  it('a network error on a torrent is the swarm', () => {
+  it('a network error on a remote source is the source itself', () => {
     expect(mediaErrorReason('direct', 2, true)).toBe('stalled')
     expect(mediaErrorReason('remux', 2, true)).toBe('stalled')
     expect(mediaErrorReason('direct', 4, true)).toBe('media') // a real decode failure still falls back
