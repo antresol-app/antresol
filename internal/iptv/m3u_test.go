@@ -115,3 +115,17 @@ func TestPlaylistTitleAndDefaultName(t *testing.T) {
 		}
 	}
 }
+
+func TestParseM3UExtHTTP(t *testing.T) {
+	p, err := ParseM3U(strings.NewReader("#EXTM3U\n#EXTINF:-1,One\n#EXTHTTP:{\"User-Agent\":\"HttpUA/3\",\"Referer\":\"http://r.example.test/\",\"Cookie\":\"x\"}\nhttp://s.example.test/1.m3u8\n"+
+		"#EXTINF:-1,Two\n#EXTHTTP:not json\nhttp://s.example.test/2.m3u8\n"), MaxEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := p.Entries[0]; e.UserAgent != "HttpUA/3" || e.Referrer != "http://r.example.test/" {
+		t.Fatalf("one %+v", e)
+	}
+	if e := p.Entries[1]; e.UserAgent != "" || e.Referrer != "" || e.URL != "http://s.example.test/2.m3u8" {
+		t.Fatalf("two %+v", e)
+	}
+}

@@ -2,6 +2,7 @@ package iptv
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,8 +28,8 @@ type Entry struct {
 	// Name: the #EXTINF title (after the attributes).
 	Name, TvgID, TvgName, Logo, Group string
 	URL                               string
-	// UserAgent, Referrer: what #EXTVLCOPT, #KODIPROP or a Kodi "|"
-	// suffix of the URL ask the player to send.
+	// UserAgent, Referrer: what #EXTVLCOPT, #EXTHTTP, #KODIPROP or a
+	// Kodi "|" suffix of the URL ask the player to send.
 	UserAgent, Referrer string
 }
 
@@ -126,6 +127,19 @@ func ParseM3U(r io.Reader, maxEntries int) (Playlist, error) {
 				cur.UserAgent = strings.TrimSpace(v)
 			case "http-referrer", "http-referer":
 				cur.Referrer = strings.TrimSpace(v)
+			}
+		case hasPrefixFold(line, "#EXTHTTP:"):
+			// a JSON object of headers: {"User-Agent":"…","Referer":"…"}
+			var hs map[string]string
+			if json.Unmarshal([]byte(line[len("#EXTHTTP:"):]), &hs) == nil {
+				for k, v := range hs {
+					switch strings.ToLower(strings.TrimSpace(k)) {
+					case "user-agent":
+						cur.UserAgent = strings.TrimSpace(v)
+					case "referer", "referrer":
+						cur.Referrer = strings.TrimSpace(v)
+					}
+				}
 			}
 		case hasPrefixFold(line, "#KODIPROP:"):
 			k, v, _ := strings.Cut(line[len("#KODIPROP:"):], "=")
