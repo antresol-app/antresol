@@ -45,6 +45,33 @@ vi.mock('hls.js', () => {
   return { default: FakeHls }
 })
 
+const tsLog: { urls: string[]; players: { fire: (e: string) => void }[] } = { urls: [], players: [] }
+vi.mock('mpegts.js', () => {
+  class FakePlayer {
+    handlers: Record<string, (() => void)[]> = {}
+    constructor(public url: string) {
+      tsLog.urls.push(url)
+      tsLog.players.push(this)
+    }
+    on(e: string, f: () => void) {
+      ;(this.handlers[e] ??= []).push(f)
+    }
+    fire(e: string) {
+      for (const f of this.handlers[e] ?? []) f()
+    }
+    attachMediaElement() {}
+    load() {}
+    destroy() {}
+  }
+  return {
+    default: {
+      Events: { ERROR: 'error' },
+      isSupported: () => true,
+      createPlayer: (src: { url: string }) => new FakePlayer(src.url),
+    },
+  }
+})
+
 import { LivePlayer } from '../LivePlayer'
 
 const iso = (m: number) => new Date(Date.now() + m * 60_000).toISOString()
@@ -58,6 +85,8 @@ const CHANNELS = [
   ext(101, 101, { url: 'https://c.example.test/live.m3u8', userAgent: 'Box/1', fallbacks: [], unsupported: ['web'] }),
   ext(102, 102, { url: 'http://d.example.test/live.m3u8', relay: '/api/channels/live/ext/102/0/relay', userAgent: 'Box/1', fallbacks: [], unsupported: ['web'] }),
   ext(103, 103, { url: 'https://e.example.test/live.m3u8', relay: '/api/channels/live/ext/103/0/relay', fallbacks: [], unsupported: [] }),
+  ext(104, 104, { url: 'http://f.example.test/live/u/p/7.ts', relay: '/api/channels/live/ext/104/0/relay', format: 'ts', userAgent: 'Box/1', fallbacks: [], unsupported: ['web'] }),
+  ext(105, 105, { url: 'https://g.example.test/stream/7', relay: '/api/channels/live/ext/105/0/relay', fallbacks: [], unsupported: ['web'] }),
 ]
 
 type Call = { method: string; url: string }
@@ -68,6 +97,8 @@ beforeEach(() => {
   calls = []
   hlsLog.loaded = []
   hlsLog.instances = []
+  tsLog.urls = []
+  tsLog.players = []
   localStorage.clear()
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
@@ -134,6 +165,26 @@ describe('an external channel in the web player', () => {
     await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
     expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8', '/api/channels/live/ext/103/0/relay'])
     expect(screen.queryByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeNull()
+  })
+
+  // mpegts.js gets an absolute URL: its loader runs in a worker
+  it('plays a raw MPEG-TS stream through the relay with mpegts.js, not hls.js', async () => {
+    open(104)
+    await waitFor(() => expect(tsLog.urls).toEqual([expect.stringMatching(/^https?:\/\/[^/]+\/api\/channels\/live\/ext\/104\/0\/relay$/)]))
+    expect(hlsLog.loaded).toEqual([])
+    await act(async () => tsLog.players[0]!.fire('error'))
+    expect(await screen.findByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeInTheDocument()
+    expect(tsLog.urls).toHaveLength(1)
+  })
+
+  it('a stream of unknown format tries HLS, then MPEG-TS, once each', async () => {
+    open(105)
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['/api/channels/live/ext/105/0/relay']))
+    await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    await waitFor(() => expect(tsLog.urls).toEqual([expect.stringMatching(/\/api\/channels\/live\/ext\/105\/0\/relay$/)]))
+    expect(screen.queryByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeNull()
+    await act(async () => tsLog.players[0]!.fire('error'))
+    expect(await screen.findByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeInTheDocument()
   })
 
   it('keeps the track choice per channel in this browser, not on the server', async () => {

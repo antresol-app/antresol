@@ -81,12 +81,16 @@ export interface ChannelProgram {
   subtitles?: ChannelTrack[];
 }
 
+/** What a stream is: an HLS playlist, a raw MPEG-TS stream, or '' (unknown: try HLS, then MPEG-TS). */
+export type StreamFormat = "hls" | "ts" | "";
+
 /** Where an external channel's stream is, as the server tells this client. */
 export interface ExternalStream {
   /** The provider's URL, or /api/channels/live/ext/{id}/{n} (a redirect) when the source hides addresses. */
   url: string;
   /** The server's same-origin relay of it (/api/channels/live/ext/{id}/{n}/relay): what the web plays when it cannot play `url`. */
   relay?: string;
+  format?: StreamFormat;
   userAgent?: string;
   referrer?: string;
   /** The platforms that cannot play it (a header a browser cannot send, http on an https page…). */
@@ -94,6 +98,7 @@ export interface ExternalStream {
   fallbacks: {
     url: string;
     relay?: string;
+    format?: StreamFormat;
     userAgent?: string;
     referrer?: string;
     unsupported?: string[];
@@ -122,6 +127,20 @@ export interface Channel {
   /** From an external playlist: the client plays `stream` itself. */
   external?: boolean;
   stream?: ExternalStream;
+  /** Its category ids (ChannelCategory.id). */
+  categories?: string[];
+}
+
+/**
+ * A category of the viewer's list: `ai:<code>` (the AI helper's, named in the
+ * request's language), `source:<id>` (an external source, when there are two or
+ * more), `group:<name>` (a playlist's group-title, an own channel's theme).
+ */
+export interface ChannelCategory {
+  id: string;
+  name: string;
+  kind: "ai" | "source" | "group";
+  count: number;
 }
 
 export interface ChannelList {
@@ -131,6 +150,8 @@ export interface ChannelList {
   lastChannel?: number | null;
   canManage: boolean;
   canCreate: boolean;
+  /** Every category of the list once, in the filter's order (older servers: absent). */
+  categories?: ChannelCategory[];
 }
 
 export interface ChannelGuide {
@@ -147,6 +168,7 @@ export interface ChannelEPG {
   favorite?: boolean;
   logoUrl?: string;
   programs: ChannelProgram[];
+  categories?: string[];
 }
 
 export interface ChannelEPGWindow {

@@ -19,8 +19,8 @@ type Service struct {
 	// LLM helps Suggest read a sentence (VAULT_LLM_URL); nil: the words alone.
 	LLM *LLM
 	// LLMSource, when set, is asked instead of LLM (the admin's «ИИ-помощник»
-	// settings over the environment's)
-	LLMSource func(context.Context) *LLM
+	// settings over the environment's), for a task of that tier
+	LLMSource func(context.Context, Tier) *LLM
 	Store     *Store
 	Builder   *Builder
 	Generator *Generator
@@ -80,10 +80,14 @@ func (s *Service) SetRoots(roots []Root) {
 	s.Generator.Catalog.Roots = roots
 }
 
-// Model is the language model Suggest asks now (nil: none).
-func (s *Service) Model(ctx context.Context) *LLM {
+// Model is the language model Suggest asks now (nil: none): the medium
+// tier (reading a sentence into filters).
+func (s *Service) Model(ctx context.Context) *LLM { return s.ModelFor(ctx, TierMedium) }
+
+// ModelFor is the language model a task of tier t asks now (nil: none).
+func (s *Service) ModelFor(ctx context.Context, t Tier) *LLM {
 	if s.LLMSource != nil {
-		return s.LLMSource(ctx)
+		return s.LLMSource(ctx, t)
 	}
 	return s.LLM
 }

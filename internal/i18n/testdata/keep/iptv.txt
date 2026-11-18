@@ -3,3 +3,5 @@ internal/iptv/rules.go: орбита  # a word in provider channel names that ma
 internal/iptv/rules.go: дубль  # a word in provider channel names that marks a timeshift copy (matched, never shown)
 internal/iptv/rules.go: для взрослых  # a mark in provider channel names or groups of adult channels (matched, never shown)
 internal/iptv/rules.go: эротика  # a mark in provider channel names or groups of adult channels (matched, never shown)
+internal/iptv/variants.go: оригинал  # a word in provider channel names that marks the original feed of a channel (matched, never shown)
+internal/iptv/languages.go  # country and language words matched in provider group-titles and names (never shown)

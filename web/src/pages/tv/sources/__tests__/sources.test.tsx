@@ -31,7 +31,7 @@ const CHANNELS = Array.from({ length: 3000 }, (_, i) => ({
 }))
 const SOURCE = {
   id: 1, name: 'Демо-провайдер', kind: 'm3u', url: 'http://example.test/…***', xtream: null, defaultShown: null, hideUrls: false,
-  presets: { timeshift: true, adult: true }, refreshHours: 24, refreshOnOpen: true, position: 0, profiles: [],
+  presets: { timeshift: true, adult: true, variants: true }, langs: [], refreshHours: 24, refreshOnOpen: true, position: 0, profiles: [],
   lastOk: new Date(Date.now() - 3_600_000).toISOString(), lastTry: new Date().toISOString(), lastError: '', pendingDrop: 412,
   counts: { total: 1300, shown: 860, hidden: 440, new: 1 },
   epg: [{ id: 1, url: 'http://epg.example.test/…***', auto: false, position: 0, refreshHours: 24, refreshOnOpen: false, lastOk: null, lastTry: null, lastError: '', matched: 2400 }],

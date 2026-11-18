@@ -7,6 +7,7 @@ import { ChannelCard } from '../ChannelCard'
 import { ChannelRow } from '../ChannelRow'
 import {
   applyFilter,
+  categoryList,
   blockOf,
   filterParam,
   gridMove,
@@ -42,18 +43,27 @@ describe('the one numbered list', () => {
 
   it('keeps number order under every filter; themes come in the order of their first channel', () => {
     expect(applyFilter(list, { kind: 'all' }).map((c) => c.number)).toEqual([5, 10, 12, 40])
-    expect(applyFilter(list, { kind: 'theme', theme: 'А' }).map((c) => c.number)).toEqual([10, 12])
+    expect(applyFilter(list, { kind: 'cat', id: 'group:А' }).map((c) => c.number)).toEqual([10, 12])
     expect(applyFilter(list, { kind: 'fav' }).map((c) => c.id)).toEqual([2])
     expect(themesOf(list)).toEqual(['Б', 'А'])
   })
 
   it('reads and writes the filter in the address; a theme that is gone falls back to all', () => {
     expect(parseFilter('fav')).toEqual({ kind: 'fav' })
-    expect(parseFilter('c:Кино по жанрам')).toEqual({ kind: 'theme', theme: 'Кино по жанрам' })
+    // an older address's theme is its group
+    expect(parseFilter('c:Кино по жанрам')).toEqual({ kind: 'cat', id: 'group:Кино по жанрам' })
+    expect(parseFilter('k:ai:news')).toEqual({ kind: 'cat', id: 'ai:news' })
     expect(parseFilter(null)).toEqual({ kind: 'all' })
-    expect(filterParam({ kind: 'theme', theme: 'А' })).toBe('c:А')
+    expect(filterParam({ kind: 'cat', id: 'group:А' })).toBe('k:group:А')
     expect(filterParam({ kind: 'all' })).toBe('')
-    expect(validFilter(list, { kind: 'theme', theme: 'В' })).toEqual({ kind: 'all' })
+    expect(validFilter(list, { kind: 'cat', id: 'group:В' })).toEqual({ kind: 'all' })
+  })
+
+  it('filters by the server’s category ids; without them by the theme', () => {
+    const ext = [ch(5, 50, 'RU | Инфо', { categories: ['ai:news', 'source:2', 'group:RU | Инфо'] }), ch(6, 51, 'Спорт', { categories: ['group:Спорт'] })]
+    expect(applyFilter([...list, ...ext], { kind: 'cat', id: 'ai:news' }).map((c) => c.id)).toEqual([5])
+    expect(applyFilter([...list, ...ext], { kind: 'cat', id: 'group:Б' }).map((c) => c.id)).toEqual([3, 1])
+    expect(categoryList(list).map((c) => `${c.id}:${c.count}`)).toEqual(['group:Б:2', 'group:А:2'])
   })
 
   it('stars a channel without moving it', () => {

@@ -32,6 +32,17 @@ type LLM struct {
 	Client  *http.Client
 }
 
+// Tier is how heavy a model an AI task needs: the admin sets one model of
+// each (light: Haiku-class, many quick calls; medium: Sonnet-class;
+// powerful: Opus-class) and every task asks its own.
+type Tier string
+
+const (
+	TierLight    Tier = "light"
+	TierMedium   Tier = "medium"
+	TierPowerful Tier = "powerful"
+)
+
 // LLMFromEnv: VAULT_LLM_URL, VAULT_LLM_MODEL, VAULT_LLM_KEY,
 // VAULT_LLM_THREADS, VAULT_LLM_TIMEOUT (seconds); nil without a URL and model.
 func LLMFromEnv() *LLM {
@@ -173,6 +184,19 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (
 		return "", errors.New("llm: empty answer")
 	}
 	return out.Message.Content, nil
+}
+
+// AskJSON asks one question whose answer is a JSON object (another
+// package's task: its own system prompt): the object's text, read out of
+// any prose or code fence around it.
+func (l *LLM) AskJSON(ctx context.Context, system, user string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, l.timeout())
+	defer cancel()
+	out, err := l.chat(ctx, []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, true)
+	if err != nil {
+		return "", err
+	}
+	return jsonPart(out), nil
 }
 
 // Ping asks a one-word question (the settings' «Проверить»): the answer,

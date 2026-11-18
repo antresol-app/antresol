@@ -800,9 +800,21 @@ export interface VocleanStatus {
   backfill: boolean
 }
 
+/** «ИИ-помощник»'s models by weight: each AI task asks the tier that fits it. */
+export interface AIModels {
+  /** Quick and cheap, many small calls (naming channel categories). */
+  light: string
+  /** Reading a request («Опишите канал»). */
+  medium: string
+  /** The hardest tasks. */
+  powerful: string
+}
+
 export interface AISettings {
   url: string
+  /** The medium tier (for a server that knows one model only). */
   model: string
+  models?: AIModels
   key?: string
 }
 

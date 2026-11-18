@@ -23,7 +23,8 @@
 // player.
 //
 // An external channel (an IPTV playlist's) plays the provider's stream
-// directly: its URL, then its fallbacks, once each. When the web cannot
+// directly: its URL, then its fallbacks, once each — an HLS one through
+// hls.js, a raw MPEG-TS one through mpegts.js (externalStream.ts). When the web cannot
 // play it (headers a browser cannot send, http on an https page, a
 // provider that refuses other sites — CORS — or a dead stream) the player
 // says so: the channel opens in the Antresol apps or an IPTV player. Its
@@ -40,6 +41,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type Hls from 'hls.js'
+import type Mpegts from 'mpegts.js'
 import { APP_NAME } from '../../brand'
 import { getPlaybackPrefs, imageUrl } from '../../api/client'
 import { getChannelGuide, getChannels, liveUrl, setChannelFavorite, setLastChannel, type Channel, type ChannelProgram, type ChannelTrack } from '../../api/channels'
@@ -58,13 +60,14 @@ import { LiveTrackMenu } from './LiveTrackMenu'
 import { applyFilter, chooseAudioIn, chooseSubsIn, isOnAir, minutesLeft, numDigits, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, systemLanguages, withFavorite, zapTarget, type Rendition } from './model'
 import { clock, useNow } from './useChannels'
 import { chromeShown, readClock, resumeTarget, showGoLive, behindLive } from './liveEdge'
-import { channelTracks, externalStreams, setChannelTracks, type ExtBlock } from './externalStream'
+import { channelTracks, externalStreams, setChannelTracks, type ExtBlock, type ExtCandidate } from './externalStream'
 import look from '../../player/SubtitleLook.module.css'
 import styles from './LivePlayer.module.css'
 
 const HIDE_MS = 4000
 const GUIDE_MS = 30_000
 
+type MpegtsPlayer = Mpegts.Player
 type Phase = 'starting' | 'playing' | { error: string } | { ext: ExtBlock }
 
 type WebkitVideo = NativeVideo & {
@@ -122,7 +125,7 @@ export function LivePlayer() {
   // what to play: the server's live stream, or an external channel's own
   // streams (known once the list is in; the key changes only when they do)
   const external = channel?.external ? externalStreams(channel) : null
-  const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${external.urls.join(' ')}`) : 'own'
+  const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${JSON.stringify(external.urls)}`) : 'own'
   // the list ↑/↓ zap through: the one it was opened from
   const zapList = useMemo(() => {
     const l = applyFilter(channels, filter)
@@ -180,11 +183,12 @@ export function LivePlayer() {
     document.title = `${channel ? t('tv.channelNumber', { number: channel.number, name: channel.name }) : t('tv.title')} — ${APP_NAME}`
   }, [channel, t])
 
-  // the stream: native HLS or hls.js; a new channel (or «Повторить») starts over
+  // the stream: native HLS or hls.js, or mpegts.js for a raw MPEG-TS one; a new channel (or «Повторить») starts over
   useEffect(() => {
     const video = videoRef.current
     if (!video || !source) return
     let hls: Hls | null = null
+    let ts: MpegtsPlayer | null = null
     let gone = false
     setPhase('starting')
     setRenditions({ audio: [], subs: [] })
@@ -192,27 +196,12 @@ export function LivePlayer() {
       setPhase({ ext: source.slice('blocked:'.length) as ExtBlock })
       return
     }
-    const ext = source.startsWith('ext:') ? source.slice(4).split(' ') : null
+    const ext = source.startsWith('ext:') ? (JSON.parse(source.slice(4)) as ExtCandidate[]) : null
     let at = 0
-    const url = ext ? ext[0]! : liveUrl(channelId)
-    // an external stream that fails moves on to the next one, once; none left: the web cannot play it
-    const fail = (msg: string) => {
-      if (gone) return
-      if (!ext) return setPhase({ error: msg })
-      at++
-      if (at < ext.length) {
-        if (hls) {
-          hls.stopLoad()
-          hls.loadSource(ext[at]!)
-        } else {
-          video.src = ext[at]!
-        }
-        play()
-        return
-      }
-      hls?.stopLoad()
-      setPhase({ ext: 'network' })
-    }
+    // a stream of unknown format that is no HLS playlist gets one try as MPEG-TS
+    let asTs = false
+    // each start's errors count for it alone (an engine torn down may still report)
+    let gen = 0
     const relist = () => !gone && setRenditions(renditionNames(hls, video as NativeVideo))
     // a browser that refuses to start it with sound (no tap before it) starts it muted
     const play = () =>
@@ -225,13 +214,51 @@ export function LivePlayer() {
           return video.play()
         })
         .catch(() => undefined)
-    const native = nativeHls(video)
-    if (native) {
-      video.src = url
-      play()
-    } else {
+    const stopTs = () => {
+      ts?.destroy()
+      ts = null
+    }
+    const stopHls = () => {
+      hls?.destroy()
+      hls = null
+      hlsRef.current = null
+    }
+    // an external stream that fails moves on to the next one, once; none left: the web cannot play it
+    const fail = (g: number, msg: string) => {
+      if (gone || g !== gen) return
+      if (!ext) return setPhase({ error: msg })
+      const c = ext[at]!
+      if (c.format === '' && !asTs) {
+        asTs = true
+        startTs(c.url)
+        return
+      }
+      at++
+      asTs = false
+      if (at < ext.length) {
+        startAt(at)
+        return
+      }
+      stopTs()
+      hls?.stopLoad()
+      setPhase({ ext: 'network' })
+    }
+    const startHls = (url: string) => {
+      const g = ++gen
+      stopTs()
+      if (nativeHls(video)) {
+        video.src = url
+        play()
+        return
+      }
+      if (hls) {
+        hls.stopLoad()
+        hls.loadSource(url)
+        play()
+        return
+      }
       void import('hls.js').then(({ default: H }) => {
-        if (gone) return
+        if (gone || g !== gen) return
         hls = new H({
           liveSyncDurationCount: 3,
           enableWorker: true,
@@ -261,7 +288,7 @@ export function LivePlayer() {
             hls?.recoverMediaError()
             return
           }
-          fail(t('tv.failed'))
+          fail(gen, t('tv.failed'))
         })
         if (H.Events.MANIFEST_PARSED) hls.on(H.Events.MANIFEST_PARSED, relist)
         if (H.Events.AUDIO_TRACKS_UPDATED) hls.on(H.Events.AUDIO_TRACKS_UPDATED, relist)
@@ -269,8 +296,41 @@ export function LivePlayer() {
         hls.loadSource(url)
         hls.attachMedia(video)
         play()
-      }, () => fail(t('tv.failed')))
+      }, () => fail(g, t('tv.failed')))
     }
+    // a raw MPEG-TS stream: mpegts.js reads it as it comes (the provider's
+    // or the relay's) and hands the picture to the video through MSE
+    const startTs = (url: string) => {
+      const g = ++gen
+      stopHls()
+      stopTs()
+      video.removeAttribute('src')
+      void import('mpegts.js').then(({ default: M }) => {
+        if (gone || g !== gen) return
+        if (!M.isSupported()) return fail(g, t('tv.failed'))
+        const p = M.createPlayer(
+          // absolute: its loader may run in a worker, where a path (the relay's) does not resolve
+          { type: 'mpegts', isLive: true, url: new URL(url, location.href).href },
+          // a live picture: catch up when behind, keep the buffer trimmed; the
+          // transmuxing stays on this thread (no blob worker built from source)
+          { enableWorker: false, liveBufferLatencyChasing: true, lazyLoad: false, autoCleanupSourceBuffer: true },
+        )
+        ts = p
+        p.on(M.Events.ERROR, () => fail(g, t('tv.failed')))
+        p.attachMediaElement(video)
+        p.load()
+        play()
+      }, () => fail(g, t('tv.failed')))
+    }
+    const startAt = (i: number) => {
+      const c = ext![i]!
+      if (c.format === 'ts') {
+        asTs = true
+        startTs(c.url)
+      } else startHls(c.url)
+    }
+    if (ext) startAt(0)
+    else startHls(liveUrl(channelId))
     let started = false
     const onPlaying = () => {
       if (gone || started) return
@@ -287,7 +347,7 @@ export function LivePlayer() {
       if (last >= 0 && video.currentTime > last) onPlaying()
       last = video.currentTime
     }
-    const onError = () => fail(t('tv.failed'))
+    const onError = () => fail(gen, t('tv.failed'))
     video.addEventListener('timeupdate', onTime)
     video.addEventListener('playing', onPlaying)
     video.addEventListener('error', onError)
@@ -303,8 +363,8 @@ export function LivePlayer() {
       video.removeEventListener('loadedmetadata', relist)
       nv.audioTracks?.removeEventListener?.('addtrack', relist)
       video.textTracks?.removeEventListener?.('addtrack', relist)
-      hls?.destroy()
-      hlsRef.current = null
+      stopTs()
+      stopHls()
       video.removeAttribute('src')
       video.load()
     }

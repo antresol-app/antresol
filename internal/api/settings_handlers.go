@@ -55,8 +55,9 @@ type AppSettings struct {
 	// TrickplayBudgetGB is «Место для превью»: the most the previews take
 	// (the least recently viewed go first); 10 GB by default.
 	TrickplayBudgetGB int `json:"trickplayBudgetGB"`
-	// AI is «ИИ-помощник» (ai_settings.go): the language model «Опишите
-	// канал» asks; empty: the server's VAULT_LLM_* or none.
+	// AI is «ИИ-помощник» (ai_settings.go): the language models (light,
+	// medium, powerful) the AI tasks ask; empty: the server's VAULT_LLM_*
+	// or none.
 	AI AISettings `json:"ai"`
 }
 
@@ -165,6 +166,9 @@ func LoadAppSettings(ctx context.Context, db *sql.DB, defaults AppSettings) (App
 	}
 	if !validSubtitleLangs(s.SubtitleLangs) {
 		s.SubtitleLangs = defaults.SubtitleLangs
+	}
+	if s.AI.URL != "" {
+		s.AI = s.AI.withTiers() // a row of one model, from before the tiers
 	}
 	return s, nil
 }

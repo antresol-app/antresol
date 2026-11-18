@@ -31,8 +31,12 @@ import (
 // it where "web" is unsupported, and after the direct streams otherwise:
 // a provider without CORS). The apps keep URL.
 type streamJSON struct {
-	URL         string         `json:"url"`
-	Relay       string         `json:"relay,omitempty"`
+	URL   string `json:"url"`
+	Relay string `json:"relay,omitempty"`
+	// Format: hls | ts (a raw MPEG-TS stream: the web transmuxes it) | ""
+	// (unknown), by the provider's URL (iptv.StreamFormat); the relay's
+	// answer is the same stream.
+	Format      string         `json:"format,omitempty"`
 	UserAgent   string         `json:"userAgent,omitempty"`
 	Referrer    string         `json:"referrer,omitempty"`
 	Fallbacks   []fallbackJSON `json:"fallbacks"`
@@ -42,6 +46,7 @@ type streamJSON struct {
 type fallbackJSON struct {
 	URL         string   `json:"url"`
 	Relay       string   `json:"relay,omitempty"`
+	Format      string   `json:"format,omitempty"`
 	UserAgent   string   `json:"userAgent,omitempty"`
 	Referrer    string   `json:"referrer,omitempty"`
 	Unsupported []string `json:"unsupported"`
@@ -120,9 +125,9 @@ func (a *channelsAPI) streamOf(r *http.Request, x iptv.ExtChannel) *streamJSON {
 		return extRelayPath(x.ChannelID, i)
 	}
 	p := x.Streams[0]
-	j := &streamJSON{URL: url(0, p), Relay: relay(0), UserAgent: p.UserAgent, Referrer: p.Referrer, Fallbacks: []fallbackJSON{}, Unsupported: unsupportedOf(r, a.network, p)}
+	j := &streamJSON{URL: url(0, p), Relay: relay(0), Format: iptv.StreamFormat(p.URL), UserAgent: p.UserAgent, Referrer: p.Referrer, Fallbacks: []fallbackJSON{}, Unsupported: unsupportedOf(r, a.network, p)}
 	for i, s := range x.Streams[1:] {
-		j.Fallbacks = append(j.Fallbacks, fallbackJSON{URL: url(i+1, s), Relay: relay(i + 1), UserAgent: s.UserAgent, Referrer: s.Referrer, Unsupported: unsupportedOf(r, a.network, s)})
+		j.Fallbacks = append(j.Fallbacks, fallbackJSON{URL: url(i+1, s), Relay: relay(i + 1), Format: iptv.StreamFormat(s.URL), UserAgent: s.UserAgent, Referrer: s.Referrer, Unsupported: unsupportedOf(r, a.network, s)})
 	}
 	return j
 }
@@ -135,7 +140,8 @@ func (a *channelsAPI) extJSON(r *http.Request, x iptv.ExtChannel, favs map[int64
 	return j
 }
 
-// extLogoURL: the uploaded logo, else the playlist's tvg-logo, else none.
+// extLogoURL: the uploaded logo, else the playlist's tvg-logo, else its
+// guide channel's icon (iptv guideLogos), else none.
 func extLogoURL(x iptv.ExtChannel) string {
 	if u := logoURL(x.Channel); u != "" {
 		return u

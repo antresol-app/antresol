@@ -25,7 +25,16 @@
 }
 .filters {
   --segmented-bleed: var(--gutter);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
   margin-bottom: var(--s-6);
+}
+/* the segments keep to their own width so the category pop-up sits beside them */
+.filters > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .empty {
   composes: empty from '../Browse.module.css';

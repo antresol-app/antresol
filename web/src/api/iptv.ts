@@ -41,12 +41,14 @@ export interface Source {
   /** null: by the playlist's size (shown under 300 channels). */
   defaultShown: boolean | null
   hideUrls: boolean
-  presets: { timeshift: boolean; adult: boolean }
+  presets: { timeshift: boolean; adult: boolean; variants: boolean }
   refreshHours: RefreshHours
   refreshOnOpen: boolean
   position: number
   /** Empty: every profile without limits. */
   profiles: number[]
+  /** The languages kept (ISO 639-1); empty: all. A channel known to be in another is hidden. */
+  langs: string[]
   lastOk: string | null
   lastTry: string | null
   /** The last failure, in the viewer's language ("" none). */
@@ -65,11 +67,12 @@ export interface SourceInput {
   xtream?: { server: string; user: string; password: string }
   defaultShown?: boolean | null
   hideUrls?: boolean
-  presets?: { timeshift: boolean; adult: boolean }
+  presets?: { timeshift: boolean; adult: boolean; variants?: boolean }
   refreshHours?: RefreshHours
   refreshOnOpen?: boolean
   position?: number
   profiles?: number[]
+  langs?: string[]
   /** In priority order; admin guides left out are deleted, playlist guides stay. */
   epg?: { id?: number; url?: string; refreshHours: RefreshHours; refreshOnOpen: boolean }[]
 }
@@ -85,7 +88,7 @@ export interface RefreshResult {
 export type EPGHow = 'tvg-id' | 'name' | 'norm-name' | 'manual' | ''
 
 /** What decided a channel's fate (the «Почему» column). */
-export type WhyCode = 'source-default' | 'preset-timeshift' | 'preset-adult' | 'manual' | ''
+export type WhyCode = 'source-default' | 'preset-timeshift' | 'preset-adult' | 'preset-variant' | 'preset-language' | 'manual' | ''
 
 export interface SourceChannel {
   memberId: number

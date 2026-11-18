@@ -2,24 +2,49 @@
 // filters, zapping, the guide grid's geometry and keyboard moves, and the
 // live player's choice of audio and subtitles. No React, no requests:
 // pages/tv/__tests__ check them directly.
-import type { Channel, ChannelProgram, ChannelTrack } from '../../api/channels'
+import type { Channel, ChannelCategory, ChannelProgram, ChannelTrack } from '../../api/channels'
 import type { PlaybackPrefs } from '../../api/types'
 
 // ---------- the list and its filters ----------
 
-/** «Все», «Избранное» or one theme (a channel's category). In the address: ?f=fav, ?f=c:<theme>. */
-export type ChannelFilter = { kind: 'all' } | { kind: 'fav' } | { kind: 'theme'; theme: string }
+/**
+ * «Все», «Избранное» or one category (the server's ids: `ai:<code>`, `source:<id>`,
+ * `group:<name>` — an own channel's theme is its group). In the address: ?f=fav,
+ * ?f=k:<id>; an older ?f=c:<theme> is the theme's group.
+ */
+export type ChannelFilter = { kind: 'all' } | { kind: 'fav' } | { kind: 'cat'; id: string }
 
 export const ALL: ChannelFilter = { kind: 'all' }
 
 export function parseFilter(s: string | null | undefined): ChannelFilter {
   if (s === 'fav') return { kind: 'fav' }
-  if (s?.startsWith('c:') && s.length > 2) return { kind: 'theme', theme: s.slice(2) }
+  if (s?.startsWith('k:') && s.length > 2) return { kind: 'cat', id: s.slice(2) }
+  if (s?.startsWith('c:') && s.length > 2) return { kind: 'cat', id: `group:${s.slice(2)}` }
   return ALL
 }
 
 export function filterParam(f: ChannelFilter): string {
-  return f.kind === 'fav' ? 'fav' : f.kind === 'theme' ? `c:${f.theme}` : ''
+  return f.kind === 'fav' ? 'fav' : f.kind === 'cat' ? `k:${f.id}` : ''
+}
+
+type Categorized = { number: number; category: string; categories?: string[] }
+
+/** A channel's category ids (a server without them: its theme's group). */
+export function categoriesOf(c: Categorized): string[] {
+  return c.categories ?? (c.category ? [`group:${c.category}`] : [])
+}
+
+/** The list's categories as the server counted them, else the themes of its channels in the order of their first one. */
+export function categoryList(list: Categorized[], server?: ChannelCategory[]): ChannelCategory[] {
+  if (server) return server
+  const out: ChannelCategory[] = []
+  for (const c of byNumber(list)) {
+    if (!c.category) continue
+    const hit = out.find((x) => x.name === c.category)
+    if (hit) hit.count++
+    else out.push({ id: `group:${c.category}`, name: c.category, kind: 'group', count: 1 })
+  }
+  return out
 }
 
 /** The list in number order (a TV's list never reorders: favourites stay where they are). */
@@ -35,16 +60,16 @@ export function themesOf(list: { number: number; category: string }[]): string[]
 }
 
 /** The channels a filter shows, in number order. */
-export function applyFilter<T extends { number: number; category: string; favorite?: boolean }>(list: T[], f: ChannelFilter): T[] {
+export function applyFilter<T extends Categorized & { favorite?: boolean }>(list: T[], f: ChannelFilter): T[] {
   const sorted = byNumber(list)
   if (f.kind === 'fav') return sorted.filter((c) => c.favorite)
-  if (f.kind === 'theme') return sorted.filter((c) => c.category === f.theme)
+  if (f.kind === 'cat') return sorted.filter((c) => categoriesOf(c).includes(f.id))
   return sorted
 }
 
-/** A filter that no longer has anything to point at (the theme is gone) falls back to all. */
-export function validFilter(list: { number: number; category: string }[], f: ChannelFilter): ChannelFilter {
-  return f.kind === 'theme' && !list.some((c) => c.category === f.theme) ? ALL : f
+/** A filter that no longer has anything to point at (the category is gone) falls back to all. */
+export function validFilter(list: Categorized[], f: ChannelFilter): ChannelFilter {
+  return f.kind === 'cat' && !list.some((c) => categoriesOf(c).includes(f.id)) ? ALL : f
 }
 
 /** A channel with its star flipped (optimistic). */

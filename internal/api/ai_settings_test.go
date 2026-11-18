@@ -118,3 +118,30 @@ func TestAISettingsAnthropicNeedsKey(t *testing.T) {
 		t.Fatalf("save with a key %d %s", w.Code, w.Body)
 	}
 }
+
+// A row of one model (before the tiers) becomes three: the same model on
+// every tier, except on Anthropic, where it keeps its family's tier.
+func TestAISettingsTiersFromOneModel(t *testing.T) {
+	for _, c := range []struct {
+		in   AISettings
+		want AIModels
+	}{
+		{AISettings{URL: "http://127.0.0.1:4000/v1", Model: "local"}, AIModels{"local", "local", "local"}},
+		{AISettings{URL: channels.AnthropicURL, Model: "claude-opus-5-5"}, AIModels{"claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"}},
+		{AISettings{URL: channels.AnthropicURL, Model: "claude-haiku-4-5"}, AIModels{"claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"}},
+		{AISettings{URL: channels.AnthropicURL, Model: "custom"}, AIModels{"custom", "custom", "custom"}},
+		{AISettings{URL: "http://x/v1", Models: AIModels{Light: "a"}}, AIModels{"a", "a", "a"}},
+		{AISettings{URL: "http://x/v1", Models: AIModels{Light: "a", Medium: "b"}}, AIModels{"a", "b", "b"}},
+	} {
+		got := c.in.withTiers()
+		if got.Models != c.want || got.Model != c.want.Medium {
+			t.Errorf("%+v → %+v", c.in, got)
+		}
+	}
+	a := AISettings{URL: "http://x/v1", Models: AIModels{"l", "m", "p"}}
+	for tier, want := range map[channels.Tier]string{channels.TierLight: "l", channels.TierMedium: "m", channels.TierPowerful: "p"} {
+		if got := a.llm(tier).Model; got != want {
+			t.Errorf("%s: %s", tier, got)
+		}
+	}
+}

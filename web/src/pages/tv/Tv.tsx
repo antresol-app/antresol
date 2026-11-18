@@ -1,5 +1,7 @@
 // «ТВ» (/tv): the channels as a television has them — ONE list in number
-// order (themes and the profile's favourites are only filters), each row
+// order (categories and the profile's favourites are only filters: a few
+// categories are segments, a big list's — the AI helper's, the sources,
+// the playlists' groups — one pop-up), each row
 // with what is on, how far it is and what follows; or «Телегид», the
 // programme guide grid. The channel the profile watched last is marked
 // (its number in the accent). A wide window shows the details of the channel under the
@@ -16,15 +18,19 @@ import { Button, ButtonLink } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { Menu, MenuItem } from '../../ui/Menu'
 import { SegmentedControl } from '../../ui/SegmentedControl'
+import { Select } from '../../ui/Select'
 import { Toast } from '../../ui/Toast'
 import { ChannelPreview } from './ChannelPreview'
 import { ChannelRow } from './ChannelRow'
 import { Guide } from './Guide'
-import { applyFilter, filterParam, numDigits, parseFilter, themesOf, validFilter, type ChannelFilter } from './model'
+import { applyFilter, categoryList, filterParam, numDigits, parseFilter, validFilter, type ChannelFilter } from './model'
 import { useChannelList, useNow } from './useChannels'
 import styles from './Tv.module.css'
 
 type View = 'list' | 'guide'
+
+/** Categories shown as segments; more go in a pop-up. */
+const MAX_INLINE = 5
 
 /** The player's address for a channel, carrying the list it zaps through. */
 export function playerPath(id: number, f: ChannelFilter): string {
@@ -57,7 +63,7 @@ export function Tv() {
   const view: View = params.get('view') === 'guide' ? 'guide' : 'list'
   // the filter and the view are in the address, so «Назад» from a channel comes back to them
   const filter = validFilter(channels, parseFilter(params.get('f')))
-  const themes = themesOf(channels)
+  const categories = useMemo(() => categoryList(channels, data?.categories), [channels, data])
   const shown = applyFilter(channels, filter)
   const setParam = (k: string, v: string) =>
     setParams(
@@ -75,11 +81,17 @@ export function Tv() {
   const favorites = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, Boolean(c.favorite)])), [channels])
   const logos = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, c.logoUrl])), [channels])
 
+  // a few categories (an own list's themes) stay one tap away; a big list's go in a pop-up
+  const inline = categories.length <= MAX_INLINE
   const filterKey = filterParam(filter) || 'all'
   const filters = [
     { value: 'all', label: t('tv.filterAll') },
     { value: 'fav', label: t('tv.filterFav') },
-    ...themes.map((th) => ({ value: `c:${th}`, label: th })),
+    ...(inline ? categories.map((c) => ({ value: `k:${c.id}`, label: c.name })) : []),
+  ]
+  const categoryOptions = [
+    { value: '', label: t('tv.allCategories') },
+    ...categories.map((c) => ({ value: c.id, label: c.name, detail: t(`tv.categoryKind.${c.kind}`, { count: c.count }) })),
   ]
 
   const manage = data?.canCreate && (
@@ -118,7 +130,24 @@ export function Tv() {
 
       {channels.length > 0 && (
         <div className={styles.filters}>
-          <SegmentedControl label={t('tv.filter')} row align="start" value={filterKey} onChange={(v) => setParam('f', v === 'all' ? '' : v)} segments={filters} />
+          <SegmentedControl
+            label={t('tv.filter')}
+            row
+            align="start"
+            value={inline ? filterKey : filter.kind === 'fav' ? 'fav' : 'all'}
+            onChange={(v) => setParam('f', v === 'all' ? '' : v)}
+            segments={filters}
+          />
+          {!inline && (
+            <Select
+              label={t('tv.category')}
+              showLabel
+              placement="bottom-start"
+              value={filter.kind === 'cat' ? filter.id : ''}
+              options={categoryOptions}
+              onChange={(id: string) => setParam('f', id ? `k:${id}` : '')}
+            />
+          )}
         </div>
       )}
 

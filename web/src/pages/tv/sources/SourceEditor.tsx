@@ -2,8 +2,8 @@
 // the server allows it), the playlist's address or the Xtream server, user
 // and password — a stored secret is never shown: its field is empty with
 // the mask as the placeholder and is sent only when typed — the channels'
-// defaults (visibility by size, the presets, hiding the provider's
-// addresses), the profiles that see it, the refresh interval and «при
+// defaults (visibility by size, the presets, the languages kept, hiding
+// the provider's addresses), the profiles that see it, the refresh interval and «при
 // открытии», and the guides in priority order (add, remove, move). A
 // refresh waiting for confirmation is answered here too.
 import { useState, type ReactNode } from 'react'
@@ -21,7 +21,11 @@ import { MultiSelect, Select } from '../../../ui/Select'
 import { Sheet } from '../../../ui/Sheet'
 import { TextField } from '../../../ui/TextField'
 import { Toggle } from '../../../ui/Toggle'
+import { languageName } from '../tagNames'
 import styles from './Sources.module.css'
+
+/** The languages a source may keep: those IPTV playlists carry most. */
+const SOURCE_LANGS = ['ru', 'uk', 'be', 'kk', 'en', 'de', 'fr', 'es', 'it', 'pl', 'tr', 'hy', 'ka', 'az', 'uz', 'he', 'ar', 'pt', 'ro', 'zh', 'hi']
 
 export const intervalOptions = (t: TFunction) => REFRESH_HOURS.map((h) => ({ value: String(h) as `${RefreshHours}`, label: t(`iptv.interval.${h}`) }))
 
@@ -62,6 +66,8 @@ export function SourceEditor({
   const [shown, setShown] = useState<Shown>(s?.defaultShown == null ? 'auto' : s.defaultShown ? 'shown' : 'hidden')
   const [timeshift, setTimeshift] = useState(s?.presets.timeshift ?? true)
   const [adult, setAdult] = useState(s?.presets.adult ?? true)
+  const [variants, setVariants] = useState(s?.presets.variants ?? true)
+  const [langs, setLangs] = useState<string[]>(s?.langs ?? [])
   const [hideUrls, setHideUrls] = useState(s?.hideUrls ?? false)
   const [hours, setHours] = useState<RefreshHours>(s?.refreshHours ?? 24)
   const [onOpen, setOnOpen] = useState(s?.refreshOnOpen ?? true)
@@ -102,10 +108,11 @@ export function SourceEditor({
       kind,
       defaultShown: shown === 'auto' ? null : shown === 'shown',
       hideUrls,
-      presets: { timeshift, adult },
+      presets: { timeshift, adult, variants },
       refreshHours: hours,
       refreshOnOpen: onOpen,
       profiles: profiles.map(Number),
+      langs,
       epg: guides.filter((g) => g.id || g.url.trim()).map((g) => (g.id ? { id: g.id, refreshHours: g.refreshHours, refreshOnOpen: g.refreshOnOpen } : { url: g.url.trim(), refreshHours: g.refreshHours, refreshOnOpen: g.refreshOnOpen })),
     }
     if (kind === 'm3u' && url.trim()) body.url = url.trim()
@@ -194,8 +201,21 @@ export function SourceEditor({
           <ListRow label={t('iptv.editor.presetTimeshift')} hint={t('iptv.editor.presetTimeshiftHint')}>
             <Toggle label={t('iptv.editor.presetTimeshift')} checked={timeshift} onChange={setTimeshift} />
           </ListRow>
+          <ListRow label={t('iptv.editor.presetVariants')} hint={t('iptv.editor.presetVariantsHint')}>
+            <Toggle label={t('iptv.editor.presetVariants')} checked={variants} onChange={setVariants} />
+          </ListRow>
           <ListRow label={t('iptv.editor.presetAdult')} hint={t('iptv.editor.presetAdultHint')}>
             <Toggle label={t('iptv.editor.presetAdult')} checked={adult} onChange={setAdult} />
+          </ListRow>
+          <ListRow label={t('iptv.editor.langs')} hint={t('iptv.editor.langsHint')} stack>
+            <MultiSelect
+              label={t('iptv.editor.langs')}
+              placement="bottom-end"
+              value={langs}
+              onChange={setLangs}
+              options={[...new Set([...SOURCE_LANGS, ...langs])].map((c) => ({ value: c, label: languageName(c) }))}
+              none={t('iptv.editor.langsAll')}
+            />
           </ListRow>
           <ListRow label={t('iptv.editor.hideUrls')} hint={t('iptv.editor.hideUrlsHint')}>
             <Toggle label={t('iptv.editor.hideUrls')} checked={hideUrls} onChange={setHideUrls} />

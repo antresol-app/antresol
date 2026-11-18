@@ -85,6 +85,7 @@ const (
 	msgGuideNotFound  = "Телепрограмма не найдена"
 	msgLinksOff       = "IPTV-ссылки выключены на этом сервере"
 	msgExternalEdit   = "Внешний канал меняется в редакторе источников"
+	msgBadLangs       = "Языки — коды ISO 639-1"
 )
 
 // Why codes: what the web localizes (whyText carries the text).
@@ -93,6 +94,8 @@ var whyCodes = map[string]string{
 	iptv.WhyTimeshift:     "preset-timeshift",
 	iptv.WhySourceDefault: "source-default",
 	iptv.WhyManual:        "manual",
+	iptv.WhyVariant:       "preset-variant",
+	iptv.WhyLanguage:      "preset-language",
 }
 
 func whyCode(w string) string {
@@ -122,6 +125,14 @@ func tvID(r *http.Request) (int64, bool) {
 type presetsJSON struct {
 	Timeshift bool `json:"timeshift"`
 	Adult     bool `json:"adult"`
+	Variants  bool `json:"variants"`
+}
+
+// presetsBody: a client that does not know a preset keeps it (absent).
+type presetsBody struct {
+	Timeshift bool  `json:"timeshift"`
+	Adult     bool  `json:"adult"`
+	Variants  *bool `json:"variants"`
 }
 
 type xtreamJSON struct {
@@ -162,6 +173,7 @@ type sourceJSON struct {
 	RefreshOnOpen bool         `json:"refreshOnOpen"`
 	Position      int          `json:"position"`
 	Profiles      []int64      `json:"profiles"`
+	Langs         []string     `json:"langs"`
 	LastOK        *time.Time   `json:"lastOk"`
 	LastTry       *time.Time   `json:"lastTry"`
 	LastError     string       `json:"lastError"`
@@ -190,11 +202,14 @@ func firstImport(ms []iptv.Member) time.Time {
 
 func (a *iptvAdmin) sourceJSON(ctx context.Context, src iptv.Source) (sourceJSON, error) {
 	j := sourceJSON{ID: src.ID, Name: src.Name, Kind: src.Kind, DefaultShown: src.DefaultShown, HideURLs: src.HideURLs,
-		Presets: presetsJSON{src.PresetTimeshift, src.PresetAdult}, RefreshHours: src.RefreshHours, RefreshOnOpen: src.RefreshOnOpen,
+		Presets: presetsJSON{src.PresetTimeshift, src.PresetAdult, src.PresetVariants}, RefreshHours: src.RefreshHours, RefreshOnOpen: src.RefreshOnOpen,
 		Position: src.Position, Profiles: src.Profiles, LastOK: optTime(src.LastOK), LastTry: optTime(src.LastTry),
 		LastError: i18n.Localize(ctx, src.LastErr), PendingDrop: src.PendingDrop, EPG: []epgURLJSON{}}
 	if j.Profiles == nil {
 		j.Profiles = []int64{}
+	}
+	if j.Langs = src.Langs; j.Langs == nil {
+		j.Langs = []string{}
 	}
 	if src.Kind == iptv.KindXtream {
 		j.Xtream = &xtreamJSON{Server: iptv.StripCreds(src.XtreamServer), User: src.XtreamUser}
@@ -288,12 +303,14 @@ type sourceBody struct {
 	// DefaultShown: absent keeps; null: by the playlist's size.
 	DefaultShown  optBool      `json:"defaultShown"`
 	HideURLs      *bool        `json:"hideUrls"`
-	Presets       *presetsJSON `json:"presets"`
+	Presets       *presetsBody `json:"presets"`
 	RefreshHours  *int         `json:"refreshHours"`
 	RefreshOnOpen *bool        `json:"refreshOnOpen"`
 	Position      *int         `json:"position"`
 	Profiles      *[]int64     `json:"profiles"`
-	EPG           *[]epgBody   `json:"epg"`
+	// Langs: the languages kept (ISO 639-1; [] all).
+	Langs *[]string  `json:"langs"`
+	EPG   *[]epgBody `json:"epg"`
 }
 
 // optBool is a JSON field that may be absent (Set false), null or a bool.
@@ -331,7 +348,7 @@ func (a *iptvAdmin) apply(ctx context.Context, b sourceBody, src *iptv.Source, c
 		if src.Kind == "" {
 			src.Kind = iptv.KindM3U
 		}
-		src.PresetAdult, src.PresetTimeshift, src.RefreshHours = true, true, 24
+		src.PresetAdult, src.PresetTimeshift, src.PresetVariants, src.RefreshHours = true, true, true, 24
 		// no name, or the address pasted as one: the host («akciatv.org»);
 		// the first good refresh puts the playlist's own title there
 		if src.Name == "" || httpURL(src.Name) {
@@ -385,6 +402,9 @@ func (a *iptvAdmin) apply(ctx context.Context, b sourceBody, src *iptv.Source, c
 	}
 	if b.Presets != nil {
 		src.PresetTimeshift, src.PresetAdult = b.Presets.Timeshift, b.Presets.Adult
+		if b.Presets.Variants != nil {
+			src.PresetVariants = *b.Presets.Variants
+		}
 	}
 	if b.RefreshHours != nil {
 		if !slices.Contains(refreshIntervals, *b.RefreshHours) {
@@ -400,6 +420,19 @@ func (a *iptvAdmin) apply(ctx context.Context, b sourceBody, src *iptv.Source, c
 	}
 	if b.Profiles != nil {
 		src.Profiles = *b.Profiles
+	}
+	if b.Langs != nil {
+		var langs []string
+		for _, l := range *b.Langs {
+			l = strings.ToLower(strings.TrimSpace(l))
+			if len(l) != 2 || strings.Trim(l, "abcdefghijklmnopqrstuvwxyz") != "" {
+				return msgBadLangs, nil
+			}
+			if !slices.Contains(langs, l) {
+				langs = append(langs, l)
+			}
+		}
+		src.Langs = langs
 	}
 	if b.EPG != nil {
 		for _, e := range *b.EPG {
@@ -605,7 +638,11 @@ func (a *iptvAdmin) refreshSource(confirm bool) http.HandlerFunc {
 		if err != nil {
 			out["error"] = i18n.Localize(ctx, iptv.ErrText(err))
 		} else if res.PendingDrop == 0 {
-			go a.svc.RefreshSourceEPGs(context.WithoutCancel(ctx), src.ID)
+			go func() {
+				bg := context.WithoutCancel(ctx)
+				a.svc.RefreshSourceEPGs(bg, src.ID)
+				a.svc.Categorize(bg) // the new channels' categories, not at the next tick
+			}()
 		}
 		src, gerr := a.svc.Store.Source(ctx, src.ID)
 		if gerr != nil {

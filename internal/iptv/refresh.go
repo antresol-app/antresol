@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -102,9 +103,14 @@ type Service struct {
 	// ScreenLimited: the profile has screen-time limits (it then sees no
 	// external channels); nil: none has.
 	ScreenLimited func(ctx context.Context, userID int64) bool
+	// Model is the AI helper's model of a tier (categories.go: the light
+	// one); nil, or nil answered: no AI categories.
+	Model func(ctx context.Context, t channels.Tier) *channels.LLM
 
 	srcMu sync.Mutex // one playlist refresh at a time
 	epgMu sync.Mutex // one guide refresh at a time
+
+	ai aiCache
 
 	omu     sync.Mutex
 	opening bool
@@ -380,15 +386,37 @@ func (s *Service) Sync(ctx context.Context) error {
 			total[m.SourceID]++
 		}
 	}
+	ai, err := s.aiInfo(ctx)
+	if err != nil {
+		return err
+	}
 	decided := map[int64]Decision{}
-	changed := map[int64]Decision{}
+	bySrcMembers := map[int64][]Member{}
 	for _, m := range ms {
 		src, ok := bySrc[m.SourceID]
 		if !ok || !m.Present {
 			continue
 		}
-		d := ApplyManual(Defaults(src, Entry{Name: m.Name, Group: m.Group, TvgID: m.TvgID, TvgName: m.TvgName}, total[m.SourceID]), m.Manual)
-		decided[m.ID] = d
+		def := Defaults(src, Entry{Name: m.Name, Group: m.Group, TvgID: m.TvgID, TvgName: m.TvgName}, total[m.SourceID])
+		if len(src.Langs) > 0 && def.Why == WhySourceDefault {
+			// the language filter is a preset: the admin's decision still wins
+			if l := EntryLang(m.Name, m.Group, m.TvgID, ai[aiKey(m.Name)].Lang); l != "" && !slices.Contains(src.Langs, l) {
+				hidden := false
+				def.Shown, def.Why = &hidden, WhyLanguage
+			}
+		}
+		decided[m.ID] = ApplyManual(def, m.Manual)
+		if src.PresetVariants {
+			bySrcMembers[m.SourceID] = append(bySrcMembers[m.SourceID], m)
+		}
+	}
+	groups := variantRows(bySrcMembers, decided)
+	changed := map[int64]Decision{}
+	for _, m := range ms {
+		d, ok := decided[m.ID]
+		if !ok {
+			continue
+		}
 		if shown := d.Shown != nil && *d.Shown; shown != m.Shown || d.Why != m.Why {
 			changed[m.ID] = d
 		}
@@ -398,7 +426,50 @@ func (s *Service) Sync(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.syncRows(ctx, bySrc, ms, decided)
+	return s.syncRows(ctx, bySrc, ms, decided, groups)
+}
+
+// variantRows groups each source's variants of one channel (VariantGroups)
+// and makes the decision of each group: its best shown member stays shown
+// and leads; every other shown member becomes WhyVariant (hidden as a
+// channel of its own, kept as the lead's fallback stream; Visible). A
+// group nobody shows stays as decided. The answer: member ids per group,
+// the lead first, then by rank (one logical row each, syncRows).
+func variantRows(bySrc map[int64][]Member, decided map[int64]Decision) [][]int64 {
+	srcIDs := make([]int64, 0, len(bySrc))
+	for id := range bySrc {
+		srcIDs = append(srcIDs, id)
+	}
+	sort.Slice(srcIDs, func(i, j int) bool { return srcIDs[i] < srcIDs[j] })
+	var out [][]int64
+	hidden := false
+	for _, sid := range srcIDs {
+		for _, g := range VariantGroups(bySrc[sid]) {
+			lead := -1
+			for i, m := range g {
+				if d := decided[m.ID]; d.Shown != nil && *d.Shown {
+					lead = i
+					break
+				}
+			}
+			ids := make([]int64, 0, len(g))
+			if lead >= 0 {
+				ids = append(ids, g[lead].ID)
+			}
+			for i, m := range g {
+				if i == lead {
+					continue
+				}
+				ids = append(ids, m.ID)
+				if d := decided[m.ID]; lead >= 0 && d.Shown != nil && *d.Shown {
+					d.Shown, d.Why = &hidden, WhyVariant
+					decided[m.ID] = d
+				}
+			}
+			out = append(out, ids)
+		}
+	}
+	return out
 }
 
 type extRow struct {
@@ -408,7 +479,7 @@ type extRow struct {
 	enabled, numberManual bool
 }
 
-func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Member, decided map[int64]Decision) error {
+func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Member, decided map[int64]Decision, groups [][]int64) error {
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -467,8 +538,73 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 		return err
 	}
 	defer setChannel.Close()
+	// variants of one channel share one row: the oldest row one of them
+	// already has (its number and favourites stay), else the lead's new
+	// one (below); a row is one group's per source
+	at := make(map[int64]int, len(order))
+	for i := range order {
+		at[order[i].ID] = i
+	}
+	orig := make(map[int64]int, len(ms))
+	for i := range ms {
+		orig[ms[i].ID] = i
+	}
+	follows := map[int64]int64{} // a variant → its lead
+	claimed := map[int64]map[int64]int{}
+	grouped := map[int64]int{}
+	for gi, g := range groups {
+		for _, id := range g {
+			grouped[id] = gi + 1
+		}
+	}
+	for gi, g := range groups {
+		src := order[at[g[0]]].SourceID
+		row := int64(0)
+		for _, id := range g {
+			c := order[at[id]].ChannelID
+			if c != 0 && rows[c] != nil && claimed[c][src] == 0 && (row == 0 || c < row) {
+				row = c
+			}
+		}
+		if row != 0 {
+			if claimed[row] == nil {
+				claimed[row] = map[int64]int{}
+			}
+			claimed[row][src] = gi + 1
+		}
+		for k, id := range g {
+			m := &order[at[id]]
+			if k > 0 {
+				follows[id] = g[0]
+			}
+			if row != 0 {
+				m.ChannelID = row
+			} else if k == 0 {
+				m.ChannelID = 0 // the lead gets a row below; its variants follow
+			}
+		}
+	}
+	// an entry of no group (or of another) on a row a group took moves out
 	for i := range order {
 		m := &order[i]
+		if c := m.ChannelID; m.Present && c != 0 && claimed[c][m.SourceID] != 0 && claimed[c][m.SourceID] != grouped[m.ID] {
+			m.ChannelID = 0
+		}
+	}
+	rowSrc = map[int64]map[int64]bool{}
+	for _, m := range order {
+		if m.Present && m.ChannelID != 0 && rows[m.ChannelID] != nil {
+			if rowSrc[m.ChannelID] == nil {
+				rowSrc[m.ChannelID] = map[int64]bool{}
+			}
+			rowSrc[m.ChannelID][m.SourceID] = true
+		}
+	}
+	for i := range order {
+		m := &order[i]
+		if _, ok := follows[m.ID]; ok {
+			continue
+		}
 		if !m.Present || (m.ChannelID != 0 && rows[m.ChannelID] != nil) {
 			continue
 		}
@@ -506,6 +642,23 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 			return err
 		}
 	}
+	for i := range order {
+		m := &order[i]
+		lead, ok := follows[m.ID]
+		if !ok {
+			continue
+		}
+		m.ChannelID = order[at[lead]].ChannelID
+	}
+	// what the passes above moved
+	for i := range order {
+		m := &order[i]
+		if m.ChannelID != ms[orig[m.ID]].ChannelID {
+			if _, err := setChannel.ExecContext(ctx, nullID(m.ChannelID), m.ID); err != nil {
+				return err
+			}
+		}
+	}
 	// each row from its entries
 	byRow := map[int64][]Member{}
 	for _, m := range order {
@@ -534,8 +687,8 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 			if !m.Present {
 				continue
 			}
-			if first == nil {
-				first = m
+			if _, variant := follows[m.ID]; first == nil || (!variant && follows[first.ID] != 0) {
+				first = m // a hidden row is named by its lead, not by a variant
 			}
 			d := decided[m.ID]
 			if shown == nil && d.Shown != nil && *d.Shown {
@@ -570,6 +723,13 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 		return err
 	}
 	return tx.Commit()
+}
+
+func nullID(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
 }
 
 func nameOr(a, b string) string {
@@ -823,6 +983,7 @@ func (s *Service) Run(ctx context.Context) {
 	defer t.Stop()
 	for {
 		s.refreshDue(ctx, false)
+		s.Categorize(ctx)
 		select {
 		case <-ctx.Done():
 			return

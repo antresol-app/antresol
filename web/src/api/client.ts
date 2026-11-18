@@ -91,6 +91,7 @@ import type {
   TitleEpisodes,
   User,
   AISettings,
+  AIModels,
 } from './types'
 
 import { getLanguage, t } from '../i18n'
@@ -522,7 +523,7 @@ export async function playTrailer(play: string, signal?: AbortSignal): Promise<T
 export const getVoclean = (signal?: AbortSignal) => request<VocleanStatus>('GET', '/api/admin/voclean', undefined, signal)
 export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => request<VocleanStatus>('POST', '/api/admin/voclean/backfill', b)
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
-export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string }>('POST', '/api/settings/ai/test', ai)
+export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string; tiers?: { tier: keyof AIModels; model: string; ok: boolean; ms: number; reply?: string; error?: string }[] }>('POST', '/api/settings/ai/test', ai)
 
 // Subtitles (admin): OpenSubtitles search for one video file.
 export const searchSubtitles = (fileId: number, lang: 'ru' | 'en', signal?: AbortSignal) =>

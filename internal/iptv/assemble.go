@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -40,6 +42,41 @@ type Stream struct {
 	HideURL bool
 }
 
+// Formats of a stream, as a player has to read it.
+const (
+	FormatHLS = "hls" // an HLS playlist
+	FormatTS  = "ts"  // a raw MPEG-TS stream (a browser needs it transmuxed)
+)
+
+// StreamFormat is what a provider's URL serves, by its spelling: an
+// .m3u8 playlist, a .ts (.mts, .m2ts, .mpg) stream, an Xtream live path
+// (/live/<user>/<pass>/<id>, MPEG-TS unless it says .m3u8) or an
+// «output=ts|m3u8» query; "" when it does not say.
+func StreamFormat(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	switch o := strings.ToLower(u.Query().Get("output")); o {
+	case "ts", "mpegts":
+		return FormatTS
+	case "m3u8", "hls":
+		return FormatHLS
+	}
+	p := strings.ToLower(u.Path)
+	switch path.Ext(p) {
+	case ".m3u8", ".m3u":
+		return FormatHLS
+	case ".ts", ".mts", ".m2ts", ".mpg", ".mpeg":
+		return FormatTS
+	case "":
+		if parts := strings.Split(strings.Trim(p, "/"), "/"); len(parts) == 4 && parts[0] == "live" {
+			return FormatTS
+		}
+	}
+	return ""
+}
+
 // EPGKey is a guide channel: xml id XMLID of guide EPGURLID.
 type EPGKey struct {
 	EPGURLID int64
@@ -54,10 +91,17 @@ type ExtChannel struct {
 	Streams []Stream
 	// EPGKeys: where its programmes are, by priority.
 	EPGKeys []EPGKey
-	// TvgID, Logo: of the first entry that has one.
+	// TvgID, Logo: of the first entry that has one; no entry has a logo:
+	// its guide channel's icon (guideLogos).
 	TvgID, Logo string
 	// HideURL: the primary stream's source hides provider addresses.
 	HideURL bool
+	// Groups: the playlist groups of its entries (the admin's category
+	// over the group-title), the row's own first; SourceIDs: its sources,
+	// primary first. AI: what the AI helper made of it (categories.go).
+	Groups    []string
+	SourceIDs []int64
+	AI        AIInfo
 }
 
 // Limited: the viewer sees no external channels (an age limit, or screen
@@ -115,23 +159,53 @@ func (s *Service) Visible(ctx context.Context, v channels.Viewer, setID int64) (
 	if err != nil {
 		return nil, err
 	}
+	// a source's variants of one channel (variants.go) stand together at
+	// the place of the channel's first entry: the shown lead first, then
+	// the variants best first
+	type sub struct{ src, ch int64 }
+	place := map[sub]int{}
+	rank := make(map[int64]int, len(ms))
+	for _, m := range ms {
+		k := sub{m.SourceID, m.ChannelID}
+		if p, ok := place[k]; !ok || m.Position < p {
+			place[k] = m.Position
+		}
+		if m.Why == WhyVariant {
+			_, r := VariantName(m.Name)
+			rank[m.ID] = r
+		}
+	}
 	sort.SliceStable(ms, func(i, j int) bool {
-		a, b := allowed[ms[i].SourceID], allowed[ms[j].SourceID]
+		x, y := ms[i], ms[j]
+		a, b := allowed[x.SourceID], allowed[y.SourceID]
 		if a.Position != b.Position {
 			return a.Position < b.Position
 		}
 		if a.ID != b.ID {
 			return a.ID < b.ID
 		}
-		return ms[i].Position < ms[j].Position
+		if p, q := place[sub{x.SourceID, x.ChannelID}], place[sub{y.SourceID, y.ChannelID}]; p != q {
+			return p < q
+		}
+		if vx, vy := x.Why == WhyVariant, y.Why == WhyVariant; vx != vy {
+			return vy
+		}
+		if rank[x.ID] != rank[y.ID] {
+			return rank[x.ID] > rank[y.ID]
+		}
+		return x.Position < y.Position
 	})
 	hiddenGroup := map[string]bool{}
 	for _, g := range set.HiddenGroups {
 		hiddenGroup[strings.ToLower(strings.TrimSpace(g))] = true
 	}
+	ai, err := s.aiInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, m := range ms {
 		src, ok := allowed[m.SourceID]
-		if !ok || !m.Present || !m.Shown || m.ChannelID == 0 {
+		if !ok || !m.Present || !(m.Shown || m.Why == WhyVariant) || m.ChannelID == 0 {
 			continue
 		}
 		c, ok := rows[m.ChannelID]
@@ -144,7 +218,20 @@ func (s *Service) Visible(ctx context.Context, v channels.Viewer, setID int64) (
 		}
 		x, seen := out[c.ID]
 		if !seen {
-			x = ExtChannel{Channel: c, ChannelID: c.ID, HideURL: src.HideURLs}
+			x = ExtChannel{Channel: c, ChannelID: c.ID, HideURL: src.HideURLs, AI: ai[aiKey(c.Name)]}
+			if g := strings.TrimSpace(c.Category); g != "" {
+				x.Groups = []string{g}
+			}
+		}
+		g := strings.TrimSpace(m.Group)
+		if m.Manual != nil && m.Manual.Group != "" {
+			g = m.Manual.Group
+		}
+		if g != "" && !slices.Contains(x.Groups, g) {
+			x.Groups = append(x.Groups, g)
+		}
+		if !slices.Contains(x.SourceIDs, src.ID) {
+			x.SourceIDs = append(x.SourceIDs, src.ID)
 		}
 		x.Streams = append(x.Streams, Stream{URL: u, UserAgent: m.UserAgent, Referrer: m.Referrer, SourceID: src.ID, HideURL: src.HideURLs})
 		if x.TvgID == "" {
@@ -169,7 +256,68 @@ func (s *Service) Visible(ctx context.Context, v channels.Viewer, setID int64) (
 		}
 		out[c.ID] = x
 	}
+	if err := s.guideLogos(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// guideLogos gives a channel without a tvg-logo its guide channel's
+// <icon> (the first of its guide keys that has one): a playlist without
+// logos whose guide has them shows them — in the web, the apps and the
+// IPTV links alike.
+func (s *Service) guideLogos(ctx context.Context, out map[int64]ExtChannel) error {
+	want := map[string]bool{}
+	for _, x := range out {
+		if x.Logo == "" {
+			for _, k := range x.EPGKeys {
+				want[k.XMLID] = true
+			}
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	ids := make([]any, 0, len(want))
+	for id := range want {
+		ids = append(ids, id)
+	}
+	icons := map[EPGKey]string{}
+	for start := 0; start < len(ids); start += 500 {
+		part := ids[start:min(start+500, len(ids))]
+		rows, err := s.Store.DB.QueryContext(ctx, `SELECT epg_url_id, xml_id, icon FROM iptv_xml_channels
+			WHERE icon<>'' AND xml_id IN (?`+strings.Repeat(",?", len(part)-1)+`)`, part...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var k EPGKey
+			var icon string
+			if err := rows.Scan(&k.EPGURLID, &k.XMLID, &icon); err != nil {
+				rows.Close()
+				return err
+			}
+			icons[k] = icon
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+	}
+	for id, x := range out {
+		if x.Logo != "" {
+			continue
+		}
+		for _, k := range x.EPGKeys {
+			if icon := icons[k]; icon != "" {
+				x.Logo = icon
+				out[id] = x
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // externalRows reads the external channel rows by id.

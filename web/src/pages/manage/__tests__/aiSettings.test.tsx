@@ -44,12 +44,27 @@ describe('«ИИ-помощник»', () => {
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Google Gemini' }))
     await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite' }))
     await userEvent.type(screen.getByLabelText('Ключ API'), 'AIza-secret')
-    await userEvent.click(screen.getByLabelText('Название модели'))
+    await userEvent.click(screen.getByLabelText('Средняя модель'))
     await waitFor(() => expect(puts.at(-1)?.ai?.key).toBe('AIza-secret'))
     expect(screen.getByLabelText('Ключ API')).toHaveValue('')
     await userEvent.click(screen.getByRole('button', { name: 'Проверить' }))
     expect(await screen.findByText('Работает: ответ за 480 мс')).toBeInTheDocument()
     expect(tests.at(-1)).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite' })
+  })
+
+  it('three tiers: Anthropic picks Haiku, Sonnet, Opus; a server of one model is that model on each', async () => {
+    const { puts } = stub({ ...base, ai: { url: 'http://127.0.0.1:4000/v1', model: 'local' } })
+    renderSettings('ai')
+    expect(await screen.findByLabelText('Лёгкая модель')).toHaveValue('local')
+    expect(screen.getByLabelText('Мощная модель')).toHaveValue('local')
+    await userEvent.click(screen.getByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Anthropic Claude' }))
+    await waitFor(() =>
+      expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://api.anthropic.com', model: 'claude-sonnet-5-5', models: { light: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', powerful: 'claude-opus-5-5' } }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Лёгкая модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude-sonnet-5-5' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.models?.light).toBe('claude-sonnet-5-5'))
   })
 
   it('off, the server’s own model is named', async () => {

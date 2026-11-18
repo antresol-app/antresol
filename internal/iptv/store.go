@@ -54,6 +54,11 @@ type Source struct {
 	HideURLs        bool
 	PresetTimeshift bool
 	PresetAdult     bool
+	// PresetVariants: variants of one channel (variants.go) are one
+	// channel with fallbacks.
+	PresetVariants bool
+	// Langs: the languages kept (ISO 639-1); empty: all (languages.go).
+	Langs []string
 	// RefreshHours: 0 = off.
 	RefreshHours  int
 	RefreshOnOpen bool
@@ -140,8 +145,8 @@ func b2i(b bool) int {
 // Sources returns every source by position.
 func (s *Store) Sources(ctx context.Context) ([]Source, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, name, kind, url_enc, xtream_server, xtream_user, xtream_pass_enc,
-		default_shown, hide_urls, preset_timeshift, preset_adult, refresh_hours, refresh_on_open, position,
-		profiles_json, last_ok_ms, last_try_ms, last_err, pending_drop
+		default_shown, hide_urls, preset_timeshift, preset_adult, preset_variants, refresh_hours, refresh_on_open, position,
+		profiles_json, last_ok_ms, last_try_ms, last_err, pending_drop, langs_json
 		FROM iptv_sources ORDER BY position, id`)
 	if err != nil {
 		return nil, err
@@ -151,21 +156,24 @@ func (s *Store) Sources(ctx context.Context) ([]Source, error) {
 	for rows.Next() {
 		var src Source
 		var def sql.NullInt64
-		var hide, ts, adult, onOpen int
-		var profiles string
+		var hide, ts, adult, variants, onOpen int
+		var profiles, langs string
 		var ok, try int64
 		if err := rows.Scan(&src.ID, &src.Name, &src.Kind, &src.URLEnc, &src.XtreamServer, &src.XtreamUser, &src.XtreamPassEnc,
-			&def, &hide, &ts, &adult, &src.RefreshHours, &onOpen, &src.Position,
-			&profiles, &ok, &try, &src.LastErr, &src.PendingDrop); err != nil {
+			&def, &hide, &ts, &adult, &variants, &src.RefreshHours, &onOpen, &src.Position,
+			&profiles, &ok, &try, &src.LastErr, &src.PendingDrop, &langs); err != nil {
 			return nil, err
 		}
 		if def.Valid {
 			v := def.Int64 != 0
 			src.DefaultShown = &v
 		}
-		src.HideURLs, src.PresetTimeshift, src.PresetAdult, src.RefreshOnOpen = hide != 0, ts != 0, adult != 0, onOpen != 0
+		src.HideURLs, src.PresetTimeshift, src.PresetAdult, src.PresetVariants, src.RefreshOnOpen = hide != 0, ts != 0, adult != 0, variants != 0, onOpen != 0
 		if err := json.Unmarshal([]byte(profiles), &src.Profiles); err != nil {
 			return nil, fmt.Errorf("iptv source %d profiles: %w", src.ID, err)
+		}
+		if err := json.Unmarshal([]byte(langs), &src.Langs); err != nil {
+			return nil, fmt.Errorf("iptv source %d langs: %w", src.ID, err)
 		}
 		src.LastOK, src.LastTry = fromMS(ok), fromMS(try)
 		out = append(out, src)
@@ -205,12 +213,12 @@ func (s *Store) SaveSource(ctx context.Context, src Source) (Source, error) {
 		def = b2i(*src.DefaultShown)
 	}
 	args := []any{src.Name, src.Kind, src.URLEnc, src.XtreamServer, src.XtreamUser, src.XtreamPassEnc,
-		def, b2i(src.HideURLs), b2i(src.PresetTimeshift), b2i(src.PresetAdult), src.RefreshHours, b2i(src.RefreshOnOpen), src.Position,
-		string(pj), ms(src.LastOK), ms(src.LastTry), src.LastErr, src.PendingDrop}
+		def, b2i(src.HideURLs), b2i(src.PresetTimeshift), b2i(src.PresetAdult), b2i(src.PresetVariants), src.RefreshHours, b2i(src.RefreshOnOpen), src.Position,
+		string(pj), ms(src.LastOK), ms(src.LastTry), src.LastErr, src.PendingDrop, jsonText(langsOrEmpty(src.Langs))}
 	if src.ID == 0 {
 		res, err := s.DB.ExecContext(ctx, `INSERT INTO iptv_sources (name, kind, url_enc, xtream_server, xtream_user, xtream_pass_enc,
-			default_shown, hide_urls, preset_timeshift, preset_adult, refresh_hours, refresh_on_open, position,
-			profiles_json, last_ok_ms, last_try_ms, last_err, pending_drop) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args...)
+			default_shown, hide_urls, preset_timeshift, preset_adult, preset_variants, refresh_hours, refresh_on_open, position,
+			profiles_json, last_ok_ms, last_try_ms, last_err, pending_drop, langs_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args...)
 		if err != nil {
 			return src, err
 		}
@@ -218,8 +226,8 @@ func (s *Store) SaveSource(ctx context.Context, src Source) (Source, error) {
 		return src, err
 	}
 	res, err := s.DB.ExecContext(ctx, `UPDATE iptv_sources SET name=?, kind=?, url_enc=?, xtream_server=?, xtream_user=?, xtream_pass_enc=?,
-		default_shown=?, hide_urls=?, preset_timeshift=?, preset_adult=?, refresh_hours=?, refresh_on_open=?, position=?,
-		profiles_json=?, last_ok_ms=?, last_try_ms=?, last_err=?, pending_drop=? WHERE id=?`, append(args, src.ID)...)
+		default_shown=?, hide_urls=?, preset_timeshift=?, preset_adult=?, preset_variants=?, refresh_hours=?, refresh_on_open=?, position=?,
+		profiles_json=?, last_ok_ms=?, last_try_ms=?, last_err=?, pending_drop=?, langs_json=? WHERE id=?`, append(args, src.ID)...)
 	if err != nil {
 		return src, err
 	}
@@ -487,6 +495,13 @@ func (s *Store) SetXtreamEnabled(ctx context.Context, on bool) error {
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		settingXtream, strconv.Itoa(b2i(on)))
 	return err
+}
+
+func langsOrEmpty(l []string) []string {
+	if l == nil {
+		return []string{}
+	}
+	return l
 }
 
 func jsonText(v any) string {

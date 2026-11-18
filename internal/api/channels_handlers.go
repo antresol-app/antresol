@@ -67,6 +67,9 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 		// «ИИ-помощник» of the server settings over VAULT_LLM_*
 		deps.Channels.LLMSource = llmSource(deps.DB, deps.SettingsDefaults, deps.Channels.LLM)
 	}
+	if deps.ExtIPTV != nil && deps.ExtIPTV.Model == nil {
+		deps.ExtIPTV.Model = deps.Channels.ModelFor // the external channels' categories
+	}
 	a := &channelsAPI{svc: deps.Channels, ext: deps.ExtIPTV, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
 		users: deps.Users, screen: deps.ScreenTime, dataDir: deps.DataDir, cards: cards}
 	if deps.ExtIPTV != nil && deps.DB != nil {
@@ -193,6 +196,10 @@ type channelJSON struct {
 	// is how to play it (channels_external.go). Absent for own channels.
 	External bool        `json:"external,omitempty"`
 	Stream   *streamJSON `json:"stream,omitempty"`
+
+	// Categories: the ids of its categories (channels_categories.go; the
+	// viewer's list only).
+	Categories []string `json:"categories,omitempty"`
 }
 
 func (a *channelsAPI) toJSON(ctx context.Context, c channels.Channel, v channels.Viewer, favs map[int64]bool) channelJSON {
@@ -368,12 +375,15 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 					j.Next = &ps[1]
 				}
 			}
+			j.Categories = ownCats(j.Category)
 		} else {
 			j = a.withPicks(ctx, j, c)
 		}
 		out = append(out, j)
 	}
+	var cats []categoryJSON
 	if !manage {
+		names, pos := a.sourceNames(ctx)
 		xs := sortedExt(a.extFor(r, u, ""))
 		progs := a.extProgrammes(ctx, xs, now, now.Add(4*time.Hour))
 		for _, x := range xs {
@@ -381,6 +391,7 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 				lastChannel = x.ChannelID
 			}
 			j := a.extJSON(r, x, favs)
+			j.Categories = extCats(x, len(names))
 			if ps := progs[x.ChannelID]; len(ps) > 0 {
 				j.Now = &ps[0]
 				if len(ps) > 1 {
@@ -390,8 +401,17 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			out = append(out, j)
 		}
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+		lists := make([][]string, len(out))
+		for i, j := range out {
+			lists[i] = j.Categories
+		}
+		cats = a.categoriesOf(r, lists, names, pos)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid})
+	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid}
+	if cats != nil {
+		resp["categories"] = cats
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *channelsAPI) channelParam(w http.ResponseWriter, r *http.Request) (channels.Channel, bool) {
@@ -971,6 +991,8 @@ type channelEPGJSON struct {
 	LogoURL string `json:"logoUrl,omitempty"` // the uploaded logo (absent: none); an external channel's tvg-logo
 	// External: a channel of an external playlist (its stream: the list's).
 	External bool `json:"external,omitempty"`
+	// Categories: as the list's (channels_categories.go).
+	Categories []string `json:"categories,omitempty"`
 }
 
 // GET /api/channels/epg?from=<RFC3339>&hours=<1…24>: the guide grid —
@@ -1028,10 +1050,11 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			ps = []programJSON{}
 		}
 		name, cat := a.display(ctx, c)
-		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c)})
+		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c), Categories: ownCats(cat)})
 	}
 	xs := sortedExt(a.extFor(r, u, ""))
 	if len(xs) > 0 {
+		names, _ := a.sourceNames(ctx)
 		progs := a.extProgrammes(ctx, xs, from, to)
 		for _, x := range xs {
 			ps := progs[x.ChannelID]
@@ -1040,7 +1063,7 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			}
 			c := x.Channel
 			out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: c.Name, Category: c.Category, Favorite: favs[c.ID], Programs: ps,
-				LogoURL: extLogoURL(x), External: true})
+				LogoURL: extLogoURL(x), External: true, Categories: extCats(x, len(names))})
 		}
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	}

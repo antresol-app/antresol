@@ -190,3 +190,20 @@ func TestSetForTokenThenDeviceThenDefault(t *testing.T) {
 	st.DeleteSet(ctx, s2.ID)
 	check("phone", "", s3.ID)
 }
+
+func TestStreamFormat(t *testing.T) {
+	for u, want := range map[string]string{
+		"http://p.example.test/live/u/p/123.ts":          FormatTS,
+		"http://p.example.test/live/u/p/123":             FormatTS, // Xtream's live path
+		"http://p.example.test/live/u/p/123.m3u8":        FormatHLS,
+		"https://cdn.example.test/hls/ch/index.m3u8?t=1": FormatHLS,
+		"http://p.example.test/play?id=5&output=ts":      FormatTS,
+		"http://p.example.test/stream/abc":               "",
+		"http://p.example.test/udp/239.0.0.1:1234":       "",
+		"http://p.example.test/x.mpg":                    FormatTS,
+	} {
+		if got := StreamFormat(u); got != want {
+			t.Errorf("StreamFormat(%q) = %q, want %q", u, got, want)
+		}
+	}
+}
