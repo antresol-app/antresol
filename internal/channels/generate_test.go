@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestGeneratorSync(t *testing.T) {
@@ -18,7 +19,7 @@ func TestGeneratorSync(t *testing.T) {
 	for _, id := range []int64{1, 2, 3, 4, 5, 6} {
 		f.exec(`INSERT INTO item_owners (item_id, user_id) VALUES (?,?)`, id, ann)
 	}
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
 	res, err := g.Sync(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +113,7 @@ func TestGeneratorToonsApartFromSeries(t *testing.T) {
 		f.series("Toon", 1, 2, 20, itemOpt{year: 2000 + i, genres: []string{"Мультфильм", "комедия"}})
 		f.series("Live", 1, 2, 20, itemOpt{year: 2000 + i, genres: []string{"драма"}})
 	}
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -139,5 +140,38 @@ func TestGeneratorToonsApartFromSeries(t *testing.T) {
 	}
 	if n := len(Match(units, toons.Rules)); n != 6 {
 		t.Fatalf("toons has %d titles, want 6", n)
+	}
+}
+
+// A generated channel needs two days of programmes, not just six titles.
+func TestGeneratorNeedsTwoDays(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		f.movie("Short", 90, itemOpt{year: 1990 + i, genres: []string{"комедия"}})
+	}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	plan, err := g.Plan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range plan {
+		if p.AutoKey == "movies" || p.AutoKey == "genre:комедия" {
+			t.Fatalf("9 hours of films made channel %s", p.AutoKey)
+		}
+	}
+	for i := 0; i < 27; i++ { // 33 × 90 min = 49.5 h
+		f.movie("More", 90, itemOpt{year: 1990 + i%10, genres: []string{"комедия"}})
+	}
+	plan, err = g.Plan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, p := range plan {
+		have[p.AutoKey] = true
+	}
+	if !have["movies"] || !have["genre:комедия"] || !have["decade:1990"] {
+		t.Fatalf("49.5 hours of comedies of the 90s: %v", have)
 	}
 }

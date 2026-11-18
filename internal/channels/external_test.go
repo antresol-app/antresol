@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // an external row (internal/iptv) as the iptv package writes it
@@ -53,7 +54,7 @@ func TestGeneratorLeavesExternalRows(t *testing.T) {
 		f.movie("C", 90, itemOpt{year: 1991 + i, genres: []string{"комедия"}})
 	}
 	ext := f.external(100, "Внешний", "ext:внешний")
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}

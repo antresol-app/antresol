@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
 )
@@ -16,6 +17,9 @@ const (
 	MinTitles   = 6  // movies or series of a genre, a decade, kids…
 	MinEpisodes = 8  // a series' own channel
 	MaxSeries   = 30 // series channels at most (most episodes first)
+	// DefaultMinRuntime: a generated channel needs at least this much to
+	// play, or it repeats itself within a couple of days.
+	DefaultMinRuntime = 48 * time.Hour
 )
 
 // Category names of generated channels (TiviMate's groups).
@@ -55,6 +59,8 @@ type planned struct {
 type Generator struct {
 	Store   *Store
 	Catalog Catalog
+	// MinRuntime: what a generated channel needs to play (0: DefaultMinRuntime).
+	MinRuntime time.Duration
 }
 
 // Plan returns the generated channels the library has enough for.
@@ -78,21 +84,37 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 			series = append(series, u)
 		}
 	}
+	runtime := func(us []Unit) time.Duration {
+		var ms int64
+		for _, u := range us {
+			for _, p := range progs[u.ID] {
+				for _, part := range p.Parts {
+					ms += part.DurationMs
+				}
+			}
+		}
+		return time.Duration(ms) * time.Millisecond
+	}
+	minRuntime := g.MinRuntime
+	if minRuntime == 0 {
+		minRuntime = DefaultMinRuntime
+	}
+	enough := func(us []Unit) bool { return len(us) >= MinTitles && runtime(us) >= minRuntime }
 	var out []planned
 	add := func(key, name, cat string, from int, r Rules) {
 		out = append(out, planned{Channel: Channel{Name: name, Category: cat, AutoKey: key, Rules: r, Enabled: true}, from: from})
 	}
-	if len(movies) >= MinTitles {
+	if enough(movies) {
 		add("movies", "Все фильмы", CatGeneral, 1, Rules{Kinds: []string{library.KindMovie}})
 	}
 	// animated series get their own channel and stay out of «Все сериалы»
 	toons := Rules{Kinds: []string{library.KindSeries}, Genres: []string{animationGenre}}
-	hasToons := len(Match(series, toons)) >= MinTitles
+	hasToons := enough(Match(series, toons))
 	all := Rules{Kinds: []string{library.KindSeries}}
 	if hasToons {
 		all.NotGenres = []string{animationGenre}
 	}
-	if len(Match(series, all)) >= MinTitles {
+	if enough(Match(series, all)) {
 		add("series", "Все сериалы", CatGeneral, 1, all)
 	}
 	if hasToons {
@@ -107,7 +129,7 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	}
 	var genres []string
 	for gk, n := range count {
-		if n >= MinTitles && genreChannel[gk] != "" {
+		if n >= MinTitles && genreChannel[gk] != "" && enough(Match(movies, Rules{Genres: []string{gk}})) {
 			genres = append(genres, gk)
 		}
 	}
@@ -129,7 +151,7 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	}
 	var ds []int
 	for d, n := range decades {
-		if n >= MinTitles {
+		if n >= MinTitles && enough(Match(movies, Rules{YearFrom: d, YearTo: d + 9})) {
 			ds = append(ds, d)
 		}
 	}
@@ -139,11 +161,11 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 			Rules{Kinds: []string{library.KindMovie}, YearFrom: d, YearTo: d + 9})
 	}
 	kids := Rules{Genres: kidsGenres, MaxRating: "6+"}
-	if len(Match(append(append([]Unit{}, movies...), series...), kids)) >= MinTitles {
+	if enough(Match(append(append([]Unit{}, movies...), series...), kids)) {
 		add("kids", "Детский", CatKids, 50, kids)
 	}
 	docs := Rules{Genres: []string{docsGenre}}
-	if len(Match(append(append([]Unit{}, movies...), series...), docs)) >= MinTitles {
+	if enough(Match(append(append([]Unit{}, movies...), series...), docs)) {
 		add("docs", "Документальное", CatDocs, 60, docs)
 	}
 	// series marathons: most episodes first
@@ -153,6 +175,9 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	for _, u := range long {
 		if n == MaxSeries || len(progs[u.ID]) < MinEpisodes {
 			break
+		}
+		if runtime([]Unit{u}) < minRuntime {
+			continue // a short series repeats within days: no channel of its own
 		}
 		n++
 		add("series:"+strconv.FormatInt(u.ID, 10), u.Title, CatSeries, 100, Rules{Titles: []int64{u.ID}, Order: OrderOrdered})
