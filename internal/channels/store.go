@@ -35,6 +35,8 @@ type Rules struct {
 	Kinds []string `json:"kinds,omitempty"`
 	// Genres: any of them (stored names, either language).
 	Genres []string `json:"genres,omitempty"`
+	// NotGenres: none of them (stored names, either language).
+	NotGenres []string `json:"notGenres,omitempty"`
 	// YearFrom, YearTo bound the title's year (0: open).
 	YearFrom int `json:"yearFrom,omitempty"`
 	YearTo   int `json:"yearTo,omitempty"`
@@ -277,6 +279,13 @@ func normalize(c *Channel) error {
 		}
 	}
 	r.Genres = genres
+	var not []string
+	for _, g := range r.NotGenres {
+		if g = strings.TrimSpace(g); g != "" && !contains(not, g) {
+			not = append(not, g)
+		}
+	}
+	r.NotGenres = not
 	r.Countries = cleanList(r.Countries, strings.ToUpper, 40)
 	r.Languages = cleanList(r.Languages, strings.ToLower, 40)
 	r.Keywords = cleanList(r.Keywords, strings.ToLower, 40)

@@ -103,3 +103,41 @@ func keys(m map[string]Channel) []string {
 	}
 	return out
 }
+
+// Animated series get «Мультсериалы» and stay out of «Все сериалы».
+func TestGeneratorToonsApartFromSeries(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		f.series("Toon", 1, 2, 20, itemOpt{year: 2000 + i, genres: []string{"Мультфильм", "комедия"}})
+		f.series("Live", 1, 2, 20, itemOpt{year: 2000 + i, genres: []string{"драма"}})
+	}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := f.st.All(ctx)
+	by := map[string]Channel{}
+	for _, c := range all {
+		by[c.AutoKey] = c
+	}
+	toons, ok := by["toons"]
+	if !ok || toons.Name != "Мультсериалы" {
+		t.Fatalf("no toons channel: %v", keys(by))
+	}
+	series, ok := by["series"]
+	if !ok || len(series.Rules.NotGenres) != 1 {
+		t.Fatalf("series channel without the animation exclusion: %+v", series.Rules)
+	}
+	units, _ := g.Catalog.Units(ctx)
+	for _, u := range Match(units, series.Rules) {
+		for _, gk := range u.Genres {
+			if gk == animationGenre {
+				t.Fatalf("animated %q in «Все сериалы»", u.Title)
+			}
+		}
+	}
+	if n := len(Match(units, toons.Rules)); n != 6 {
+		t.Fatalf("toons has %d titles, want 6", n)
+	}
+}

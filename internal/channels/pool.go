@@ -221,6 +221,13 @@ func Match(units []Unit, r Rules) []Unit {
 			genres[i18n.GenreKey(g)] = true
 		}
 	}
+	var notGenres map[string]bool
+	if len(r.NotGenres) > 0 {
+		notGenres = map[string]bool{}
+		for _, g := range r.NotGenres {
+			notGenres[i18n.GenreKey(g)] = true
+		}
+	}
 	countries := setOf(r.Countries, strings.ToUpper)
 	languages := setOf(r.Languages, strings.ToLower)
 	keywords := setOf(r.Keywords, strings.ToLower)
@@ -232,6 +239,9 @@ func Match(units []Unit, r Rules) []Unit {
 			continue
 		}
 		if genres != nil && !anyIn(u.Genres, genres) {
+			continue
+		}
+		if notGenres != nil && anyIn(u.Genres, notGenres) {
 			continue
 		}
 		if countries != nil && !anyIn(u.Countries, countries) {

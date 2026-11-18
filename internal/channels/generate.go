@@ -42,6 +42,9 @@ var kidsGenres = []string{"мультфильм", "семейный", "детс�
 
 const docsGenre = "документальный"
 
+// animationGenre is the genre of animated films and series (i18n.GenreKey).
+const animationGenre = "мультфильм"
+
 // planned is a generated channel the library has content for.
 type planned struct {
 	Channel
@@ -82,8 +85,18 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	if len(movies) >= MinTitles {
 		add("movies", "Все фильмы", CatGeneral, 1, Rules{Kinds: []string{library.KindMovie}})
 	}
-	if len(series) >= MinTitles {
-		add("series", "Все сериалы", CatGeneral, 1, Rules{Kinds: []string{library.KindSeries}})
+	// animated series get their own channel and stay out of «Все сериалы»
+	toons := Rules{Kinds: []string{library.KindSeries}, Genres: []string{animationGenre}}
+	hasToons := len(Match(series, toons)) >= MinTitles
+	all := Rules{Kinds: []string{library.KindSeries}}
+	if hasToons {
+		all.NotGenres = []string{animationGenre}
+	}
+	if len(Match(series, all)) >= MinTitles {
+		add("series", "Все сериалы", CatGeneral, 1, all)
+	}
+	if hasToons {
+		add("toons", "Мультсериалы", CatGeneral, 1, toons)
 	}
 	// genres of movies, most titles first
 	count := map[string]int{}
