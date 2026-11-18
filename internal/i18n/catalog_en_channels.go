@@ -3,6 +3,9 @@ package i18n
 // English for «ТВ-каналы» (internal/channels and its API).
 func init() {
 	Register(EN, map[string]string{
+		"Ссылка на поток устарела":                             "The stream link has expired",
+		"Слишком много каналов через сервер одновременно":      "Too many channels through the server at once",
+		"Источник канала не ответил":                           "The channel's source did not answer",
 		"Укажите название канала":                              "Enter the channel’s name",
 		"Укажите адрес модели":                                 "Enter the model’s address",
 		"Укажите модель":                                       "Enter the model",
