@@ -205,6 +205,7 @@ export default {
   // «О сервере»: version, licence, the source offer (AGPL §13), the TMDB notice
   'comp.about.title': 'About This Server',
   'comp.about.version': 'Version',
+  'comp.about.video': 'Video',
   'comp.about.license': 'License',
   'comp.about.source': 'Source Code · AGPL',
   'comp.about.licenseText': 'License Text',

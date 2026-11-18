@@ -3,13 +3,15 @@
 // TMDB notice its terms ask for.
 import { APP_NAME } from '../brand'
 import { useEffect, useState } from 'react'
-import type { About } from '../api/types'
+import { getTranscoding } from '../api/client'
+import type { About, TranscodingView } from '../api/types'
 import { useT } from '../i18n'
 import { loadAbout, sourceLink } from '../state/about'
 import { ButtonAnchor } from '../ui/Button'
 import { GroupedSection, ListRow } from '../ui/List'
 import { Sheet } from '../ui/Sheet'
 import { LogoMark } from './Logo'
+import { statusLine } from '../pages/manage/TranscodingSettings'
 import styles from './AboutSheet.module.css'
 
 /** «0.4.0 (1a2b3c4)»: a commit is cut to the length git shows. */
@@ -24,6 +26,13 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
     return () => {
       live = false
     }
+  }, [])
+  // the GPU line: admins only (the request fails for others, and the row stays out)
+  const [tc, setTc] = useState<TranscodingView | null>(null)
+  useEffect(() => {
+    const ac = new AbortController()
+    getTranscoding(ac.signal).then((v) => setTc(v?.status?.mode ? v : null), () => {})
+    return () => ac.abort()
   }, [])
   const source = sourceLink(about)
   const link = (href: string, label: string) => (
@@ -49,6 +58,11 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
             <ListRow label={t('comp.about.license')}>
               <span className={styles.value}>{about.license}</span>
             </ListRow>
+            {tc && (
+              <ListRow stack label={t('comp.about.video')}>
+                <span className={styles.value}>{statusLine(tc, t)}</span>
+              </ListRow>
+            )}
           </GroupedSection>
         )}
         <GroupedSection footer={t('comp.about.tmdb')}>

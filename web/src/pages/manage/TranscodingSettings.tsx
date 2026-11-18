@@ -24,20 +24,21 @@ import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
 import m from "./Manage.module.css";
 
-/** «Сейчас»: the backend in effect, whether its test encode passed, what it can do. */
+/** «Сейчас»: whether video decodes and encodes on the GPU, and if not, why. */
 export function statusLine(
   v: TranscodingView,
   t: ReturnType<typeof useT>,
 ): string {
   const s = v.status;
-  if (s.mode === "none") return t("settings.tc.status.cpu");
-  const parts = [t("settings.tc.status.gpu", { name: s.name })];
+  if (s.mode === "none") {
+    if (s.requested === "none") return t("settings.tc.status.cpuChosen");
+    if (s.probes.some((p) => !p.ok)) return t("settings.tc.status.cpuFailed");
+    if (v.devices.length === 0) return t("settings.tc.status.cpuNoDevice");
+    return t("settings.tc.status.cpu");
+  }
   const own = s.probes.find((p) => p.mode === s.mode);
-  parts.push(
-    own && !own.ok
-      ? t("settings.tc.status.failed")
-      : t("settings.tc.status.ok"),
-  );
+  if (own && !own.ok) return t("settings.tc.status.gpuFailed", { name: s.name });
+  const parts = [t("settings.tc.status.gpu", { name: s.name })];
   if (s.hevc) parts.push(t("settings.tc.status.hevc"));
   if (s.tonemapGpu) parts.push(t("settings.tc.status.tonemapGpu"));
   else if (s.tonemapCpu) parts.push(t("settings.tc.status.tonemapCpu"));

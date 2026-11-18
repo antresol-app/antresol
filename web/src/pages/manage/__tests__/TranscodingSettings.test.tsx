@@ -3,7 +3,7 @@
 // server picked; «Проверить заново» probes again; a changed setup can go
 // back to the server's own.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TranscodingView } from '../../../api/types'
 import { TranscodingSection } from '../TranscodingSettings'
@@ -49,7 +49,7 @@ describe('transcoding settings', () => {
   it('shows what the server picked and its test encode', async () => {
     stub(view(), () => view())
     render(<TranscodingSection />)
-    expect(await screen.findByText('Видеокарта: Intel Quick Sync · проба прошла · HEVC · тонмаппинг на видеокарте')).toBeInTheDocument()
+    expect(await screen.findByText('Видеокарта Intel Quick Sync: аппаратное декодирование и кодирование работают · HEVC · тонмаппинг на видеокарте')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Тонмаппинг HDR' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('switch', { name: 'HEVC на выходе' })).toHaveAttribute('aria-checked', 'true')
     // the device row: there are two render nodes
@@ -61,13 +61,18 @@ describe('transcoding settings', () => {
   it('a failed explicit test encode is said, and the CPU when software', async () => {
     stub(view({ settings: { mode: 'vaapi', device: '', tonemap: true, hevc: true }, status: { ...view().status, mode: 'vaapi', name: 'VA-API', hevc: false, tonemapGpu: false, probes: [{ mode: 'vaapi', ok: false, error: 'no device' }] } }), () => view())
     const { unmount } = render(<TranscodingSection />)
-    expect(await screen.findByText('Видеокарта: VA-API · проба не прошла, перекодирование уходит на процессор · тонмаппинг на процессоре')).toBeInTheDocument()
+    expect(await screen.findByText('Видеокарта VA-API не прошла пробу — видео перекодирует процессор')).toBeInTheDocument()
     unmount()
     stub(view({ devices: ['/dev/dri/renderD128'], status: { ...view().status, mode: 'none', name: 'software', hevc: false, tonemapGpu: false, probes: [] } }), () => view())
     render(<TranscodingSection />)
-    expect(await screen.findByText('Процессор')).toBeInTheDocument()
+    expect(await screen.findByText('Процессор: видеокарта не найдена')).toBeInTheDocument()
     // one render node: nothing to choose
     expect(screen.queryByText('Устройство')).toBeNull()
+    cleanup()
+    // no render node in the container: say how to give it one
+    stub(view({ devices: [], status: { ...view().status, mode: 'none', name: 'software', hevc: false, tonemapGpu: false, probes: [] } }), () => view())
+    render(<TranscodingSection />)
+    expect(await screen.findByText('Процессор: контейнер не видит видеокарту — откройте /dev/dri в compose.yml')).toBeInTheDocument()
   })
 
   it('a toggle saves the whole settings and shows the new state', async () => {
@@ -76,7 +81,7 @@ describe('transcoding settings', () => {
     await userEvent.click(await screen.findByRole('switch', { name: 'HEVC на выходе' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(calls.find((c) => c.method === 'PUT')).toEqual({ method: 'PUT', path: '/api/settings/transcoding', body: { mode: 'auto', device: '', tonemap: true, hevc: false } })
-    expect(await screen.findByText('Видеокарта: Intel Quick Sync · проба прошла · тонмаппинг на видеокарте')).toBeInTheDocument()
+    expect(await screen.findByText('Видеокарта Intel Quick Sync: аппаратное декодирование и кодирование работают · тонмаппинг на видеокарте')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'HEVC на выходе' })).toHaveAttribute('aria-checked', 'false')
     // changed here: back to the server's own
     await userEvent.click(screen.getByRole('button', { name: 'Как в настройках запуска' }))
