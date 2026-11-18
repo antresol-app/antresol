@@ -27,8 +27,12 @@ import (
 // provider's (absolute), or Antresol's redirect (a path) when the source
 // hides provider addresses. Unsupported: platforms that cannot play it as
 // given ("web": headers a browser cannot send, or http from an https page).
+// Relay: the web's same-origin relay of the stream (a path; the web plays
+// it where "web" is unsupported, and after the direct streams otherwise:
+// a provider without CORS). The apps keep URL.
 type streamJSON struct {
 	URL         string         `json:"url"`
+	Relay       string         `json:"relay,omitempty"`
 	UserAgent   string         `json:"userAgent,omitempty"`
 	Referrer    string         `json:"referrer,omitempty"`
 	Fallbacks   []fallbackJSON `json:"fallbacks"`
@@ -37,6 +41,7 @@ type streamJSON struct {
 
 type fallbackJSON struct {
 	URL         string   `json:"url"`
+	Relay       string   `json:"relay,omitempty"`
 	UserAgent   string   `json:"userAgent,omitempty"`
 	Referrer    string   `json:"referrer,omitempty"`
 	Unsupported []string `json:"unsupported"`
@@ -86,7 +91,8 @@ func sortedExt(m map[int64]iptv.ExtChannel) []iptv.ExtChannel {
 func unsupportedOf(r *http.Request, network *auth.Network, s iptv.Stream) []string {
 	out := []string{}
 	https := strings.HasPrefix(network.Origin(r), "https:")
-	if s.UserAgent != "" || s.Referrer != "" || (https && strings.HasPrefix(strings.ToLower(s.URL), "http:") && !s.HideURL) {
+	if s.UserAgent != "" || s.Referrer != "" || (https && strings.HasPrefix(strings.ToLower(s.URL), "http:")) {
+		// (a hidden http address too: the browser would follow the redirect to it)
 		out = append(out, "web")
 	}
 	return out
@@ -107,10 +113,16 @@ func (a *channelsAPI) streamOf(r *http.Request, x iptv.ExtChannel) *streamJSON {
 		}
 		return s.URL
 	}
+	relay := func(i int) string {
+		if a.relay == nil {
+			return ""
+		}
+		return extRelayPath(x.ChannelID, i)
+	}
 	p := x.Streams[0]
-	j := &streamJSON{URL: url(0, p), UserAgent: p.UserAgent, Referrer: p.Referrer, Fallbacks: []fallbackJSON{}, Unsupported: unsupportedOf(r, a.network, p)}
+	j := &streamJSON{URL: url(0, p), Relay: relay(0), UserAgent: p.UserAgent, Referrer: p.Referrer, Fallbacks: []fallbackJSON{}, Unsupported: unsupportedOf(r, a.network, p)}
 	for i, s := range x.Streams[1:] {
-		j.Fallbacks = append(j.Fallbacks, fallbackJSON{URL: url(i+1, s), UserAgent: s.UserAgent, Referrer: s.Referrer, Unsupported: unsupportedOf(r, a.network, s)})
+		j.Fallbacks = append(j.Fallbacks, fallbackJSON{URL: url(i+1, s), Relay: relay(i + 1), UserAgent: s.UserAgent, Referrer: s.Referrer, Unsupported: unsupportedOf(r, a.network, s)})
 	}
 	return j
 }

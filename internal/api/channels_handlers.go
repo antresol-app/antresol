@@ -44,6 +44,8 @@ type channelsAPI struct {
 	// cards translates programme titles into the viewer's language like
 	// the library's cards (nil: the stored text).
 	cards *lib
+	// relay: the web's relay of external streams (nil: no external channels)
+	relay *extRelay
 }
 
 func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
@@ -65,8 +67,12 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 		// «ИИ-помощник» of the server settings over VAULT_LLM_*
 		deps.Channels.LLMSource = llmSource(deps.DB, deps.SettingsDefaults, deps.Channels.LLM)
 	}
-	return &channelsAPI{svc: deps.Channels, ext: deps.ExtIPTV, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
+	a := &channelsAPI{svc: deps.Channels, ext: deps.ExtIPTV, lib: deps.Library, tokens: auth.NewAppTokens(deps.DB), network: deps.Network,
 		users: deps.Users, screen: deps.ScreenTime, dataDir: deps.DataDir, cards: cards}
+	if deps.ExtIPTV != nil && deps.DB != nil {
+		a.relay = newExtRelay(deps.DB)
+	}
+	return a
 }
 
 func viewerOf(u auth.User) channels.Viewer {
@@ -96,6 +102,10 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Get("/api/channels/live/{id}/{name}", a.webLive)
 	if a.ext != nil {
 		r.Get("/api/channels/live/ext/{id}/{n}", a.extStream)
+		if a.relay != nil {
+			r.Get("/api/channels/live/ext/{id}/{n}/relay", a.extRelay)
+			r.Get("/api/channels/live/ext/{id}/{n}/relay/{ref}", a.extRelay)
+		}
 	}
 }
 
