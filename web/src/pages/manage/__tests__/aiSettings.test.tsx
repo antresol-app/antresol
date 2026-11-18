@@ -64,5 +64,6 @@ describe('«ИИ-помощник»', () => {
     expect(providerOf('https://api.groq.com/openai/v1')).toBe('groq')
     expect(providerOf('http://127.0.0.1:4000/v1')).toBe('litellm')
     expect(providerOf('http://host:11434')).toBe('ollama')
+    expect(providerOf('https://api.anthropic.com')).toBe('anthropic')
   })
 })

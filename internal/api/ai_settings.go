@@ -14,7 +14,9 @@ import (
 
 // AISettings is «ИИ-помощник»: the language model «Опишите канал» asks — a
 // LiteLLM or another OpenAI-compatible endpoint (its URL ends in /v1:
-// Gemini's, OpenAI's, Groq's, OpenRouter's), or an Ollama (its address).
+// Gemini's, OpenAI's, Groq's, OpenRouter's), Anthropic's Messages API
+// (https://api.anthropic.com, channels.IsAnthropicURL), or an Ollama (its
+// address).
 // Key never leaves the server: settingsAPI.load drops it from answers.
 type AISettings struct {
 	URL   string `json:"url"`

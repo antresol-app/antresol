@@ -1,7 +1,7 @@
 // «Настройки сервера → ИИ-помощник»: the language model «Опишите канал»
 // asks. A provider fills its address and a model to start from: a LiteLLM
-// (or any OpenAI-compatible server), Gemini, OpenAI, Groq, OpenRouter or an
-// Ollama. The key is written, never shown again; «Проверить» asks the model
+// (or any OpenAI-compatible server), Anthropic Claude (its own Messages API),
+// Gemini, OpenAI, Groq, OpenRouter or an Ollama. The key is written, never shown again; «Проверить» asks the model
 // one short question. Without one the channel is read from the words alone.
 import { useRef, useState } from 'react'
 import { testAISettings, errorText } from '../../api/client'
@@ -13,9 +13,10 @@ import { Select } from '../../ui/Select'
 import { TextField } from '../../ui/TextField'
 import styles from './Settings.module.css'
 
-type Provider = 'off' | 'litellm' | 'gemini' | 'openai' | 'groq' | 'openrouter' | 'ollama'
+type Provider = 'off' | 'litellm' | 'anthropic' | 'gemini' | 'openai' | 'groq' | 'openrouter' | 'ollama'
 
 export const AI_PROVIDERS: Record<Exclude<Provider, 'off' | 'litellm'>, { url: string; model: string }> = {
+  anthropic: { url: 'https://api.anthropic.com', model: 'claude-opus-5-5' },
   gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite' },
   openai: { url: 'https://api.openai.com/v1', model: 'gpt-5-mini' },
   groq: { url: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b' },
@@ -71,6 +72,7 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
           options={[
             { value: 'off', label: t('settings.ai.off') },
             { value: 'litellm', label: t('settings.ai.litellm') },
+            { value: 'anthropic', label: 'Anthropic Claude' },
             { value: 'gemini', label: 'Google Gemini' },
             { value: 'openai', label: 'OpenAI' },
             { value: 'groq', label: 'Groq' },

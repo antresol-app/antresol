@@ -17,8 +17,8 @@ import (
 
 // LLM is a language model that reads a channel request into tags: a local
 // Ollama (VAULT_LLM_URL=http://host:11434, its native /api/chat with a JSON
-// schema) or any OpenAI-compatible endpoint (a URL ending in /v1, with
-// VAULT_LLM_KEY). Small models do: the words (suggestWords) are trusted
+// schema), any OpenAI-compatible endpoint (a URL ending in /v1, with
+// VAULT_LLM_KEY) or Anthropic's Messages API (https://api.anthropic.com). Small models do: the words (suggestWords) are trusted
 // first, the model only fills in.
 type LLM struct {
 	URL   string
@@ -30,6 +30,9 @@ type LLM struct {
 	// Timeout of one answer (0: 45 s).
 	Timeout time.Duration
 	Client  *http.Client
+	// Anthropic: speak the Messages API whatever the URL (an address of
+	// api.anthropic.com does without it).
+	Anthropic bool
 }
 
 // LLMFromEnv: VAULT_LLM_URL, VAULT_LLM_MODEL, VAULT_LLM_KEY,
@@ -106,6 +109,9 @@ func (l *LLM) suggest(ctx context.Context, text string, v Vocabulary) (Suggestio
 
 // chat sends the messages and returns the answer's text.
 func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (string, error) {
+	if l.anthropic() {
+		return l.chatAnthropic(ctx, msgs)
+	}
 	var body map[string]any
 	path := "/api/chat"
 	if l.openAI() {
