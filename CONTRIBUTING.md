@@ -117,6 +117,7 @@ before you touch a screen.
   CSS; no one-off button, menu or field. If a component cannot do what you
   need, extend it (and its entry in the `/dev/gallery` page).
 - Every string goes into the catalogs (`web/src/i18n/ru`, `web/src/i18n/en`).
+  A new language: [`docs/translating.md`](docs/translating.md).
 - Touch targets are at least 44 pt; nothing is reachable only by hover; the
   layout works on a phone in both orientations.
 - **Screenshots in the pull request** for every visible change: before and
