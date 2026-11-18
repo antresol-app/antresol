@@ -35,7 +35,9 @@ type Card struct {
 	OnServer bool     `json:"onServer"`
 	// Watched: the profile finished the movie or episode, or every episode
 	// of the series or season in the library (every card of a library
-	// title; batched by withCards).
+	// title; batched by withCards); a book, audiobook or comic volume
+	// read to its end, a comic series every volume of which is read. The
+	// apps dim such a card and draw no progress bar.
 	Watched bool `json:"watched,omitempty"`
 	// Thumb: an episode's own 16:9 picture — its stored still (TMDB's),
 	// else a frame of its video (/api/images/frame/{id}); "" on other
@@ -256,14 +258,8 @@ func ratio(e progress.Entry) float64 {
 	return min(float64(e.PositionMs)/float64(e.DurationMs), 1)
 }
 
-// progressOf returns the user's progress (0..1) on an item (the read
-// share of a book).
-func (h *lib) progressOf(ctx context.Context, uid, itemID int64) float64 {
-	p, _ := h.progressDone(ctx, uid, itemID)
-	return p
-}
-
-// progressDone is progressOf and whether the user finished the item.
+// progressDone is the user's progress (0..1) on an item (the read share of
+// a book) and whether the user finished it.
 func (h *lib) progressDone(ctx context.Context, uid, itemID int64) (float64, bool) {
 	e, err := h.progressEntry(ctx, uid, itemID)
 	if err != nil {
@@ -459,21 +455,22 @@ func (h *lib) mediaCard(ctx context.Context, uid int64, it library.Item, c *Card
 		}
 	case library.KindBook:
 		c.Subtitle = strings.Join(m.Authors, ", ")
-		c.Progress = h.progressOf(ctx, uid, it.ID)
+		c.Progress, c.Watched = h.progressDone(ctx, uid, it.ID)
 	case library.KindAudiobook:
 		if len(m.Authors) > 0 {
 			c.Subtitle = m.Authors[0]
 		}
-		c.Progress = h.progressOf(ctx, uid, it.ID)
+		c.Progress, c.Watched = h.progressDone(ctx, uid, it.ID)
 	case library.KindComic:
 		n, err := h.Library.VolumeCount(ctx, it.ID)
 		if err != nil {
 			log.Printf("api: card %d: volumes: %v", it.ID, err)
 		}
 		c.Subtitle = i18n.Plural(ctx, n, "том", "тома", "томов")
+		c.Watched = h.showWatched(ctx, uid, it)
 	case library.KindComicVolume:
 		c.Subtitle = it.Title
-		c.Progress = h.progressOf(ctx, uid, it.ID)
+		c.Progress, c.Watched = h.progressDone(ctx, uid, it.ID)
 		if it.ParentID == 0 {
 			break
 		}

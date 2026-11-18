@@ -1,6 +1,8 @@
 // A library tile. `poster` (2:3) for browsing, `wide` (16:9) for «Продолжить»
 // with a progress bar, `square` (1:1) for albums, playlists and artists
-// (round). Lifts slightly on hover and keyboard focus.
+// (round). Lifts slightly on hover and keyboard focus. A finished title
+// (`watched`) has its picture dimmed and the eye in the middle, and no
+// progress bar (web/DESIGN.md, «A watched title»).
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { imageSrcSet, imageUrl } from '../api/client'
@@ -9,6 +11,7 @@ import { useT, type Key, type TFunction } from '../i18n'
 import { Badges } from '../ui/Badge'
 import { Icon } from './Icon'
 import { PendingOverlay, pendingLabel } from './PendingOverlay'
+import { WatchedMark, dimClass, doneLabel } from './WatchedMark'
 import styles from './Card.module.css'
 
 export type CardVariant = 'poster' | 'wide' | 'square'
@@ -128,6 +131,10 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
   // a title on its way into the library: its own tinted card, or the progress on the library's card
   const pending = card.pending
   const own = !!pending && !(card.id > 0)
+  // finished: dimmed picture and the mark; a download (a new season on its way) takes the place of both
+  const done = !!card.watched && !pending
+  const dim = done ? dimClass : undefined
+  const doneWord = doneLabel(t, card.kind)
   const sub = own ? pendingLabel(t, pending) : secondaryLine(card)
   const href = own ? pendingHref(card) : cardHref(card)
   const why = own ? '' : whyLine(t, card.why)
@@ -151,13 +158,14 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
             srcSet={imageSrcSet(art, 160, 1280)}
             sizes={CARD_SIZES[variant]}
             alt=""
+            className={dim}
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             draggable={false}
             onError={() => setFailed(true)}
           />
         ) : (
-          <span className={styles.fallbackTitle} aria-hidden>
+          <span className={[styles.fallbackTitle, dim].filter(Boolean).join(' ')} aria-hidden>
             {card.title}
           </span>
         )}
@@ -165,28 +173,22 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
           <PendingOverlay pending={pending} corner={!own} />
         ) : (
           // an addon's card is no library title: no «Ещё не на сервере»
-          ((!card.onServer && !card.addonId) || card.watched) && (
-            // the corner's badges side by side
+          !card.onServer &&
+          !card.addonId && (
             <span className={styles.corner} data-testid="card-corner">
-              {!card.onServer && !card.addonId && (
-                <span className={styles.badge} title={t('comp.card.notOnServer')}>
-                  <Icon name="cloud" size={14} strokeWidth={2} />
-                </span>
-              )}
-              {card.watched && (
-                // part of the link's name («Матрица Просмотрено 1999»)
-                <span className={styles.badge} role="img" aria-label={t('comp.card.watched')} title={t('comp.card.watched')}>
-                  <Icon name="check" size={14} strokeWidth={2.6} />
-                </span>
-              )}
+              <span className={styles.badge} title={t('comp.card.notOnServer')}>
+                <Icon name="cloud" size={14} strokeWidth={2} />
+              </span>
             </span>
           )
         )}
-        {pct > 0 && !own && (
+        {/* in the middle of the dimmed picture; part of the link's name («Матрица Просмотрено 1999») */}
+        {done && <WatchedMark label={doneWord} />}
+        {pct > 0 && pct < 100 && !own && !done && (
           <div
             className={styles.progress}
             role="progressbar"
-            aria-label={isBookKind(card.kind) ? t('comp.card.read') : card.kind === 'audiobook' ? t('comp.card.listened') : t('comp.card.watched')}
+            aria-label={doneWord}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={pct}

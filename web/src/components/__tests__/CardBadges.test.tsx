@@ -1,6 +1,6 @@
-// The corner of a card: «Ещё не на сервере» and «Просмотрено» sit side by
-// side in one group, never on top of each other; a download's corner ring
-// takes the corner alone.
+// The corner of a card: «Ещё не на сервере» sits in it; «Просмотрено» is the
+// eye in the middle of the picture, never in the corner; a download's corner
+// ring takes the corner alone.
 import { describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -15,17 +15,18 @@ const draw = (c: ReturnType<typeof card>) =>
   )
 
 describe('card corner badges', () => {
-  it('lays the cloud and the check out together', () => {
+  it('keeps the cloud in the corner and puts the eye in the middle', () => {
     draw(card(1, { onServer: false, watched: true }))
     const corner = screen.getByTestId('card-corner')
     expect(within(corner).getByTitle('Ещё не на сервере')).toBeInTheDocument()
-    expect(within(corner).getByRole('img', { name: 'Просмотрено' })).toBeInTheDocument()
+    // the eye is the picture's own, not one of the corner's badges
+    expect(within(corner).queryByRole('img', { name: 'Просмотрено' })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Просмотрено' })).toBeInTheDocument()
   })
 
-  it('a watched library card has the check only', () => {
+  it('a watched library card has the eye and no corner', () => {
     draw(card(2, { watched: true }))
-    const corner = screen.getByTestId('card-corner')
-    expect(within(corner).queryByTitle('Ещё не на сервере')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('card-corner')).not.toBeInTheDocument()
     expect(screen.getByRole('link')).toHaveAccessibleName(/Просмотрено/)
   })
 

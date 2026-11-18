@@ -1,0 +1,33 @@
+/* The picture of a watched title: dimmed, so the card reads as done at a
+   glance. The host raises --art-dim to --watched-dim-lift while the pointer
+   or focus is on it (a card's lift). */
+.dim {
+  filter: brightness(var(--art-dim, var(--watched-dim)));
+  transition: filter var(--d-base) var(--ease-out);
+}
+/* The mark itself stays at full strength: an eye on the dark disc of every
+   badge over artwork, in the middle of the tile and a quarter of its width
+   (28 to 52 px), so it reads on a big card and does not smother a small one.
+   The host's picture box is the size container (`container-type:
+   inline-size`) the width is taken from. The centred box leaves the play
+   glyph of an episode tile its place (EpisodeList.module.css hides the mark
+   while that one shows). */
+.mark {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  display: grid;
+  place-items: center;
+  width: clamp(28px, 24cqw, 52px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
+  z-index: var(--z-raised);
+  pointer-events: none;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.mark svg {
+  width: 52%;
+  height: 52%;
+}

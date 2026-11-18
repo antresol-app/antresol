@@ -9,6 +9,8 @@
 
 .media {
   position: relative;
+  /* the width WatchedMark sizes itself by */
+  container-type: inline-size;
   overflow: hidden;
   border-radius: var(--r-card);
   background: var(--fill-3);
@@ -50,15 +52,19 @@
   user-select: none;
 }
 
+/* --art-dim: a watched title's picture lifts out of its dimming under the
+   pointer and focus (WatchedMark.module.css) */
 @media (hover: hover) {
   .card:hover .media {
     transform: scale(var(--lift-scale));
     box-shadow: var(--shadow-lift);
+    --art-dim: var(--watched-dim-lift);
   }
 }
 .card:focus-visible .media {
   transform: scale(var(--focus-scale));
   box-shadow: var(--shadow-lift);
+  --art-dim: var(--watched-dim-lift);
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -78,7 +84,7 @@
   color: var(--label);
 }
 
-/* «Ещё не на сервере», «Просмотрено»: round badges side by side in the corner */
+/* «Ещё не на сервере»: a round badge in the corner (the watched mark is in the middle) */
 .corner {
   position: absolute;
   top: var(--s-2);

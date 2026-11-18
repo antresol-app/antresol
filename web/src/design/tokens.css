@@ -192,6 +192,11 @@
   --label-over-art-2: rgba(255, 255, 255, 0.8);
   /* a progress bar's track on artwork (a card's, an episode's) */
   --progress-track-art: rgba(255, 255, 255, 0.3);
+  /* the picture of a watched (read, listened) title: its brightness at rest
+     (as the TV apps' half-dark art) and while the pointer or focus is on it,
+     so the card still reads when chosen */
+  --watched-dim: 0.5;
+  --watched-dim-lift: 0.85;
 
   /* Scrollbars: a thin rounded thumb, no track or frame (macOS overlay style) */
   --scrollbar-thumb: rgba(255, 255, 255, 0.22);

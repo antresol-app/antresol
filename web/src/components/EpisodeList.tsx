@@ -1,5 +1,6 @@
 // Seasons and episodes of a series: a season switcher and a horizontal row of
 // 16:9 episode tiles with progress. Choosing an episode starts playing it.
+// A watched episode is dimmed with the eye, as a card is.
 import { useEffect, useRef, useState } from 'react'
 import { imageSrcSet, imageUrl } from '../api/client'
 import type { Episode, FamilyMember, Season } from '../api/types'
@@ -7,6 +8,7 @@ import { humanMinutes } from '../player/timeline'
 import { t as tr, useT } from '../i18n'
 import { TileFaces, tileFacesLabel } from './FamilyProgress'
 import { Icon } from './Icon'
+import { WatchedMark, dimClass } from './WatchedMark'
 import { Rail } from './Rail'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { IconButton } from '../ui/IconButton'
@@ -68,6 +70,7 @@ function EpisodeTile({
   const pct = Math.round(Math.min(Math.max(ep.progress || 0, 0), 1) * 100)
   const title = episodeTitle(ep)
   const dur = ep.durationMs ? humanMinutes(ep.durationMs / 60000) : ''
+  const dim = ep.watched ? dimClass : undefined
   return (
     <button
       type="button"
@@ -82,26 +85,23 @@ function EpisodeTile({
             srcSet={imageSrcSet(still, 320, 960)}
             sizes="(max-width: 699px) 80vw, 30vw"
             alt=""
+            className={dim}
             loading="lazy"
             decoding="async"
             draggable={false}
             onError={() => setFailed(true)}
           />
         ) : (
-          <span className={styles.fallback} aria-hidden>
+          <span className={[styles.fallback, dim].filter(Boolean).join(' ')} aria-hidden>
             <span className={styles.fallbackNo}>{ep.episodeNo}</span>
           </span>
         )}
         <span className={styles.playGlyph} aria-hidden>
           <Icon name="play" size={22} />
         </span>
-        {ep.watched && (
-          <span className={styles.watched} aria-hidden>
-            <Icon name="check" size={14} strokeWidth={2.6} />
-          </span>
-        )}
+        {ep.watched && <WatchedMark label={t('comp.card.watched')} className={styles.watched} />}
         <TileFaces members={family} className={styles.faces} />
-        {pct > 0 && pct < 100 && (
+        {pct > 0 && pct < 100 && !ep.watched && (
           <div className={styles.progress} aria-hidden>
             <div style={{ width: `${pct}%` }} />
           </div>

@@ -76,6 +76,8 @@
 }
 .media {
   position: relative;
+  /* the width WatchedMark sizes itself by */
+  container-type: inline-size;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: var(--r-card);
@@ -101,6 +103,7 @@
   .tile:hover .media {
     transform: scale(var(--lift-scale));
     box-shadow: var(--shadow-lift);
+    --art-dim: var(--watched-dim-lift);
   }
   .tile:hover .playGlyph {
     opacity: 1;
@@ -109,6 +112,7 @@
 .tile:focus-visible .media {
   transform: scale(var(--lift-scale));
   box-shadow: var(--shadow-lift);
+  --art-dim: var(--watched-dim-lift);
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -145,17 +149,15 @@
   opacity: 0;
   transition: opacity var(--d-base) var(--ease-out);
 }
-.watched {
-  position: absolute;
-  top: var(--s-2);
-  right: var(--s-2);
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--scrim-art-strong);
-  color: var(--label-over-art);
+/* WatchedMark sits where the play glyph does: the glyph wins while the
+   pointer or focus is on the tile, and the eye is back when it leaves */
+@media (hover: hover) {
+  .tile:hover .watched {
+    opacity: 0;
+  }
+}
+.tile:focus-visible .watched {
+  opacity: 0;
 }
 /* «Семья»: who is on this episode */
 .faces {

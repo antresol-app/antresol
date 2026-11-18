@@ -538,17 +538,31 @@ func (s *Store) WatchedOf(ctx context.Context, userID int64, items, series []int
 // every episode of the season in the library finished (a season with none
 // is not watched). One grouped query, whatever the list's length.
 func (s *Store) SeasonsWatchedOf(ctx context.Context, userID int64, seasons []int64) (map[int64]bool, error) {
+	return s.allChildrenFinished(ctx, userID, "episode", seasons)
+}
+
+// ComicsReadOf is, of the comic series ids, the ones the user read: every
+// volume of the series in the library finished (a series with none is not
+// read). One grouped query, whatever the list's length.
+func (s *Store) ComicsReadOf(ctx context.Context, userID int64, series []int64) (map[int64]bool, error) {
+	return s.allChildrenFinished(ctx, userID, "comic_volume", series)
+}
+
+// allChildrenFinished is, of the parent ids, the ones whose children of the
+// kind in the library are all finished by the user (a parent with none is
+// not).
+func (s *Store) allChildrenFinished(ctx context.Context, userID int64, kind string, parents []int64) (map[int64]bool, error) {
 	out := map[int64]bool{}
-	if len(seasons) == 0 {
+	if len(parents) == 0 {
 		return out, nil
 	}
-	args := []any{userID}
-	for _, id := range seasons {
+	args := []any{userID, kind}
+	for _, id := range parents {
 		args = append(args, id)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT e.parent_id, COUNT(*), COUNT(p.item_id) FROM items e
 	  LEFT JOIN progress p ON p.item_id=e.id AND p.user_id=? AND p.finished=1
-	  WHERE e.kind='episode' AND e.parent_id IN `+inList(len(seasons))+` AND e.missing_since IS NULL
+	  WHERE e.kind=? AND e.parent_id IN `+inList(len(parents))+` AND e.missing_since IS NULL
 	  GROUP BY e.parent_id`, args...)
 	if err != nil {
 		return nil, err

@@ -374,3 +374,53 @@ func TestComicVolumeSeriesAndNext(t *testing.T) {
 		t.Fatalf("%+v", s)
 	}
 }
+
+// Card.watched is on the cards of what was read or heard to its end — a
+// book, an audiobook, a comic volume — as on a film: the apps dim such a
+// card and draw no full progress bar on it. Half way through is not it.
+func TestBookCardsWatched(t *testing.T) {
+	e := newLibEnv(t)
+	read := e.book("Идиот", ".epub")
+	half := e.book("Бесы", ".epub")
+	heard, _ := e.audiobook("Война и мир", 2)
+	heardHalf, _ := e.audiobook("Анна Каренина", 1)
+	series, vols := e.comic("Берсерк", "", 2)
+	for path, body := range map[int64]string{
+		read:       `{"locator":"epubcfi(/6/90)","fraction":0.99}`,
+		half:       `{"locator":"epubcfi(/6/4)","fraction":0.5}`,
+		heard:      `{"positionMs":71975000,"durationMs":72000000}`,
+		heardHalf:  `{"positionMs":36000000,"durationMs":72000000}`,
+		vols[0].id: `{"locator":"page:3","fraction":1}`,
+		vols[1].id: `{"locator":"page:2","fraction":0.5}`,
+	} {
+		if w := e.do("PUT", "/api/progress/"+itoa(path), body, e.admin); w.Code != 204 {
+			t.Fatalf("progress %d: %d %s", path, w.Code, w.Body)
+		}
+	}
+	for id, want := range map[int64]bool{read: true, half: false, heard: true, heardHalf: false} {
+		if c := e.bookDetail(id).Card; c.Watched != want || (want && c.Progress != 1) {
+			t.Errorf("item %d: watched %v, progress %v; want watched %v", id, c.Watched, c.Progress, want)
+		}
+	}
+	d := e.bookDetail(series)
+	if len(d.Volumes) != 2 || !d.Volumes[0].Watched || d.Volumes[1].Watched || d.Volumes[0].Progress != 1 {
+		t.Fatalf("volumes: %+v", d.Volumes)
+	}
+
+	// the series is read once every volume is: one by one and in a batch alike
+	ctx := context.Background()
+	h := &lib{Deps: Deps{Library: e.repo, Progress: e.prog, DB: e.db}}
+	it, err := e.repo.Item(ctx, series)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.card(ctx, 1, it).Watched || h.cards(ctx, 1, []library.Item{it})[0].Watched || e.bookDetail(series).Card.Watched {
+		t.Fatal("a series with a volume half read is marked read")
+	}
+	if w := e.do("PUT", "/api/progress/"+itoa(vols[1].id), `{"locator":"page:3","fraction":1}`, e.admin); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if !h.card(ctx, 1, it).Watched || !h.cards(ctx, 1, []library.Item{it})[0].Watched || !e.bookDetail(series).Card.Watched {
+		t.Fatal("a series with every volume read is not marked read")
+	}
+}

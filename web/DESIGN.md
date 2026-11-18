@@ -49,7 +49,7 @@ build).
 | Backgrounds | `--bg`, `--bg-raised`, `--bg-elevated`, `--bg-elevated-2` | the window; a page's own opaque panel; opaque surfaces over content (a dragged row, glass without transparency); one step more |
 | Materials | `--glass-fill`, `--glass-fill-hover`, `--glass-fill-strong`, `--glass-fill-menu`, `--glass-fill-clear`, `--glass-dim`, `--glass-border`, `--glass-rim`, `--glass-edge`, `--glass-shadow`, `--glass-saturate` | Liquid Glass (`design/glass.css`), only on the navigation and control layer that floats over content, never on content and never glass on glass: `.glass` (the top pill, the tab bar, the player bar, sidebars, a rail's pagers), `.glass-strong` (menus, sheets, toasts), `.glass-clear` (over video and artwork: the player's chrome, buttons on a title's art), `.glass-bar` (an edge-to-edge bar: the reader's), `.scroll-edge` (a bar's scroll edge effect). A tint, a blur with a saturation boost, a lit rim, a 0.5 px edge and a soft shadow; a component that lifts higher sets `--glass-lift`, never its own box-shadow. Reduce transparency makes them opaque; Increase contrast raises the edge. No other stylesheet writes `backdrop-filter` (`design/__tests__/glassOnly.test.ts`). |
 | Surfaces | `--surface-grouped`, `--surface-grouped-hover`, `--surface-grouped-border` | content: a `Card`, a `GroupedSection`, a page's panel of rows — solid, as iOS 26 Settings |
-| Over artwork | `--artwork-outline`, `--scrim-art`, `--scrim-art-strong`, `--text-shadow-art`, `--label-over-art`, `--progress-track-art` | a poster's inset edge; the dark disc or band behind a badge or text on a picture; its shadow and white; a progress track on art |
+| Over artwork | `--artwork-outline`, `--scrim-art`, `--scrim-art-strong`, `--text-shadow-art`, `--label-over-art`, `--progress-track-art`, `--watched-dim`, `--watched-dim-lift` | a poster's inset edge; the dark disc or band behind a badge or text on a picture; its shadow and white; a progress track on art; the brightness of a watched title's picture at rest and under the pointer or focus (`A watched title`, Patterns) |
 | Fills | `--fill-1` … `--fill-4`, `--fill-hover` | controls on a surface: 1 pressed/hovered, 2 at rest (fields, switch track), 3 tracks and placeholders, 4 faintest (inset lists); a menu item under the pointer |
 | Labels | `--label`, `--label-2`, `--label-3`, `--label-4`, `--label-inverse`, `--label-on-tint` | primary text; secondary (hints, meta); tertiary (placeholders, de-emphasised numbers); quaternary; text on white; text on a tint |
 | Separators | `--separator`, `--hairline` | lines between rows; outlines (badges, rings' tracks) |
@@ -149,6 +149,46 @@ bar's sections and the library menu. Numbers that change
 
 ## Patterns
 
+- **A watched title** (`components/WatchedMark`; the library's tile in all
+  its kinds — a film, a series or season every episode of which is watched,
+  an episode, a book or comic volume read, a comic series every volume of
+  which is read, an audiobook heard — in `Card`, `EpisodeList`'s tiles and
+  `ComicSeries`'s volumes): one look on every platform, so a finished title
+  reads as finished at a glance. Its picture is **dimmed to half**
+  (`--watched-dim`, a brightness; `--watched-dim-lift` while the pointer or
+  focus is on the card, so a chosen card still reads), with **the eye on a
+  dark disc in the middle of the picture** at full strength, and **no
+  progress bar**, not even a full one: the bar is for a title in progress
+  only (0 < progress < 1). The disc is a quarter of the tile's width, 28 to
+  52 pt, so it reads on a big card and does not smother a small one
+  (`WatchedMark` takes the width from its picture box, a size container:
+  `container-type: inline-size`); its name — «Просмотрено», «Прочитано»,
+  «Прослушано» — is part of the link's name. The picture takes the class
+  `dimClass`, the host raises `--art-dim` to the lift on hover and focus. A
+  card never decides this from `progress`: the flag is the server's
+  `Card.watched` (every library kind; `progress` is 1 then). What else
+  claims the middle, and who wins: a download (a title on its way) draws its
+  ring (in the middle of a card of its own, in the corner of a library card
+  getting a new season) and that card shows neither the eye nor the dimming;
+  the play
+  glyph of an episode tile (hover, focus) takes the middle and the eye steps
+  aside until the pointer leaves; a tile with a play button that is always
+  there (the phone's episode row) shows no eye — it is dimmed and its toggle
+  says watched. The corner is the cloud's («Ещё не на сервере»). The apps
+  match it: iOS (`CardView`, `Tokens.Opacity.watched` 0.5), tvOS
+  (`watchedDimming`, a 0.5 black layer, 0.15 while focused), Android phone
+  and TV (`WatchedStyle`, alpha 0.5, 0.85 while focused) — each in its one
+  shared card, the disc a quarter of the tile's width (28 to 52 dp or pt; on
+  the TV 52 to 88).
+- **Other states of a library card** (the same on any tile): *in progress* —
+  a 4 pt bar along the bottom of the picture, white on `--progress-track-art`;
+  *not on the server* («Похожие», a missing part of a collection) — the cloud
+  on a dark disc in the corner (web only: none of the apps draws it); *on its way into the library* — the
+  picture dimmed and desaturated under the download ring (`PendingOverlay`;
+  sources build, web only); *new* (an aired episode the profile has not
+  watched, the server's `new`) — the accent «новое» badge beside the state's
+  badge on the episode in the guide, on the web and on the episode tiles of
+  iOS, Apple TV and Android (phone and TV).
 - **A settings screen**: `GroupedSection` per topic, a `ListRow` per
   setting, the control on the trailing edge — `Toggle`, `Select`,
   `SegmentedControl` (`stack`), `NumberField`, a small secondary `Button`.

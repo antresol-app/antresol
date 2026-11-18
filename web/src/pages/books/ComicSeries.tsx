@@ -15,6 +15,7 @@ import { Menu } from '../../ui/Menu'
 import { OfflineMenuItems, OfflineStatus } from '../../offline/OfflineMenu'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { FamilyProgress, useFamily } from '../../components/FamilyProgress'
+import { WatchedMark, dimClass } from '../../components/WatchedMark'
 import { useSession } from '../../state/session'
 import { DeleteItem, useLeaveDeleted } from '../../components/DeleteItem'
 import styles from './ComicSeries.module.css'
@@ -56,10 +57,11 @@ function Volume({ v }: { v: VolumeCard }) {
       <Link to={`/read/${v.id}`} className={styles.volume}>
         <span className={styles.art}>
           {src && !failed ? (
-            <img src={src} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />
+            <img src={src} alt="" className={read ? dimClass : undefined} loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />
           ) : (
-            <span className={styles.artFallback}>{volumeName(v)}</span>
+            <span className={[styles.artFallback, read ? dimClass : ''].filter(Boolean).join(' ')}>{volumeName(v)}</span>
           )}
+          {read && <WatchedMark label={t('books.comic.read')} />}
           {pct > 0 && !read && (
             <span className={styles.bar} aria-hidden>
               <span style={{ width: `${pct}%` }} />
