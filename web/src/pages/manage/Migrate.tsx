@@ -15,7 +15,7 @@
 // services and steps of its own (`full`); this file never names those
 // services.
 import { APP_NAME } from '../../brand'
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { migrateReport, migrateReports, migrateRun, migrateState, migrateStatus, useEvents, errorText as apiErrorText } from '../../api/client'
 import type {
@@ -105,6 +105,12 @@ export interface MigrateFullApi {
   subtitle: MigrateText
   /** The title of a run that gave the items back (`rollbackOf`); none: the core's neutral one. */
   rollbackTitle?: MigrateText
+  /**
+   * Under a service's card, outside its checkbox: how to reach the service
+   * another way than its mounted files (an address and a key); none: the
+   * card alone. It draws nothing for a service it has no way for.
+   */
+  SourceSetup?: ComponentType<{ ctx: MigrateCtx; source: MigrateSource }>
 }
 
 /**
@@ -274,6 +280,7 @@ function SourceCard({
   disabled,
   onToggle,
   problems,
+  setup,
 }: {
   s: MigrateSource
   meta: SourceMeta | undefined
@@ -281,6 +288,8 @@ function SourceCard({
   disabled: boolean
   onToggle: (on: boolean) => void
   problems: string[]
+  /** An addon's SourceSetup for this card. */
+  setup?: ReactNode
 }) {
   const id = `migrate-src-${s.id}`
   const t = useT()
@@ -310,6 +319,7 @@ function SourceCard({
           {meta?.note && s.found && <span className={styles.sourceNote}>{textOf(t, meta.note)}</span>}
         </span>
       </label>
+      {setup && <div className={styles.sourceSetup}>{setup}</div>}
     </li>
   )
 }
@@ -578,6 +588,7 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
             checked={selected.has(s.id)}
             disabled={!!running || busy !== ''}
             problems={userProblems(s.id)}
+            setup={ext?.SourceSetup && <ext.SourceSetup ctx={ctx} source={s} />}
             onToggle={(on) =>
               setSelected((cur) => {
                 const n = new Set(cur)

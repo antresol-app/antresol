@@ -2172,8 +2172,12 @@ The SDK (`@antresol/addon-sdk`):
   (a `SourceMeta`: icon and texts of a service the core does not know),
   `TopCards`, `HistoryAction` and `ConfirmItems` (components given a
   `MigrateCtx`, a report or the chosen sources), `progressNote(current)`,
-  `subtitle` and `rollbackTitle?` (the title of a report that gave the
-  items back, `rollbackOf`; without it the core's neutral one). `subtitle`,
+  `subtitle`, `rollbackTitle?` (the title of a report that gave the
+  items back, `rollbackOf`; without it the core's neutral one) and
+  `SourceSetup?` (a component given the `MigrateCtx` and a service's
+  status, drawn under that service's card outside its checkbox: another
+  way to reach the service, e.g. its address and key; a core without it
+  draws the cards alone). `subtitle`,
   `rollbackTitle` and `SourceMeta`'s `what` and `note` are a
   `MigrateText`: a key of the **core's** catalog (a `subtitle` key gets
   `{app}`), or a function `() => string` that returns the addon's own text

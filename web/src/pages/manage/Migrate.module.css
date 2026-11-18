@@ -101,6 +101,10 @@
   color: var(--label-2);
   text-wrap: pretty;
 }
+/* an addon's SourceSetup: under the card's text, the card's full width */
+.sourceSetup {
+  padding: 0 var(--s-3h) var(--s-3h);
+}
 
 .select {
   max-width: 46vw;

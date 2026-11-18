@@ -354,6 +354,45 @@ describe('Migrate with addons', () => {
     expect(within(history).getByText(/^Свой возврат ·/)).toBeTruthy()
   })
 
+  it('draws an addon part\'s SourceSetup under each card, outside its checkbox, with the page\'s context', async () => {
+    const withOld = { ...mediaOnly, state: { switchedAt: null }, sources: [...mediaOnly.sources, { id: 'oldtool', name: 'OldTool', found: false, path: '/import/oldtool', detail: 'Не подключён', error: '' }] }
+    const api: MigrateApi = {
+      migrateStatus: async () => withOld,
+      migrateState: async () => withOld,
+      migrateRun: async () => ({ reportId: 'r' }),
+      migrateReports: async () => [],
+      migrateReport: async () => report({}),
+      useProgress: () => {},
+    }
+    const None = () => null
+    const seen: string[] = []
+    const full: MigrateFullApi = {
+      source: () => undefined,
+      TopCards: None,
+      HistoryAction: None,
+      ConfirmItems: None,
+      progressNote: () => '',
+      subtitle: () => 'Своя подпись.',
+      // draws for its own service only; the card of another one stays alone
+      SourceSetup: ({ ctx, source }) => {
+        seen.push(`${source.id}:${ctx.status.sources.length}`)
+        return source.id === 'oldtool' ? <button type="button">Подключить OldTool</button> : null
+      },
+    }
+    render(
+      <MemoryRouter>
+        <Migrate api={api} full={full} />
+      </MemoryRouter>,
+    )
+    const connect = await screen.findByRole('button', { name: 'Подключить OldTool' })
+    // under the card, not inside the label of its checkbox
+    expect(connect.closest('label')).toBeNull()
+    expect(connect.closest('[data-testid="migrate-source"]')).toBeTruthy()
+    expect(screen.getAllByTestId('migrate-source')).toHaveLength(withOld.sources.length)
+    expect(seen).toContain(`oldtool:${withOld.sources.length}`)
+    expect(screen.getByRole('checkbox', { name: /OldTool/ })).toHaveProperty('disabled', true)
+  })
+
   it('draws an addon part\'s own texts (functions) beside core keys', async () => {
     const withOld = { ...mediaOnly, state: { switchedAt: null }, sources: [...mediaOnly.sources, { id: 'oldtool', name: 'OldTool', found: true, path: '/import/oldtool', detail: '2', error: '' }] }
     const api: MigrateApi = {
