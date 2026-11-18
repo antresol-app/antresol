@@ -14,8 +14,9 @@ Translate the English catalogs; the Russian ones are the source of meaning when 
 ## Server messages
 
 3. Add the code to `Languages` in `internal/i18n/i18n.go`.
-4. Copy each `internal/i18n/catalog_en_*.go` to `catalog_<code>_*.go` and translate the values.
-   Keys are the Russian source strings: leave them as they are.
+4. Copy each `internal/i18n/catalog_en_*.go` to `catalog_<code>_*.go`, change `Register(EN, …)`
+   and `RegisterPlural(EN, …)` to your code, and translate the values. Keys are the Russian
+   source strings: leave them as they are.
 
 ## Apps
 
