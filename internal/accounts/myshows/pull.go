@@ -13,7 +13,9 @@ import (
 
 // Provider is the provider name of MyShows links (the link's nickname is
 // the MyShows login). The link is read only: nothing is ever written to
-// MyShows and nothing is queued for it.
+// MyShows and nothing is queued for it (there is no write API client yet).
+// What it says reaches the other lists through the mark (accounts
+// reconcile.go).
 const Provider = "myshows"
 
 // Link status messages (i18n catalog keys).
@@ -62,6 +64,11 @@ type Puller struct {
 	Map      Resolver
 	// Kick asks the tracking core to refresh a title now (nil = no-op).
 	Kick func(titleID int64)
+	// EpisodesChanged is told of a title whose watched count changed on
+	// MyShows with its status unchanged (no mark write tells of it), so
+	// the other lists get the episodes (nil = no-op;
+	// accounts.Syncer.EpisodesChanged).
+	EpisodesChanged func(ctx context.Context, uid, titleID int64)
 	// Lock is the per-profile sync lock shared with the other providers
 	// (accounts.Syncer.UserLock); nil = the puller's own locks.
 	Lock func(uid int64) *sync.Mutex
@@ -169,11 +176,13 @@ func sameScore(a, b *int) bool {
 // kept in myshows_entries. An entry is applied only when its status or
 // rating differs from that row, or when it is new since the link (no row,
 // on a pull after the first-link one); the mark then carries the pull time
-// and origin "myshows". Every other mapped entry follows the keep rule: it
-// fills a title with no mark and never replaces one. That covers the
-// first-link pull, and an entry seen before but mapped only now (a lookup
-// that failed, or a miss that resolved later). So a mark made here or by
-// another provider stays until MyShows really changes.
+// and origin "myshows". Every other mapped entry is an import
+// (accounts.ImportWins): it fills a title with no mark and replaces one
+// only when it says the profile got further (MyShows «finished» over
+// another list's «planned»). That covers the first-link pull, and an entry
+// seen before but mapped only now (a lookup that failed, or a miss that
+// resolved later). So a mark made here or by another provider stays until
+// MyShows really changes or knows of more watching.
 //
 // Mapped entries keep a twin in account_rates (provider myshows, target_id
 // = show id) linking the show to its title. An entry gone from the list
@@ -392,6 +401,15 @@ func (p *Puller) apply(ctx context.Context, link accounts.Link, entries []Entry,
 		}
 	}
 	applied := map[int64]bool{} // titles set by this pull (two shows may map to one)
+	var counted []int64         // titles whose watched count alone changed
+	defer func() {
+		// once the counts are stored (a failed pull stored what it could)
+		if p.EpisodesChanged != nil {
+			for _, tid := range counted {
+				p.EpisodesChanged(ctx, uid, tid)
+			}
+		}
+	}()
 	for _, e := range entries {
 		row, wasSeen := rows[e.ShowID]
 		changed := wasSeen && (row.status != e.Status || row.score != e.Rating)
@@ -439,7 +457,7 @@ func (p *Puller) apply(ctx context.Context, link accounts.Link, entries []Entry,
 			listedTitle[tid] = true
 		}
 		// apply: a real MyShows change, or an entry new since the link;
-		// keep: fill the title only when it has no mark
+		// keep: an import, by accounts.ImportWins
 		apply := changed || !known && !wasSeen && !first
 		keep := !apply && !known
 		if (apply || keep) && !applied[tid] {
@@ -452,7 +470,8 @@ func (p *Puller) apply(ctx context.Context, link accounts.Link, entries []Entry,
 				return res, false, merr
 			}
 			unchanged := curHas == has && (!has || cur.UpdatedAt.Equal(local.UpdatedAt))
-			if unchanged && !(keep && has) && (!has || local.State != st || !sameScore(local.Score, sc)) {
+			imports := !keep || accounts.ImportWins(st, time.Time{}, local, has)
+			if unchanged && imports && (!has || local.State != st || !sameScore(local.Score, sc)) {
 				mk := accounts.Mark{UserID: uid, TitleID: tid, State: st, Score: sc, UpdatedAt: now, Origin: Provider}
 				if err := p.Tracker.SetMark(ctx, mk); err != nil {
 					return res, false, err
@@ -468,6 +487,9 @@ func (p *Puller) apply(ctx context.Context, link accounts.Link, entries []Entry,
 					p.Kick(tid)
 				}
 			}
+		}
+		if known && !changed && tw.RemoteEpisodes != e.WatchedEpisodes {
+			counted = append(counted, tid)
 		}
 		if !known || changed || tw.MarkAt.Equal(now) || tw.RemoteEpisodes != e.WatchedEpisodes || tw.AnimeEpisodes != e.TotalEpisodes {
 			at := tw.RemoteUpdatedAt

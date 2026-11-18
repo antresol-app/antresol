@@ -252,7 +252,7 @@ func TestWatchlistedLibraryTitleIsTracked(t *testing.T) {
 	s.ReplaceEpisodes(ctx, ti.ID, []Episode{{Season: 1, Number: 1, AirDate: "2026-03-01"}})
 	s.UpsertSources(ctx, ti.ID, "alpha", []Source{{Season: 1, Episode: 1, Ref: "a"}}, time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
 	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	if feed, err := s.Feed(ctx, u, since, nil); err != nil || len(feed) != 1 {
+	if feed, err := s.Feed(ctx, u, since, nil); err != nil || len(feed) != 1 || feed[0].Why != (Why{State: "watchlist"}) {
 		t.Fatalf("feed %+v %v", feed, err)
 	}
 	if feed, _ := s.Feed(ctx, other, since, nil); len(feed) != 0 {
@@ -308,5 +308,50 @@ func TestIsNews(t *testing.T) {
 		if got := IsNews(c.kind, c.aired, c.first, since); got != c.want {
 			t.Errorf("IsNews(%q, %q, %v) = %v", c.kind, c.aired, c.first, got)
 		}
+	}
+}
+
+// Every feed item says why it is there: the mark's state and the list that
+// set it.
+func TestFeedSaysWhy(t *testing.T) {
+	s, u, ti := feedFixture(t)
+	ctx := context.Background()
+	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	got, _ := s.Feed(ctx, u, since, nil)
+	if len(got) == 0 || got[0].Why != (Why{State: "watching", Origin: "antresol"}) {
+		t.Fatalf("%+v", got)
+	}
+	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Planned, Origin: "myshows"})
+	got, _ = s.Feed(ctx, u, since, nil)
+	if len(got) == 0 || got[0].Why != (Why{State: "planned", Origin: "myshows"}) {
+		t.Fatalf("%+v", got)
+	}
+	cal, _ := s.Calendar(ctx, u, "2026-03-01", "2026-03-31")
+	if len(cal) == 0 || cal[0].Items[0].Why.Origin != "myshows" {
+		t.Fatalf("calendar %+v", cal)
+	}
+}
+
+// The feed leaves out what was watched elsewhere (a linked list) as well as
+// here; WatchedBy (progress here, read by pushes) does not include it.
+func TestFeedWatchedUnionsElsewhere(t *testing.T) {
+	here := func(context.Context, int64, Title) (map[[2]int]bool, error) {
+		return map[[2]int]bool{{2, 1}: true}, nil
+	}
+	there := func(context.Context, int64, Title) (map[[2]int]bool, error) {
+		return map[[2]int]bool{{2, 2}: true}, nil
+	}
+	svc := &Service{Watched: []WatchedFunc{here}, WatchedElsewhere: []WatchedFunc{there}}
+	s, u, _ := feedFixture(t)
+	got, err := s.Feed(context.Background(), u, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), svc.FeedWatched())
+	if err != nil || len(got) != 0 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	w, _ := svc.WatchedBy()(context.Background(), u, Title{})
+	if len(w) != 1 || !w[[2]int{2, 1}] {
+		t.Fatalf("WatchedBy %v", w)
+	}
+	if (&Service{}).FeedWatched() != nil {
+		t.Fatal("no funcs: nil")
 	}
 }

@@ -290,6 +290,22 @@ func (s *Syncer) pushItem(ctx context.Context, link Link, access string, it Outb
 			return err
 		}
 	}
+	// what the other lists say was watched goes to this one too (its own
+	// counts stay out: an unwatch here may still lower them)
+	elsewhere, err := s.RemoteWatched(ctx, uid, t, Shikimori)
+	if err != nil {
+		return err
+	}
+	if len(elsewhere) > 0 {
+		all := make(map[[2]int]bool, len(watched)+len(elsewhere))
+		for k, v := range watched {
+			all[k] = v
+		}
+		for k := range elsewhere {
+			all[k] = true
+		}
+		watched = all
+	}
 	var eps []Episode
 	if s.Episodes != nil && t.Kind != "movie" {
 		if eps, err = s.Episodes(ctx, it.TitleID); err != nil {
@@ -394,14 +410,9 @@ func syncedAt(rates []Rate) time.Time {
 // second of the time recorded (a pulled or pushed one) reads as unchanged
 // until its next change; a differing time, earlier or later, is a change
 // (a mark set here after one pulled with a future remote time is earlier).
-// A mark read from MyShows (origin myshows) is never newer: MyShows is a
-// read-only secondary source, so its status and score never reach
-// Shikimori; only episodes watched here (and their upgrade-only status
-// moves) do.
+// A mark read from MyShows is a change like one made here: what MyShows
+// says reaches Shikimori (reconcile.go).
 func markNewer(m Mark, r Rate, synced time.Time) bool {
-	if m.Origin == originMyShows {
-		return false
-	}
 	if r.RateID == 0 {
 		return true
 	}
@@ -482,9 +493,7 @@ func planCours(kind string, m Mark, rates []Rate, watched map[[2]int]bool, eps [
 	synced := syncedAt(rates)
 	var out []courWrite
 	add := func(cw courWrite) {
-		// a mark read from MyShows creates no remote entry (it has no
-		// status of its own to give one)
-		if !cw.empty() && !(m.Origin == originMyShows && cw.rate.RateID == 0) {
+		if !cw.empty() {
 			out = append(out, cw)
 		}
 	}

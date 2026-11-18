@@ -671,36 +671,44 @@ func (e *syncEnv) myshowsMark(kind string, tmdbID int64, state tracking.MarkStat
 	return ti.ID
 }
 
-func TestFirstLinkNeverPushesMyShowsMarks(t *testing.T) {
+// A mark read from MyShows goes to Shikimori like one made here
+// (reconcile.go): the first link queues it with the marks the list lacks.
+func TestFirstLinkPushesMyShowsMarks(t *testing.T) {
 	e := newSyncEnv(t)
 	newer := e.now.Add(-time.Minute)
-	e.myshowsMark("series", 104, tracking.Planned, newer) // anime, read from MyShows
+	ms := e.myshowsMark("series", 104, tracking.Planned, newer) // anime, read from MyShows
 	only := e.local("movie", 102, tracking.Planned, newer)
 	e.clearOutbox()
 	e.remote.rates = []RemoteRate{rate(11, 1, "completed", 7, e.now.Add(-48*time.Hour))}
 	e.pull()
-	if items := e.outbox(); len(items) != 1 || items[0].TitleID != only {
-		t.Fatalf("outbox %+v (want only title %d)", items, only)
+	got := map[int64]string{}
+	for _, it := range e.outbox() {
+		got[it.TitleID] = it.Op
+	}
+	if len(got) != 2 || got[ms] != "upsert" || got[only] != "upsert" {
+		t.Fatalf("outbox %v (want upserts of %d and %d)", got, ms, only)
 	}
 	if m := e.mark("series", 104); m == nil || m.Origin != "myshows" {
 		t.Fatalf("MyShows mark changed: %+v", m)
 	}
 }
 
-func TestRemovalNeverRequeuesMyShowsMark(t *testing.T) {
+// A MyShows mark newer than Shikimori's removal stays and goes back to the
+// list, like a change made here.
+func TestRemovalRequeuesNewerMyShowsMark(t *testing.T) {
 	e := newSyncEnv(t)
 	t0 := e.now.Add(-48 * time.Hour)
 	e.remote.rates = []RemoteRate{rate(11, 1, "watching", 0, t0), rate(14, 4, "planned", 0, t0)}
 	e.pull()
 	// MyShows changed series 101 since; Shikimori then drops it
-	e.myshowsMark("series", 101, tracking.Completed, e.now.Add(-time.Hour))
+	tid := e.myshowsMark("series", 101, tracking.Completed, e.now.Add(-time.Hour))
 	e.clearOutbox()
 	e.remote.rates = []RemoteRate{rate(14, 4, "planned", 0, t0)}
 	e.pull()
 	if m := e.mark("series", 101); m == nil || m.State != tracking.Completed || m.Origin != "myshows" {
 		t.Fatalf("newer MyShows mark lost: %+v", m)
 	}
-	if items := e.outbox(); len(items) != 0 {
-		t.Fatalf("MyShows mark queued for Shikimori: %+v", items)
+	if items := e.outbox(); len(items) != 1 || items[0].TitleID != tid || items[0].Op != "upsert" {
+		t.Fatalf("MyShows mark not queued back: %+v", items)
 	}
 }

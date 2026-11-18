@@ -135,8 +135,8 @@ type Syncer struct {
 }
 
 // originMyShows is the origin of marks read from a MyShows list
-// (internal/accounts/myshows.Provider). MyShows is a read-only secondary
-// source: such a mark is never pushed to Shikimori.
+// (internal/accounts/myshows.Provider). MyShows is read only here, but what
+// it says goes on to Shikimori like a change made here (reconcile.go).
 const originMyShows = "myshows"
 
 const privateMsg = "Список скрыт: войдите через Shikimori"
@@ -218,21 +218,24 @@ func (s *Syncer) mappable(ctx context.Context, t TitleRef) (bool, error) {
 	return s.Map.HasTMDB(ctx, t.Kind, t.TMDBID)
 }
 
-// MarkChanged is the tracking core's mark-change subscriber: a change made
-// in Antresol to an anime title of a profile linked to Shikimori is queued
-// for the remote list (upsert while the mark exists, delete once gone)
-// unless the profile declined write-back. Any other origin is ignored, so
-// a remote change written locally never echoes back.
+// MarkChanged is the tracking core's mark-change subscriber: a change to an
+// anime title of a profile linked to Shikimori is queued for the remote
+// list (upsert while the mark exists, delete once gone) unless the profile
+// declined write-back. A change from Antresol or from another list
+// (MyShows) goes out, so every list ends up with the reconciled state; a
+// change read from Shikimori itself never echoes back. Only a removal made
+// here deletes remotely: a title leaving another list says nothing about
+// what was watched.
 func (s *Syncer) MarkChanged(ctx context.Context, uid, titleID int64, origin string) {
-	if origin != "antresol" {
+	if origin == Shikimori {
 		return
 	}
-	if err := s.markChanged(ctx, uid, titleID); err != nil {
+	if err := s.markChanged(ctx, uid, titleID, origin == "antresol"); err != nil {
 		s.log().Warn("accounts: queue mark change", "user", uid, "title", titleID, "err", err)
 	}
 }
 
-func (s *Syncer) markChanged(ctx context.Context, uid, titleID int64) error {
+func (s *Syncer) markChanged(ctx context.Context, uid, titleID int64, mayDelete bool) error {
 	l, ok, err := s.Accounts.Link(ctx, uid, Shikimori)
 	if err != nil || !ok || !writesQueued(l) {
 		return err
@@ -254,6 +257,9 @@ func (s *Syncer) markChanged(ctx context.Context, uid, titleID int64) error {
 			op = "upsert"
 			break
 		}
+	}
+	if op == "delete" && !mayDelete {
+		return nil
 	}
 	return s.Accounts.Enqueue(ctx, uid, Shikimori, titleID, op, s.now())
 }
@@ -312,8 +318,10 @@ func sameMark(a Mark, aok bool, b Mark, bok bool) bool {
 
 // PullOne reads the profile's Shikimori list into its marks. Remote-origin
 // writes carry Origin "shikimori" and the remote updated_at. The first pull
-// of a link lets every mapped remote entry win and queues the profile's
-// anime marks the remote lacks; later a title's remote entries win only
+// of a link imports every mapped remote entry by ImportWins (a mark here
+// that says the profile got further, or is newer at the same rank, stays
+// and is queued for the list) and queues the profile's anime marks the
+// remote lacks; later a title's remote entries win only
 // when one of them changed after the local mark and after our own last
 // push of it. A title whose remote entries are all gone loses a local mark
 // not touched since. A private or unknown list sets the link's status and
@@ -524,7 +532,17 @@ func (s *Syncer) apply(ctx context.Context, link Link, rates []RemoteRate, authe
 			}
 		}
 		win := unseen
-		if !win && !changedAt.IsZero() {
+		if unseen && hasLocal {
+			// an import: the further state wins (reconcile.go)
+			st, _ := aggregate(cs)
+			if win = ImportWins(st, changedAt, local, true); !win && writesQueued(link) {
+				// the mark here goes to the list instead
+				if err := s.Accounts.Enqueue(ctx, uid, Shikimori, tid, "upsert", now); err != nil {
+					return res, err
+				}
+			}
+		}
+		if !win && !unseen && !changedAt.IsZero() {
 			localAt := local.UpdatedAt
 			if !hasLocal {
 				if it, ok := queued[tid]; ok {
@@ -626,9 +644,9 @@ func (s *Syncer) apply(ctx context.Context, link Link, rates []RemoteRate, authe
 							return res, err
 						}
 						res.Updated++
-					} else if writesQueued(link) && local.Origin != originMyShows {
-						// changed here since: it goes back to the list (a
-						// mark read from MyShows never goes out)
+					} else if writesQueued(link) {
+						// changed here (or by another list) since: it goes
+						// back to the list
 						if err := s.Accounts.Enqueue(ctx, uid, Shikimori, tid, "upsert", now); err != nil {
 							return res, err
 						}
@@ -652,9 +670,8 @@ func (s *Syncer) apply(ctx context.Context, link Link, rates []RemoteRate, authe
 	// first link: the profile's anime marks the remote lacks go out (not
 	// told by a list that may have been cut short)
 	if writesQueued(link) && len(rates) < rateListCap {
-		for tid, m := range marks {
-			if _, ok := byTitle[tid]; ok || m.Origin == originMyShows {
-				// a mark read from MyShows never goes out
+		for tid := range marks {
+			if _, ok := byTitle[tid]; ok {
 				continue
 			}
 			t, ok, err := s.Tracking.Title(ctx, tid)

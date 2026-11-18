@@ -77,6 +77,22 @@ type feedItemOut struct {
 	// FirstSeen: when it became available (null: not yet).
 	FirstSeen *time.Time `json:"firstSeen"`
 	Kinds     []string   `json:"kinds"`
+	Why       *whyOut    `json:"why,omitempty"`
+}
+
+// whyOut is why the profile follows a feed item's title (tracking.Why):
+// state planned | watching | on_hold, or "watchlist"; origin the list that
+// set the mark ("" for the watchlist).
+type whyOut struct {
+	State  string `json:"state"`
+	Origin string `json:"origin,omitempty"`
+}
+
+func whyJSON(w tracking.Why) *whyOut {
+	if w.State == "" {
+		return nil
+	}
+	return &whyOut{State: w.State, Origin: w.Origin}
 }
 
 func markJSON(m tracking.Mark) markOut {
@@ -452,7 +468,7 @@ func (h *lib) listMarks(w http.ResponseWriter, r *http.Request) {
 // is not news for it.
 func (h *lib) visibleFeed(ctx context.Context, u auth.User, days, max int) ([]tracking.FeedItem, *trackGate, error) {
 	since := time.Now().AddDate(0, 0, -days)
-	items, err := h.Tracking.Store.Feed(ctx, u.ID, since, h.Tracking.WatchedBy())
+	items, err := h.Tracking.Store.Feed(ctx, u.ID, since, h.Tracking.FeedWatched())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -479,7 +495,7 @@ func (h *lib) visibleFeed(ctx context.Context, u auth.User, days, max int) ([]tr
 
 func feedJSON(it tracking.FeedItem, g *trackGate) feedItemOut {
 	out := feedItemOut{Title: titleJSON(it.Title, g.seen[it.Title.ID].item), Season: it.Season, Episode: it.Episode,
-		Name: it.Name, AirDate: it.AirDate, Kinds: it.Kinds}
+		Name: it.Name, AirDate: it.AirDate, Kinds: it.Kinds, Why: whyJSON(it.Why)}
 	if out.Kinds == nil {
 		out.Kinds = []string{}
 	}
@@ -754,6 +770,7 @@ func (h *lib) trackedShelf(ctx context.Context, u auth.User) ([]Card, error) {
 		if it.Title.Kind == "series" {
 			c.Subtitle = episodeLabel(ctx, it.Season, it.Episode)
 		}
+		c.Why = whyJSON(it.Why)
 		cards = append(cards, c)
 	}
 	return cards, nil

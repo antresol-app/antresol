@@ -932,6 +932,10 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 		}}
 	syncer.Push = syncer.PushOne
 	trackStore.OnMarkChanged = syncer.MarkChanged
+	// what the linked lists say was watched leaves «Вышло новое» too
+	trackSvc.WatchedElsewhere = append(trackSvc.WatchedElsewhere, func(ctx context.Context, uid int64, t tracking.Title) (map[[2]int]bool, error) {
+		return syncer.RemoteWatched(ctx, uid, accountTitle(t), "")
+	})
 	prog.OnWatchedChange = func(ctx context.Context, uid, itemID int64) {
 		if tid, ok := trackedTitleOfItem(ctx, repo, trackStore, itemID); ok {
 			syncer.EpisodesChanged(ctx, uid, tid)
@@ -947,7 +951,7 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 		msc := myshows.New(cmp.Or(os.Getenv("VAULT_MYSHOWS_URL"), myshows.DefaultBase), nil)
 		mshows = &myshows.Puller{Accounts: store, Tracker: accountTracker{trackStore}, Remote: msc,
 			Map: &myshows.Mapper{DB: database, Client: msc, Find: tmdbIMDbFind(tm)}, Kick: trackSvc.Kick,
-			Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
+			EpisodesChanged: syncer.EpisodesChanged, Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
 		acctAPI.MyShows = myShowsAccount{p: mshows, c: msc}
 	}
 	return &accountsWiring{routes: api.AccountRoutes{API: acctAPI.Routes, Browser: acctAPI.BrowserRoutes}, start: func(ctx context.Context, wg *sync.WaitGroup) {

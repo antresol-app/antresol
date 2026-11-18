@@ -145,6 +145,7 @@ type feedOut struct {
 		Name      string    `json:"name"`
 		FirstSeen time.Time `json:"firstSeen"`
 		Kinds     []string  `json:"kinds"`
+		Why       *whyOut   `json:"why"`
 	} `json:"items"`
 }
 
@@ -370,6 +371,13 @@ func TestHomeHasTrackedShelfOnlyWhenNonEmpty(t *testing.T) {
 	}
 	if off.Title != "Чужое" || off.TmdbID != 70 || off.TmdbKind != "series" || off.Season != 1 || off.Episode != 1 {
 		t.Fatalf("%+v", off)
+	}
+	// each card says why it is there (the mark, made here)
+	if lib.Why == nil || *lib.Why != (whyOut{State: "watching", Origin: "antresol"}) || off.Why == nil || off.Why.State != "watching" {
+		t.Fatalf("why %+v %+v", lib.Why, off.Why)
+	}
+	if f := e.feed(e.admin); len(f.Items) == 0 || f.Items[0].Why == nil || f.Items[0].Why.State != "watching" || f.Items[0].Why.Origin != "antresol" {
+		t.Fatalf("feed why %+v", f.Items)
 	}
 	w := e.do("GET", "/api/home", "", e.admin, "Accept-Language", "en")
 	if h := decodeJSON[homeOut](t, w.Body.Bytes()); h.Shelves[1].Title != "New for you" {

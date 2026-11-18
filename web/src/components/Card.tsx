@@ -4,8 +4,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { imageSrcSet, imageUrl } from '../api/client'
-import type { Card as CardData } from '../api/types'
-import { useT } from '../i18n'
+import type { Card as CardData, FollowWhy } from '../api/types'
+import { useT, type Key, type TFunction } from '../i18n'
 import { Badges } from '../ui/Badge'
 import { Icon } from './Icon'
 import { PendingOverlay, pendingLabel } from './PendingOverlay'
@@ -98,6 +98,18 @@ export function secondaryLine(c: CardData): string {
   return c.year ? String(c.year) : ''
 }
 
+// the lists a mark may come from, by their own names
+const LIST_NAMES: Record<string, string> = { shikimori: 'Shikimori', myshows: 'MyShows' }
+
+/** Why a «Вышло новое» card is there: the mark and the list that set it, or the watchlist. */
+export function whyLine(t: TFunction, why: FollowWhy | undefined): string {
+  if (!why) return ''
+  if (why.state === 'watchlist') return t('comp.card.why.watchlist')
+  const state = t(`tracking.mark.${why.state}` as Key)
+  if (!why.origin || why.origin === 'antresol') return t('comp.card.why.here', { state })
+  return t('comp.card.why.list', { list: LIST_NAMES[why.origin] ?? why.origin, state })
+}
+
 // how wide a card shows (Shelf.module.css: 2.25 or 1.25 a phone's width,
 // down to an eighth of a wide window): the srcset step the browser takes
 const CARD_SIZES: Record<CardVariant, string> = {
@@ -118,6 +130,7 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
   const own = !!pending && !(card.id > 0)
   const sub = own ? pendingLabel(t, pending) : secondaryLine(card)
   const href = own ? pendingHref(card) : cardHref(card)
+  const why = own ? '' : whyLine(t, card.why)
 
   const className = [
     styles.card,
@@ -185,6 +198,11 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
       <div className={styles.meta}>
         <span className={styles.title}>{card.title}</span>
         {sub && <span className={styles.subtitle}>{sub}</span>}
+        {why && (
+          <span className={styles.why} data-testid="card-why">
+            {why}
+          </span>
+        )}
         {!own && <Badges items={card.badges?.slice(0, 2)} className={styles.badges} />}
       </div>
     </>

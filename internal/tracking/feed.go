@@ -10,7 +10,8 @@ import (
 
 // FeedItem is one episode (a movie: season and episode 0) of a profile's
 // tracked title. FirstSeen is when its first source appeared (zero: none
-// yet); Kinds are the kinds of its sources (library, an addon's kinds).
+// yet); Kinds are the kinds of its sources (library, an addon's kinds);
+// Why is what makes the profile follow the title.
 type FeedItem struct {
 	Title           Title
 	Season, Episode int
@@ -18,6 +19,16 @@ type FeedItem struct {
 	AirDate         string
 	FirstSeen       time.Time
 	Kinds           []string
+	Why             Why
+}
+
+// Why is why a profile follows a title: its mark's state and the list
+// that set it (Origin: antresol | shikimori | myshows), or State
+// "watchlist" (Origin "") for a library title on its watchlist with no
+// mark.
+type Why struct {
+	State  string
+	Origin string
 }
 
 // WatchedFunc says which episodes of a title a profile has watched
@@ -34,12 +45,13 @@ type CalendarDay struct {
 // liveStates are the marks that put a title in a profile's feed.
 const liveStates = `('planned','watching','on_hold')`
 
-// interest is the (user_id, title_id) pairs of the profiles following a
-// title: a live mark, or a library movie or series on the profile's
-// watchlist with no mark of its own (it reads as planned).
-const interest = `(SELECT user_id, title_id FROM title_marks WHERE state IN ` + liveStates + `
+// interest is the (user_id, title_id, state, origin) rows of the profiles
+// following a title: a live mark, or a library movie or series on the
+// profile's watchlist with no mark of its own (it reads as planned; state
+// "watchlist").
+const interest = `(SELECT user_id, title_id, state, origin FROM title_marks WHERE state IN ` + liveStates + `
 	UNION
-	SELECT w.user_id, tt.id FROM watchlist w JOIN items i ON i.id=w.item_id
+	SELECT w.user_id, tt.id, 'watchlist', '' FROM watchlist w JOIN items i ON i.id=w.item_id
 	  JOIN tracked_titles tt ON tt.kind=i.kind AND tt.tmdb_id=i.tmdb_id
 	  WHERE i.kind IN ('movie','series') AND i.tmdb_id > 0
 	    AND NOT EXISTS (SELECT 1 FROM title_marks x WHERE x.user_id=w.user_id AND x.title_id=tt.id))`
@@ -53,7 +65,7 @@ func scanFeedItem(r scanner) (FeedItem, error) {
 	var nc, rf, fs, kinds sql.NullString
 	t := &it.Title
 	if err := r.Scan(&t.ID, &t.Kind, &t.TMDBID, &sh, &ms, &an, &t.IMDbID, &t.Name, &t.Poster, &t.Status, &t.Cert, &nc, &rf,
-		&it.Season, &it.Episode, &it.Name, &it.AirDate, &fs, &kinds); err != nil {
+		&it.Season, &it.Episode, &it.Name, &it.AirDate, &fs, &kinds, &it.Why.State, &it.Why.Origin); err != nil {
 		return FeedItem{}, err
 	}
 	t.ShikimoriID, t.MyShowsID, t.AniDBID = ptr(sh), ptr(ms), ptr(an)
@@ -82,12 +94,12 @@ func IsNews(kind, airDate string, first, since time.Time) bool {
 // Feed lists the episodes of the profile's tracked titles (marks planned,
 // watching, on hold; a watchlisted library title without a mark) whose first source appeared at or after since, newest
 // first, leaving out what watched (nil: nothing) says the profile has
-// watched. An episode of a series that aired more than mailMaxAge before
-// since is old news (its source is a scanner's baseline) and is left out.
+// watched (FeedWatched: here and on the linked lists). An episode of a
+// series that aired more than mailMaxAge before since is old news (its source is a scanner's baseline) and is left out.
 // The rule is IsNews: the query narrows by first_seen, IsNews decides.
 func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched WatchedFunc) ([]FeedItem, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, src.season, src.episode,
-		  COALESCE(e.name,''), COALESCE(e.air_date,''), src.first, src.kinds
+		  COALESCE(e.name,''), COALESCE(e.air_date,''), src.first, src.kinds, m.state, m.origin
 		FROM `+interest+` m JOIN tracked_titles t ON t.id=m.title_id
 		JOIN (SELECT title_id, season, episode, MIN(first_seen) AS first, GROUP_CONCAT(DISTINCT kind) AS kinds
 		      FROM episode_sources GROUP BY title_id, season, episode) src ON src.title_id=t.id
@@ -138,7 +150,8 @@ func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched
 func (s *Store) Calendar(ctx context.Context, userID int64, from, to string) ([]CalendarDay, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, e.season, e.number, e.name, e.air_date,
 		  (SELECT MIN(first_seen) FROM episode_sources x WHERE x.title_id=e.title_id AND x.season=e.season AND x.episode=e.number),
-		  (SELECT GROUP_CONCAT(DISTINCT kind) FROM episode_sources x WHERE x.title_id=e.title_id AND x.season=e.season AND x.episode=e.number)
+		  (SELECT GROUP_CONCAT(DISTINCT kind) FROM episode_sources x WHERE x.title_id=e.title_id AND x.season=e.season AND x.episode=e.number),
+		  m.state, m.origin
 		FROM `+interest+` m JOIN tracked_titles t ON t.id=m.title_id
 		JOIN title_episodes e ON e.title_id=t.id
 		WHERE m.user_id=? AND e.air_date >= ? AND e.air_date <= ?
@@ -161,14 +174,23 @@ func (s *Store) Calendar(ctx context.Context, userID int64, from, to string) ([]
 	return out, rows.Err()
 }
 
-// WatchedBy is the union of the service's Watched functions (nil: none).
-func (s *Service) WatchedBy() WatchedFunc {
-	if len(s.Watched) == 0 {
+// WatchedBy is the union of the service's Watched functions (nil: none):
+// what the profile watched here.
+func (s *Service) WatchedBy() WatchedFunc { return unionWatched(s.Watched) }
+
+// FeedWatched is what «Вышло новое» leaves out: what the profile watched
+// here (Watched) or elsewhere, by its linked lists (WatchedElsewhere).
+func (s *Service) FeedWatched() WatchedFunc {
+	return unionWatched(append(slices.Clip(s.Watched), s.WatchedElsewhere...))
+}
+
+func unionWatched(fs []WatchedFunc) WatchedFunc {
+	if len(fs) == 0 {
 		return nil
 	}
 	return func(ctx context.Context, userID int64, t Title) (map[[2]int]bool, error) {
 		out := map[[2]int]bool{}
-		for _, w := range s.Watched {
+		for _, w := range fs {
 			m, err := w(ctx, userID, t)
 			if err != nil {
 				return nil, err

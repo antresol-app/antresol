@@ -58,6 +58,9 @@ type Card struct {
 	AddonID string `json:"addonId,omitempty"`
 	Key     string `json:"key,omitempty"`
 	Href    string `json:"href,omitempty"`
+	// Why: on a «Вышло новое» card, why the profile follows the title (its
+	// mark and the list that set it, or its watchlist).
+	Why *whyOut `json:"why,omitempty"`
 }
 
 // cacheName is a file of the image cache (metadata.Images.Fetch).

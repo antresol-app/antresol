@@ -374,7 +374,10 @@ func (anyAnime) FirstAnime(context.Context, string, int64) (animemap.Entry, bool
 	return animemap.Entry{}, false, nil
 }
 
-func TestMyShowsOriginEnqueuesNothing(t *testing.T) {
+// What MyShows says goes to Shikimori (accounts reconcile.go): its marks
+// are queued there, its removals are not, and nothing is queued for
+// MyShows (read only).
+func TestMyShowsChangesGoToShikimori(t *testing.T) {
 	e := newPullEnv(t)
 	ctx := context.Background()
 	if err := e.acc.SetNickname(ctx, e.uid, accounts.Shikimori, "nick", 42); err != nil {
@@ -389,15 +392,26 @@ func TestMyShowsOriginEnqueuesNothing(t *testing.T) {
 	e.p.Lock = sy.UserLock
 	e.remote.entries = []Entry{entry(11, "watching", 3), entry(12, "later", 0)}
 	e.pull()
+	if q, _ := e.acc.Outbox(ctx, e.uid, accounts.Shikimori); len(q) != 2 || q[0].Op != "upsert" || q[1].Op != "upsert" {
+		t.Fatalf("first pull not queued for Shikimori: %+v", q)
+	}
+	if _, err := e.acc.DB.Exec(`DELETE FROM account_outbox`); err != nil {
+		t.Fatal(err)
+	}
 	e.now = e.now.Add(time.Hour)
 	e.remote.entries = []Entry{entry(11, "finished", 5)} // a change and a removal
 	if r := e.pull(); r.Updated != 2 {
 		t.Fatalf("result %+v", r)
 	}
-	for _, prov := range []string{accounts.Shikimori, Provider} {
-		if q, err := e.acc.Outbox(ctx, e.uid, prov); err != nil || len(q) != 0 {
-			t.Fatalf("%s outbox %+v err=%v", prov, q, err)
-		}
+	changed, _, _ := e.st.TitleByTMDB(ctx, "series", 101)
+	if q, _ := e.acc.Outbox(ctx, e.uid, accounts.Shikimori); len(q) != 1 || q[0].TitleID != changed.ID || q[0].Op != "upsert" {
+		t.Fatalf("want only the change queued (no delete): %+v", q)
+	}
+	if q, _ := e.acc.Outbox(ctx, e.uid, Provider); len(q) != 0 {
+		t.Fatalf("myshows outbox %+v", q)
+	}
+	if _, err := e.acc.DB.Exec(`DELETE FROM account_outbox`); err != nil {
+		t.Fatal(err)
 	}
 	// control: a change made here is queued for Shikimori
 	e.local("series", 101, tracking.Dropped, e.now.Add(time.Minute))
@@ -854,5 +868,57 @@ func TestNewLoginResetsLink(t *testing.T) {
 	}
 	if e.mark("series", 101) == nil {
 		t.Fatal("a relink must not delete the profile's marks")
+	}
+}
+
+// The tester's case from the MyShows side: Shikimori has a title «planned»,
+// MyShows has it «finished». Linking MyShows is an import, and finished is
+// further: the mark becomes completed (accounts.ImportWins). A less
+// advanced MyShows entry never replaces a mark (TestFirstPullKeepsExistingMarks).
+func TestFirstPullFinishedUpgradesPlanned(t *testing.T) {
+	e := newPullEnv(t)
+	ctx := context.Background()
+	ti, err := e.st.EnsureTitle(ctx, "movie", 102, "x", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.SetMark(ctx, tracking.Mark{UserID: e.uid, TitleID: ti.ID, State: tracking.Planned, UpdatedAt: e.now.Add(-time.Hour), Origin: "shikimori"}); err != nil {
+		t.Fatal(err)
+	}
+	e.remote.entries = []Entry{entry(12, "finished", 5)}
+	if r := e.pull(); r.Updated != 1 {
+		t.Fatalf("first pull %+v", r)
+	}
+	if m := e.mark("movie", 102); m.State != tracking.Completed || m.Origin != Provider || scoreOf(m) != 10 {
+		t.Fatalf("finished did not win: %+v", m)
+	}
+	// settled: the same list changes nothing
+	e.now = e.now.Add(time.Hour)
+	if r := e.pull(); r.Imported+r.Updated != 0 {
+		t.Fatalf("second pull %+v", r)
+	}
+}
+
+// A watched count that changed on MyShows with the status unchanged writes
+// no mark, so the other lists are told through EpisodesChanged.
+func TestCountChangeTellsEpisodesChanged(t *testing.T) {
+	e := newPullEnv(t)
+	var told []int64
+	e.p.EpisodesChanged = func(_ context.Context, uid, tid int64) { told = append(told, tid) }
+	e.remote.entries = []Entry{{ShowID: 11, Title: "Сериал", Status: "watching", WatchedEpisodes: 3}}
+	e.pull()
+	if len(told) != 0 {
+		t.Fatalf("first pull told %v", told)
+	}
+	e.now = e.now.Add(time.Hour)
+	e.remote.entries = []Entry{{ShowID: 11, Title: "Сериал", Status: "watching", WatchedEpisodes: 4}}
+	e.pull()
+	ti, _, _ := e.st.TitleByTMDB(context.Background(), "series", 101)
+	if len(told) != 1 || told[0] != ti.ID {
+		t.Fatalf("told %v (want %d)", told, ti.ID)
+	}
+	tw, ok, _ := e.acc.Rate(context.Background(), e.uid, Provider, 11)
+	if !ok || tw.RemoteEpisodes != 4 {
+		t.Fatalf("count not stored %+v", tw)
 	}
 }

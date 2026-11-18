@@ -89,6 +89,11 @@ type Service struct {
 	// progress, and the addons' through tracking.watched); the feed leaves
 	// them out.
 	Watched []WatchedFunc
+	// WatchedElsewhere say what a profile's linked lists (Shikimori,
+	// MyShows) record as watched: the feed leaves them out too, but they
+	// are not progress here (pushes and the episodes endpoint read only
+	// Watched).
+	WatchedElsewhere []WatchedFunc
 	// WatchStates are the same with positions, for the episodes endpoint
 	// (the library's, and the addons' through tracking.watched).
 	WatchStates []WatchStateFunc

@@ -151,6 +151,14 @@
   font: var(--t-footnote);
   color: var(--label-2);
 }
+/* «Вышло новое»: why the title is followed, quieter than the subtitle. */
+.why {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--t-caption);
+  color: var(--label-3);
+}
 
 /* Books: a printed cover — small radius, a soft shadow and spine shading. */
 .book .media {

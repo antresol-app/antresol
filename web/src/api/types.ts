@@ -134,6 +134,17 @@ export interface Card {
    * otherwise the progress sits on the library's card of that id.
    */
   pending?: PendingState
+  /** «Вышло новое»: why the profile follows the title (its mark and the list that set it, or its watchlist). */
+  why?: FollowWhy
+}
+
+/**
+ * Why a profile follows a tracked title: a live mark (state, and origin, the list that set it:
+ * antresol | shikimori | myshows), or `watchlist` for a library title on its watchlist with no mark.
+ */
+export interface FollowWhy {
+  state: 'planned' | 'watching' | 'on_hold' | 'watchlist'
+  origin?: string
 }
 
 /** What brings a pending card's title into the library (an addon's download, D3). */
@@ -1646,6 +1657,7 @@ export interface TrackingItem {
   /** When it became available (null: not yet). */
   firstSeen: string | null
   kinds: string[]
+  why?: FollowWhy
 }
 
 export interface CalendarDay {
