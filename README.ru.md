@@ -295,6 +295,12 @@ VAULT_DATA_DIR=./data VAULT_MEDIA_ROOT=/srv/media bin/vault
 - **iPhone, iPad и Mac**: приложение Antresol в App Store. Пока оно закрытое
   и работает через публичный API сервера. (Его читалка книг собрана из
   файлов этого репозитория под MPL-2.0; см. [LICENSING.md](LICENSING.md).)
+- **Телефон и телевизор на Android**: одно приложение, сейчас в закрытом
+  тестировании Google Play. Вступите в группу
+  [antresol-test](https://groups.google.com/g/antresol-test), затем
+  [станьте тестировщиком](https://play.google.com/apps/testing/app.antresol.mobile)
+  и установите его из Google Play. Исходный код:
+  [antresol-android](https://github.com/antresol-app/antresol-android).
 - **Музыка**: любой Subsonic-клиент. Создайте пароль для приложений в меню
   профиля и укажите адрес сервера, имя профиля и этот пароль.
 - **Читалки**: любое OPDS-приложение, адрес `<сервер>/opds`, тот же пароль

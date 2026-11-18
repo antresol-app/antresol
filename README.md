@@ -288,6 +288,11 @@ the binary, the `VAULT_*` variables and the database file.
 - **iPhone, iPad and Mac**: the Antresol app on the App Store. It is closed
   source for now and uses the server's public API. (Its book reader is built
   from the MPL-2.0 files of this repository; see [LICENSING.md](LICENSING.md).)
+- **Android phone and Android TV**: one app, in closed testing on Google
+  Play. Join the [antresol-test](https://groups.google.com/g/antresol-test)
+  group, then [become a tester](https://play.google.com/apps/testing/app.antresol.mobile)
+  and install it from Google Play. Source:
+  [antresol-android](https://github.com/antresol-app/antresol-android).
 - **Music**: any Subsonic client. Create an app password in the profile
   menu, then use the server address, your profile name and that password.
 - **E-readers**: any OPDS reader, at `<server>/opds`, with the same app
