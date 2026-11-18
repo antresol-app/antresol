@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/accounts"
+	"github.com/antresol-app/antresol/internal/accounts/goodreads"
 	"github.com/antresol-app/antresol/internal/accounts/myshows"
 	"github.com/antresol-app/antresol/internal/accounts/shikimori"
 	"github.com/antresol-app/antresol/internal/addons"
@@ -896,7 +897,8 @@ func newTrackingService(st *tracking.Store, repo *library.Repo, prog *progress.S
 
 // newAccounts builds the anime map, the Shikimori sync (pull, outbox push,
 // OAuth) and its routes, the MyShows puller (read only, hourly, under the
-// Shikimori sync's per-profile lock), and subscribes the sync to the
+// Shikimori sync's per-profile lock), the Goodreads shelves (read only: the
+// public shelf widget and the profile's export), and subscribes the sync to the
 // tracking store's mark changes and the progress store's watched changes.
 func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, trackSvc *tracking.Service, tm *tmdb.Client,
 	repo *library.Repo, prog *progress.Store, publicURL string) (*accountsWiring, error) {
@@ -960,10 +962,15 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 			EpisodesChanged: syncer.EpisodesChanged, Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
 		acctAPI.MyShows = myShowsAccount{p: mshows, c: msc}
 	}
+	// Goodreads needs nothing outside the library and the progress store
+	reads := &goodreads.Service{Accounts: store, Library: repo, Progress: prog,
+		Remote: goodreads.NewWidget(os.Getenv("VAULT_GOODREADS_URL"), nil), Log: log.With("provider", goodreads.Provider)}
+	acctAPI.Goodreads = goodreads.Account{S: reads}
 	return &accountsWiring{routes: api.AccountRoutes{API: acctAPI.Routes, Browser: acctAPI.BrowserRoutes}, start: func(ctx context.Context, wg *sync.WaitGroup) {
-		wg.Add(2)
+		wg.Add(3)
 		go func() { defer wg.Done(); amap.Run(ctx) }()
 		go func() { defer wg.Done(); syncer.Run(ctx) }()
+		go func() { defer wg.Done(); reads.Run(ctx) }()
 		if mshows != nil {
 			// without TMDB no show maps (and misses would be cached)
 			wg.Add(1)

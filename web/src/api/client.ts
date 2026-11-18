@@ -12,6 +12,7 @@ import type {
   AccountsState,
   AddonInfo,
   AddonPreview,
+  GoodreadsState,
   MyShowsState,
   CalendarDay,
   ShikimoriAdminSettings,
@@ -759,6 +760,12 @@ export const getAccounts = (signal?: AbortSignal) => request<AccountsState>('GET
 export const linkShikimori = (nickname: string) => request<AccountsState>('PUT', '/api/accounts/shikimori', { nickname }).then((r) => r.shikimori)
 export const linkMyShows = (nickname: string) => request<AccountsState>('PUT', '/api/accounts/myshows', { nickname }).then((r) => r.myshows as MyShowsState)
 export const unlinkMyShows = () => request<void>('DELETE', '/api/accounts/myshows')
+/** `profile`: the Goodreads profile address (…/user/show/12345) or its number. */
+export const linkGoodreads = (profile: string) => request<AccountsState>('PUT', '/api/accounts/goodreads', { profile }).then((r) => r.goodreads as GoodreadsState)
+/** `csv`: the text of a Goodreads library export; its books go into the marks. */
+export const importGoodreads = (csv: string) => request<AccountsState>('POST', '/api/accounts/goodreads/import', { csv }).then((r) => r.goodreads as GoodreadsState)
+/** Removes the link and the books read from Goodreads; the marks stay. */
+export const unlinkGoodreads = () => request<void>('DELETE', '/api/accounts/goodreads')
 export const unlinkShikimori = () => request<void>('DELETE', '/api/accounts/shikimori')
 /** enable: the sign-in address to open; disable: nothing. */
 export const setShikimoriWrite = (enable: boolean) => request<{ authorizeUrl?: string } | void>('POST', '/api/accounts/shikimori/write', { enable })

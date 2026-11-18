@@ -105,6 +105,9 @@ type API struct {
 	// MyShows is the read-only MyShows link (nil: not offered, its routes
 	// answer 404 and GET leaves "myshows" out).
 	MyShows MyShows
+	// Goodreads is the read-only Goodreads link and library import (nil: not
+	// offered, its routes answer 404 and GET leaves "goodreads" out).
+	Goodreads Goodreads
 
 	mu     sync.Mutex
 	states map[string]oauthState
@@ -123,7 +126,11 @@ const maxStates = 1000
 // Routes mounts the API:
 //
 //	GET    /api/accounts
-//	  → {"myshows": {"linked": bool, "nickname": str (the MyShows login), "status": "ok"|"private"|"not_found"|"error",
+//	  → {"goodreads": {"linked": bool, "nickname": str (the name in the profile address), "status": "ok"|"not_found"|"error",
+//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null,
+//	     "total", "read", "reading", "toRead": int (the profile's Goodreads books, by shelf), "inLibrary": int (of them found in the library)}
+//	     (only when Goodreads is offered; read only: nothing is sent to Goodreads, which has no way in for it),
+//	     "myshows": {"linked": bool, "nickname": str (the MyShows login), "status": "ok"|"private"|"not_found"|"error",
 //	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "unmapped": int}
 //	     (only when MyShows is offered; read only: nothing is sent back to MyShows),
 //	     "shikimori": {"linked": bool, "nickname": str, "status": "ok"|"private"|"not_found"|"error"|"relogin",
@@ -139,6 +146,12 @@ const maxStates = 1000
 //	                                       404 {"error"} unknown login, 422 {"error"} private profile (nothing is linked),
 //	                                       502 {"error"} MyShows not answering; 404 when MyShows is not offered
 //	DELETE /api/accounts/myshows           → 204 (the link, its twins and seen entries removed; marks stay)
+//	PUT    /api/accounts/goodreads         {"profile": address or id} → the GET body; the public shelf widget is read once to check it:
+//	                                       400 {"error"} no profile id in it, 404 {"error"} unknown or non-public profile,
+//	                                       502 {"error"} Goodreads not answering; 404 when Goodreads is not offered
+//	POST   /api/accounts/goodreads/import  {"csv": the text of a Goodreads library export} → the GET body (the books are in the marks);
+//	                                       422 {"error"} not an export, 413 {"error"} over 24 MB; needs no link
+//	DELETE /api/accounts/goodreads         → 204 (the link and the books read from Goodreads removed; marks stay)
 //	GET    /api/accounts/admin/shikimori   (admin) → {"clientId", "hasSecret": bool, "fromEnv": bool, "redirectUri", "scope": "user_rates"}
 //	PUT    /api/accounts/admin/shikimori   (admin) {"clientId", "clientSecret"} → 204 (an empty secret keeps the stored one)
 func (a *API) Routes(r chi.Router) {
@@ -149,6 +162,9 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/api/accounts/shikimori/asked", a.asked)
 	r.Put("/api/accounts/myshows", a.putMyShows)
 	r.Delete("/api/accounts/myshows", a.unlinkMyShows)
+	r.Put("/api/accounts/goodreads", a.putGoodreads)
+	r.Post("/api/accounts/goodreads/import", a.importGoodreads)
+	r.Delete("/api/accounts/goodreads", a.deleteGoodreads)
 	r.Get("/api/accounts/admin/shikimori", a.adminGet)
 	r.Put("/api/accounts/admin/shikimori", a.adminPut)
 }
@@ -248,6 +264,13 @@ func (a *API) state(ctx context.Context, uid int64) (map[string]any, error) {
 			return nil, err
 		}
 		res[myShowsProvider] = ms
+	}
+	if a.Goodreads != nil {
+		gr, err := a.goodreadsState(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		res[goodreadsProvider] = gr
 	}
 	return res, nil
 }

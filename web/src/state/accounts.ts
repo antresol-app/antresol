@@ -3,7 +3,7 @@
 // a request every time. null: the server has no accounts (library edition) or
 // does not answer.
 import { getAccounts } from '../api/client'
-import type { AccountsState, MyShowsState, ShikimoriState } from '../api/types'
+import type { AccountsState, GoodreadsState, MyShowsState, ShikimoriState } from '../api/types'
 import { session } from './session'
 
 let cache: Promise<AccountsState | null> | null = null
@@ -37,6 +37,11 @@ export async function loadMyShows(): Promise<MyShowsState | null> {
   return (await load())?.myshows ?? null
 }
 
+/** The Goodreads link and books; null when the server does not offer it. */
+export async function loadGoodreads(): Promise<GoodreadsState | null> {
+  return (await load())?.goodreads ?? null
+}
+
 // patch edits the cached state in place and synchronously, so two changes
 // in a row cannot overwrite each other.
 function patch(f: (a: AccountsState) => AccountsState) {
@@ -54,6 +59,10 @@ export function setAccountsState(s: ShikimoriState) {
 
 export function setMyShowsState(m: MyShowsState) {
   patch((a) => ({ ...a, myshows: m }))
+}
+
+export function setGoodreadsState(g: GoodreadsState) {
+  patch((a) => ({ ...a, goodreads: g }))
 }
 
 export function resetAccounts() {

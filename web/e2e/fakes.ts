@@ -43,6 +43,37 @@ export const FAKE_SERIES_2 = {
   episodes: 2,
 }
 const FAKE_TV = [FAKE_SERIES, FAKE_SERIES_2]
+/**
+ * A public Goodreads profile's shelf widget (/goodreads/review/custom_widget/<id>):
+ * the books of the e2e library (books-media.ts) and one the library lacks.
+ */
+export const FAKE_GOODREADS = {
+  profile: 12345,
+  shelves: {
+    read: [
+      { title: 'Пробная книга (Классика, #1)', author: 'Иван Тестов' },
+      { title: 'Книга, которой нет в библиотеке', author: 'Некто Безымянный' },
+    ],
+    'currently-reading': [] as { title: string; author: string }[],
+    'to-read': [{ title: 'Война и мир', author: 'Лев Толстой' }],
+  } as Record<string, { title: string; author: string }[]>,
+}
+
+/** The widget script Goodreads serves: the list's HTML as one JavaScript string. */
+function goodreadsWidget(id: string, books: { title: string; author: string }[]): string {
+  const html = [
+    `<div class="gr_custom_container_${id}"><h2 class="gr_custom_header_${id}"><a rel="nofollow" href="https://www.goodreads.com/">Читатель&#39;s books</a></h2>`,
+    ...books.map(
+      (b) =>
+        `<div class="gr_custom_each_container_${id}"><div class="gr_custom_title_${id}"><a rel="nofollow" href="https://www.goodreads.com/review/show/1">${b.title}</a></div>` +
+        `<div class="gr_custom_author_${id}">by <a rel="nofollow" href="https://www.goodreads.com/author/show/1.A">${b.author}</a></div></div>`,
+    ),
+    '</div>',
+  ].join('\n')
+  const esc = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'").replace(/\//g, '\\/').replace(/\n/g, '\\n')
+  return `  var widget_code = '${esc}'\n  var widget_div = document.getElementById('gr_custom_widget_${id}')\n`
+}
+
 /** An OPDS catalog at /opds (sources.spec: «OPDS-каталог»). */
 export const FAKE_OPDS = { path: '/opds', title: 'Тестовая библиотека' }
 
@@ -123,6 +154,15 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
       res.end(JSON.stringify(v))
     }
     const p = u.pathname
+    const widget = /^\/goodreads\/review\/custom_widget\/(\d+)$/.exec(p)
+    if (widget) {
+      if (Number(widget[1]) !== FAKE_GOODREADS.profile) {
+        res.writeHead(200, { 'Content-Type': 'text/javascript' })
+        return res.end(`  var widget_code = '  This Goodreads widget is not correct.  '\n`)
+      }
+      res.writeHead(200, { 'Content-Type': 'text/javascript' })
+      return res.end(goodreadsWidget(u.searchParams.get('widget_id') ?? 'x', FAKE_GOODREADS.shelves[u.searchParams.get('shelf') ?? ''] ?? []))
+    }
     if (p === '/3/search/movie') {
       const q = (u.searchParams.get('query') ?? '').toLowerCase()
       const second = q.includes('втор') || q.includes('second')

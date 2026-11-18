@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { updateMe } from '../api/client'
 import { APP_NAME } from '../brand'
 import { AboutSheet } from '../components/AboutSheet'
+import { GoodreadsAccount } from '../components/accounts/GoodreadsAccount'
 import { MyShowsAccount } from '../components/accounts/MyShowsAccount'
 import { ShikimoriAccount } from '../components/accounts/ShikimoriAccount'
 import { AppPasswordSheet } from '../components/AppPasswordSheet'
@@ -129,6 +130,7 @@ export function ProfileSettings() {
 
         {adult && <ShikimoriAccount />}
         {adult && <MyShowsAccount />}
+        {adult && <GoodreadsAccount />}
 
         <GroupedSection title={t('prefs.apps')}>
           <ListLinkRow icon="key" tint="gray" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />

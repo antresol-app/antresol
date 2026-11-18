@@ -177,6 +177,7 @@ export const test = base.extend<{
         VAULT_COVERART_BASEURL: `${fake.url}/caa`,
         VAULT_OPENLIBRARY_BASEURL: `${fake.url}/ol`,
         VAULT_OPENLIBRARY_COVERS_BASEURL: `${fake.url}/olc`,
+        VAULT_GOODREADS_URL: `${fake.url}/goodreads`,
       })
     }
     const port = await freePort()
@@ -199,6 +200,8 @@ export const test = base.extend<{
         VAULT_SEGMENTS_ONLINE: 'off',
         VAULT_OPENSUBTITLES_BASEURL: 'off',
         VAULT_OPENSUBTITLES_KEY: '',
+        // (fakes: the fake shelf widget below)
+        VAULT_GOODREADS_URL: 'off',
         VAULT_IMPORT_DIR: importDir,
         ...buildEnv(importDir),
         // the Jellyfin-compatible API is deferred; parallel workers would all

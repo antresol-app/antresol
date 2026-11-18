@@ -1781,9 +1781,26 @@ export interface MyShowsState {
   lastSync: string | null
   unmapped: number
 }
+/** GET /api/accounts → goodreads (read only; absent on a server without it). Goodreads has no open API: a linked profile's public shelves are read, and a library export (CSV) is imported. */
+export interface GoodreadsState {
+  /** A profile is linked (the CSV needs no link). */
+  linked: boolean
+  /** The name in the profile address. */
+  nickname: string
+  status: Exclude<ShikimoriStatus, 'relogin' | 'private'>
+  lastError: string
+  lastSync: string | null
+  /** The profile's Goodreads books and, by shelf, how many; `inLibrary` of them are in the library. */
+  total: number
+  read: number
+  reading: number
+  toRead: number
+  inLibrary: number
+}
 export interface AccountsState {
   shikimori: ShikimoriState
   myshows?: MyShowsState
+  goodreads?: GoodreadsState
 }
 
 /** The server's Shikimori OAuth client (admin); the secret is never returned. */
