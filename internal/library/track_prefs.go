@@ -27,6 +27,17 @@ type PlaybackPrefs struct {
 	// studio's track whenever it exists. Kept apart (playback_flags): the
 	// API fills it in, SetPlaybackPrefs never writes it.
 	PreferCleaned bool `json:"preferCleaned"`
+	// AutoSkip: what the profile skips by itself (playback_flags, like
+	// PreferCleaned: the API fills it in, SetPlaybackPrefs never writes it).
+	AutoSkip AutoSkip `json:"autoSkip"`
+}
+
+// AutoSkip is what a profile skips without pressing the button: the recap,
+// the opening titles, the end credits (on to the next episode).
+type AutoSkip struct {
+	Recap   bool `json:"recap"`
+	Intro   bool `json:"intro"`
+	Credits bool `json:"credits"`
 }
 
 // Subtitle modes and looks of PlaybackPrefs.
@@ -109,6 +120,25 @@ func (r *Repo) PreferCleaned(ctx context.Context, userID int64) (bool, error) {
 func (r *Repo) SetPreferCleaned(ctx context.Context, userID int64, on bool) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO playback_flags(user_id, prefer_cleaned) VALUES(?,?)
 		ON CONFLICT(user_id) DO UPDATE SET prefer_cleaned=excluded.prefer_cleaned`, userID, on)
+	return err
+}
+
+// AutoSkip is the profile's auto-skip (all off when none is kept).
+func (r *Repo) AutoSkip(ctx context.Context, userID int64) (AutoSkip, error) {
+	var a AutoSkip
+	err := r.db.QueryRowContext(ctx, `SELECT skip_recap, skip_intro, skip_credits FROM playback_flags WHERE user_id=?`, userID).
+		Scan(&a.Recap, &a.Intro, &a.Credits)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AutoSkip{}, nil
+	}
+	return a, err
+}
+
+// SetAutoSkip keeps the profile's auto-skip; its other flags stay.
+func (r *Repo) SetAutoSkip(ctx context.Context, userID int64, a AutoSkip) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO playback_flags(user_id, skip_recap, skip_intro, skip_credits) VALUES(?,?,?,?)
+		ON CONFLICT(user_id) DO UPDATE SET skip_recap=excluded.skip_recap, skip_intro=excluded.skip_intro, skip_credits=excluded.skip_credits`,
+		userID, a.Recap, a.Intro, a.Credits)
 	return err
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/antresol-app/antresol/internal/library"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -322,5 +323,32 @@ func TestDeviceCopyCleanedTrack(t *testing.T) {
 	var st2 media.CopyStatus
 	if json.Unmarshal(w.Body.Bytes(), &st2) != nil || st2.ID != st.ID {
 		t.Fatalf("%d %s (want %s)", w.Code, w.Body, st.ID)
+	}
+}
+
+// Auto-skip is the profile's, kept beside «Выбирать очищенную озвучку»;
+// a PUT changes only the flags it names.
+func TestAutoSkipPerProfile(t *testing.T) {
+	x := newCleanedEnv(t, ``)
+	if p := x.prefs(x.admin); p.AutoSkip != (library.AutoSkip{}) {
+		t.Fatalf("default: %+v", p.AutoSkip)
+	}
+	if w := x.do("PUT", "/api/me/playback-prefs/auto-skip", `{"intro":true,"credits":true}`, x.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	x.preferCleaned(true)
+	if w := x.do("PUT", "/api/me/playback-prefs/auto-skip", `{"credits":false}`, x.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	p := x.prefs(x.admin)
+	if p.AutoSkip != (library.AutoSkip{Intro: true}) || !p.PreferCleaned {
+		t.Fatalf("after two PUTs: %+v cleaned=%v", p.AutoSkip, p.PreferCleaned)
+	}
+	kid := x.kid("")
+	if p := x.prefs(kid); p.AutoSkip != (library.AutoSkip{}) {
+		t.Fatalf("another profile sees it: %+v", p.AutoSkip)
+	}
+	if w := x.do("PUT", "/api/me/playback-prefs/auto-skip", `{"intro":true}`, kid); w.Code != 403 {
+		t.Fatalf("kid: %d", w.Code)
 	}
 }

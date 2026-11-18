@@ -35,12 +35,14 @@ func mountTrackPrefs(r chi.Router, h *lib) {
 	r.Put("/api/me/playback-prefs", h.putMyPlaybackPrefs)
 	r.Delete("/api/me/playback-prefs", h.deleteMyPlaybackPrefs)
 	r.Put("/api/me/playback-prefs/prefer-cleaned", h.putMyPreferCleaned)
+	r.Put("/api/me/playback-prefs/auto-skip", h.putMyAutoSkip)
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
 		r.Get("/api/users/{id}/playback-prefs", h.userPlaybackPrefs(h.playbackPrefsOut))
 		r.Put("/api/users/{id}/playback-prefs", h.userPlaybackPrefs(h.savePlaybackPrefs))
 		r.Delete("/api/users/{id}/playback-prefs", h.userPlaybackPrefs(h.clearPlaybackPrefs))
 		r.Put("/api/users/{id}/playback-prefs/prefer-cleaned", h.userPlaybackPrefs(h.savePreferCleaned))
+		r.Put("/api/users/{id}/playback-prefs/auto-skip", h.userPlaybackPrefs(h.saveAutoSkip))
 	})
 	r.Get("/api/items/{id}/track-prefs", h.trackPrefs)
 	r.Put("/api/items/{id}/track-prefs", h.rememberTracks)
@@ -83,12 +85,16 @@ func (h *lib) prefsFor(ctx context.Context, uid int64) (playbackPrefs, error) {
 	if err != nil {
 		return playbackPrefs{}, err
 	}
+	skip, err := h.Library.AutoSkip(ctx, uid)
+	if err != nil {
+		return playbackPrefs{}, err
+	}
 	p, ok, err := h.Library.PlaybackPrefs(ctx, uid)
 	if err != nil {
 		return playbackPrefs{}, err
 	}
 	if ok {
-		p.PreferCleaned = cleaned
+		p.PreferCleaned, p.AutoSkip = cleaned, skip
 		return playbackPrefs{PlaybackPrefs: p, Custom: true}, nil
 	}
 	langs := h.myLanguages(ctx)
@@ -100,7 +106,7 @@ func (h *lib) prefsFor(ctx context.Context, uid int64) (playbackPrefs, error) {
 	}
 	return playbackPrefs{PlaybackPrefs: library.PlaybackPrefs{
 		AudioLangs: slices.Clone(langs), SubMode: "off", SubLangs: slices.Clone(langs),
-		SubSize: "m", SubBackground: "translucent", PreferCleaned: cleaned,
+		SubSize: "m", SubBackground: "translucent", PreferCleaned: cleaned, AutoSkip: skip,
 	}}, nil
 }
 
@@ -125,6 +131,44 @@ func (h *lib) savePreferCleaned(w http.ResponseWriter, r *http.Request, uid int6
 	}
 	if err := h.Library.SetPreferCleaned(r.Context(), uid, *in.On); err != nil {
 		internalErr(w, r, "prefer cleaned", err)
+		return
+	}
+	h.playbackPrefsOut(w, r, uid)
+}
+
+func (h *lib) putMyAutoSkip(w http.ResponseWriter, r *http.Request) {
+	if kidLocked(w, r) {
+		return
+	}
+	h.saveAutoSkip(w, r, userOf(r).ID)
+}
+
+// saveAutoSkip keeps {"recap","intro","credits"} (each optional: an absent
+// one stays) and answers with the defaults.
+func (h *lib) saveAutoSkip(w http.ResponseWriter, r *http.Request, uid int64) {
+	var in struct {
+		Recap   *bool `json:"recap"`
+		Intro   *bool `json:"intro"`
+		Credits *bool `json:"credits"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	a, err := h.Library.AutoSkip(r.Context(), uid)
+	if err != nil {
+		internalErr(w, r, "auto skip", err)
+		return
+	}
+	for _, f := range []struct {
+		in  *bool
+		out *bool
+	}{{in.Recap, &a.Recap}, {in.Intro, &a.Intro}, {in.Credits, &a.Credits}} {
+		if f.in != nil {
+			*f.out = *f.in
+		}
+	}
+	if err := h.Library.SetAutoSkip(r.Context(), uid, a); err != nil {
+		internalErr(w, r, "auto skip", err)
 		return
 	}
 	h.playbackPrefsOut(w, r, uid)
