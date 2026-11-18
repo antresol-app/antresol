@@ -112,7 +112,7 @@ describe('Настройки сервера: the groups', () => {
     stub({ ...base, languages: ['ru', 'en'] })
     const { go } = renderSettings()
     await screen.findByRole('button', { name: /Медиатека и языки/ })
-    const groups = ['Медиатека и языки', 'Просмотр', 'Перекодирование', 'Музыка', 'Субтитры', 'Отправка на Kindle', 'ИИ-помощник']
+    const groups = ['Медиатека и языки', 'Просмотр', 'Перекодирование', 'Музыка', 'Субтитры', 'Отправка на Kindle', 'ИИ-помощник', 'Управление каналами']
     const rows = within(screen.getByRole('region', { name: 'Настройки сервера' })).getAllByRole('button')
     expect(rows).toHaveLength(groups.length)
     rows.forEach((b, i) => expect(b.textContent).toMatch(new RegExp(`^${groups[i]}`)))
