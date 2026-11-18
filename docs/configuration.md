@@ -55,6 +55,20 @@ Folder names inside `MEDIA_DIR`, if yours differ from the defaults.
 | `VAULT_OPENSUBTITLES_USER` | OpenSubtitles account. |
 | `VAULT_OPENSUBTITLES_PASSWORD` | OpenSubtitles password. |
 
+## Email
+
+Mail is set in the web UI, not in `.env`: «Manage → Server settings → Sending mailbox».
+It sends email notifications and books to Kindle. Any SMTP account works:
+
+| Service | Server | Port | Login | Password |
+| --- | --- | --- | --- | --- |
+| Gmail | `smtp.gmail.com` | 587 | your Gmail address | an [app password](https://myaccount.google.com/apppasswords) (needs 2-Step Verification) |
+| Resend | `smtp.resend.com` | 465 or 587 | `resend` | an API key; the sender address must be on a domain verified in Resend |
+| Other mail | from its help pages | 587 or 465 | usually your address | usually an app password |
+
+Then each person turns on what they want in «Profile → Email notifications» and confirms
+their address with the test email. Everything is off until turned on.
+
 ## Addons
 
 | Variable | Default | What it does |
