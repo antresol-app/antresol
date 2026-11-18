@@ -189,6 +189,9 @@ export function Settings() {
             <ListLinkRow key={g.id} icon={g.icon} tint={g.tint} label={t(g.label)} value={summary(g.id, values)} onOpen={() => navigate(`/manage/settings/${g.id}`)} />
           ))}
         </GroupedSection>
+        <GroupedSection>
+          <ListLinkRow icon="tv" tint="var(--indigo)" label={t('tv.manage')} onOpen={() => navigate('/tv/manage')} />
+        </GroupedSection>
       </section>
     )
   }
