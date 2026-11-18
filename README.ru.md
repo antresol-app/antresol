@@ -52,225 +52,27 @@
 </p>
 <p><img src="docs/images/phone.png" alt="Главный экран на телефоне, 375 px" width="200"></p>
 
-## Установка через Docker
+## Быстрый старт
 
-Нужен Linux-хост с Docker и Compose и медиатека в одной папке:
-
-```
-/srv/media/
-  movies/      Название фильма (2019)/Название фильма (2019).mkv
-  series/      Сериал/Season 01/Сериал S01E01.mkv
-  music/       Исполнитель/2019 - Альбом/01 - Трек.flac
-  books/
-    ebooks/      Автор - Название.epub
-    audiobooks/  Автор - Название/*.mp3  (или один .m4b)
-    manga/       Серия/Том 01.cbz
-```
-
-Папки могут называться иначе — это задаётся в `.env` ниже. Скачивать
-репозиторий не нужно: создайте папку, например `~/antresol`, и положите в неё
-два файла.
-
-`compose.yml` (тот же, что [`compose.yml`](compose.yml) в репозитории):
-
-```yaml
-# Antresol Server with Docker Compose (see README.md, "Install with Docker").
-#
-# Put this file and a .env next to each other (the README has both in full),
-# set MEDIA_DIR in .env to your media folder on the host, then:
-#
-#   docker compose up -d
-#
-# and open http://<host>:8420 from your home network.
-#
-# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
-# /media, and the *_DIR folder names below are relative to it. Do not put
-# host paths into VAULT_* variables: the server sees only the container.
-#
-# To build the image from a checkout instead of pulling it:
-#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
-services:
-  antresol:
-    image: ghcr.io/antresol-app/antresol-server:latest
-    container_name: antresol
-    restart: unless-stopped
-    # stops ffmpeg, then waits for open requests
-    stop_grace_period: 30s
-    ports:
-      - "8420:8420"
-      # discovery: the apps' probe for servers on the home network (README)
-      - "8420:8420/udp"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      VAULT_DATA_DIR: /config
-      VAULT_MEDIA_ROOT: /media
-      # folder names inside MEDIA_DIR; change them in .env if yours differ
-      VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
-      VAULT_SERIES_DIR: ${SERIES_DIR:-series}
-      VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
-      VAULT_BOOKS_DIR: ${BOOKS_DIR:-books}
-      VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
-      VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
-      VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
-      # HLS segments of a transcode: on the media disk, not in the config volume
-      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
-    volumes:
-      - antresol-config:/config
-      # read-write: fetched subtitles, transcode segments, offline copies
-      - ${MEDIA_DIR:-./media}:/media
-    # The image has no GPU video driver yet, so it decodes on the CPU; run the
-    # binary on the host for hardware decoding.
-
-volumes:
-  antresol-config:
-```
-
-`.env`:
+Нужен Linux-хост с Docker и Compose и медиатека в одной папке
+(`movies/`, `series/`, `music/`, `books/`…; [как разложить](docs/ru/install.md#папки-медиатеки)).
 
 ```sh
-# Папка медиатеки НА ХОСТЕ. В контейнере она всегда /media.
-MEDIA_DIR=/srv/media
-
-# Имена папок внутри MEDIA_DIR — только если у вас они другие:
-# MOVIES_DIR=movies
-# SERIES_DIR=series
-# MUSIC_DIR=music
-# EBOOKS_DIR=books/ebooks
-# AUDIOBOOKS_DIR=books/audiobooks
-# COMICS_DIR=books/manga
-
-# Часовой пояс
-TZ=Europe/Moscow
-
-# По желанию: описания фильмов и сериалов (бесплатный ключ:
-# themoviedb.org/settings/api). Без него названия, постеры и описания
-# берутся только из ваших файлов.
-VAULT_TMDB_KEY=
-
-# За обратным прокси (Nginx Proxy Manager, Caddy, Traefik): IP-адрес прокси,
-# как его видит сервер. Без прокси оставьте пустым.
-VAULT_TRUSTED_PROXIES=
-
-# По желанию: автоматические субтитры с opensubtitles.com.
-# VAULT_OPENSUBTITLES_KEY=
-# VAULT_OPENSUBTITLES_USER=
-# VAULT_OPENSUBTITLES_PASSWORD=
-```
-
-Затем в этой папке:
-
-```sh
+mkdir ~/antresol && cd ~/antresol
+curl -fsSLO https://raw.githubusercontent.com/antresol-app/antresol/main/compose.yml
+curl -fsSL https://raw.githubusercontent.com/antresol-app/antresol/main/.env.example -o .env
+nano .env                  # MEDIA_DIR, VAULT_TMDB_KEY, TZ
 docker compose up -d
-docker compose logs -f     # сканирование напишет, какую папку не нашло
 ```
 
-Откройте `http://<хост>:8420` из домашней сети и создайте первого
-администратора. Сервер просматривает папки при старте и каждые 15 минут
-(или сразу: Управление → Настройки в веб-интерфейсе).
+Откройте `http://<хост>:8420` и создайте первого администратора. Для
+видеокарты раскомментируйте её строки в `compose.yml`
+([перекодирование на видеокарте](docs/ru/hardware-transcoding.md)).
 
-- **Пути.** `MEDIA_DIR` — единственный путь на хосте. Сервер работает внутри
-  контейнера и видит медиатеку в `/media`; имена `*_DIR` отсчитываются от неё.
-  Не задавайте `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` или
-  `VAULT_TRANSCODE_DIR` путями хоста вроде `/tank/media/...`: в контейнере
-  такой папки нет (`stat ...: no such file or directory`,
-  `mkdir ...: permission denied`). Недостающие папки внутри медиатеки
-  создаются пустыми: все при новой установке, папки музыки и книг и потом.
-- Контейнер работает от uid/gid 1000, ему нужна запись в папку медиатеки
-  (скачанные субтитры, временные файлы перекодирования в `tmp/antresol-hls`).
-  Если файлы принадлежат другому пользователю, дайте uid 1000 право записи
-  или добавьте сервису `user: "<uid>:<gid>"`. Настройки и база лежат в томе
-  `antresol-config`.
-- **Временные файлы на другом диске.** Сегменты воспроизведения, эфир
-  каналов и копии для просмотра без сети лежат в `tmp/antresol-hls` внутри
-  медиатеки. Чтобы держать их в другом месте, например на отдельном диске,
-  подключённом в `/scratch`, положите рядом с `compose.yml` файл
-  `compose.override.yml`; `docker compose up -d` читает оба:
+Ещё: [подробности установки](docs/ru/install.md) (пути, права, обратный
+прокси, поиск сервера) · [все настройки](docs/configuration.md) ·
+[что нового в версиях](https://github.com/antresol-app/antresol/releases).
 
-  ```yaml
-  services:
-    antresol:
-      environment:
-        VAULT_TRANSCODE_DIR: /transcode
-      volumes:
-        - /scratch/antresol-hls:/transcode
-  ```
-
-  Сначала создайте папку и дайте uid 1000 право записи в неё: папка, которую
-  Docker создаёт сам, принадлежит root, и сервер не сможет в неё писать.
-  Одна строка `VAULT_TRANSCODE_DIR` в `.env` с этим `compose.yml` не
-  сработает: он задаёт переменную сам и больше ничего не подключает.
-- Если контейнеру не дана видеокарта, он перекодирует на процессоре; см.
-  [Перекодирование на видеокарте](#перекодирование-на-видеокарте).
-- Для доступа не из дома поставьте Antresol за обратный прокси с HTTPS и
-  укажите адрес прокси в `VAULT_TRUSTED_PROXIES`. Нужный адрес виден в логе:
-  `request from <ip> carries X-Forwarded-For ... does not list it`. Профиль
-  без пароля входит только из домашней сети.
-- **Поиск сервера.** Приложения сами ищут серверы в домашней сети: по mDNS / Bonjour
-  (`_antresol._tcp`) и UDP-запросом на порт 8420 (`VAULT_DISCOVERY_PORT`). В обычной сети Docker (bridge)
-  multicast и broadcast до контейнера не доходят: опубликованный
-  `8420/udp` отвечает приложениям, которые спрашивают адрес хоста, а чтобы
-  ничего не вводить, запускайте контейнер с `network_mode: host` (и уберите
-  `ports:`) или бинарь прямо на хосте. `VAULT_SERVER_NAME` — имя сервера в
-  списке приложений (по умолчанию `Antresol`); `VAULT_DISCOVERY=off`
-  выключает оба способа, `VAULT_MDNS=off` — только mDNS. На телевизоре
-  войдите, отсканировав его QR-код приложением на телефоне или камерой
-  телефона (страница `/pair`).
-- Любая настройка — переменная окружения, её можно вписать в `.env`; больше
-  их в [`.env.example`](.env.example), сборка описана в
-  [docs/build-tags.md](docs/build-tags.md).
-
-Что учесть при обновлении, написано в
-[описании каждой версии](https://github.com/antresol-app/antresol/releases).
-
-### Перекодирование на видеокарте
-
-Когда клиент не может воспроизвести файл как есть, сервер перекодирует видео
-в H.264. Видеокарта делает это в несколько раз быстрее процессора и не
-занимает его. В образе есть драйверы Intel и AMD (VA-API, а на amd64 ещё
-Intel Quick Sync), видеокарту NVIDIA он берёт через NVIDIA Container
-Toolkit; контейнеру нужно только дать видеокарту:
-
-- **Intel или AMD.** Раскомментируйте `devices` и `group_add` в
-  `compose.yml`. В `group_add` — номер группы `render` хоста, которой
-  принадлежат `/dev/dri/renderD*`: `getent group render | cut -d: -f3`.
-- **NVIDIA.** Установите на хост
-  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  и раскомментируйте `deploy` в `compose.yml`.
-
-При запуске сервер делает короткое пробное кодирование на каждой видеокарте,
-которую видит, и берёт первую, что справилась (`VAULT_HWACCEL=auto`): NVIDIA
-NVENC, затем Intel Quick Sync, затем VA-API, на macOS VideoToolbox; иначе
-процессор. Что выбрано, видно в логе (`listening on :8420 (hw: vaapi)`), в
-«Управлении → Статистике» и в «Управлении → Настройках → Перекодировании».
-Там администратор выбирает ускорение (Авто, Intel Quick Sync, VA-API,
-NVIDIA, VideoToolbox, Выкл), устройство при нескольких видеокартах,
-тонмаппинг HDR и HEVC на выходе и может проверить видеокарту заново;
-изменение сразу действует для новых просмотров, идущие не прерываются. Пока
-там ничего не меняли, действуют переменные окружения: `VAULT_HWACCEL`
-(`auto`, `qsv`, `vaapi`, `nvenc`, `videotoolbox` или `none`) и
-`VAULT_HWACCEL_DEVICE` (устройство для `vaapi`; по умолчанию первое,
-`/dev/dri/renderD128`). Перекодирование, от которого видеокарта отказалась
-(кодек, который она не декодирует, ошибка драйвера), само начинается заново
-на процессоре.
-
-- Intel и AMD декодируют, масштабируют и кодируют на видеокарте; AV1 и
-  10-битный H.264 декодирует процессор. NVIDIA декодирует и кодирует на
-  видеокарте, масштабирует процессор.
-- **Тонмаппинг HDR** (включён по умолчанию): HDR-видео становится SDR для
-  клиента, которому идёт перекодирование. HDR10 переводится на видеокартах
-  Intel и AMD (`tonemap_vaapi`; с Quick Sync кадры проходят через VA-API той
-  же видеокарты); HLG, HDR10 без метаданных мастеринга, NVIDIA, macOS и
-  перекодирование на процессоре используют `zscale` и `tonemap` ffmpeg на
-  процессоре. Без тонмаппинга HDR выглядит бледным.
-- **HEVC на выходе** (включён по умолчанию): клиент, который сообщает, что
-  воспроизводит HEVC (приложения; браузер, который его декодирует), получает
-  HEVC вместо H.264 от видеокарты, прошедшей пробу HEVC; остальные и
-  процессор — H.264.
-- Видеокарты Intel старше Broadwell (2014) работают через драйвер `i965`, он
-  в образе тоже есть.
-- Бинарь на хосте так же использует ffmpeg и драйверы хоста.
 
 ## Сборка из исходников
 

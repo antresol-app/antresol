@@ -50,221 +50,26 @@ you between devices, and a player that works at home and away.
 </p>
 <p><img src="docs/images/phone.png" alt="The home screen on a phone, 375 px wide" width="200"></p>
 
-## Install with Docker
+## Quick start
 
-You need a Linux host with Docker and Compose, and your media in one folder:
-
-```
-/srv/media/
-  movies/      Film Title (2019)/Film Title (2019).mkv
-  series/      Series Title/Season 01/Series Title S01E01.mkv
-  music/       Artist/2019 - Album/01 - Track.flac
-  books/
-    ebooks/      Author - Title.epub
-    audiobooks/  Author - Title/*.mp3  (or one .m4b)
-    manga/       Series/Volume 01.cbz
-```
-
-Your folders may have other names; you set them in `.env` below. No checkout
-is needed: make a folder, for example `~/antresol`, and put two files in it.
-
-`compose.yml` (the same as [`compose.yml`](compose.yml) in this repository):
-
-```yaml
-# Antresol Server with Docker Compose (see README.md, "Install with Docker").
-#
-# Put this file and a .env next to each other (the README has both in full),
-# set MEDIA_DIR in .env to your media folder on the host, then:
-#
-#   docker compose up -d
-#
-# and open http://<host>:8420 from your home network.
-#
-# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
-# /media, and the *_DIR folder names below are relative to it. Do not put
-# host paths into VAULT_* variables: the server sees only the container.
-#
-# To build the image from a checkout instead of pulling it:
-#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
-services:
-  antresol:
-    image: ghcr.io/antresol-app/antresol-server:latest
-    container_name: antresol
-    restart: unless-stopped
-    # stops ffmpeg, then waits for open requests
-    stop_grace_period: 30s
-    ports:
-      - "8420:8420"
-      # discovery: the apps' probe for servers on the home network (README)
-      - "8420:8420/udp"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      VAULT_DATA_DIR: /config
-      VAULT_MEDIA_ROOT: /media
-      # folder names inside MEDIA_DIR; change them in .env if yours differ
-      VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
-      VAULT_SERIES_DIR: ${SERIES_DIR:-series}
-      VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
-      VAULT_BOOKS_DIR: ${BOOKS_DIR:-books}
-      VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
-      VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
-      VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
-      # HLS segments of a transcode: on the media disk, not in the config volume
-      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
-    volumes:
-      - antresol-config:/config
-      # read-write: fetched subtitles, transcode segments, offline copies
-      - ${MEDIA_DIR:-./media}:/media
-    # The image has no GPU video driver yet, so it decodes on the CPU; run the
-    # binary on the host for hardware decoding.
-
-volumes:
-  antresol-config:
-```
-
-`.env`:
+You need a Linux host with Docker and Compose and your media in one folder
+(`movies/`, `series/`, `music/`, `books/`…; [layout](docs/install.md#media-folders)).
 
 ```sh
-# The media folder ON THE HOST. In the container it is always /media.
-MEDIA_DIR=/srv/media
-
-# Folder names inside MEDIA_DIR, only if yours differ from these:
-# MOVIES_DIR=movies
-# SERIES_DIR=series
-# MUSIC_DIR=music
-# EBOOKS_DIR=books/ebooks
-# AUDIOBOOKS_DIR=books/audiobooks
-# COMICS_DIR=books/manga
-
-# Your time zone
-TZ=Europe/Berlin
-
-# Optional: film and series metadata (free key: themoviedb.org/settings/api).
-# Without it titles, posters and descriptions come only from your files.
-VAULT_TMDB_KEY=
-
-# Behind a reverse proxy (Nginx Proxy Manager, Caddy, Traefik): the proxy's
-# IP address as the server sees it. Leave empty without a proxy.
-VAULT_TRUSTED_PROXIES=
-
-# Optional: automatic subtitles from opensubtitles.com.
-# VAULT_OPENSUBTITLES_KEY=
-# VAULT_OPENSUBTITLES_USER=
-# VAULT_OPENSUBTITLES_PASSWORD=
-```
-
-Then, in that folder:
-
-```sh
+mkdir ~/antresol && cd ~/antresol
+curl -fsSLO https://raw.githubusercontent.com/antresol-app/antresol/main/compose.yml
+curl -fsSL https://raw.githubusercontent.com/antresol-app/antresol/main/.env.example -o .env
+nano .env                  # MEDIA_DIR, VAULT_TMDB_KEY, TZ
 docker compose up -d
-docker compose logs -f     # the library scan reports any folder it cannot find
 ```
 
-Open `http://<host>:8420` from your home network and create the first
-administrator. The server scans the folders at start and every 15 minutes
-(or at once from Manage → Settings in the web interface).
+Open `http://<host>:8420` and create the first administrator. For a GPU,
+uncomment its lines in `compose.yml` ([hardware transcoding](docs/hardware-transcoding.md)).
 
-- **Paths.** `MEDIA_DIR` is the only host path. The server runs inside the
-  container and sees your media at `/media`; the `*_DIR` names are relative
-  to it. Do not set `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` or
-  `VAULT_TRANSCODE_DIR` to host paths such as `/tank/media/...`: the
-  container has no such folder (`stat ...: no such file or directory`,
-  `mkdir ...: permission denied`). Missing folders inside it are created
-  empty: all of them on a new install, and music and book folders later too.
-- The container runs as uid/gid 1000 and needs to write to the media folder
-  (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
-  If your files belong to another user, give uid 1000 write access or add
-  `user: "<uid>:<gid>"` to the service. Settings and the database live in the
-  `antresol-config` volume.
-- **Temporary files on another disk.** Playback segments, live TV and
-  offline copies go to `tmp/antresol-hls` inside the media folder. To keep
-  them elsewhere, for example on a separate disk mounted at `/scratch`, put
-  a `compose.override.yml` next to `compose.yml`; `docker compose up -d`
-  reads both:
-
-  ```yaml
-  services:
-    antresol:
-      environment:
-        VAULT_TRANSCODE_DIR: /transcode
-      volumes:
-        - /scratch/antresol-hls:/transcode
-  ```
-
-  Create the folder first and give uid 1000 write access to it: a folder
-  Docker creates by itself belongs to root, and the server cannot write
-  there. Setting `VAULT_TRANSCODE_DIR` in `.env` alone does not work with
-  this `compose.yml`, which sets it itself and mounts nothing else.
-- Without a GPU passed to the container, it transcodes on the CPU; see
-  [Hardware transcoding](#hardware-transcoding).
-- Outside your home network, put Antresol behind a reverse proxy with HTTPS
-  and set `VAULT_TRUSTED_PROXIES` to the proxy's address. The log line
-  `request from <ip> carries X-Forwarded-For ... does not list it` shows the
-  address to put there. A profile without a password can sign in only from
-  the home network.
-- **Finding the server.** The apps look for servers on the home network
-  by themselves: by mDNS / Bonjour (`_antresol._tcp`)
-  and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). With Docker's
-  default bridge network multicast and broadcast stay outside the
-  container: the published `8420/udp` answers apps that ask the host's
-  address, and for discovery that needs nothing typed run the container with
-  `network_mode: host` (then drop `ports:`) or the binary on the host.
-  `VAULT_SERVER_NAME` is the name the apps list (default `Antresol`);
-  `VAULT_DISCOVERY=off` turns both off, `VAULT_MDNS=off` mDNS alone. On a
-  TV, sign in by scanning its QR code with the phone app or the phone's
-  camera (the page `/pair`).
-- Every setting is an environment variable and can go in `.env`;
-  [`.env.example`](.env.example) lists more of them and
-  [docs/build-tags.md](docs/build-tags.md) explains the build.
-
-Upgrade notes for each version are in its
+More: [install details](docs/install.md) (paths, permissions, reverse proxy,
+finding the server) · [all settings](docs/configuration.md) ·
 [release notes](https://github.com/antresol-app/antresol/releases).
 
-### Hardware transcoding
-
-When a client cannot play a file as it is, the server re-encodes the video
-to H.264. A GPU does that several times faster than the CPU and leaves the
-CPU free. The image has the drivers for Intel and AMD (VA-API, and Intel
-Quick Sync on amd64) and uses an NVIDIA GPU through the NVIDIA Container
-Toolkit; the container only needs to be given the GPU:
-
-- **Intel or AMD.** Uncomment `devices` and `group_add` in `compose.yml`.
-  `group_add` takes the number of the host's `render` group, which owns
-  `/dev/dri/renderD*`: `getent group render | cut -d: -f3`.
-- **NVIDIA.** Install the
-  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  on the host and uncomment `deploy` in `compose.yml`.
-
-At start the server makes a short test encode on each GPU it sees and uses
-the first that works (`VAULT_HWACCEL=auto`): NVIDIA NVENC, then Intel Quick
-Sync, then VA-API, on macOS VideoToolbox; else the CPU. The log says what it
-picked (`listening on :8420 (hw: vaapi)`), and so do Manage → Statistics and
-Manage → Settings → Transcoding. There an administrator can pick the backend
-(Auto, Intel Quick Sync, VA-API, NVIDIA, VideoToolbox, Off), the render node
-when there are several, HDR tone mapping and HEVC output, and test the GPU
-again; a change applies at once to new playback, what is playing goes on.
-Until then the environment decides: `VAULT_HWACCEL` (`auto`, `qsv`,
-`vaapi`, `nvenc`, `videotoolbox` or `none`) and `VAULT_HWACCEL_DEVICE` (the
-render node for `vaapi`; default: the first, `/dev/dri/renderD128`). A
-transcode the GPU refuses (a codec it does not decode, a driver error)
-starts again on the CPU by itself.
-
-- Intel and AMD decode, scale and encode on the GPU; AV1 and 10-bit H.264
-  are decoded by the CPU. NVIDIA decodes and encodes on the GPU and scales on
-  the CPU.
-- **HDR tone mapping** (on by default): HDR video becomes SDR for a client
-  that gets a transcode. HDR10 is tone-mapped on Intel and AMD GPUs
-  (`tonemap_vaapi`; with Quick Sync the frames go through VA-API on the same
-  GPU); HLG, HDR10 without mastering metadata, NVIDIA, macOS and the CPU
-  path use ffmpeg's `zscale` and `tonemap` on the CPU. Off, HDR plays pale.
-- **HEVC output** (on by default): a client that says it plays HEVC (the
-  apps; a browser that decodes it) gets HEVC instead of H.264 from a GPU
-  that passed its HEVC test encode; others, and the CPU, get H.264.
-- Intel GPUs older than Broadwell (2014) use the `i965` driver, which the
-  image has too.
-- The binary on the host uses the host's ffmpeg and drivers in the same way.
 
 ## Build from source
 
