@@ -3,6 +3,7 @@ module github.com/antresol-app/antresol
 go 1.27.1
 
 require (
+	github.com/anthropics/anthropic-sdk-go/v2 v2.5.0
 	github.com/antresol-app/antresol/addonkit v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
@@ -20,7 +21,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
-	github.com/anthropics/anthropic-sdk-go/v2 v2.5.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
