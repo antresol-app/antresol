@@ -5,7 +5,7 @@ comics you already have.** Point it at your folders, open it in a browser,
 and the whole family gets one library with profiles, progress that follows
 you between devices, and a player that works at home and away.
 
-[Русский](README.ru.md)
+[Русский](README.ru.md) · [Website](https://antresol-app.github.io/antresol/)
 
 ![The home screen: shelves of films and series](docs/images/home.png)
 

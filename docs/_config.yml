@@ -1,0 +1,13 @@
+# GitHub Pages builds this folder (main, /docs) into https://antresol-app.github.io/antresol/
+title: Antresol
+description: A home media server for the films, series, music, audiobooks, books and comics you already have.
+lang: en
+plugins:
+  - jekyll-github-metadata
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-default-layout
+  - jekyll-titles-from-headings
+relative_links:
+  enabled: true
+  collections: false

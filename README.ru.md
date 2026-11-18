@@ -6,7 +6,7 @@
 который переходит с устройства на устройство, и плеером, который работает и
 дома, и вне дома.
 
-[English](README.md)
+[English](README.md) · [Сайт](https://antresol-app.github.io/antresol/ru/)
 
 ![Главный экран: полки фильмов и сериалов](docs/images/home.png)
 

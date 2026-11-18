@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="{{ page.lang | default: site.lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% if page.title and page.url != "/" %}{{ page.title }} · {% endif %}{{ site.title }}</title>
+<meta name="description" content="{{ page.description | default: site.description }}">
+<link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
+</head>
+<body>
+<header>
+  <a class="brand" href="{{ '/' | relative_url }}">Antresol</a>
+  <nav>
+    <a href="{{ '/install.html' | relative_url }}">Install</a>
+    <a href="{{ '/apps.html' | relative_url }}">Apps</a>
+    <a href="{{ '/releases.html' | relative_url }}">Releases</a>
+    <a href="{{ '/docs.html' | relative_url }}">Docs</a>
+    <a href="https://github.com/antresol-app/antresol">GitHub</a>
+    <a class="lang" href="{{ '/ru/' | relative_url }}" hreflang="ru" lang="ru">Русский</a>
+  </nav>
+</header>
+<main>
+{{ content }}
+</main>
+<footer>
+  Antresol plays only the files you keep at home; no content is provided.
+  · <a href="https://sidun-av.github.io/antresol/privacy.html">Privacy</a>
+  · <a href="https://sidun-av.github.io/antresol/support.html">App support</a>
+  · <a href="https://github.com/antresol-app/antresol/issues">Issues</a>
+</footer>
+</body>
+</html>
