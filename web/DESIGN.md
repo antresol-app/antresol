@@ -238,6 +238,16 @@ bar's sections and the library menu. Numbers that change
   layout viewport to fit (up to 4x the screen). The fixed bars (`TabBar`,
   the header) are `max-width: 100vw`, so they stay the screen wide
   whatever widens the page (e2e/phone-width.spec.ts).
+- **The video bar's tools row** (`VideoPlayer`, `LivePlayer`; the chrome is
+  measured against the picture): the sound control (`player/VolumeControl`,
+  the speaker and a horizontal slider) leads the row at the left, as Safari's
+  full-screen controls (WebKit) have it, as do other big web players;
+  the menus and the other tools stay at the right edge. The slider is always
+  there. Nothing on the row opens, grows or pops up under the pointer or the
+  focus, so touching one control never moves another (a slider that grew in the
+  right-anchored group used to push every tool left of it). A phone's buttons
+  set its volume: touch hides the control; a window under 560 pt keeps only
+  the speaker.
 - **Live TV** (`pages/tv`): a channel is its **number** (tabular, tertiary
   label) and its **name**; its picture is the programme on air
   (`ChannelArt`: backdrop 16:9, else the poster whole on `--fill-3`, else

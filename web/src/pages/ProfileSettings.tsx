@@ -95,7 +95,8 @@ export function ProfileSettings() {
         )}
 
         <GroupedSection>
-          <ListRow label={t('common.uiLanguage')}>
+          {/* on a 320 pt phone the pop-up gives way before the label breaks inside a word */}
+          <ListRow shrink label={t('common.uiLanguage')}>
             <Select
               label={t('common.uiLanguage')}
               placement="bottom-end"

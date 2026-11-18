@@ -64,12 +64,6 @@
 .tool[data-active] {
   background: rgba(255, 255, 255, 0.14);
 }
-.volume {
-  composes: volume from '../../player/VideoPlayer.module.css';
-}
-.volumeRange {
-  composes: volumeRange from '../../player/VideoPlayer.module.css';
-}
 .subtitles {
   composes: subtitles from '../../player/VideoPlayer.module.css';
 }

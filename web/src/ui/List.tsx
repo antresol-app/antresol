@@ -4,8 +4,9 @@
 // its hint on the left, the control or the trailing actions on the right.
 //   stack — the control goes under the text on phones (a segmented control)
 //   wide  — always under the text (an ordered list, a form)
-//   shrink — the control gives way: at most 40% of the row, a pop-up in it
-//            cuts its choice with an ellipsis, so the label keeps its line
+//   shrink — the control gives way: a pop-up in it cuts its choice with an
+//            ellipsis (at most 40% of a wide row) before the label would
+//            break inside a word
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button.
 import type { ReactNode } from 'react'

@@ -25,6 +25,8 @@ import { clampSubtitleOffset, useSubtitleOffset } from './useSubtitleOffset'
 import look from './SubtitleLook.module.css'
 import { QualityMenu, QUALITIES, StreamQualityMenu } from './QualityMenu'
 import { TrackMenu } from './TrackMenu'
+import { VolumeControl } from './VolumeControl'
+import { useVolume } from './useVolume'
 import { SubtitleSearchSheet, tracksNotRefreshed, type SubtitleLang } from './SubtitleSearchSheet'
 import { usePlayerTrackActions } from './trackActions'
 import { SheetContainer } from '../ui/Sheet'
@@ -130,8 +132,6 @@ const UP_NEXT_SEC = 30
 const SKIP = 10
 
 const PREF = {
-  volume: 'vault.player.volume',
-  muted: 'vault.player.muted',
   sub: 'vault.player.subLang',
   audio: 'vault.player.audioLang',
   quality: 'vault.player.quality',
@@ -343,32 +343,7 @@ export function VideoPlayer({
     visible || !p.playing || menuOpen || scrubbing || Boolean(p.error) || p.needsTap || findingSubs || trackSheetOpen || overlayOpen || Boolean(ret.back)
 
   // ---------- volume ----------
-  const [volume, setVolume] = useState(() => {
-    const v = Number(pref(PREF.volume))
-    return Number.isFinite(v) && v > 0 && v <= 1 ? v : 1
-  })
-  const [muted, setMuted] = useState(() => pref(PREF.muted) === '1')
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    v.volume = volume
-    v.muted = muted
-  }, [volume, muted])
-  const changeVolume = useCallback((val: number) => {
-    const x = Math.min(Math.max(val, 0), 1)
-    setVolume(x)
-    setPref(PREF.volume, String(x))
-    if (x > 0) {
-      setMuted(false)
-      setPref(PREF.muted, '0')
-    }
-  }, [])
-  const toggleMute = useCallback(() => {
-    setMuted((m) => {
-      setPref(PREF.muted, m ? '0' : '1')
-      return !m
-    })
-  }, [])
+  const { volume, muted, changeVolume, toggleMute } = useVolume(videoRef)
 
   // ---------- full screen, PiP, AirPlay ----------
   const [fullscreen, setFullscreen] = useState(false)
@@ -723,6 +698,15 @@ export function VideoPlayer({
         </div>
         <div className={styles.tools}>
           <div className={styles.toolsLeft}>
+            <VolumeControl
+              volume={volume}
+              muted={muted}
+              onVolume={changeVolume}
+              onToggleMute={toggleMute}
+              muteLabel={t('player.video.mute')}
+              unmuteLabel={t('player.video.unmute')}
+              title={t('player.video.soundHint')}
+            />
             {parts.length > 1 && (
               <span className={styles.partLabel}>
                 {t('player.video.part', { n: p.part + 1, total: parts.length })}
@@ -771,28 +755,6 @@ export function VideoPlayer({
               subOffsetMs={offsetMs}
               onSubOffset={(ms) => moveOffset(clampSubtitleOffset(ms))}
             />
-            <div className={styles.volume}>
-              <button
-                type="button"
-                className={styles.tool}
-                onClick={toggleMute}
-                aria-label={muted || volume === 0 ? t('player.video.unmute') : t('player.video.mute')}
-                title={t('player.video.soundHint')}
-              >
-                <Icon name={muted || volume === 0 ? 'speakerMute' : 'speaker'} size={24} />
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={muted ? 0 : volume}
-                onChange={(e) => changeVolume(Number(e.target.value))}
-                aria-label={t('player.volume')}
-                className={styles.volumeRange}
-                style={{ ['--v' as string]: `${(muted ? 0 : volume) * 100}%` }}
-              />
-            </div>
             {airplayAvailable && (
               <button
                 type="button"

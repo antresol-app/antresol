@@ -1,0 +1,106 @@
+/* The speaker and the volume slider at the left of the video bars (see
+   VolumeControl.tsx). Video chrome, measured against the picture (DESIGN.md
+   rule 1): the slider is the scrubber's, thinner. Nothing here changes size
+   on hover or focus, so no neighbour ever moves. */
+.volume {
+  display: flex;
+  align-items: center;
+}
+.mute {
+  composes: tool from './VideoPlayer.module.css';
+}
+
+.range {
+  /* the value, 0–1 (set by the component) */
+  --v: 1;
+  --thumb: 14px;
+  /* the fill ends under the thumb's centre, which stays a half thumb inside the ends */
+  --fill: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--v));
+  --track: linear-gradient(90deg, rgba(255, 255, 255, 0.92) var(--fill), rgba(255, 255, 255, 0.22) var(--fill));
+  width: 96px;
+  /* the hit area is the buttons' height; the 4pt track is drawn in its middle */
+  height: 44px;
+  margin: 0 var(--s-2) 0 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+/* the ring goes round the thumb, not round the whole 44 pt strip */
+.range:focus-visible {
+  outline: none;
+}
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+  transition: height var(--d-fast) var(--ease-out);
+}
+.range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+}
+.range:hover::-webkit-slider-runnable-track,
+.range:active::-webkit-slider-runnable-track {
+  height: 6px;
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  /* centred on the track: half the difference of their heights, up */
+  margin-top: calc((4px - var(--thumb)) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+.range:hover::-webkit-slider-thumb,
+.range:active::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+.range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+.range:hover::-moz-range-thumb,
+.range:active::-moz-range-thumb,
+.range:focus-visible::-moz-range-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+/* keyboard focus: the accent ring round the thumb (the global ring would box the whole strip) */
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring), 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+.range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring), 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* A window too narrow for the slider beside the other tools keeps the speaker. */
+@media (max-width: 559px) {
+  .range {
+    display: none;
+  }
+}
+/* Touch devices (iPhone, iPad) set the volume with their buttons. */
+@media (hover: none) and (pointer: coarse) {
+  .volume {
+    display: none;
+  }
+}

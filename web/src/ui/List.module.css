@@ -79,11 +79,22 @@
   gap: var(--s-2h);
 }
 /* shrink: the control gives way (a pop-up with a long choice cuts it), the
-   text keeps the rest of the row */
+   text keeps the rest of the row. The text never gets narrower than its
+   longest word: with a basis of 0 and no floor it would, and break-word would
+   then split «интерфейса» in two on a 320 pt phone. */
+.shrink .text {
+  min-width: min-content;
+}
 .shrink .control {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 40%;
+}
+/* on a wide row a long choice stops at 40%; a phone's row has no room to
+   spare for a cap, the text's longest word is the only limit there */
+@media (min-width: 700px) {
+  .shrink .control {
+    max-width: 40%;
+  }
 }
 /* an ordered list or a form: always under the text, over the row's width */
 .wide {

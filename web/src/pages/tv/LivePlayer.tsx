@@ -50,6 +50,8 @@ import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
 import { audio as audioEngine } from '../../player/audio/engine'
 import { nativeHls } from '../../player/hlsSupport'
+import { useVolume } from '../../player/useVolume'
+import { VolumeControl } from '../../player/VolumeControl'
 import { Button } from '../../ui/Button'
 import { Menu, MenuItem } from '../../ui/Menu'
 import { useMediaQuery } from '../../state/useMediaQuery'
@@ -96,8 +98,7 @@ export function LivePlayer() {
   const [listed, setListed] = useState(false)
   const [programs, setPrograms] = useState<ChannelProgram[]>([])
   const [phase, setPhase] = useState<Phase>('starting')
-  const [muted, setMuted] = useState(false)
-  const [volume, setVolume] = useState(1)
+  const { volume, muted, changeVolume, toggleMute, muteForNow } = useVolume(videoRef)
   const [full, setFull] = useState(false)
   const [chrome, setChrome] = useState(true)
   const [info, setInfo] = useState(false)
@@ -210,7 +211,7 @@ export function LivePlayer() {
         .catch(() => {
           if (gone) return
           video.muted = true
-          setMuted(true)
+          muteForNow()
           return video.play()
         })
         .catch(() => undefined)
@@ -509,12 +510,6 @@ export function LivePlayer() {
   }
 
   // ---------- sound, picture in picture, full screen ----------
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    v.muted = muted
-    v.volume = volume
-  }, [muted, volume])
   const canFullscreen = fullscreenSupported()
   const toggleFull = useCallback(() => {
     const root = rootRef.current as WebkitElement | null
@@ -552,6 +547,8 @@ export function LivePlayer() {
       if (e.metaKey || e.ctrlKey || e.altKey || menuOpen) return
       const tag = (e.target as HTMLElement | null)?.tagName
       const onControl = tag === 'BUTTON' || tag === 'A' || tag === 'INPUT'
+      // the focused volume slider keeps the arrows (↑/↓ move it, as ←/→ do), they do not zap
+      const onSlider = tag === 'INPUT' && (e.target as HTMLInputElement).type === 'range'
       switch (e.key) {
         case ' ':
           if (onControl) return
@@ -566,13 +563,13 @@ export function LivePlayer() {
           break
         case 'ArrowUp':
         case 'PageUp':
-          if (panel && e.key === 'ArrowUp') return
+          if (onSlider || (panel && e.key === 'ArrowUp')) return
           e.preventDefault()
           zap(1)
           break
         case 'ArrowDown':
         case 'PageDown':
-          if (panel && e.key === 'ArrowDown') return
+          if (onSlider || (panel && e.key === 'ArrowDown')) return
           e.preventDefault()
           zap(-1)
           break
@@ -593,7 +590,7 @@ export function LivePlayer() {
         case 'm':
         case 'M':
         case 'ь':
-          setMuted((m) => !m)
+          toggleMute()
           break
         case 'f':
         case 'F':
@@ -612,7 +609,7 @@ export function LivePlayer() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause])
+  }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause, toggleMute])
 
   // the current channel in view in the list: when it opens and when the channel changes
   // (centred if it was out of view; the list alone scrolls, never the page)
@@ -777,6 +774,14 @@ export function LivePlayer() {
 
         <div className={styles.tools}>
           <div className={styles.toolsLeft}>
+            <VolumeControl
+              volume={volume}
+              muted={muted}
+              onVolume={changeVolume}
+              onToggleMute={toggleMute}
+              muteLabel={t('tv.mute')}
+              unmuteLabel={t('tv.unmute')}
+            />
             <button type="button" className={styles.tool} onClick={() => zap(1)} disabled={zapList.length < 2} aria-label={t('tv.channelUp')} title={`${t('tv.channelUp')} (↑)`}>
               <Icon name="chevronUp" size={24} strokeWidth={2.2} />
             </button>
@@ -823,26 +828,6 @@ export function LivePlayer() {
               onSubtitles={chooseSubs}
               onOpenChange={setMenuOpen}
             />
-            <div className={styles.volume}>
-              <button type="button" className={styles.tool} onClick={() => setMuted((m) => !m)} aria-label={muted ? t('tv.unmute') : t('tv.mute')} title={`${muted ? t('tv.unmute') : t('tv.mute')} (M)`}>
-                <Icon name={muted || volume === 0 ? 'speakerMute' : 'speaker'} size={24} />
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={muted ? 0 : volume}
-                onChange={(e) => {
-                  const v = Number(e.target.value)
-                  setVolume(v)
-                  if (v > 0) setMuted(false)
-                }}
-                aria-label={t('player.volume')}
-                className={styles.volumeRange}
-                style={{ ['--v' as string]: `${(muted ? 0 : volume) * 100}%` }}
-              />
-            </div>
             {narrow && (
               <Menu
                 label={t('tv.more')}
