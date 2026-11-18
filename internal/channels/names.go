@@ -30,6 +30,12 @@ func Display(lang string, c Channel) (name, category string) {
 		if strings.Contains(c.AutoKey, ":") {
 			return name, category // a series' own channel: its title
 		}
+	case "franchise":
+		_, k, _ := strings.Cut(c.AutoKey, ":")
+		if name == franchiseFallbackName(k) {
+			return fmt.Sprintf(i18n.TL(lang, "Франшиза %s"), strings.TrimPrefix(k, "c")), category
+		}
+		return name, category // a franchise's own name
 	}
 	return i18n.TL(lang, name), category
 }

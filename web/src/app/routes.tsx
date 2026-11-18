@@ -286,6 +286,7 @@ export const routes: RouteObject[] = [
             children: [
               { path: 'tv/manage/sources', element: page(tv, (m) => m.SourcesPage) },
               { path: 'tv/manage/sources/:id', element: page(tv, (m) => m.SourceChannels) },
+              { path: 'tv/manage/franchises', element: page(tv, (m) => m.FranchisesPage) },
               {
                 path: 'manage',
                 element: section('Manage'),

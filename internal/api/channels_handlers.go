@@ -93,6 +93,7 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Post("/api/channels/preview", a.preview)
 	r.Post("/api/channels/suggest", a.suggest)
 	r.With(auth.RequireAdmin).Post("/api/channels/generate", a.generate)
+	mountFranchises(r, a)
 	r.Post("/api/channels", a.create)
 	r.Put("/api/channels/{id}", a.update)
 	r.Delete("/api/channels/{id}", a.remove)

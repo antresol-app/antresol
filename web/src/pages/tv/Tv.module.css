@@ -502,3 +502,9 @@
 .formRow .form {
   margin-bottom: var(--s-3);
 }
+/* «Франшизы»: how the last pass ordered them, under the title */
+.franchiseStatus {
+  margin: 0 0 var(--s-3);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}

@@ -522,6 +522,14 @@ func run() error {
 		deps.Related = related
 		deps.Trailers = related
 	}
+	// «Франшизы»: TMDB collections, and Wikidata's facts for the AI helper
+	if related != nil {
+		var wiki channels.FranchiseFacts // never a typed nil in the interface
+		if metaSrc.Wikidata != nil {
+			wiki = metaSrc.Wikidata
+		}
+		chans.SetFranchiseSources(api.FranchiseTMDB(related), wiki)
+	}
 	// IMDb and Rotten Tomatoes ratings of title pages
 	if rs := buildRatings(cfg, database, metaSrc.Wikidata, slog.Default()); rs != nil {
 		deps.Ratings = rs

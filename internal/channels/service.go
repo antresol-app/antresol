@@ -24,7 +24,10 @@ type Service struct {
 	Store     *Store
 	Builder   *Builder
 	Generator *Generator
-	Live      *Live
+	// Franchises works the franchise channels' content out in the
+	// background (SetFranchiseSources gives it TMDB and Wikidata).
+	Franchises *Franchises
+	Live       *Live
 	// Probe reads a file the background probe has not reached yet.
 	Probe func(ctx context.Context, path string) (media.ProbeResult, error)
 	// ExternalAudio lists a file's external audio tracks the way the
@@ -63,6 +66,7 @@ func New(db *sql.DB, live *Live) *Service {
 	st := &Store{DB: db}
 	cat := Catalog{DB: db}
 	s := &Service{Store: st, Builder: &Builder{Store: st, Catalog: cat}, Generator: &Generator{Store: st, Catalog: cat}, Live: live, LLM: LLMFromEnv()}
+	s.Franchises = &Franchises{Store: st, Model: s.Model, Changed: s.refreshSoon}
 	if live != nil && live.Source == nil {
 		live.Source = s
 	}
@@ -88,11 +92,24 @@ func (s *Service) init() {
 	s.once.Do(func() { s.kick, s.warmKick = make(chan struct{}, 1), make(chan struct{}, 1) })
 }
 
-// Kick asks for a refresh soon (after a library scan).
+// SetFranchiseSources gives the franchise pass TMDB's collections (nil: no
+// franchises) and Wikidata's facts (nil: none).
+func (s *Service) SetFranchiseSources(tmdb FranchiseSource, wiki FranchiseFacts) {
+	s.Franchises.TMDB, s.Franchises.Wiki = tmdb, wiki
+}
+
+// Kick asks for a refresh soon (after a library scan), and a franchise
+// pass (it does nothing when the library's titles are as they were).
 func (s *Service) Kick() {
 	if s == nil {
 		return
 	}
+	s.refreshSoon()
+	s.Franchises.Kick(false)
+}
+
+// refreshSoon asks for a refresh of the channels only.
+func (s *Service) refreshSoon() {
 	s.init()
 	select {
 	case s.kick <- struct{}{}:
@@ -107,6 +124,11 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	if s.warm != nil {
 		done := make(chan struct{})
 		go func() { defer close(done); s.warmLoop(ctx) }()
+		defer func() { <-done }()
+	}
+	if s.Franchises != nil && s.Franchises.TMDB != nil {
+		done := make(chan struct{})
+		go func() { defer close(done); s.Franchises.Run(ctx) }()
 		defer func() { <-done }()
 	}
 	t := time.NewTicker(interval)

@@ -3,9 +3,11 @@ package channels
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/library"
@@ -20,6 +22,13 @@ const (
 	// DefaultMinRuntime: a generated channel needs at least this much to
 	// play, or it repeats itself within a couple of days.
 	DefaultMinRuntime = 48 * time.Hour
+	// DefaultFranchiseMinRuntime: what a franchise channel needs. A
+	// franchise is a marathon whose loop is the point: 48 h would leave
+	// almost none (the Harry Potter films are about 19 h); 5 h keeps a
+	// trilogy and drops a lone pair of short films.
+	DefaultFranchiseMinRuntime = 5 * time.Hour
+	// MinFranchiseTitles: a franchise channel has at least these many titles.
+	MinFranchiseTitles = 2
 )
 
 // Category names of generated channels (TiviMate's groups).
@@ -31,6 +40,8 @@ const (
 	CatDocs    = "Документальное"
 	CatSeries  = "Сериалы нон-стоп"
 	CatMine    = "Моё"
+	// CatFranchises: a franchise's titles in its order (franchise.go)
+	CatFranchises = "Франшизы"
 )
 
 // genreChannel names a genre's channel (keys: i18n.GenreKey).
@@ -61,6 +72,11 @@ type Generator struct {
 	Catalog Catalog
 	// MinRuntime: what a generated channel needs to play (0: DefaultMinRuntime).
 	MinRuntime time.Duration
+	// FranchiseMinRuntime: what a franchise channel needs (0:
+	// DefaultFranchiseMinRuntime).
+	FranchiseMinRuntime time.Duration
+
+	sync sync.Mutex // one Sync at a time (a refresh and an admin's request overlap)
 }
 
 // Plan returns the generated channels the library has enough for.
@@ -160,6 +176,10 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		add("decade:"+strconv.Itoa(d), DecadeName(d), CatDecades, 40,
 			Rules{Kinds: []string{library.KindMovie}, YearFrom: d, YearTo: d + 9})
 	}
+	// franchises in their order (the background pass's, franchise_pass.go)
+	if err := g.planFranchises(ctx, append(append([]Unit{}, movies...), series...), progs, add); err != nil {
+		return nil, err
+	}
 	kids := Rules{Genres: kidsGenres, MaxRating: "6+", SkipSegments: true}
 	if enough(Match(append(append([]Unit{}, movies...), series...), kids)) {
 		add("kids", "Детский", CatKids, 50, kids)
@@ -205,6 +225,55 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		}
 	}
 	return out, nil
+}
+
+// planFranchises adds a channel of each franchise with at least
+// MinFranchiseTitles playable titles and FranchiseMinRuntime of them: its
+// titles in the effective order (an admin's order kept), played in order,
+// episodes without their openings and credits.
+func (g *Generator) planFranchises(ctx context.Context, units []Unit, progs map[int64][]Prog, add func(key, name, cat string, from int, r Rules)) error {
+	fs, err := g.Store.Franchises(ctx)
+	if err != nil {
+		return err
+	}
+	min := g.FranchiseMinRuntime
+	if min == 0 {
+		min = DefaultFranchiseMinRuntime
+	}
+	playable := map[int64]bool{}
+	for _, u := range units {
+		playable[u.ID] = true
+	}
+	for _, f := range fs {
+		var picks []Pick
+		var ms int64
+		for _, id := range f.Effective() {
+			if !playable[id] {
+				continue
+			}
+			picks = append(picks, Pick{Kind: PickTitle, ID: id})
+			for _, p := range progs[id] {
+				for _, part := range p.Parts {
+					ms += part.DurationMs
+				}
+			}
+		}
+		if len(picks) < MinFranchiseTitles || time.Duration(ms)*time.Millisecond < min {
+			continue
+		}
+		name := fitFranchiseName(f.Name)
+		if name == "" { // a name the channel store would refuse
+			name = franchiseFallbackName(f.Key)
+		}
+		add("franchise:"+f.Key, name, CatFranchises, 45, Rules{Picks: picks, Order: OrderOrdered, SkipSegments: true})
+	}
+	return nil
+}
+
+// franchiseFallbackName is the channel name of a franchise whose own name
+// is unusable: «Франшиза 10» for key c10.
+func franchiseFallbackName(key string) string {
+	return "Франшиза " + strings.TrimPrefix(key, "c")
 }
 
 // DecadeName is the channel name of a decade: «Кино 80-х», «Кино 2000-х».
@@ -261,6 +330,8 @@ type SyncResult struct {
 // unedited ones the library no longer has content for. Channels an admin
 // edited (or deleted: disabled) are left alone.
 func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
+	g.sync.Lock()
+	defer g.sync.Unlock()
 	var res SyncResult
 	plan, err := g.Plan(ctx)
 	if err != nil {
@@ -288,6 +359,10 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 			}
 			p.Channel.Number = n
 			if _, err := g.Store.Create(ctx, p.Channel); err != nil {
+				if keyKind(p.AutoKey) == "franchise" { // one franchise must not stop every channel
+					log.Printf("channels: create %s: %v", p.AutoKey, err)
+					continue
+				}
 				return res, fmt.Errorf("channels: create %s: %w", p.AutoKey, err)
 			}
 			res.Created++
@@ -295,6 +370,10 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 		case !c.Enabled || c.Name != p.Name || c.Category != p.Category || !sameRules(c.Rules, p.Rules):
 			c.Name, c.Category, c.Rules, c.Enabled = p.Name, p.Category, p.Rules, true
 			if _, err := g.Store.Update(ctx, c); err != nil {
+				if keyKind(p.AutoKey) == "franchise" {
+					log.Printf("channels: update %s: %v", p.AutoKey, err)
+					continue
+				}
 				return res, fmt.Errorf("channels: update %s: %w", p.AutoKey, err)
 			}
 			res.Updated++

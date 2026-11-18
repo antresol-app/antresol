@@ -125,6 +125,22 @@ export function TvManage() {
             >
               <Icon name="chevronRight" size={16} className={sourcesStyles.chevron} />
             </ListRow>
+            <ListRow
+              className={sourcesStyles.linkRow}
+              leading={
+                <span className={sourcesStyles.glyph}>
+                  <Icon name="film" size={18} />
+                </span>
+              }
+              label={
+                <Link to="/tv/manage/franchises" className={sourcesStyles.rowLink}>
+                  {t('tv.franchises.entry')}
+                </Link>
+              }
+              hint={t('tv.franchises.entryHint')}
+            >
+              <Icon name="chevronRight" size={16} className={sourcesStyles.chevron} />
+            </ListRow>
           </GroupedSection>
         )}
         {state.status === 'error' && (

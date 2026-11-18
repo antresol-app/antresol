@@ -31,6 +31,10 @@ func init() {
 		"На канале сейчас нечего показывать":                   "Nothing to show on this channel right now",
 		"Неверное время начала":                                "Invalid start time",
 		"Неизвестный язык интерфейса":                          "Unknown interface language",
+		// franchises
+		"Франшизы недоступны без ключа TMDB":       "Franchises need a TMDB key",
+		"Франшиза не найдена":                      "Franchise not found",
+		"В порядке есть фильм не из этой франшизы": "The order has a title that is not of this franchise",
 		// picks and uploaded logos (round 5)
 		"Неизвестный фильм или серия в составе канала": "An unknown movie or episode in the channel’s lineup",
 		"Недопустимая папка в составе канала":          "An invalid folder in the channel’s lineup",
@@ -67,6 +71,8 @@ func init() {
 		"Документальное":       "Documentaries",
 		"Сериалы нон-стоп":     "Series Non-Stop",
 		"Моё":                  "Mine",
+		"Франшизы":             "Franchises",
+		"Франшиза %s":          "Franchise %s",
 		"Все фильмы":           "All Movies",
 		"Все сериалы":          "All Series",
 		"Мультсериалы":         "Animated Series",

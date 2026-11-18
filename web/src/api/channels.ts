@@ -345,3 +345,54 @@ export function programProgress(p: ChannelProgram, now = Date.now()): number {
   if (!(e > s)) return 0;
   return Math.min(1, Math.max(0, (now - s) / (e - s)));
 }
+
+/** A title of a franchise («Франшизы»), in its order; hidden: the admin left it out. */
+export interface FranchiseItem {
+  id: number;
+  kind: "movie" | "series";
+  title: string;
+  year?: number;
+  hidden?: boolean;
+}
+
+/** A franchise the franchise channels play (admin): a TMDB collection, or the AI helper's. */
+export interface Franchise {
+  key: string;
+  name: string;
+  source: "tmdb" | "ai";
+  /** Why the AI helper's order is not used. */
+  error?: string;
+  /** The admin's order is set (it survives recomputes). */
+  manual: boolean;
+  /** The order it plays, then the hidden titles. */
+  items: FranchiseItem[];
+  /** Its channel (none: too little of it in the library). */
+  channelId?: number;
+}
+
+export interface FranchiseStatus {
+  running: boolean;
+  at?: string;
+  /** The AI helper's model of the last pass ("" = none: TMDB order). */
+  model?: string;
+  error?: string;
+  /** TMDB did not answer for some titles: tried again later. */
+  incomplete?: boolean;
+}
+
+export const getFranchises = (signal?: AbortSignal) =>
+  request<{ status: FranchiseStatus; available: boolean; franchises: Franchise[] }>(
+    "GET",
+    "/api/channels/franchises",
+    undefined,
+    signal,
+  );
+
+export const refreshFranchises = () =>
+  request<void>("POST", "/api/channels/franchises/refresh");
+
+export const setFranchiseOrder = (key: string, order: number[], hidden: number[]) =>
+  request<Franchise>("PUT", `/api/channels/franchises/${encodeURIComponent(key)}/order`, { order, hidden });
+
+export const resetFranchiseOrder = (key: string) =>
+  request<Franchise>("DELETE", `/api/channels/franchises/${encodeURIComponent(key)}/order`);
