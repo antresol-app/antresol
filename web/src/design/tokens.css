@@ -128,7 +128,8 @@
      (the top pill, the tab bar, the player bar, menus, sheets, toasts,
      player and reader chrome, buttons over artwork) — never the content
      itself, and never glass on glass. Three variants:
-     .glass (regular: bars, sidebars, the player bar), .glass-strong (menus,
+     .glass (regular: bars, sidebars), .glass-float (the phone's floating
+     bottom bars and the player bar: a heavier blur), .glass-strong (menus,
      sheets, toasts: text over busy artwork stays readable), .glass-clear
      (over video and artwork only: the picture shows through; a --glass-dim
      layer under it keeps the glyphs legible). Each is a tint, a blur with a
@@ -146,10 +147,49 @@
   --glass-blur: 20px;
   --glass-blur-strong: 30px;
   --glass-blur-clear: 12px;
+  /* .glass-float: the bars that float over scrolling content at the bottom
+     of a phone (the tab bar, its search, the player bar). iOS 26 blurs
+     these far harder than a sidebar: titles sliding underneath must not be
+     readable through the labels, while their colour still shows. */
+  --glass-fill-float: rgba(30, 30, 36, 0.66);
+  --glass-blur-float: 40px;
   --glass-saturate: 1.8;
   --glass-rim: inset 1px 1px 0 -0.5px rgba(255, 255, 255, 0.28), inset -1px -1px 0 -0.5px rgba(255, 255, 255, 0.1);
   --glass-edge: 0 0 0 0.5px rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.25);
+  /* Liquid Glass, the lens (design/glass.css .glass-liquid, on the phone's
+     floating bars: the tab bar, its search, the player bar; .liquid-lens,
+     the selected tab's droplet). A slab of glass thick at its rim: a
+     specular rim line that follows the shape (brightest along the top, its
+     reflection along the bottom), a soft inner glow where the thickness
+     catches light, a faint sheen over the top half. Where the engine bends
+     what is behind (Chromium: ui/liquidGlass.ts), the band --liquid-bezel
+     in from the edge is also a lens: the backdrop there is pulled inward by
+     up to --liquid-refraction and blurred only --liquid-rim-blur, so what
+     slides under the rim bulges and stays recognisable while the middle
+     keeps the bar's full blur, as iOS 26 draws it; elsewhere (WebKit: iOS
+     Safari) the rim, glow and sheen alone carry the look.
+     --liquid-stretch is how far the selected tab's droplet stretches along
+     its way to the next tab (and squashes across it) per tab it passes, up
+     to --liquid-stretch-max. */
+  --liquid-specular: linear-gradient(
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0.16) 18%,
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(255, 255, 255, 0.06) 70%,
+    rgba(255, 255, 255, 0.3)
+  );
+  --liquid-rim-w: 1px;
+  --liquid-rim:
+    inset 0 1px 1px -0.5px rgba(255, 255, 255, 0.22), inset 0 -1px 1px -0.5px rgba(255, 255, 255, 0.1), inset 0 0 8px rgba(255, 255, 255, 0.07),
+    inset 0 -10px 16px -12px rgba(255, 255, 255, 0.09);
+  --liquid-sheen: linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 55%);
+  --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08) 30%, rgba(255, 255, 255, 0.03) 60%, rgba(255, 255, 255, 0.2));
+  --liquid-bezel: 14px;
+  --liquid-refraction: 10px;
+  --liquid-rim-blur: 1.5px;
+  --liquid-stretch: 0.14;
+  --liquid-stretch-max: 0.3;
 
   /* ---------- Content surfaces (opaque) ----------
      surface-grouped: a Card, a GroupedSection, a page's panel of rows (iOS
@@ -241,7 +281,6 @@
   --control-text-box: trim-both cap alphabetic;
   /* a tab's label under its glyph (the phone's tab bar) */
   --t-tab: 600 10px / 1.1 var(--font-text);
-  --t-tab-sm: 600 9px / 1.1 var(--font-text);
   /* an action tile's label under its glyph (title pages on phones) */
   --t-tile: 600 11px / 1.2 var(--font-text);
   /* a toast's message; a player bar's title */
@@ -299,15 +338,47 @@
   --files-info-w: 300px;
 
   /* ---------- Layout chrome at the bottom (phones: the tab bar) ----------
-     The tab bar (ui/TabBar) floats --tabbar-margin above the home indicator;
-     --bottom-bar-space is the band it covers (only the home indicator's on
-     wide screens). The player bar (ui/PlayerBar) and toasts (ui/Toast) stack
-     above it; --page-end is the room a page leaves under its content. */
+     The tab bar (ui/TabBar, iOS 26) floats --tabbar-bottom over the screen's
+     bottom edge: --tabbar-margin, or the home indicator's inset less --s-2
+     where that is more (an iPhone's 34 gives the same 26), so the bar clears
+     the indicator without riding high over it. --bottom-bar-space is the band
+     it covers (only the home indicator's on wide screens). The player bar
+     (ui/PlayerBar) and toasts (ui/Toast) stack above it; --page-end is the
+     room a page leaves under its content. */
   --tabbar-item-h: 54px;
   --tabbar-pad: var(--s-1);
   --tabbar-height: calc(var(--tabbar-item-h) + 2 * var(--tabbar-pad));
-  --tabbar-margin: 10px;
-  --tabbar-inset: 14px;
+  --tabbar-margin: 26px;
+  --tabbar-bottom: max(var(--tabbar-margin), calc(env(safe-area-inset-bottom) - var(--s-2)));
+  --tabbar-inset: 16px;
+  /* between the tabs' capsule and the search beside it */
+  --tabbar-gap: 10px;
+  /* A rounded rectangle, not a pill (each tab of the Apple TV app is one).
+     Apple draws it with a continuous corner of 22, whose curve starts
+     further along the side and reads rounder than a circular CSS radius of
+     the same value: 22 × 1.25 here looks like it. Every part of the bar is
+     62 high and takes this radius (the capsule, the folded square, the
+     search, the player bar in the bar's row). */
+  --r-tabbar: 28px;
+  /* the selected tab's lens, concentric: the bar's radius less its padding */
+  --r-tabbar-lens: calc(var(--r-tabbar) - var(--tabbar-pad));
+  --tabbar-lens-fill: rgba(255, 255, 255, 0.13);
+  --tabbar-lens-rim: inset 0 0.5px 0 rgba(255, 255, 255, 0.25);
+  /* the screen the bar spans (vw, not the layout viewport; a pretend
+     screen in the gallery sets its own) */
+  --tabbar-screen-w: 100vw;
+  /* the player bar's artwork while it sits in the folded tab bar's row */
+  --tabbar-art: 46px;
+  /* concentric with the bar: its radius less the (62 − 46) / 2 around the art */
+  --r-tabbar-art: calc(var(--r-tabbar) - (var(--tabbar-height) - var(--tabbar-art)) / 2);
+  /* A tab's glyph box. The system tab bar (iOS 26, measured on the native
+     app at 402 pt) draws its symbols about 27 pt across; a 24 box leaves
+     these solid glyphs (18 of the 24) visibly smaller beside it. */
+  --tabbar-glyph: 28px;
+  /* the selected tab's glyph and label: the app mark's violet, not the
+     controls' blue --accent (the tab bar is the brand's place, as the
+     Apple TV app's is its white) */
+  --tabbar-selected: #a78bfa;
   --bottom-bar-space: env(safe-area-inset-bottom);
   --playerbar-h: 60px;
   --playerbar-max-w: 440px;
@@ -431,6 +502,12 @@
   --d-sheet: 380ms;
   --d-sheet-close: 240ms;
   --ease-sheet-close: cubic-bezier(0.32, 0.72, 0, 1);
+  /* the tab bar's lens sliding to a tab and the bar folding on scroll: a
+     spring with a little overshoot (iOS 26); a pressed tab springs back on
+     --spring. Reduce motion leaves only the tab bar's crossfade (--d-tabbar-fade). */
+  --d-tabbar-spring: 500ms;
+  --ease-tabbar-spring: cubic-bezier(0.32, 1.32, 0.48, 1);
+  --d-tabbar-fade: 250ms;
   --lift-scale: 1.04;
   --focus-scale: 1.07;
 
@@ -448,9 +525,18 @@
 /* Phones: the tab bar takes the bottom band; what floats there stacks above it */
 @media (max-width: 699px) {
   :root {
-    --bottom-bar-space: calc(var(--tabbar-height) + var(--tabbar-margin) + env(safe-area-inset-bottom));
+    --bottom-bar-space: calc(var(--tabbar-height) + var(--tabbar-bottom));
     --page-end: calc(var(--bottom-bar-space) + var(--s-10));
     --page-top: calc(var(--nav-height-compact) + var(--s-4));
+  }
+}
+/* 320 pt: the tab bar's sides and gap tighten (and its labels, TabBar),
+   which gives its five equal tabs the points «Фильмы» and «Сериалы» need to
+   stay whole */
+@media (max-width: 359px) {
+  :root {
+    --tabbar-inset: 8px;
+    --tabbar-gap: 8px;
   }
 }
 /* music plays: toasts rise above the player bar */
@@ -468,6 +554,7 @@
     --d-stagger: 0ms;
     --d-sheet: 0ms;
     --d-sheet-close: 0ms;
+    --d-tabbar-spring: 0ms;
     --lift-scale: 1;
     --focus-scale: 1;
   }
@@ -480,9 +567,16 @@
     --label-4: rgba(235, 235, 245, 0.4);
     --glass-fill: rgba(28, 28, 32, 0.92);
     --glass-fill-strong: rgba(28, 28, 32, 0.96);
+    --glass-fill-float: rgba(28, 28, 32, 0.94);
     --glass-fill-clear: rgba(28, 28, 32, 0.85);
     --glass-border: rgba(255, 255, 255, 0.3);
     --glass-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    /* Liquid Glass: a plain bright rim, no sheen, nothing bent */
+    --liquid-specular: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6));
+    --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6));
+    --liquid-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    --liquid-sheen: none;
+    --liquid-refraction: 0px;
     --surface-grouped-border: rgba(255, 255, 255, 0.3);
     --hairline: rgba(255, 255, 255, 0.3);
   }

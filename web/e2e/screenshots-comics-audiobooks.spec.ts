@@ -2,7 +2,7 @@
 // left, the ribbon), «Аудиокниги», an audiobook page with chapters and the
 // audiobook in «Сейчас играет» (with the sleep timer menu), against bin/vault
 // with the generated library (comics-audio-media.ts). Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-comics-audiobooks.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-comics-audiobooks.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

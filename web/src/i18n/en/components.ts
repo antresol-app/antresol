@@ -217,6 +217,7 @@ export default {
   // Sheet, TabBar, TopNav, TextField, SourceCard
   'comp.sheet.wait': 'Please wait',
   'comp.sections': 'Sections',
+  'comp.tabBar.expand': 'Show tabs',
   'comp.textField.hidePassword': 'Hide password',
   'comp.textField.showPassword': 'Show password',
   'comp.topNav.home': '{app} — Home',

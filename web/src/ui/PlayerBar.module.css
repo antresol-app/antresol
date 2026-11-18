@@ -15,6 +15,27 @@
   overflow: hidden;
   transform: translateX(-50%);
   --glass-lift: var(--shadow-pop);
+  transition:
+    bottom var(--d-tabbar-spring) var(--ease-tabbar-spring),
+    width var(--d-tabbar-spring) var(--ease-tabbar-spring),
+    height var(--d-tabbar-spring) var(--ease-tabbar-spring);
+}
+/* The phone's tab bar folded on scroll (ui/TabBar): the bar takes the room
+   between its square and the search, in the bar's own shape (62 high, radius
+   22, the artwork 46 at radius 14), and keeps only play/pause. */
+:root:has([data-bottom-bar][data-minimized]) .bar {
+  bottom: var(--tabbar-bottom);
+  width: calc(var(--tabbar-screen-w) - 2 * (var(--tabbar-inset) + var(--tabbar-height) + var(--tabbar-gap)));
+  height: var(--tabbar-height);
+  border-radius: var(--r-tabbar);
+}
+:root:has([data-bottom-bar][data-minimized]) .artwork {
+  width: var(--tabbar-art);
+  height: var(--tabbar-art);
+  border-radius: var(--r-tabbar-art);
+}
+:root:has([data-bottom-bar][data-minimized]) .button:not([data-prominent]) {
+  display: none;
 }
 
 .info {

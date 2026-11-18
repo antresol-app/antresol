@@ -1,6 +1,6 @@
 // Reference screenshots of «Файлы» against bin/vault with the generated media
 // root (files-media.ts). Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-files.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-files.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

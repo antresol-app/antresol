@@ -10,34 +10,77 @@ const paths = {
     </>
   ),
   home: <path d="M3.6 10.6 12 3.8l8.4 6.8V19a1.2 1.2 0 0 1-1.2 1.2h-4.4v-5.7H9.2v5.7H4.8A1.2 1.2 0 0 1 3.6 19z" />,
-  // The tab bar's selected glyphs (SF Symbols' .fill): the same shape and
-  // optical size as the outline beside each, solid, with what the outline
-  // draws as lines left as gaps. Not drawn with a stroke wider than 1.6, so
-  // the glyph does not grow past its outline's size.
-  homeFill: <path d="M3.6 10.6 12 3.8l8.4 6.8V19a1.2 1.2 0 0 1-1.2 1.2h-4.4v-5.7H9.2v5.7H4.8A1.2 1.2 0 0 1 3.6 19z" fill="currentColor" strokeWidth={1.4} />,
+  // The phone tab bar's glyphs and its search, in the visual language of
+  // SF Symbols at the tab bar's Medium weight (house.fill, film.fill,
+  // tv.fill, antenna.radiowaves.left.and.right, square.stack.fill,
+  // magnifyingglass). SF Symbols may not be shipped on the web, so these are
+  // original drawings: only SF's metrics are matched (each glyph's width and
+  // height, a ~2 pt stroke, 1.75 pt antenna arcs and stands, ~3 pt corners,
+  // cut-outs instead of outlines), measured on the system's symbols drawn
+  // beside them. SF balances its glyphs by their own widths (the screen is
+  // wide, the stack tall), so they are not rescaled to one size.
+  // a pitched roof with eaves past the walls and a chimney, over a house with a door cut out
+  homeFill: (
+    <>
+      <path d="M1.5 11.6 12 2.85l10.5 8.75" strokeWidth={2.08} />
+      <path d="M16.9 4.3a.6.6 0 0 1 .6-.6h1a.6.6 0 0 1 .6.6v3.9l-2.2-1.83Z" fill="currentColor" stroke="none" />
+      <path
+        d="M3.5 13.85 11.2 7.43a1.25 1.25 0 0 1 1.6 0l7.7 6.42V20a2.2 2.2 0 0 1-2.2 2.2H5.7A2.2 2.2 0 0 1 3.5 20ZM10.3 14.25h3.4a.9.9 0 0 1 .9.9v5.2H9.4v-5.2a.9.9 0 0 1 .9-.9Z"
+        fill="currentColor"
+        fillRule="evenodd"
+        stroke="none"
+      />
+    </>
+  ),
+  // a frame of film: four perforations down each side, the line between two frames
+  filmFill: (
+    <path
+      d="M3.5 3.2h17a2.7 2.7 0 0 1 2.7 2.7v12.2a2.7 2.7 0 0 1-2.7 2.7h-17A2.7 2.7 0 0 1 .8 18.1V5.9a2.7 2.7 0 0 1 2.7-2.7ZM2.75 4.95h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm17.45-12h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4ZM7 11.2h10a.8.8 0 0 1 0 1.6H7a.8.8 0 0 1 0-1.6Z"
+      fill="currentColor"
+      fillRule="evenodd"
+      stroke="none"
+    />
+  ),
+  // a wide screen over a thin stand, no neck (Сериалы)
+  tvFill: (
+    <path
+      d="M3.3 2.3h17.4a3 3 0 0 1 3 3v10.2a3 3 0 0 1-3 3H3.3a3 3 0 0 1-3-3V5.3a3 3 0 0 1 3-3ZM7.4 20.1h9.2a.8.8 0 0 1 0 1.6H7.4a.8.8 0 0 1 0-1.6Z"
+      fill="currentColor"
+      stroke="none"
+    />
+  ),
+  // a mast with a ball on top, two arcs out to each side (ТВ: live channels)
+  antennaRadiowaves: (
+    <>
+      <path d="M5.02 4.51a9.4 9.4 0 0 0 0 12.58M18.98 4.51a9.4 9.4 0 0 1 0 12.58M8 7.2a5.38 5.38 0 0 0 0 7.2M16 7.2a5.38 5.38 0 0 1 0 7.2M12 12.4v7.65" strokeWidth={1.6} />
+      <circle cx="12" cy="10.8" r="1.8" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // a card with the tops of two more behind it (the Music app's library): Музыка and Книги (Медиа)
+  squareStackFill: (
+    <path
+      d="M6.75 6.4h10.5a3.2 3.2 0 0 1 3.2 3.2v10.5a3.2 3.2 0 0 1-3.2 3.2H6.75a3.2 3.2 0 0 1-3.2-3.2V9.6a3.2 3.2 0 0 1 3.2-3.2ZM6 3.37h12a.7.7 0 0 1 0 1.39H6a.7.7 0 0 1 0-1.39ZM8.3.7h7.4a.64.64 0 0 1 0 1.28H8.3a.64.64 0 0 1 0-1.28Z"
+      fill="currentColor"
+      stroke="none"
+    />
+  ),
+  // the tab bar's search: a large ring and a short handle at SF's Medium
+  // weight, as the system's search tab draws it (fields keep `search`)
+  magnifyingglass: (
+    <>
+      <circle cx="10.25" cy="10.25" r="7.25" strokeWidth={2.2} />
+      <path d="m15.4 15.4 5.5 5.5" strokeWidth={2.2} />
+    </>
+  ),
   film: (
     <>
       <rect x="3.5" y="4.5" width="17" height="15" rx="2.6" />
       <path d="M7.9 4.5v15M16.1 4.5v15M3.5 9.5h4.4M3.5 14.5h4.4M16.1 9.5h4.4M16.1 14.5h4.4" />
     </>
   ),
-  // a strip of film: a frame between two sprocketed edges, a hairline gap each
-  filmFill: (
-    <g stroke="none" fill="currentColor" fillRule="evenodd">
-      <path d="M3.5 7.1a2.6 2.6 0 0 1 2.6-2.6h1.8v15H6.1a2.6 2.6 0 0 1-2.6-2.6zM4.9 7.2h1.6v1.6H4.9zM4.9 11.2h1.6v1.6H4.9zM4.9 15.2h1.6v1.6H4.9z" />
-      <path d="M8.9 4.5h6.2v15H8.9z" />
-      <path d="M20.5 7.1a2.6 2.6 0 0 0-2.6-2.6h-1.8v15h1.8a2.6 2.6 0 0 0 2.6-2.6zM19.1 7.2h-1.6v1.6h1.6zM19.1 11.2h-1.6v1.6h1.6zM19.1 15.2h-1.6v1.6h1.6z" />
-    </g>
-  ),
   tv: (
     <>
       <rect x="3" y="4.5" width="18" height="12.5" rx="2.6" />
-      <path d="M8.2 20.4h7.6" />
-    </>
-  ),
-  tvFill: (
-    <>
-      <rect x="3.5" y="5" width="17" height="11.5" rx="2.2" fill="currentColor" strokeWidth={1.8} />
       <path d="M8.2 20.4h7.6" />
     </>
   ),
@@ -48,12 +91,6 @@ const paths = {
       <path d="M15.08 8.06a5 5 0 0 1 0 7.88M8.92 8.06a5 5 0 0 0 0 7.88M17.54 4.91a9 9 0 0 1 0 14.18M6.46 4.91a9 9 0 0 0 0 14.18" />
     </>
   ),
-  broadcastFill: (
-    <>
-      <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
-      <path d="M15.08 8.06a5 5 0 0 1 0 7.88M8.92 8.06a5 5 0 0 0 0 7.88M17.54 4.91a9 9 0 0 1 0 14.18M6.46 4.91a9 9 0 0 0 0 14.18" strokeWidth={2.5} />
-    </>
-  ),
   music: (
     <>
       <path d="M9 18V6.5l11-2.5V16" />
@@ -61,25 +98,11 @@ const paths = {
       <circle cx="17.5" cy="16" r="2.5" />
     </>
   ),
-  musicFill: (
-    <>
-      <path d="M9 18V6.5l11-2.5V16" />
-      <path d="M9 6.5 20 4v3.8l-11 2.5z" fill="currentColor" strokeWidth={1} />
-      <circle cx="6.5" cy="18" r="2.5" fill="currentColor" strokeWidth={1} />
-      <circle cx="17.5" cy="16" r="2.5" fill="currentColor" strokeWidth={1} />
-    </>
-  ),
   book: (
     <>
       <path d="M12 6.8C10.3 5.4 8 4.7 3.8 4.7v12.8c4.2 0 6.5.7 8.2 2.1 1.7-1.4 4-2.1 8.2-2.1V4.7c-4.2 0-6.5.7-8.2 2.1z" />
       <path d="M12 6.8v12.8" />
     </>
-  ),
-  bookFill: (
-    <g fill="currentColor" strokeWidth={1.2}>
-      <path d="M11.1 7.2C9.6 6 7.5 5.3 4.2 5.3v11.8c3.3 0 5.3.6 6.9 1.8z" />
-      <path d="M12.9 7.2c1.5-1.2 3.6-1.9 6.9-1.9v11.8c-3.3 0-5.3.6-6.9 1.8z" />
-    </g>
   ),
   play: <path d="M7 4.8v14.4a.8.8 0 0 0 1.2.7l11.6-7.2a.8.8 0 0 0 0-1.4L8.2 4.1A.8.8 0 0 0 7 4.8z" fill="currentColor" stroke="none" />,
   pause: (

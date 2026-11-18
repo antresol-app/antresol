@@ -147,7 +147,8 @@
    makes it their containing block) */
 .screen {
   position: relative;
-  width: min(390px, 100%);
+  width: 390px;
+  max-width: 100%;
   height: 300px;
   border-radius: var(--r-sheet-phone);
   overflow: hidden;
@@ -155,7 +156,8 @@
   transform: translateZ(0);
   /* the player bar above the tab bar, as wide as on a phone */
   --playerbar-max-w: calc(100% - 2 * var(--s-4));
-  --playerbar-bottom: calc(var(--tabbar-height) + var(--tabbar-margin) + env(safe-area-inset-bottom) + var(--s-4));
+  --playerbar-bottom: calc(var(--tabbar-height) + var(--tabbar-bottom) + var(--s-4));
+  --tabbar-screen-w: 390px;
 }
 .screenArt {
   width: 100%;

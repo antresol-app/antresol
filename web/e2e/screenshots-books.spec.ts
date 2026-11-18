@@ -2,7 +2,7 @@
 // themes, settings, contents) and the PDF ribbon, against bin/vault with the
 // generated books (books-media.ts). A few artwork-less filler books join the
 // shelves and the grid so they show their real density. Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-books.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-books.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

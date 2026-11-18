@@ -8,6 +8,7 @@
  * (scripts: src/design/__tests__/glassOnly.test.ts).
  */
 .glass,
+.glass-float,
 .glass-strong,
 .glass-clear {
   border: var(--hairline-w) solid var(--glass-border);
@@ -19,6 +20,63 @@
   background: var(--glass-fill);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* the bars floating over scrolling content (the tab bar, its search, the
+   player bar): a heavier blur, so what slides under the labels is colour,
+   never words (iOS 26) */
+.glass-float {
+  background: var(--glass-fill-float);
+  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate));
+}
+
+/* Liquid Glass, the lens (iOS 26): a modifier of .glass-float for the
+   phone's floating bars (the tab bar and its folded square, the search, the
+   player bar). The same tint and blur, drawn as a slab of glass thick at its
+   rim: a specular rim line that follows the rounded shape (::before, a ring
+   masked out of a gradient: brightest along the top, its reflection along
+   the bottom), an inner glow at the edges and a faint sheen over the top.
+   That much is CSS and draws in every engine; it is the whole look in WebKit
+   (iOS Safari) and Gecko, which accept backdrop-filter: url() and then draw
+   nothing (so @supports cannot tell). In Chromium, ui/liquidGlass.ts sets
+   --liquid-lens to an SVG filter made for the element's size and radius:
+   the bar's blur, with the band along the rim refracted instead (pulled
+   inward like a lens, barely blurred). The host is positioned (the ring is
+   absolute) and the ring is drawn over its children. Reduce transparency:
+   opaque, the rim alone; Increase contrast: a plain bright rim, nothing
+   bent (tokens.css). */
+.glass-liquid {
+  background-image: var(--liquid-sheen);
+  box-shadow: var(--liquid-rim), var(--glass-edge), var(--glass-lift, var(--glass-shadow));
+}
+/* the filter does the blur itself (full in the middle, light at the rim) */
+.glass-float.glass-liquid[style*='--liquid-lens'] {
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) var(--liquid-lens);
+  backdrop-filter: saturate(var(--glass-saturate)) var(--liquid-lens);
+}
+/* the rim, and the same rim on the selected tab's droplet (it floats inside
+   the bar's glass, so it bends nothing itself; TabBar stretches it) */
+.glass-liquid::before,
+.liquid-lens::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: var(--liquid-rim-w);
+  border-radius: inherit;
+  background: var(--liquid-specular);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+.liquid-lens::before {
+  background: var(--liquid-lens-specular);
 }
 
 /* menus, sheets, toasts */
@@ -63,6 +121,7 @@
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass,
+  .glass-float,
   .glass-strong,
   .glass-clear {
     background: var(--glass-fill-strong);
@@ -75,6 +134,7 @@
 /* «Reduce transparency»: an opaque surface, the same shape and rim */
 @media (prefers-reduced-transparency: reduce) {
   .glass,
+  .glass-float,
   .glass-strong,
   .glass-clear {
     background: var(--bg-elevated);
@@ -88,6 +148,13 @@
   }
   .scroll-edge::after {
     background: var(--bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-liquid {
+    background-image: none;
+  }
+  .glass-float.glass-liquid[style*='--liquid-lens'] {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

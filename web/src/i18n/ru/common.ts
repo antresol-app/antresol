@@ -43,6 +43,8 @@ export default {
   'common.series': 'Сериалы',
   'common.music': 'Музыка',
   'common.books': 'Книги',
+  // the phone's tab of Музыка and Книги (with audiobooks and comics)
+  'common.media': 'Медиа',
   'common.audiobooks': 'Аудиокниги',
   'common.mangaComics': 'Манга и комиксы',
   'common.albums': 'Альбомы',

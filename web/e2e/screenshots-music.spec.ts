@@ -2,7 +2,7 @@
 // player, against bin/vault with the generated music library. The two real
 // albums are joined by a few artwork-less tiles (the gradient fallback) so the
 // grids show their real density. Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-music.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-music.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

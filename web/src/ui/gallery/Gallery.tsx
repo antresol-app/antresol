@@ -515,14 +515,14 @@ export function Gallery() {
           <TabBar
             label="Разделы (пример)"
             items={[
-              { to: '/dev/gallery', label: 'Главная', icon: 'home', activeIcon: 'homeFill', end: true },
-              { to: '/movies', label: 'Фильмы', icon: 'film', activeIcon: 'filmFill' },
-              { to: '/series', label: 'Сериалы', icon: 'tv', activeIcon: 'tvFill' },
-              { to: '/tv', label: 'ТВ', icon: 'broadcast', activeIcon: 'broadcastFill' },
-              { to: '/music', label: 'Музыка', icon: 'music', activeIcon: 'musicFill' },
-              { to: '/books', label: 'Книги', icon: 'book', activeIcon: 'bookFill' },
+              { to: '/dev/gallery', label: 'Главная', icon: 'homeFill' },
+              { to: '/movies', label: 'Фильмы', icon: 'filmFill' },
+              { to: '/series', label: 'Сериалы', icon: 'tvFill' },
+              { to: '/tv', label: 'ТВ', icon: 'antennaRadiowaves' },
+              { to: '/music', label: 'Медиа', icon: 'squareStackFill', roots: ['/music', '/books'] },
             ]}
-            accessory={{ to: '/search', label: 'Поиск', icon: 'search' }}
+            accessory={{ to: '/search', label: 'Поиск', icon: 'magnifyingglass' }}
+            expandLabel="Показать вкладки"
           />
         </div>
 

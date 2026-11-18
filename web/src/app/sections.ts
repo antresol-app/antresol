@@ -8,18 +8,15 @@ export interface Section {
   /** The label in the interface language (read at render time). */
   readonly label: string
   icon: IconName
-  /** The solid glyph of the current section in the phone's tab bar (no solid one: the outline in the accent). */
-  activeIcon?: IconName
   /** Show only the icon in the top pill (label is still the accessible name). */
   iconOnly?: boolean
 }
 
 /** Top-level sections, in navigation order (variant B). */
-const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean, activeIcon?: IconName): Section => ({
+const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean): Section => ({
   to,
   labelKey,
   icon,
-  ...(activeIcon ? { activeIcon } : {}),
   ...(iconOnly ? { iconOnly } : {}),
   get label() {
     return t(this.labelKey)
@@ -28,13 +25,53 @@ const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean, 
 
 export const SECTIONS: Section[] = [
   section('/search', 'common.search', 'search', true),
-  section('/', 'common.home', 'home', false, 'homeFill'),
-  section('/movies', 'common.movies', 'film', false, 'filmFill'),
-  section('/series', 'common.series', 'tv', false, 'tvFill'),
-  section('/tv', 'common.tv', 'broadcast', false, 'broadcastFill'),
-  section('/music', 'common.music', 'music', false, 'musicFill'),
-  section('/books', 'common.books', 'book', false, 'bookFill'),
+  section('/', 'common.home', 'home'),
+  section('/movies', 'common.movies', 'film'),
+  section('/series', 'common.series', 'tv'),
+  section('/tv', 'common.tv', 'broadcast'),
+  section('/music', 'common.music', 'music'),
+  section('/books', 'common.books', 'book'),
 ]
+
+/** A tab of the phone's tab bar. */
+export interface PhoneTab {
+  to: string
+  labelKey: Key
+  readonly label: string
+  icon: IconName
+  /** The sections whose pages make this tab current (the home tab: only "/" itself). */
+  roots: string[]
+}
+
+/** The sections «Медиа» holds on a phone, in its switch's order. */
+export const MEDIA_ROOTS = ['/music', '/books'] as const
+export type MediaRoot = (typeof MEDIA_ROOTS)[number]
+
+const tab = (to: string, labelKey: Key, icon: IconName, roots: string[] = [to]): PhoneTab => ({
+  to,
+  labelKey,
+  icon,
+  roots,
+  get label() {
+    return t(this.labelKey)
+  },
+})
+
+/**
+ * The phone's tabs: an iPhone has room for five (HIG), the top pill for all
+ * seven sections, so on a phone «Медиа» holds Музыка and Книги (books,
+ * audiobooks, comics) and leads to whichever of them was open last
+ * (`media`); /music and /books themselves stay where they are.
+ */
+export function phoneTabs(media: MediaRoot): PhoneTab[] {
+  return [
+    tab('/', 'common.home', 'homeFill'),
+    tab('/movies', 'common.movies', 'filmFill'),
+    tab('/series', 'common.series', 'tvFill'),
+    tab('/tv', 'common.tv', 'antennaRadiowaves'),
+    tab(media, 'common.media', 'squareStackFill', [...MEDIA_ROOTS]),
+  ]
+}
 
 /** Which section a path belongs to ("/series/42" → "/series"). */
 export function activeSection(pathname: string): string {

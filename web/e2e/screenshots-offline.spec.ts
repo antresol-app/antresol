@@ -2,7 +2,7 @@
 // being saved and once it is («Загружено»), the downloads list (/offline)
 // and the app without the server. Against bin/vault with music and books,
 // with the service worker. Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-offline.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-offline.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

@@ -1,12 +1,14 @@
 // Global navigation, variant B: a centred matte-glass pill (tvOS style) with the
 // profile and the addons' badges on the right. Below 700px the pill is replaced by the
-// bottom tab bar (ui/TabBar) and the header keeps only the brand and the profile.
+// bottom tab bar (ui/TabBar: five tabs, «Медиа» holding Музыка and Книги) and the
+// header keeps only the brand and the profile.
 import { APP_NAME } from '../brand'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { useSlidingThumb } from '../ui/slidingThumb'
 import type { User } from '../api/types'
-import { SECTIONS, searchHref } from '../app/sections'
+import { SECTIONS, phoneTabs, searchHref } from '../app/sections'
+import { lastMediaRoot, mediaRootOf, rememberMediaRoot } from '../state/mediaSection'
 import { useIsCompact } from '../state/useMediaQuery'
 import { NavBadges } from './NavBadges'
 import { useT } from '../i18n'
@@ -41,6 +43,8 @@ export function TopNav({ user, onSwitchProfile }: TopNavProps) {
   // the white capsule slides to the current section
   const capsule = useSlidingThumb(items, 'a[aria-current="page"]', `${pathname}:${compact}`)
   const search = SECTIONS.find((s) => s.iconOnly)
+  // «Медиа» leads back to the part of it open last
+  useEffect(() => rememberMediaRoot(pathname), [pathname])
 
   return (
     <>
@@ -81,8 +85,9 @@ export function TopNav({ user, onSwitchProfile }: TopNavProps) {
       {compact && (
         <TabBar
           label={t('comp.sections')}
-          items={SECTIONS.filter((s) => !s.iconOnly).map((s) => ({ to: s.to, label: s.label, icon: s.icon, activeIcon: s.activeIcon, end: s.to === '/' }))}
-          accessory={search && { to: searchHref(pathname), label: search.label, icon: search.icon }}
+          items={phoneTabs(mediaRootOf(pathname) ?? lastMediaRoot()).map((s) => ({ to: s.to, label: s.label, icon: s.icon, roots: s.roots }))}
+          accessory={search && { to: searchHref(pathname), label: search.label, icon: 'magnifyingglass', roots: [search.to] }}
+          expandLabel={t('comp.tabBar.expand')}
         />
       )}
     </>

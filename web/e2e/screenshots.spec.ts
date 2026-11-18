@@ -1,6 +1,6 @@
 // Reference screenshots for docs/screenshots, with the curated fixture library
 // (mocked /api/home). Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts --project visual
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from '@playwright/test'

@@ -1,11 +1,14 @@
 // The player bar: what plays, as a glass capsule floating at the bottom of
 // every page (above the tab bar on phones) — the Music app's mini player.
 // The artwork and two lines open the full player; the controls sit on the
-// trailing edge; a hairline of progress runs along the bottom. It knows
-// nothing about audio: MiniPlayer feeds it. Its height and place are the
+// trailing edge; a hairline of progress runs along the bottom. When the
+// phone's tab bar folds on scroll, the bar moves down into the room it frees,
+// with only play/pause left (CSS). It knows nothing about audio: MiniPlayer
+// feeds it. Its height and place are the
 // --playerbar-* tokens, which pages and toasts read to keep clear of it.
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Icon, type IconName } from '../components/Icon'
+import { useLiquidGlass } from './liquidGlass'
 import styles from './PlayerBar.module.css'
 
 export interface PlayerBarProps {
@@ -28,6 +31,9 @@ export interface PlayerBarProps {
 
 export function PlayerBar({ label, title, subtitle, artwork, fallbackIcon, onOpen, openLabel, progress, children }: PlayerBarProps) {
   const [failed, setFailed] = useState('')
+  // Liquid Glass, as the tab bar it sits beside (design/glass.css .glass-liquid)
+  const ref = useRef<HTMLElement>(null)
+  useLiquidGlass(ref)
   const pct = Math.min(100, Math.max(0, progress * 100))
   const info = (
     <>
@@ -45,7 +51,7 @@ export function PlayerBar({ label, title, subtitle, artwork, fallbackIcon, onOpe
     </>
   )
   return (
-    <aside className={`${styles.bar} glass`} aria-label={label} data-testid="mini-player" data-player-bar>
+    <aside ref={ref} className={`${styles.bar} glass-float glass-liquid`} aria-label={label} data-testid="mini-player" data-player-bar>
       {onOpen ? (
         <button type="button" className={styles.info} onClick={onOpen} aria-label={openLabel}>
           {info}
@@ -73,7 +79,7 @@ export interface PlayerBarButtonProps {
 /** One of the bar's controls: a borderless 44 pt target with a glyph. */
 export function PlayerBarButton({ icon, label, onClick, prominent, busy }: PlayerBarButtonProps) {
   return (
-    <button type="button" className={styles.button} aria-label={label} aria-busy={busy || undefined} onClick={onClick}>
+    <button type="button" className={styles.button} aria-label={label} aria-busy={busy || undefined} data-prominent={prominent || undefined} onClick={onClick}>
       <Icon name={icon} size={prominent ? 24 : 22} />
     </button>
   )

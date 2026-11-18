@@ -1,8 +1,15 @@
-/* The phone's tab bar: the capsule of tabs and the round accessory float
-   --tabbar-margin above the home indicator; a soft scrim under them keeps
-   the labels readable over artwork. The sizes are the --tabbar-* tokens,
-   which the rest of the layout reads to keep clear of the bar. */
+/* The phone's tab bar: the capsule of tabs and the square search float
+   --tabbar-bottom over the screen's edge, --tabbar-inset from its sides; a
+   soft scrim under them keeps the labels readable over artwork. The sizes
+   are the --tabbar-* tokens, which the rest of the layout reads to keep
+   clear of the bar. */
 .bar {
+  /* the sides clear a landscape phone's notch; the capsule is the width the
+     search and its gap leave, fixed while it folds, so the tabs inside keep
+     their places instead of squeezing as it narrows */
+  --side-l: max(var(--tabbar-inset), env(safe-area-inset-left));
+  --side-r: max(var(--tabbar-inset), env(safe-area-inset-right));
+  --capsule-w: calc(var(--tabbar-screen-w) - var(--side-l) - var(--side-r) - var(--tabbar-height) - var(--tabbar-gap));
   position: fixed;
   left: 0;
   right: 0;
@@ -10,13 +17,12 @@
   /* the screen's width (vw follows the initial containing block), not the
      layout viewport's: if anything ever overflows the page, a phone's Chrome
      grows the layout viewport and left/right alone would stretch the bar */
-  max-width: 100vw;
+  max-width: var(--tabbar-screen-w);
   z-index: var(--z-nav);
   display: flex;
   align-items: center;
-  gap: var(--s-2h);
-  padding: 0 max(var(--tabbar-inset), env(safe-area-inset-right)) calc(var(--tabbar-margin) + env(safe-area-inset-bottom))
-    max(var(--tabbar-inset), env(safe-area-inset-left));
+  gap: var(--tabbar-gap);
+  padding: 0 var(--side-r) var(--tabbar-bottom) var(--side-l);
   pointer-events: none;
 }
 .bar::before {
@@ -27,47 +33,89 @@
   background: var(--scrim-bottom);
   pointer-events: none;
 }
+
+/* the glass rounded rectangle; folded, a square of the current tab: only
+   its width moves, every part of the bar stays 62 high with radius 22 */
+.capsule {
+  /* --n, the number of tabs, comes from TabBar; the tabs and the lens are
+     placed from the capsule's outer edge, not inside the glass's hairline
+     border, so the padding is the 4 pt the bar is drawn with */
+  --tab-w: calc((var(--capsule-w) - 2 * var(--tabbar-pad)) / var(--n, 5));
+  --edge: calc(-1 * var(--hairline-w));
+  position: relative;
+  flex: none;
+  width: var(--capsule-w);
+  height: var(--tabbar-height);
+  border-radius: var(--r-tabbar);
+  overflow: hidden;
+  pointer-events: auto;
+  transition: width var(--d-tabbar-spring) var(--ease-tabbar-spring);
+}
+.bar[data-minimized] .capsule {
+  width: var(--tabbar-height);
+}
+
+/* The selected tab's lens: a lighter rounded rectangle with a lit top edge,
+   sliding from tab to tab on the spring (equal tabs: its place is a sum). */
+.lens {
+  --i: 0;
+  position: absolute;
+  top: calc(var(--edge) + var(--tabbar-pad));
+  left: calc(var(--edge) + var(--tabbar-pad) + var(--i) * var(--tab-w));
+  width: var(--tab-w);
+  height: var(--tabbar-item-h);
+  border-radius: var(--r-tabbar-lens);
+  background: var(--tabbar-lens-fill);
+  box-shadow: var(--tabbar-lens-rim);
+  pointer-events: none;
+  transition:
+    left var(--d-tabbar-spring) var(--ease-tabbar-spring),
+    opacity var(--d-tabbar-fade) var(--ease-out);
+}
+
 .tabs {
-  flex: 1;
+  position: absolute;
+  top: var(--edge);
+  left: var(--edge);
   display: flex;
-  min-width: 0;
+  width: var(--capsule-w);
+  height: var(--tabbar-height);
   margin: 0;
   padding: var(--tabbar-pad);
   list-style: none;
-  border-radius: var(--r-pill);
-  pointer-events: auto;
+  transition: opacity var(--d-tabbar-fade) var(--ease-out);
 }
-/* A tab is as wide as its label plus an equal share of what is left, so the
-   gap between two words is the same everywhere (equal columns leave a short
-   «ТВ» a wide berth and run «Фильмы Сериалы» together), and never narrower
-   than its label. A finger's 44 pt is the hit area below, not the column:
-   a fixed 44 each would not fit six tabs and the search in 320 pt. */
+/* five equal shares (HIG): the lens is one share wide wherever it goes */
 .tabs li {
-  flex: 1 1 auto;
-  min-width: max-content;
+  flex: 1 1 0;
+  min-width: 0;
 }
+.bar[data-minimized] .tabs,
+.bar[data-minimized] .lens {
+  opacity: 0;
+}
+
 .tab {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--s-0);
+  /* the label's box is trimmed to its capitals, so this is the drawn gap */
+  gap: var(--s-1);
   position: relative;
   height: var(--tabbar-item-h);
-  padding: 0 var(--s-1);
-  border-radius: var(--r-pill);
-  color: var(--label-2);
+  border-radius: var(--r-tabbar-lens);
+  color: var(--label);
   -webkit-tap-highlight-color: transparent;
-  transition:
-    color var(--d-fast) var(--ease-out),
-    background-color var(--d-fast) var(--ease-out),
-    transform var(--d-fast) var(--ease-out);
+  transition: transform var(--d-fast) var(--spring);
 }
-.tab:active {
-  transform: scale(0.94);
+.tab:active,
+.accessory:active,
+.unfold:active {
+  transform: scale(0.88);
 }
-/* a finger's 44 pt (HIG): a column narrower than that (a short «ТВ») grows its
-   hit area into its neighbours', the look does not */
+/* a finger's 44 pt (HIG): a share narrower than that (five tabs in 320 pt)
+   grows its hit area into its neighbours', the look does not */
 @media (pointer: coarse), (max-width: 699px) {
   .tab::after {
     content: '';
@@ -75,66 +123,97 @@
     inset: 0 min(0px, calc((100% - var(--touch-target)) / 2));
   }
 }
+.glyph {
+  display: block;
+  flex: none;
+  width: var(--tabbar-glyph);
+  height: var(--tabbar-glyph);
+  transition:
+    color var(--d-tabbar-fade) var(--ease-out),
+    transform var(--d-base) var(--spring);
+}
 .label {
+  max-width: 100%;
   font: var(--t-tab);
-  letter-spacing: 0;
+  /* the box is the capitals (cap height to baseline), so the glyph and
+     the word centre on what is drawn, not on the font's ascent and descent */
+  text-box: var(--control-text-box);
   white-space: nowrap;
+  transition: color var(--d-tabbar-fade) var(--ease-out);
 }
-.active {
-  color: var(--accent);
-  background: var(--fill-hover);
-}
-/* a narrow phone: the bar's insets tighten, the label a step smaller */
-@media (max-width: 400px) {
-  .bar {
-    --tabbar-inset: var(--s-2);
-    gap: var(--s-2);
-  }
-  .tab {
-    padding: 0;
-  }
-}
-/* 320 pt: the label a step smaller (and below, the round search as high as a
-   tab), so six Russian labels and the search fit with their gaps */
+/* 320 pt: a hair tighter, so «Сериалы» fits its share (tokens.css) */
 @media (max-width: 359px) {
-  .bar {
-    --tabbar-inset: var(--s-1h);
-  }
-  .tabs {
-    padding-inline: var(--s-0);
-  }
   .label {
-    font: var(--t-tab-sm);
+    letter-spacing: -0.03em;
   }
 }
+.tab[aria-current='page'],
+.selected,
+.accessory[aria-current='page'] {
+  color: var(--tabbar-selected);
+}
+.tab[aria-current='page'] .glyph {
+  transform: scale(1.06);
+}
+
+/* the folded square: the current tab's glyph, a tap opens the bar again */
+.unfold {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--label);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    opacity var(--d-tabbar-fade) var(--ease-out),
+    transform var(--d-fast) var(--spring);
+}
+.bar[data-minimized] .unfold {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .accessory {
+  /* holds the glass's rim (design/glass.css .glass-liquid) */
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
   width: var(--tabbar-height);
   height: var(--tabbar-height);
-  border-radius: 50%;
+  margin-left: auto;
+  border-radius: var(--r-tabbar);
   color: var(--label);
   pointer-events: auto;
   -webkit-tap-highlight-color: transparent;
   transition:
-    color var(--d-fast) var(--ease-out),
-    transform var(--d-fast) var(--ease-out);
+    color var(--d-tabbar-fade) var(--ease-out),
+    transform var(--d-fast) var(--spring);
 }
-.accessory:active {
-  transform: scale(0.94);
-}
-.accessory.active {
-  color: var(--accent);
-  background: var(--glass-fill);
-}
-@media (max-width: 359px) {
-  .accessory {
-    width: var(--tabbar-item-h);
-    height: var(--tabbar-item-h);
-  }
-}
+
 .tab:focus-visible,
-.accessory:focus-visible {
+.accessory:focus-visible,
+.unfold:focus-visible {
   outline-offset: -2px;
+}
+
+/* Reduce motion: no spring, no squeeze; the lens and the fold change in
+   place and only the crossfade (--d-tabbar-fade) is left (the spring's
+   duration is 0 there, tokens.css). */
+@media (prefers-reduced-motion: reduce) {
+  .tab:active,
+  .accessory:active,
+  .unfold:active {
+    transform: none;
+  }
+  .tab[aria-current='page'] .glyph {
+    transform: none;
+  }
 }

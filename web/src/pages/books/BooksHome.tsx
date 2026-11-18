@@ -19,6 +19,7 @@ import { shelvesWithPending, usePendingCards } from '../../state/pendingCards'
 import { useSession } from '../../state/session'
 import styles from './BooksHome.module.css'
 import { useT } from '../../i18n'
+import { MediaSwitch } from '../../components/MediaSwitch'
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: BooksHomeData }
 
@@ -99,6 +100,7 @@ export function BooksHome() {
   return (
     <BookDropZone enabled={canUpload} onFiles={(f) => void upload(f)}>
     <div className={styles.page}>
+      <MediaSwitch value="/books" />
       <header className={styles.header}>
         <h1 className={styles.title}>{t('common.books')}</h1>
         <div className={styles.headerEnd}>

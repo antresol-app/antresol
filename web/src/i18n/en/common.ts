@@ -44,6 +44,7 @@ export default {
   'common.series': 'Shows',
   'common.music': 'Music',
   'common.books': 'Books',
+  'common.media': 'Media',
   'common.audiobooks': 'Audiobooks',
   'common.mangaComics': 'Manga & Comics',
   'common.albums': 'Albums',

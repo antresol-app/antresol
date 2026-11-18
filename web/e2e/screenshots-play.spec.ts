@@ -2,7 +2,7 @@
 // bin/vault with the generated playback library. The item JSON is enriched
 // with the metadata TMDB would add (overview, genres, cast, logo) so the
 // pictures show a complete page. Opt-in:
-//   SCREENSHOTS=1 npx playwright test e2e/screenshots-play.spec.ts --project chromium
+//   SCREENSHOTS=1 npx playwright test e2e/screenshots-play.spec.ts --project visual
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

@@ -19,6 +19,7 @@ import { GenreRow } from './GenreRow'
 import { playShuffled } from './shuffle'
 import styles from './MusicHome.module.css'
 import { useT } from '../../i18n'
+import { MediaSwitch } from '../../components/MediaSwitch'
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: MusicHomeData }
 
@@ -111,6 +112,7 @@ export function MusicHome() {
 
   return (
     <div className={styles.page}>
+      <MediaSwitch value="/music" />
       <header className={styles.header}>
         <h1 className={styles.title}>{t('common.music')}</h1>
         <div className={styles.headerEnd}>
