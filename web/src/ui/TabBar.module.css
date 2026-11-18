@@ -30,7 +30,6 @@
 .tabs {
   flex: 1;
   display: flex;
-  justify-content: space-between;
   min-width: 0;
   margin: 0;
   padding: var(--tabbar-pad);
@@ -38,9 +37,14 @@
   border-radius: var(--r-pill);
   pointer-events: auto;
 }
+/* A tab is as wide as its label plus an equal share of what is left, so the
+   gap between two words is the same everywhere (equal columns leave a short
+   «ТВ» a wide berth and run «Фильмы Сериалы» together), and never narrower
+   than its label. A finger's 44 pt is the hit area below, not the column:
+   a fixed 44 each would not fit six tabs and the search in 320 pt. */
 .tabs li {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: max-content;
 }
 .tab {
   display: flex;
@@ -48,7 +52,9 @@
   align-items: center;
   justify-content: center;
   gap: var(--s-0);
+  position: relative;
   height: var(--tabbar-item-h);
+  padding: 0 var(--s-1);
   border-radius: var(--r-pill);
   color: var(--label-2);
   -webkit-tap-highlight-color: transparent;
@@ -60,38 +66,45 @@
 .tab:active {
   transform: scale(0.94);
 }
+/* a finger's 44 pt (HIG): a column narrower than that (a short «ТВ») grows its
+   hit area into its neighbours', the look does not */
+@media (pointer: coarse), (max-width: 699px) {
+  .tab::after {
+    content: '';
+    position: absolute;
+    inset: 0 min(0px, calc((100% - var(--touch-target)) / 2));
+  }
+}
 .label {
-  max-width: 100%;
-  padding: 0 var(--s-0);
-  overflow: hidden;
   font: var(--t-tab);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .active {
   color: var(--accent);
   background: var(--fill-hover);
 }
-/* six tabs: equal widths, but a tab never narrower than its label (the
-   others share what is left; at least a finger each); the labels lose their
-   side padding and tracking */
-.bar[data-dense] .tabs li {
-  flex: 1 1 0;
-  min-width: max-content;
-}
-.bar[data-dense] .tab {
-  min-width: var(--control-h-md);
-}
-.bar[data-dense] .label {
-  padding: 0;
-  letter-spacing: 0;
-}
+/* a narrow phone: the bar's insets tighten, the label a step smaller */
 @media (max-width: 400px) {
-  .bar[data-dense] {
+  .bar {
+    --tabbar-inset: var(--s-2);
     gap: var(--s-2);
-    padding-left: max(var(--s-2h), env(safe-area-inset-left));
-    padding-right: max(var(--s-2h), env(safe-area-inset-right));
+  }
+  .tab {
+    padding: 0;
+  }
+}
+/* 320 pt: the label a step smaller (and below, the round search as high as a
+   tab), so six Russian labels and the search fit with their gaps */
+@media (max-width: 359px) {
+  .bar {
+    --tabbar-inset: var(--s-1h);
+  }
+  .tabs {
+    padding-inline: var(--s-0);
+  }
+  .label {
+    font: var(--t-tab-sm);
   }
 }
 .accessory {
@@ -114,6 +127,12 @@
 .accessory.active {
   color: var(--accent);
   background: var(--glass-fill);
+}
+@media (max-width: 359px) {
+  .accessory {
+    width: var(--tabbar-item-h);
+    height: var(--tabbar-item-h);
+  }
 }
 .tab:focus-visible,
 .accessory:focus-visible {

@@ -46,7 +46,7 @@ type State =
 const STARTING_POLL_MS = 1000;
 
 /** The slots of this tab follow the change (the loader is its own chunk). */
-function reloadSlots() {
+export function reloadSlots() {
   void import("../../addons/loader")
     .then((l) => l.reloadAddons())
     .catch((e: unknown) => console.warn("antresol: addon reload failed", e));
@@ -358,7 +358,7 @@ export function Addons() {
  * for, then the install of that very version. With `updating`, the same
  * preview of an installed addon's newer release before «Обновить».
  */
-function AddSheet({
+export function AddSheet({
   updating,
   onClose,
   onInstalled,

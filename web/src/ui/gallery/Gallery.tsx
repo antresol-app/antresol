@@ -11,6 +11,7 @@ import { Button } from '../Button'
 import { Card } from '../Card'
 import { IconButton } from '../IconButton'
 import { GroupedSection, ListLinkRow, ListRow } from '../List'
+import { SETTINGS_GLYPHS, SETTINGS_TINTS, SettingsIcon } from '../SettingsIcon'
 import { ToggleChips } from '../ToggleChips'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../Menu'
 import { NumberField } from '../NumberField'
@@ -264,10 +265,21 @@ export function Gallery() {
         />
       </Section>
 
+      <Section title="SettingsIcon" note="The tile of a settings list: one filled glyph set, white on one palette colour. «Управление», the addons' tiles and every ListLinkRow use it; the app's line icons never go on a tile.">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {SETTINGS_GLYPHS.map((g, i) => (
+            <span key={g} title={g} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontSize: 11, width: 72 }}>
+              <SettingsIcon glyph={g} tint={SETTINGS_TINTS[i % SETTINGS_TINTS.length]!} />
+              {g}
+            </span>
+          ))}
+        </div>
+      </Section>
+
       <Section title="ListLinkRow" note="A row that opens a sheet or a page: the whole row is the button, a coloured icon tile, an optional value, the chevron.">
         <GroupedSection title="Просмотр">
-          <ListLinkRow icon="captions" tint="var(--blue)" label="Звук и субтитры" onOpen={() => {}} />
-          <ListLinkRow icon="lock" tint="var(--gray)" label="Пароль для приложений" hint="One short line under the label." onOpen={() => {}} />
+          <ListLinkRow icon="speaker" tint="pink" label="Звук и субтитры" onOpen={() => {}} />
+          <ListLinkRow icon="key" tint="gray" label="Пароль для приложений" hint="One short line under the label." onOpen={() => {}} />
           <ListLinkRow label="Без иконки" value="Включены" onOpen={() => {}} />
         </GroupedSection>
       </Section>
@@ -503,12 +515,12 @@ export function Gallery() {
           <TabBar
             label="Разделы (пример)"
             items={[
-              { to: '/dev/gallery', label: 'Главная', icon: 'home', end: true },
-              { to: '/movies', label: 'Фильмы', icon: 'film' },
-              { to: '/series', label: 'Сериалы', icon: 'tv' },
-              { to: '/tv', label: 'ТВ', icon: 'broadcast' },
-              { to: '/music', label: 'Музыка', icon: 'music' },
-              { to: '/books', label: 'Книги', icon: 'book' },
+              { to: '/dev/gallery', label: 'Главная', icon: 'home', activeIcon: 'homeFill', end: true },
+              { to: '/movies', label: 'Фильмы', icon: 'film', activeIcon: 'filmFill' },
+              { to: '/series', label: 'Сериалы', icon: 'tv', activeIcon: 'tvFill' },
+              { to: '/tv', label: 'ТВ', icon: 'broadcast', activeIcon: 'broadcastFill' },
+              { to: '/music', label: 'Музыка', icon: 'music', activeIcon: 'musicFill' },
+              { to: '/books', label: 'Книги', icon: 'book', activeIcon: 'bookFill' },
             ]}
             accessory={{ to: '/search', label: 'Поиск', icon: 'search' }}
           />

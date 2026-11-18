@@ -120,7 +120,9 @@ func (s *Server) serveItemImage(w http.ResponseWriter, r *http.Request, u *auth.
 	http.ServeContent(w, r, strings.ToLower(filepath.Base(p)), st.ModTime(), fh)
 }
 
-// noUserImage: Vault avatars are gradients (grad-1..8), not pictures.
+// noUserImage: a Jellyfin client gets no user image: a profile's avatar is a
+// gradient (grad-1..8) and its photo (auth.User.Photo) is served by the native
+// API (GET /api/profiles/{id}/photo), not through this one.
 func (s *Server) noUserImage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 }

@@ -8,6 +8,8 @@ export interface Profile {
   id: number
   name: string
   avatar: AvatarId
+  /** The profile's photo (its address, versioned; absent: none): drawn in place of the letter on the coloured circle. */
+  photo?: string
   hasPassword: boolean
 }
 
@@ -23,7 +25,7 @@ export interface User extends Profile {
   remote?: boolean
   /** A kid profile may ask for titles here («Попросить»). */
   canRequest?: boolean
-  /** An admin has kids' requests to answer here («Управление → Просьбы»). */
+  /** An admin has kids' requests to answer here («Управление → Запросы»). */
   requests?: boolean
   /** The server serves its library only (VAULT_LIBRARY_ONLY): no «Найти и
    * добавить», «Следить», downloads, sources, import or migration. */
@@ -45,6 +47,20 @@ export interface SetupState {
 }
 
 /** GET /api/about: what runs on the server and where its source is (AGPL §13). */
+/** GET /api/updates (admin): the server's version against its latest public release. */
+export interface CoreUpdate {
+  version: string
+  commit: string
+  /** The latest release's tag («v0.9.0»); '' when the check failed (`checked` false). */
+  latest: string
+  releaseUrl?: string
+  checked: boolean
+  /** `latest` is newer than `version` (never for a build without a version). */
+  newer: boolean
+  /** The server runs in a container: it is updated with Compose, from outside. */
+  docker: boolean
+}
+
 export interface About {
   version: string
   commit: string
@@ -77,6 +93,7 @@ export interface Device {
   userId?: number
   userName?: string
   userAvatar?: string
+  userPhoto?: string
 }
 
 export type CardKind =
@@ -580,7 +597,7 @@ export interface KidRequest {
   createdAt: string
   decidedAt?: string
   /** Who asked (the admins' list only). */
-  user?: { id: number; name: string; avatar: string }
+  user?: { id: number; name: string; avatar: string; photo?: string }
   /** A kid's own request of a title above its limit now (the limit was lowered): no title or cover. */
   hidden?: boolean
 }
@@ -802,7 +819,7 @@ export interface MailSettings {
 export interface Stats {
   disk: { total: number; used: number; free: number; categories: { id: string; bytes: number; label?: string }[] }
   counts: { movies: number; series: number; episodes: number; albums: number; tracks: number; books: number; audiobooks: number; comics: number }
-  watchedByUser: { user: string; avatar: string; hours30d: number }[]
+  watchedByUser: { user: string; avatar: string; photo?: string; hours30d: number }[]
   topItems30d: { id: number; kind: CardKind; title: string; year?: number; poster: string; viewers: number; hours: number }[]
   /** what re-encodes video: mode qsv, vaapi, nvenc, videotoolbox or none (the CPU) */
   transcoding?: { mode: string; name: string; requested: string; device?: string }
@@ -1485,6 +1502,7 @@ export interface FamilyMember {
   userId: number
   name: string
   avatar: AvatarId
+  photo?: string
   isKid: boolean
   itemId: number
   positionMs: number

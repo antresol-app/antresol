@@ -210,7 +210,7 @@ describe('addon routes', () => {
     render(<RouterProvider router={router} />)
     const main = () => document.getElementById('main')!
     expect(await screen.findByRole('heading', { name: 'Источники привета' })).toBeInTheDocument()
-    expect(main().textContent).toContain('Управление')
+    expect(main().textContent).toContain('Мои настройки')
     // the tile is in the section list, and it is the current section
     expect(main().querySelector('a[href="/addons/hello/sources"]')).not.toBeNull()
 
@@ -220,7 +220,7 @@ describe('addon routes', () => {
 
     await act(() => router.navigate('/addons/hello/mine'))
     const h = await screen.findByRole('heading', { name: 'Мои слежения' })
-    expect(main().textContent).not.toContain('Управление')
+    expect(main().textContent).not.toContain('Мои настройки')
     // still in a frame of the app's, not straight in <main>
     expect(h.parentElement).not.toBe(main())
   })

@@ -4,8 +4,8 @@ import { MemoryRouter } from 'react-router'
 import { TabBar } from '../TabBar'
 
 const ITEMS = [
-  { to: '/', label: 'Главная', icon: 'home' as const, end: true },
-  { to: '/movies', label: 'Фильмы', icon: 'film' as const },
+  { to: '/', label: 'Главная', icon: 'home' as const, activeIcon: 'homeFill' as const, end: true },
+  { to: '/movies', label: 'Фильмы', icon: 'film' as const, activeIcon: 'filmFill' as const },
   { to: '/music', label: 'Музыка', icon: 'music' as const },
 ]
 
@@ -34,6 +34,14 @@ describe('TabBar', () => {
   it('shows every tab’s label under its glyph', () => {
     at('/')
     for (const i of ITEMS) expect(screen.getByRole('link', { name: i.label })).toHaveTextContent(i.label)
+  })
+
+  it('the current tab draws its solid glyph, the others the outline (one without a solid glyph keeps its outline)', () => {
+    at('/movies')
+    const glyph = (name: string) => screen.getByRole('link', { name }).querySelector('svg')!.getAttribute('data-icon')
+    expect(glyph('Фильмы')).toBe('filmFill')
+    expect(glyph('Главная')).toBe('home')
+    expect(glyph('Музыка')).toBe('music')
   })
 
   it('the round accessory is a link named by its label and marked when current', () => {

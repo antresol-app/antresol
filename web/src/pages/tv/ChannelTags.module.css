@@ -15,7 +15,11 @@
   list-style: none;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
+  /* a row, as every shelf: swiped or wheeled, never with a bar */
+  scrollbar-width: none;
+}
+.posters::-webkit-scrollbar {
+  display: none;
 }
 .poster {
   flex: none;

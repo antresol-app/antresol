@@ -5,7 +5,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import type { User } from '../../api/types'
 import { session } from '../../state/session'
-import { Manage } from '../manage/Manage'
+import { Manage, ManageFrame } from '../manage/Manage'
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 const adult: User = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: true, isAdmin: false, isKid: false, maxRating: null }
@@ -27,6 +27,8 @@ function renderManage() {
   render(
     <MemoryRouter initialEntries={['/manage']}>
       <Routes>
+        {/* where a wide «Управление» opens: the profile's own settings, in its frame */}
+        <Route path="/settings" element={<ManageFrame nested={false}><Where /></ManageFrame>} />
         <Route path="/manage" element={<Manage />}>
           <Route path="*" element={<Where />} />
         </Route>
@@ -42,10 +44,10 @@ afterEach(() => {
 })
 
 describe('library-only server', () => {
-  it('«Управление» hides the sections the server lacks and opens on one it has', async () => {
+  it('«Управление» hides the sections the server lacks and opens on the profile\'s own settings', async () => {
     await signIn({ ...admin, libraryOnly: true })
     renderManage()
-    expect(await screen.findByTestId('where')).toHaveTextContent('/manage/files')
+    expect(await screen.findByTestId('where')).toHaveTextContent('/settings')
     for (const name of [/Загрузки/, /Слежение/, /Источники/]) {
       expect(screen.queryByRole('link', { name })).toBeNull()
     }

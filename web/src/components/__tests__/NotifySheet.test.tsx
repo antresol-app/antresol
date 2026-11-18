@@ -129,10 +129,10 @@ describe('NotifySheet', () => {
     render(<NotifySheet userId={7} name="Вася" onClose={() => {}} />)
     expect(await screen.findByRole('dialog', { name: 'Уведомления на почту: Вася' })).toBeInTheDocument()
     expect(await screen.findByText(/Почта сервера не настроена/)).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Мои просьбы одобрены / в медиатеке' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Мои запросы одобрены / в медиатеке' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Отправить проверочное письмо' })).toBeDisabled()
     // a switch saves at once
-    await userEvent.click(screen.getByRole('switch', { name: 'Мои просьбы одобрены / в медиатеке' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Мои запросы одобрены / в медиатеке' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/notify')).toBe(true))
   })
 

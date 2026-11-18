@@ -15,6 +15,8 @@ export interface TabBarItem {
   to: string
   label: string
   icon: IconName
+  /** The solid glyph of the current tab (as SF Symbols' .fill); without one the outline stays. */
+  activeIcon?: IconName
   /** Current only on the exact path (the home tab). */
   end?: boolean
 }
@@ -37,8 +39,12 @@ export function TabBar({ label, items, accessory, className }: TabBarProps) {
         {items.map((s) => (
           <li key={s.to}>
             <NavLink to={s.to} end={s.end} className={({ isActive }) => cls(styles.tab, isActive && styles.active)}>
-              <Icon name={s.icon} size={24} strokeWidth={1.8} />
-              <span className={styles.label}>{s.label}</span>
+              {({ isActive }) => (
+                <>
+                  <Icon name={isActive && s.activeIcon ? s.activeIcon : s.icon} size={26} strokeWidth={2} />
+                  <span className={styles.label}>{s.label}</span>
+                </>
+              )}
             </NavLink>
           </li>
         ))}
@@ -50,7 +56,7 @@ export function TabBar({ label, items, accessory, className }: TabBarProps) {
           aria-label={accessory.label}
           className={({ isActive }) => cls(styles.accessory, 'glass', isActive && styles.active)}
         >
-          <Icon name={accessory.icon} size={22} strokeWidth={2.1} />
+          <Icon name={accessory.icon} size={24} strokeWidth={2.3} />
         </NavLink>
       )}
     </nav>

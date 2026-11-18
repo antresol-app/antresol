@@ -22,7 +22,7 @@ test.fixme('settings and a profile turn the button on, a failure is explained', 
   const bookUrl = page.url()
 
   // the mail account
-  await page.goto('/manage/settings')
+  await page.goto('/manage/settings/kindle')
   await expect(page.getByText('Пока не настроено')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Пароли приложений Google' })).toHaveAttribute('href', /apppasswords/)
   await expect(page.getByRole('link', { name: 'Открыть настройки Amazon' })).toBeVisible()

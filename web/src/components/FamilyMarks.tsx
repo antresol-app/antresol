@@ -65,7 +65,7 @@ export function FamilyMarks({ places, total, onJump, dir = 'ltr', className, siz
             }}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <Avatar name={m.member.name} avatar={m.member.avatar} size={size} className={styles.face} />
+            <Avatar name={m.member.name} avatar={m.member.avatar} photo={m.member.photo} size={size} className={styles.face} />
             <span className={styles.stem} aria-hidden />
             <span className={`${styles.tip} glass-strong`} aria-hidden>
               {text}

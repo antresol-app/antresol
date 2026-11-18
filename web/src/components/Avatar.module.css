@@ -1,4 +1,5 @@
 .avatar {
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex: none;
@@ -10,4 +11,23 @@
   line-height: 1;
   text-shadow: var(--text-shadow-avatar);
   user-select: none;
+  /* a photo of any shape stays inside the circle */
+  overflow: hidden;
+}
+/* out of the grid's flow: a 100% height there would take the picture's own */
+.photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* the photo's inset edge, over it (an inset shadow on the picture itself is not drawn) */
+.hasPhoto::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: var(--artwork-outline);
+  pointer-events: none;
 }

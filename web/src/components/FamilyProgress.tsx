@@ -117,7 +117,7 @@ export async function jumpTo(m: FamilyMember, open: (m: FamilyMember) => void | 
 }
 
 /** An avatar inside its progress ring; a check badge when finished. */
-export function RingAvatar({ m, size = 36 }: { m: Pick<FamilyMember, 'name' | 'avatar' | 'finished'> & { ring: number }; size?: number }) {
+export function RingAvatar({ m, size = 36 }: { m: Pick<FamilyMember, 'name' | 'avatar' | 'photo' | 'finished'> & { ring: number }; size?: number }) {
   const stroke = size >= 36 ? 2.5 : 2
   const box = size + 2 * (stroke + 2)
   const r = (box - stroke) / 2
@@ -138,7 +138,7 @@ export function RingAvatar({ m, size = 36 }: { m: Pick<FamilyMember, 'name' | 'a
           />
         )}
       </svg>
-      <Avatar name={m.name} avatar={m.avatar} size={size} className={styles.face} />
+      <Avatar name={m.name} avatar={m.avatar} photo={m.photo} size={size} className={styles.face} />
       {m.finished && (
         <span className={styles.check} aria-hidden>
           <Icon name="check" size={Math.round(size * 0.3)} strokeWidth={3} />
@@ -281,7 +281,7 @@ export function TileFaces({ members, className }: { members: FamilyMember[]; cla
   return (
     <span className={[styles.tileFaces, className].filter(Boolean).join(' ')} title={members.map((m) => m.name).join(', ')} aria-hidden>
       {members.slice(0, 3).map((m) => (
-        <Avatar key={m.userId} name={m.name} avatar={m.avatar} size={20} className={styles.face} />
+        <Avatar key={m.userId} name={m.name} avatar={m.avatar} photo={m.photo} size={20} className={styles.face} />
       ))}
     </span>
   )

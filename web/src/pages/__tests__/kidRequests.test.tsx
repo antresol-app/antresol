@@ -1,6 +1,6 @@
 // «Попросить»: a kid asks where an adult would download (search results,
-// title pages), sees the answer there and in «Мои просьбы»; an admin answers
-// in «Управление → Просьбы» and sees the count on the avatar and in the menu.
+// title pages), sees the answer there and in «Мои запросы»; an admin answers
+// in «Управление → Запросы» and sees the count on the avatar and in the menu.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -94,7 +94,7 @@ describe('«Попросить» (kid)', () => {
     expect(button).toHaveAccessibleDescription('Это 18+, а в твоём профиле можно до 12+')
   })
 
-  it('«Мои просьбы» lists every answer, a refusal with its reason', async () => {
+  it('«Мои запросы» lists every answer, a refusal with its reason', async () => {
     stub(kid, (url) => {
       if (url.endsWith('/api/requests/mine'))
         return json([
@@ -120,7 +120,7 @@ describe('«Попросить» (kid)', () => {
     expect(document.querySelector('a[href="/title/movie/18"]')).toBeNull()
   })
 
-  it('the profile menu has «Мои просьбы»', async () => {
+  it('the profile menu has «Мои запросы»', async () => {
     stub(kid)
     await session.login(3)
     render(
@@ -129,7 +129,7 @@ describe('«Попросить» (kid)', () => {
       </MemoryRouter>,
     )
     await userEvent.click(screen.getByRole('button', { name: /Вася/ }))
-    expect(screen.getByRole('menuitem', { name: 'Мои просьбы' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Мои запросы' })).toBeInTheDocument()
   })
 })
 
@@ -138,7 +138,7 @@ function Menu() {
   return user ? <ProfileMenu user={user} /> : null
 }
 
-describe('«Просьбы» (admin)', () => {
+describe('«Запросы» (admin)', () => {
   beforeEach(() => {
     session.reset()
     resetKidRequests()
@@ -154,13 +154,13 @@ describe('«Просьбы» (admin)', () => {
       </MemoryRouter>,
     )
     const trigger = screen.getByRole('button', { name: /Папа/ })
-    await waitFor(() => expect(trigger).toHaveTextContent('2 просьбы ждут ответа'))
+    await waitFor(() => expect(trigger).toHaveTextContent('2 запроса ждут ответа'))
     await userEvent.click(trigger)
-    expect(screen.getByRole('menuitem', { name: /Управление/ })).toHaveTextContent('2')
+    expect(screen.getByRole('menuitem', { name: /Настройки/ })).toHaveTextContent('2')
   })
 })
 
-describe('«Просьбы» in both editions (core)', () => {
+describe('«Запросы» in both editions (core)', () => {
   beforeEach(() => {
     session.reset()
     resetKidRequests()
@@ -178,17 +178,17 @@ describe('«Просьбы» in both editions (core)', () => {
       </MemoryRouter>,
     )
 
-  it('core: «Просьбы» shows only with me.requests', async () => {
+  it('core: «Запросы» shows only with me.requests', async () => {
     stub({ ...admin, requests: undefined })
     await session.login(1)
     const { unmount } = renderManage()
-    expect(screen.queryByRole('link', { name: /Просьбы/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Запросы/ })).toBeNull()
     unmount()
     session.reset()
     stub(admin, (url) => (url.endsWith('/api/requests/count') ? json({ pending: 0 }) : undefined))
     await session.login(1)
     renderManage()
-    expect(screen.getByRole('link', { name: /Просьбы/ })).toHaveAttribute('href', '/manage/requests')
+    expect(screen.getByRole('link', { name: /Запросы/ })).toHaveAttribute('href', '/manage/requests')
   })
 
   // no addon request action: the core approves at once

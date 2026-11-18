@@ -1,7 +1,7 @@
 // A kid's request as a card: the title's cover, kind and
 // year, title and artist or author, a line under it (who asked, when) and
-// the controls of the screen it is on — «Мои просьбы» shows its state,
-// «Управление → Просьбы» «Одобрить» and «Отказать».
+// the controls of the screen it is on — «Мои запросы» shows its state,
+// «Управление → Запросы» «Одобрить» and «Отказать».
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { imageUrl } from '../api/client'

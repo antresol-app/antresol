@@ -1,0 +1,58 @@
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  margin-top: var(--s-3);
+}
+/* the window: the picture under it is dragged; the circle is what shows */
+.frame {
+  position: relative;
+  width: min(100%, var(--photo-crop-size));
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-group);
+  background: var(--fill-3);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.frame:active {
+  cursor: grabbing;
+}
+.img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+/* dims what lies outside the circle (the square's corners), and rims it */
+.mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 100vmax var(--scrim),
+    inset 0 0 0 var(--hairline-w) var(--label-3);
+  pointer-events: none;
+}
+.zoom {
+  display: flex;
+  gap: var(--s-3);
+}
+.hint,
+.error {
+  margin: 0;
+  font: var(--t-footnote);
+  text-align: center;
+}
+.hint {
+  color: var(--label-2);
+}
+.error {
+  color: var(--warning);
+}

@@ -1,0 +1,12 @@
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+/* under the text on a phone (ListRow stack): from its left edge, one line when they fit */
+@media (max-width: 699px) {
+  .buttons {
+    justify-content: flex-start;
+  }
+}

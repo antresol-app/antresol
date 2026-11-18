@@ -125,6 +125,7 @@ export default {
   // AI assistant (AISettings.tsx)
   'settings.group.ai': 'AI Assistant',
   'settings.summary.offAI': 'Off',
+  'settings.summary.cpu': 'CPU',
   'settings.group.transcoding': 'Transcoding',
   'settings.tc.mode': 'Acceleration',
   'settings.tc.mode.hint': 'What re-encodes video a device can’t play as it is. Auto tries the server’s GPUs and takes the first that works.',

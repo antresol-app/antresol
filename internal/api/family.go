@@ -36,6 +36,7 @@ type FamilyMember struct {
 	UserID     int64   `json:"userId"`
 	Name       string  `json:"name"`
 	Avatar     string  `json:"avatar"`
+	Photo      string  `json:"photo,omitempty"` // auth.User.Photo: absent without one
 	IsKid      bool    `json:"isKid"`
 	ItemID     int64   `json:"itemId"`
 	PositionMs int64   `json:"positionMs"`
@@ -196,7 +197,7 @@ func findUser(us []auth.User, id int64) auth.User {
 
 // member is o's entry e in the leaf item it.
 func (h *lib) member(o auth.User, e progress.Entry, it library.Item) FamilyMember {
-	m := FamilyMember{UserID: o.ID, Name: o.Name, Avatar: o.Avatar, IsKid: o.IsKid, ItemID: it.ID,
+	m := FamilyMember{UserID: o.ID, Name: o.Name, Avatar: o.Avatar, Photo: o.Photo, IsKid: o.IsKid, ItemID: it.ID,
 		PositionMs: e.PositionMs, DurationMs: e.DurationMs, Fraction: ratio(e), Finished: e.Finished, Locator: e.Locator,
 		UpdatedAt: e.UpdatedAt.UTC().Format(wireTime)}
 	switch it.Kind {

@@ -22,7 +22,7 @@ func (f *fixture) arrived(t *testing.T, title string, at time.Time) int64 {
 	return id
 }
 
-// Turning «Просьбы» on is no news of old requests whose title came before.
+// Turning «Запросы» on is no news of old requests whose title came before.
 func TestRequestsInLibraryCollector(t *testing.T) {
 	f := newFixture(t)
 	kid := f.user(t, "Маша", false, true)
@@ -76,13 +76,13 @@ func TestKidRequestApprovedAndInLibrary(t *testing.T) {
 	f.clock = f.clock.Add(time.Hour)
 	f.flush(t)
 	m := f.out.all()[0]
-	if !strings.Contains(m.Body, "Просьбу одобрили: Блуи (2018)") || !strings.Contains(m.Body, "Уже в медиатеке: Блуи (2018)") ||
+	if !strings.Contains(m.Body, "Запрос одобрен: Блуи (2018)") || !strings.Contains(m.Body, "Уже в медиатеке: Блуи (2018)") ||
 		!strings.Contains(m.Body, "https://antresol.example/item/"+strconv.FormatInt(item, 10)) || !strings.Contains(m.HTML, "https://image.tmdb.org/t/p/w185/b.jpg") {
 		t.Fatalf("%s\n%s", m.Body, m.HTML)
 	}
 }
 
-// RequestsOpen offers «Просьбы» to kids (and only to them), in either edition.
+// RequestsOpen offers «Запросы» to kids (and only to them), in either edition.
 func TestTopicsRequestsOpen(t *testing.T) {
 	f := newFixture(t)
 	admin := f.user(t, "Папа", true, false)

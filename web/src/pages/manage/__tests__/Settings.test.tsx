@@ -108,17 +108,12 @@ describe('Настройки: музыка и субтитры', () => {
 describe('Настройки сервера: the groups', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('has exactly the core groups, in order; «Просмотр» keeps the studios and has no online switch', async () => {
+  it('are screens of their own (rows of «Управление»); the old list and an unknown group land on the first group', async () => {
     stub({ ...base, languages: ['ru', 'en'] })
     const { go } = renderSettings()
-    await screen.findByRole('button', { name: /Медиатека и языки/ })
-    const groups = ['Медиатека и языки', 'Просмотр', 'Перекодирование', 'Музыка', 'Субтитры', 'Отправка на Kindle', 'ИИ-помощник', 'Управление каналами']
-    const rows = within(screen.getByRole('region', { name: 'Настройки сервера' })).getAllByRole('button')
-    expect(rows).toHaveLength(groups.length)
-    rows.forEach((b, i) => expect(b.textContent).toMatch(new RegExp(`^${groups[i]}`)))
-    // a link to a group the page does not have lands on the list
+    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
     go('nope' as never)
-    expect(await screen.findByRole('button', { name: /Медиатека и языки/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
     go('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: /онлайн/i })).toBeNull()
@@ -128,17 +123,10 @@ describe('Настройки сервера: the groups', () => {
 describe('Настройки сервера: язык описаний', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('is the server\'s: titled «Настройки сервера», no interface language (that is the profile\'s)', async () => {
+  it('is the server\'s: no interface language (that is the profile\'s)', async () => {
     stub(base)
-    renderSettings()
-    await screen.findByRole('button', { name: /Медиатека и языки/ })
-    expect(screen.getByRole('heading', { name: 'Настройки сервера', level: 2 })).toBeInTheDocument()
-    // the first screen: one row per group, the current choice beside it
-    for (const name of ['Медиатека и языки', 'Просмотр', 'Музыка', 'Субтитры', 'Отправка на Kindle']) {
-      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
-    }
-    expect(screen.getByRole('button', { name: /Музыка.*Высокое/ })).toBeInTheDocument()
-    expect(screen.queryByRole('radiogroup')).toBeNull()
+    renderSettings('library')
+    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup', { name: 'Язык интерфейса' })).not.toBeInTheDocument()
     expect(screen.queryByText('Язык интерфейса')).not.toBeInTheDocument()
   })

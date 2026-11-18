@@ -135,7 +135,7 @@ export function ProfilePicker() {
                       aria-busy={busyId === p.id || undefined}
                     >
                       <span className={styles.avatarWrap}>
-                        <Avatar name={p.name} avatar={p.avatar} size={size} />
+                        <Avatar name={p.name} avatar={p.avatar} photo={p.photo} size={size} />
                         {p.hasPassword && (
                           <span className={styles.lock} aria-hidden>
                             <Icon name="lock" size={compact ? 17 : 21} strokeWidth={2.3} />
@@ -161,7 +161,7 @@ export function ProfilePicker() {
           </section>
         ) : (
           <section key="password" className={`${styles.stack} enter-pop`}>
-            <Avatar name={selected.name} avatar={selected.avatar} size={short ? 64 : compact ? 104 : 120} />
+            <Avatar name={selected.name} avatar={selected.avatar} photo={selected.photo} size={short ? 64 : compact ? 104 : 120} />
             <h1 className={styles.subtitleTitle}>{selected.name}</h1>
             <p className={styles.lead}>{t('app.profiles.enterPasswordToContinue')}</p>
             <form

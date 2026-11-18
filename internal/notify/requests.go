@@ -11,7 +11,7 @@ import (
 
 func init() {
 	renderers[Requests] = renderRequests
-	headings[Requests] = func(l string) string { return i18n.TL(l, "Просьбы") }
+	headings[Requests] = func(l string) string { return i18n.TL(l, "Запросы") }
 }
 
 // Request statuses of Data.Status.
@@ -23,7 +23,7 @@ const (
 func renderRequests(lang string, evs []stored, link func(string) string) []entry {
 	out := make([]entry, 0, len(evs))
 	for _, e := range evs {
-		line := i18n.TL(lang, "Просьбу одобрили: %s", titleYear(e.data))
+		line := i18n.TL(lang, "Запрос одобрен: %s", titleYear(e.data))
 		path := "/requests"
 		if e.data.Status == StatusInLibrary {
 			line = i18n.TL(lang, "Уже в медиатеке: %s", titleYear(e.data))
@@ -107,7 +107,7 @@ func (s *Service) RequestsInLibrary(find LibraryFinder) func(ctx context.Context
 			if !ok {
 				continue
 			}
-			// only what arrived after «Просьбы» was turned on: turning it on
+			// only what arrived after «Запросы» was turned on: turning it on
 			// is no news of the old requests' titles
 			since, err := s.OnSince(ctx, r.UserID, Requests)
 			if err != nil {

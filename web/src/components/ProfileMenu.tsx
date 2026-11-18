@@ -1,7 +1,7 @@
 // Avatar button in the top-right corner. Opens the app's Menu (a sheet on a
-// phone) with the current profile, its places («Файлы», «Управление» for
-// admins, «Мои просьбы», the addons' entries), «Настройки» (the profile's own:
-// pages/ProfileSettings.tsx) and «Сменить профиль», then the profile's
+// phone) with the current profile, its places («Файлы», «Мои запросы», the
+// addons' entries), «Настройки» (the profile's own: pages/ProfileSettings.tsx;
+// an admin's open «Управление», the profile's and the server's in two parts) and «Сменить профиль», then the profile's
 // library («Общая медиатека / Моя медиатека», as Photos has it in its View
 // menu besides the toolbar picker).
 import { useNavigate } from 'react-router'
@@ -56,17 +56,6 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
           },
         ]
       : []),
-    ...(user.isAdmin
-      ? [
-          {
-            id: 'manage',
-            label: t('common.manage'),
-            icon: 'gear' as const,
-            run: () => navigate(pending > 0 ? '/manage/requests' : '/manage'),
-            badge: pending,
-          },
-        ]
-      : []),
     // what this kid asked for («Попросить») and the answers
     ...(user.isKid && user.canRequest
       ? [
@@ -85,13 +74,23 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
       icon: e.icon,
       run: () => navigate(e.to),
     })),
-    // the profile's own settings: language, sound, mail, app password, devices
-    {
-      id: 'settings',
-      label: t('comp.profile.settings'),
-      icon: 'sliders',
-      run: () => navigate('/settings'),
-    },
+    // «Настройки»: the profile's own (language, sound, mail, app password,
+    // devices); an admin's open «Управление», where they are the first part
+    // and the server's the second (with the requests' count)
+    user.isAdmin
+      ? {
+          id: 'settings',
+          label: t('comp.profile.settings'),
+          icon: 'sliders' as const,
+          run: () => navigate(pending > 0 ? '/manage/requests' : '/manage'),
+          badge: pending,
+        }
+      : {
+          id: 'settings',
+          label: t('comp.profile.settings'),
+          icon: 'sliders' as const,
+          run: () => navigate('/settings'),
+        },
     {
       id: 'switch',
       label: t('comp.profile.switch'),
@@ -131,7 +130,7 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
             }}
             aria-label={t('comp.profile.aria', { name: user.name })}
           >
-            <Avatar name={user.name} avatar={user.avatar} size={36} />
+            <Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={36} />
             {pending > 0 && (
               <>
                 <span className={styles.dot} aria-hidden />
@@ -144,7 +143,7 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
         {(close) => (
           <>
             <div className={styles.head}>
-              <Avatar name={user.name} avatar={user.avatar} size={44} />
+              <Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={44} />
               <div>
                 <div className={styles.name}>{user.name}</div>
                 <div className={styles.role}>{t(user.isAdmin ? 'common.role.admin' : user.isKid ? 'common.role.kid' : 'comp.profile.role')}</div>

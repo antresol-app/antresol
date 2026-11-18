@@ -9,7 +9,8 @@
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button.
 import type { ReactNode } from 'react'
-import { Icon, type IconName } from '../components/Icon'
+import { Icon } from '../components/Icon'
+import { SettingsIcon, type SettingsGlyph, type SettingsTint } from './SettingsIcon'
 import styles from './List.module.css'
 
 export function GroupedSection({ title, footer, children, id, className }: { title?: ReactNode; footer?: ReactNode; children: ReactNode; id?: string; className?: string }) {
@@ -70,10 +71,10 @@ export interface ListLinkRowProps {
   hint?: ReactNode
   /** The current choice, dimmed before the chevron («Включены», «2»). */
   value?: ReactNode
-  /** A white icon on a coloured tile before the text, as System Settings has. */
-  icon?: IconName
-  /** The tile's colour: a palette token (`var(--blue)`). */
-  tint?: string
+  /** A white glyph on a coloured tile before the text, as System Settings has (ui/SettingsIcon). */
+  icon?: SettingsGlyph
+  /** The tile's colour, a palette name. */
+  tint?: SettingsTint
   onOpen: () => void
   className?: string
 }
@@ -83,9 +84,7 @@ export function ListLinkRow({ label, hint, value, icon, tint, onOpen, className 
     <li className={[styles.row, styles.link, className].filter(Boolean).join(' ')}>
       <button type="button" className={styles.linkButton} onClick={onOpen}>
         {icon && (
-          <span className={styles.tile} style={{ background: tint ?? 'var(--gray)' }} aria-hidden>
-            <Icon name={icon} size={16} strokeWidth={2.2} />
-          </span>
+          <SettingsIcon glyph={icon} tint={tint ?? 'gray'} />
         )}
         <span className={styles.text}>
           <span className={styles.label}>{label}</span>

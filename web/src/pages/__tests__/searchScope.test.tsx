@@ -138,8 +138,8 @@ describe('search scope', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Search' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'TV Shows' })).toBeInTheDocument()
-    expect(await screen.findByRole('region', { name: 'Movies & TV Shows' }, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Shows' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Movies & Shows' }, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByText('Top Result')).toBeInTheDocument()
   })
 

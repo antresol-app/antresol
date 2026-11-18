@@ -36,7 +36,7 @@ const requestsOpenTTL = 60 * time.Second
 const maxAddonCandidates = 40
 
 const (
-	msgRequestsOff      = "Просьбы недоступны"
+	msgRequestsOff      = "Запросы недоступны"
 	msgApproveNotAdmin  = "Одобрить может только администратор"
 	msgRequestAddonDown = "Расширение «%s» не ответило"
 )

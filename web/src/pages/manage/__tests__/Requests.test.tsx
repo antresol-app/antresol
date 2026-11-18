@@ -1,4 +1,4 @@
-// «Управление → Просьбы»: «Отказать» takes a reason; «Одобрить» opens the
+// «Управление → Запросы»: «Отказать» takes a reason; «Одобрить» opens the
 // sheet of the first addon request action that wants the request, and
 // approves at once when there is none; a sheet that throws keeps the
 // request waiting and says so (it never approves with nothing coming).
@@ -53,7 +53,7 @@ async function show() {
   )
 }
 
-describe('«Просьбы» (admin)', () => {
+describe('«Запросы» (admin)', () => {
   beforeEach(() => {
     session.reset()
     resetKidRequests()

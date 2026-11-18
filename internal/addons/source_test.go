@@ -238,3 +238,48 @@ func TestLatest_RefusesFileURL(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+// TestLatestTag: the core's latest release, no manifest needed; cached; a
+// page that is not GitHub's is dropped.
+func TestLatestTag(t *testing.T) {
+	var hits atomic.Int32
+	page := "https://github.com/o/r/releases/tag/v0.9.0"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/repos/o/r/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"tag_name":"v0.9.0","html_url":%q}`, page)
+	}))
+	defer srv.Close()
+	r := &Resolver{API: srv.URL}
+	for range 2 {
+		tag, p, err := r.LatestTag(context.Background(), Repo{"o", "r"})
+		if err != nil || tag != "v0.9.0" || p != page {
+			t.Fatalf("%q %q %v", tag, p, err)
+		}
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("cache miss: %d hits", hits.Load())
+	}
+	page = "https://example.com/x"
+	tag, p, err := (&Resolver{API: srv.URL}).LatestTag(context.Background(), Repo{"o", "r"})
+	if err != nil || tag != "v0.9.0" || p != "" {
+		t.Fatalf("%q %q %v", tag, p, err)
+	}
+	if _, _, err := (&Resolver{API: srv.URL}).LatestTag(context.Background(), Repo{"o", "nope"}); err == nil {
+		t.Fatal("a missing release answered")
+	}
+}
+
+func TestVersionLess(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{{"0.8.0", "v0.9.0", true}, {"v0.9.0", "0.9.0", false}, {"0.10.0", "v0.9.1", false}, {"dev", "v0.9.0", false}, {"0.9.0-rc.1", "v0.9.0", true}} {
+		if got := VersionLess(c.a, c.b); got != c.want {
+			t.Errorf("VersionLess(%q, %q) = %v", c.a, c.b, got)
+		}
+	}
+}

@@ -8,15 +8,18 @@ export interface Section {
   /** The label in the interface language (read at render time). */
   readonly label: string
   icon: IconName
+  /** The solid glyph of the current section in the phone's tab bar (no solid one: the outline in the accent). */
+  activeIcon?: IconName
   /** Show only the icon in the top pill (label is still the accessible name). */
   iconOnly?: boolean
 }
 
 /** Top-level sections, in navigation order (variant B). */
-const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean): Section => ({
+const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean, activeIcon?: IconName): Section => ({
   to,
   labelKey,
   icon,
+  ...(activeIcon ? { activeIcon } : {}),
   ...(iconOnly ? { iconOnly } : {}),
   get label() {
     return t(this.labelKey)
@@ -25,12 +28,12 @@ const section = (to: string, labelKey: Key, icon: IconName, iconOnly?: boolean):
 
 export const SECTIONS: Section[] = [
   section('/search', 'common.search', 'search', true),
-  section('/', 'common.home', 'home'),
-  section('/movies', 'common.movies', 'film'),
-  section('/series', 'common.series', 'tv'),
-  section('/tv', 'common.tv', 'broadcast'),
-  section('/music', 'common.music', 'music'),
-  section('/books', 'common.books', 'book'),
+  section('/', 'common.home', 'home', false, 'homeFill'),
+  section('/movies', 'common.movies', 'film', false, 'filmFill'),
+  section('/series', 'common.series', 'tv', false, 'tvFill'),
+  section('/tv', 'common.tv', 'broadcast', false, 'broadcastFill'),
+  section('/music', 'common.music', 'music', false, 'musicFill'),
+  section('/books', 'common.books', 'book', false, 'bookFill'),
 ]
 
 /** Which section a path belongs to ("/series/42" → "/series"). */

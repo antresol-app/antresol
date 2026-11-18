@@ -22,7 +22,7 @@ function serve(user: User, extra?: (url: string) => Response | undefined) {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      calls.push([url, init?.method, init?.body ? JSON.parse(String(init.body)) : undefined])
+      calls.push([url, init?.method, typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ? '(form)' : undefined])
       const r = extra?.(url)
       if (r) return r
       if (url.endsWith('/api/login')) return json(user)
@@ -62,6 +62,46 @@ afterEach(() => {
   vi.unstubAllGlobals()
   session.reset()
   setLanguagePref('system')
+})
+
+describe('ProfileSettings: the photo', () => {
+  beforeEach(() => {
+    vi.stubGlobal('Image', class { naturalWidth = 400; naturalHeight = 400; onload: (() => void) | null = null; set src(_: string) { queueMicrotask(() => this.onload?.()) } })
+    URL.createObjectURL = vi.fn(() => 'blob:fake')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 280, bottom: 280, width: 280, height: 280, toJSON: () => ({}) })
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ fillRect: vi.fn(), drawImage: vi.fn(), set fillStyle(_: string) {}, set imageSmoothingQuality(_: string) {} })) as never
+    HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback, type?: string) {
+      cb(new Blob(['jpeg'], { type }))
+    }
+  })
+
+  it('an adult sets their own photo here, and it is the session’s at once', async () => {
+    const withPhoto = { ...adult, photo: '/api/profiles/2/photo?v=7' }
+    const calls = await open(adult, (url) => (url.endsWith('/api/me/photo') ? json(withPhoto) : undefined))
+    expect(screen.getByRole('button', { name: 'Загрузить фото…' })).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('photo-input'), { target: { files: [new File(['x'], 'me.jpg', { type: 'image/jpeg' })] } })
+    const done = await screen.findByRole('button', { name: 'Готово' })
+    await waitFor(() => expect(done).toBeEnabled())
+    await userEvent.click(done)
+    await waitFor(() => expect((session.get() as { user?: User }).user?.photo).toBe('/api/profiles/2/photo?v=7'))
+    expect(calls.some(([url, method]) => url.endsWith('/api/me/photo') && method === 'POST')).toBe(true)
+    // and the row now offers to replace or remove it
+    expect(await screen.findByRole('button', { name: 'Убрать фото' })).toBeInTheDocument()
+  })
+
+  it('removing it clears the session’s photo too (the answer carries no «photo» to merge)', async () => {
+    const calls = await open({ ...adult, photo: '/api/profiles/2/photo?v=7' }, (url) => (url.endsWith('/api/me/photo') ? json(adult) : undefined))
+    await userEvent.click(screen.getByRole('button', { name: 'Убрать фото' }))
+    await waitFor(() => expect((session.get() as { user?: User }).user?.photo).toBeUndefined())
+    expect(calls.some(([url, method]) => url.endsWith('/api/me/photo') && method === 'DELETE')).toBe(true)
+    expect(await screen.findByRole('button', { name: 'Загрузить фото…' })).toBeInTheDocument()
+  })
+
+  it('a kid has no photo row: an administrator sets it in «Профили»', async () => {
+    await open(kid)
+    expect(screen.queryByRole('button', { name: /фото/i })).toBeNull()
+  })
 })
 
 describe('ProfileSettings', () => {

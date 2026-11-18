@@ -127,15 +127,6 @@
 .linkButton .hint {
   display: block;
 }
-.tile {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  color: var(--white);
-}
 .value {
   flex: none;
   max-width: 40%;

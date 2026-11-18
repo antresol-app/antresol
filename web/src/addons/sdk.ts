@@ -19,6 +19,7 @@ export type {
   ImportSourcesProps,
   ItemAction,
   ItemPanel,
+  ManageGroup,
   ManageTile,
   MigrateSourceEntry,
   NavBadge,
@@ -38,6 +39,8 @@ export { useWatchWays } from './watchWays'
 export * as ui from './sdkUi'
 export type { PlayerProps, StreamPlayback, UpNext } from './sdkUi'
 export { Icon, type IconName } from '../components/Icon'
+// the glyphs and colours of a «Управление» tile (`manageTiles`)
+export type { SettingsGlyph, SettingsTint } from '../ui/SettingsIcon'
 export { useEvents } from '../api/events'
 export type { EpisodeSource, ItemDetail, KidRequest, PendingState, PlayerInput, ServerEvent, TitleEpisode, TitleInfo } from '../api/types'
 // what ui.Player plays: a part, a play request and its answer, a stream's qualities

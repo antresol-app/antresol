@@ -41,7 +41,7 @@ export default {
   'common.library': 'Library',
   'common.home': 'Home',
   'common.movies': 'Movies',
-  'common.series': 'TV Shows',
+  'common.series': 'Shows',
   'common.music': 'Music',
   'common.books': 'Books',
   'common.audiobooks': 'Audiobooks',

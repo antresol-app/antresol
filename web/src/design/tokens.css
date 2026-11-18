@@ -201,6 +201,8 @@
   --font-text: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', Roboto, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'Segoe UI', Roboto, sans-serif;
   --font-rounded: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+  /* a command to copy («Обновления») */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* Type scale (weight size / line-height family), HIG-derived; the large
      sizes are fluid for TV-size screens */
@@ -234,6 +236,7 @@
   --control-text-box: trim-both cap alphabetic;
   /* a tab's label under its glyph (the phone's tab bar) */
   --t-tab: 600 10px / 1.1 var(--font-text);
+  --t-tab-sm: 600 9px / 1.1 var(--font-text);
   /* an action tile's label under its glyph (title pages on phones) */
   --t-tile: 600 11px / 1.2 var(--font-text);
   /* a toast's message; a player bar's title */
@@ -311,6 +314,8 @@
   --page-top: calc(var(--nav-height) + var(--s-6));
 
   /* ---------- Sheets (ui/Sheet) ---------- */
+  /* the round window a profile's photo is framed in (components/PhotoCropSheet) */
+  --photo-crop-size: 280px;
   --sheet-alert-w: 300px;
   --sheet-wide-w: 440px;
   --sheet-large-w: 880px;
@@ -366,6 +371,14 @@
   /* an action tile on a phone (ActionTiles): its height and glyph */
   --tile-h: 76px;
   --icon-tile: 22px;
+  /* a settings list's coloured tile (ui/SettingsIcon): a row's, a sidebar's,
+     its corner (iOS: about a quarter of the side) and its glyph */
+  --settings-tile: 29px;
+  --settings-tile-sm: 26px;
+  --settings-tile-r: 7px;
+  --settings-tile-r-sm: 6px;
+  --settings-glyph: 19px;
+  --settings-glyph-sm: 17px;
 
   /* ---------- Layers ---------- */
   --z-raised: 1;
@@ -539,28 +552,35 @@ a {
 }
 
 /* Scrollbars everywhere: no rectangular track, just the thumb. Chrome and
-   Firefox read scrollbar-color; Safari the ::-webkit-scrollbar parts. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-  background: transparent;
-}
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-corner {
-  background: transparent;
-  border: 0;
-}
-::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: var(--r-pill);
-  background: var(--scrollbar-thumb) padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover) padding-box;
+   Firefox read scrollbar-color; Safari the ::-webkit-scrollbar parts.
+   A default, so it sits in a layer: a component's own scrollbar rule (a
+   shelf or a chip row that hides it) wins whatever its specificity and
+   whatever order the build links the stylesheets in. Unlayered, `*` ties a
+   zero-specificity rule (:where(.list)) and the later file wins, and in a
+   production build that is this one: the shelves got a scrollbar back. */
+@layer defaults {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+    border: 0;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: var(--r-pill);
+    background: var(--scrollbar-thumb) padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) padding-box;
+  }
 }
 
 .visually-hidden {

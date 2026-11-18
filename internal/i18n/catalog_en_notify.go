@@ -28,9 +28,9 @@ func init() {
 		"Не удалось отправить письмо, попробуйте ещё раз":                  "Couldn’t send the email, try again",
 		"Неверный или устаревший код":                                      "Wrong or expired code",
 		// kids' requests
-		"Просьбы":              "Requests",
-		"Просьбу одобрили: %s": "Request approved: %s",
-		"Уже в медиатеке: %s":  "Now in the library: %s",
+		"Запросы":             "Requests",
+		"Запрос одобрен: %s":  "Request approved: %s",
+		"Уже в медиатеке: %s": "Now in the library: %s",
 		// the pages of the letters' links
 		"Ссылка недействительна": "Invalid Link",
 		"Ссылка устарела или относится к другому адресу. Откройте настройки уведомлений в меню профиля.": "The link has expired or is for another address. Open the notification settings in the profile menu.",

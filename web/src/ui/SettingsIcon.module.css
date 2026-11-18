@@ -1,0 +1,23 @@
+/* The settings tile: a white glyph on one palette colour (ui/SettingsIcon). */
+.tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--settings-tile);
+  height: var(--settings-tile);
+  border-radius: var(--settings-tile-r);
+  color: var(--white);
+}
+.tile svg {
+  width: var(--settings-glyph);
+  height: var(--settings-glyph);
+}
+.sm {
+  width: var(--settings-tile-sm);
+  height: var(--settings-tile-sm);
+  border-radius: var(--settings-tile-r-sm);
+}
+.sm svg {
+  width: var(--settings-glyph-sm);
+  height: var(--settings-glyph-sm);
+}

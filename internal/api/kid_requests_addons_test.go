@@ -186,7 +186,7 @@ func TestRequestsOpen_Cached60s(t *testing.T) {
 	}
 }
 
-// A kid's notification topics include «Просьбы» while an addon opens
+// A kid's notification topics include «Запросы» while an addon opens
 // requests (the notifier's RequestsOpen is the addons' Open).
 func TestNotifyTopics_KidRequestsOpen(t *testing.T) {
 	e := newReqEnv(t, fakeRequests{}, nil)

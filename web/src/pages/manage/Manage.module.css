@@ -64,19 +64,61 @@
   outline: none;
   box-shadow: inset 0 0 0 2px var(--focus-ring);
 }
+/* the row's tile (ui/SettingsIcon): the sidebar's small one; a phone's list
+   takes the full size (below) */
 .navIcon {
-  display: grid;
-  place-items: center;
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--white);
+}
+/* the two parts of the list, each under its own title: «Мои настройки» (the
+   profile's) and «Сервер» (everything the whole server shares), a hairline
+   between them so the split reads at a glance */
+.navPart + .navPart {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--separator);
+}
+.navPartTitle {
+  padding: 0 var(--s-2h) var(--s-2);
+  font: var(--t-headline);
+  color: var(--label);
+}
+/* a row's current choice (phones only, as iOS) */
+.navValue {
+  display: none;
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-2);
+}
+/* the groups: a small heading over each, a gap between them, as System
+   Settings' sidebar and iOS Settings */
+.navGroup + .navGroup,
+.navProfile + .navGroup {
+  margin-top: var(--s-4);
+}
+.navGroupTitle {
+  padding: 0 var(--s-2h) var(--s-1);
+  font: var(--t-footnote-em);
+  color: var(--label-3);
+}
+.profileAvatar {
+  flex: none;
+}
+.profileName {
+  display: block;
+}
+.profileHint {
+  display: block;
+  margin-top: var(--s-0);
+  font: var(--t-footnote);
+  color: var(--label-2);
 }
 .navLabel {
   flex: 1;
 }
-/* «Просьбы»: how many wait for an answer */
+/* «Запросы»: how many wait for an answer */
 .navBadge {
   min-width: 20px;
   height: 20px;
@@ -261,10 +303,44 @@
   .navChevron {
     display: block;
   }
+  .navValue {
+    display: block;
+  }
+  .navPart + .navPart {
+    margin-top: var(--s-8);
+    padding-top: 0;
+    border-top: 0;
+  }
+  .navPartTitle {
+    padding: 0 0 var(--s-3);
+    font: var(--t-title-2);
+    letter-spacing: var(--track-display);
+  }
   .navIcon {
-    width: 30px;
-    height: 30px;
-    border-radius: var(--r-md);
+    width: var(--settings-tile);
+    height: var(--settings-tile);
+    border-radius: var(--settings-tile-r);
+  }
+  .navIcon svg {
+    width: var(--settings-glyph);
+    height: var(--settings-glyph);
+  }
+  /* iOS: the account on its own group, the picture larger, two lines */
+  .profileItem {
+    min-height: var(--s-16);
+    gap: var(--s-3h);
+  }
+  .profileName {
+    font: var(--t-title-3);
+  }
+  .navGroup + .navGroup,
+  .navProfile + .navGroup {
+    margin-top: var(--s-6);
+  }
+  .navGroupTitle {
+    padding: 0 var(--s-4) var(--s-1h);
+    font: var(--t-group);
+    color: var(--label-2);
   }
   .title {
     font: var(--t-large-title);

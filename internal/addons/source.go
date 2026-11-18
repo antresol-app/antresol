@@ -67,12 +67,18 @@ type Resolver struct {
 
 	mu    sync.Mutex
 	cache map[Repo]cached
+	tags  map[Repo]cachedTag
 	now   func() time.Time
 }
 
 type cached struct {
 	rel Release
 	at  time.Time
+}
+
+type cachedTag struct {
+	tag, page string
+	at        time.Time
 }
 
 func (r *Resolver) client() *http.Client {
@@ -151,6 +157,49 @@ func (r *Resolver) Latest(ctx context.Context, repo Repo) (Release, error) {
 	r.cache[repo] = cached{rel, r.clock()}
 	r.mu.Unlock()
 	return rel, nil
+}
+
+// LatestTag reads only the tag and the page of repo's latest release (the
+// core's own repository has no addon manifest), cached like Latest: the
+// anonymous GitHub API allows 60 requests an hour.
+func (r *Resolver) LatestTag(ctx context.Context, repo Repo) (tag, page string, err error) {
+	r.mu.Lock()
+	if c, ok := r.tags[repo]; ok && r.clock().Sub(c.at) < cacheTTL {
+		r.mu.Unlock()
+		return c.tag, c.page, nil
+	}
+	r.mu.Unlock()
+	u := fmt.Sprintf("%s/repos/%s/%s/releases/latest", r.api(), url.PathEscape(repo.Owner), url.PathEscape(repo.Name))
+	body, err := r.get(ctx, u, 4<<20, "application/vnd.github+json")
+	if err != nil {
+		log.Printf("addons: latest release of %s/%s: %v", repo.Owner, repo.Name, err)
+		return "", "", errRelease
+	}
+	var gh struct {
+		Tag  string `json:"tag_name"`
+		Page string `json:"html_url"`
+	}
+	if json.Unmarshal(body, &gh) != nil || gh.Tag == "" {
+		return "", "", errRelease
+	}
+	// the page is shown as a link: only GitHub's own
+	if p, err := url.Parse(gh.Page); err != nil || p.Scheme != "https" || p.Host != "github.com" {
+		gh.Page = ""
+	}
+	r.mu.Lock()
+	if r.tags == nil {
+		r.tags = map[Repo]cachedTag{}
+	}
+	r.tags[repo] = cachedTag{gh.Tag, gh.Page, r.clock()}
+	r.mu.Unlock()
+	return gh.Tag, gh.Page, nil
+}
+
+// VersionLess reports a < b for two release versions, a leading "v" aside
+// ("v0.8.0" is 0.8.0); false when either is not semver (a "dev" build).
+func VersionLess(a, b string) bool {
+	a, b = strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v")
+	return semverRe.MatchString(a) && semverRe.MatchString(b) && semverLess(a, b)
 }
 
 func (r *Resolver) api() string {

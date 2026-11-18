@@ -9,23 +9,49 @@ const paths = {
       <path d="m15.5 15.5 5 5" />
     </>
   ),
-  home: <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" />,
+  home: <path d="M3.6 10.6 12 3.8l8.4 6.8V19a1.2 1.2 0 0 1-1.2 1.2h-4.4v-5.7H9.2v5.7H4.8A1.2 1.2 0 0 1 3.6 19z" />,
+  // The tab bar's selected glyphs (SF Symbols' .fill): the same shape and
+  // optical size as the outline beside each, solid, with what the outline
+  // draws as lines left as gaps. Not drawn with a stroke wider than 1.6, so
+  // the glyph does not grow past its outline's size.
+  homeFill: <path d="M3.6 10.6 12 3.8l8.4 6.8V19a1.2 1.2 0 0 1-1.2 1.2h-4.4v-5.7H9.2v5.7H4.8A1.2 1.2 0 0 1 3.6 19z" fill="currentColor" strokeWidth={1.4} />,
   film: (
     <>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
-      <path d="M7.5 4.5v15M16.5 4.5v15M3.5 9.5h4M3.5 14.5h4M16.5 9.5h4M16.5 14.5h4" />
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.6" />
+      <path d="M7.9 4.5v15M16.1 4.5v15M3.5 9.5h4.4M3.5 14.5h4.4M16.1 9.5h4.4M16.1 14.5h4.4" />
     </>
+  ),
+  // a strip of film: a frame between two sprocketed edges, a hairline gap each
+  filmFill: (
+    <g stroke="none" fill="currentColor" fillRule="evenodd">
+      <path d="M3.5 7.1a2.6 2.6 0 0 1 2.6-2.6h1.8v15H6.1a2.6 2.6 0 0 1-2.6-2.6zM4.9 7.2h1.6v1.6H4.9zM4.9 11.2h1.6v1.6H4.9zM4.9 15.2h1.6v1.6H4.9z" />
+      <path d="M8.9 4.5h6.2v15H8.9z" />
+      <path d="M20.5 7.1a2.6 2.6 0 0 0-2.6-2.6h-1.8v15h1.8a2.6 2.6 0 0 0 2.6-2.6zM19.1 7.2h-1.6v1.6h1.6zM19.1 11.2h-1.6v1.6h1.6zM19.1 15.2h-1.6v1.6h1.6z" />
+    </g>
   ),
   tv: (
     <>
-      <rect x="3" y="5" width="18" height="12" rx="2.5" />
-      <path d="M8.5 20.5h7" />
+      <rect x="3" y="4.5" width="18" height="12.5" rx="2.6" />
+      <path d="M8.2 20.4h7.6" />
     </>
   ),
+  tvFill: (
+    <>
+      <rect x="3.5" y="5" width="17" height="11.5" rx="2.2" fill="currentColor" strokeWidth={1.8} />
+      <path d="M8.2 20.4h7.6" />
+    </>
+  ),
+  // live television: the waves a broadcast goes out in, round a dot
   broadcast: (
     <>
-      <rect x="3" y="8.5" width="18" height="12" rx="2.5" />
-      <path d="m8 3.5 4 5 4-5" />
+      <circle cx="12" cy="12" r="1.9" fill="currentColor" stroke="none" />
+      <path d="M15.08 8.06a5 5 0 0 1 0 7.88M8.92 8.06a5 5 0 0 0 0 7.88M17.54 4.91a9 9 0 0 1 0 14.18M6.46 4.91a9 9 0 0 0 0 14.18" />
+    </>
+  ),
+  broadcastFill: (
+    <>
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
+      <path d="M15.08 8.06a5 5 0 0 1 0 7.88M8.92 8.06a5 5 0 0 0 0 7.88M17.54 4.91a9 9 0 0 1 0 14.18M6.46 4.91a9 9 0 0 0 0 14.18" strokeWidth={2.5} />
     </>
   ),
   music: (
@@ -35,11 +61,25 @@ const paths = {
       <circle cx="17.5" cy="16" r="2.5" />
     </>
   ),
+  musicFill: (
+    <>
+      <path d="M9 18V6.5l11-2.5V16" />
+      <path d="M9 6.5 20 4v3.8l-11 2.5z" fill="currentColor" strokeWidth={1} />
+      <circle cx="6.5" cy="18" r="2.5" fill="currentColor" strokeWidth={1} />
+      <circle cx="17.5" cy="16" r="2.5" fill="currentColor" strokeWidth={1} />
+    </>
+  ),
   book: (
     <>
-      <path d="M12 6.5C10.3 5.2 8 4.5 4 4.5v13c4 0 6.3.7 8 2 1.7-1.3 4-2 8-2v-13c-4 0-6.3.7-8 2z" />
-      <path d="M12 6.5v13" />
+      <path d="M12 6.8C10.3 5.4 8 4.7 3.8 4.7v12.8c4.2 0 6.5.7 8.2 2.1 1.7-1.4 4-2.1 8.2-2.1V4.7c-4.2 0-6.5.7-8.2 2.1z" />
+      <path d="M12 6.8v12.8" />
     </>
+  ),
+  bookFill: (
+    <g fill="currentColor" strokeWidth={1.2}>
+      <path d="M11.1 7.2C9.6 6 7.5 5.3 4.2 5.3v11.8c3.3 0 5.3.6 6.9 1.8z" />
+      <path d="M12.9 7.2c1.5-1.2 3.6-1.9 6.9-1.9v11.8c-3.3 0-5.3.6-6.9 1.8z" />
+    </g>
   ),
   play: <path d="M7 4.8v14.4a.8.8 0 0 0 1.2.7l11.6-7.2a.8.8 0 0 0 0-1.4L8.2 4.1A.8.8 0 0 0 7 4.8z" fill="currentColor" stroke="none" />,
   pause: (

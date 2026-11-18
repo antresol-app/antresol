@@ -17,6 +17,8 @@ func init() {
 		// auth, profiles
 		"Первую настройку можно сделать только из домашней сети": "The first setup can only be done from the home network",
 		"Профиль не найден":                                           "Profile not found",
+		"Фото больше 8 МБ":                                            "The photo is larger than 8 MB",
+		"Загрузите картинку PNG, JPEG или WebP":                       "Upload a PNG, JPEG or WebP image",
 		"Такое имя уже занято":                                        "This name is already taken",
 		"Это может изменить только администратор":                     "Only an administrator can change this",
 		"Нужен хотя бы один администратор":                            "At least one administrator is required",

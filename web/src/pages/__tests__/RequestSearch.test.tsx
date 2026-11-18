@@ -108,10 +108,10 @@ describe('RequestSearch', () => {
 
   it('errors show the server text', async () => {
     stub((url) => {
-      if (url.includes('/api/requests/search')) return json({ error: 'Просьбы здесь не принимаются' }, 403)
+      if (url.includes('/api/requests/search')) return json({ error: 'Запросы здесь не принимаются' }, 403)
     })
     await session.login(3)
     show('Дюна')
-    expect(await screen.findByText('Просьбы здесь не принимаются')).toBeInTheDocument()
+    expect(await screen.findByText('Запросы здесь не принимаются')).toBeInTheDocument()
   })
 })

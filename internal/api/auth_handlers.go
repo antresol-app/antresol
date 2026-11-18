@@ -44,7 +44,7 @@ type me struct {
 	Remote bool `json:"remote"`
 	// CanRequest: a kid profile may ask for titles («Попросить»).
 	CanRequest bool `json:"canRequest"`
-	// Requests: an admin has «Просьбы» to answer.
+	// Requests: an admin has «Запросы» to answer.
 	Requests bool `json:"requests"`
 	// LibraryOnly: the server serves its library only. The web hides the
 	// screens of the sources build's other features.
@@ -269,14 +269,16 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			ID          int64  `json:"id"`
 			Name        string `json:"name"`
 			Avatar      string `json:"avatar"`
+			Photo       string `json:"photo,omitempty"`
 			HasPassword bool   `json:"hasPassword"`
 		}
 		out := make([]pub, 0, len(list))
 		for _, u := range list {
-			out = append(out, pub{u.ID, u.Name, u.Avatar, u.HasPassword})
+			out = append(out, pub{u.ID, u.Name, u.Avatar, u.Photo, u.HasPassword})
 		}
 		writeJSON(w, 200, out)
 	})
+	r.Get("/api/profiles/{id}/photo", a.servePhoto)
 	r.Post("/api/login", a.login)
 	r.Post("/api/auth/token", a.deviceToken)
 	r.Post("/api/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +300,8 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			writeJSON(w, 200, a.meOf(r, u))
 		})
 		r.Patch("/api/me", a.patchMe)
+		r.Post("/api/me/photo", a.uploadMyPhoto)
+		r.Delete("/api/me/photo", a.deleteMyPhoto)
 		// «Общая медиатека / Моя медиатека»: the choice the profile's web
 		// pages ask the library with (?scope=); kept on the server so it
 		// follows the profile to every browser
@@ -420,6 +424,8 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 				log.Printf("auth: admin %d reset the app password of profile %d", userOf(r).ID, id)
 				w.WriteHeader(http.StatusNoContent)
 			})
+			r.Post("/api/users/{id}/photo", a.uploadPhoto)
+			r.Delete("/api/users/{id}/photo", a.deletePhoto)
 			r.Delete("/api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
 				id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 				if err != nil {

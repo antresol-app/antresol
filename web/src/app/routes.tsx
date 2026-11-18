@@ -92,7 +92,7 @@ const FilesRoute = () => (
 // «Управление» (admins): one chunk with the library's sections.
 // A section inside «Управление» (same chunk) draws at once once «Управление» is in (lazyChunk).
 const manage = chunk(() => import('../pages/manage'))
-const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import' | 'Addons') => {
+const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import' | 'Addons' | 'Updates') => {
   const C = lazyFrom(manage, (m) => m[name])
   return (
     <ChunkBoundary>
@@ -115,7 +115,7 @@ function AddonRoute() {
     </ChunkBoundary>
   )
 }
-// «Мои просьбы» (kids) load on first visit too.
+// «Мои запросы» (kids) load on first visit too.
 const MyRequests = lazy(() => import('../pages/MyRequests'))
 // a profile's own «Настройки» (every profile)
 const ProfileSettings = lazy(() => import('../pages/ProfileSettings'))
@@ -175,7 +175,7 @@ function NoKids() {
   return user?.isKid ? <Navigate to="/" replace /> : <Outlet />
 }
 
-/** «Мои просьбы» is for the profiles that have «Попросить» or «Просьбы» on this server. */
+/** «Мои запросы» is for the profiles that have «Попросить» or «Запросы» on this server. */
 function RequestsOnly() {
   const { user } = useSession()
   return user?.canRequest || user?.requests ? <Outlet /> : <Navigate to="/" replace />
@@ -299,6 +299,7 @@ export const routes: RouteObject[] = [
                   { path: 'migrate', element: section('Migrate') },
                   { path: 'import', element: section('Import') },
                   { path: 'addons', element: section('Addons') },
+                  { path: 'updates', element: section('Updates') },
                 ],
               },
             ],

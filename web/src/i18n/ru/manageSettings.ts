@@ -123,6 +123,7 @@ export default {
   // «ИИ-помощник» (AISettings.tsx)
   'settings.group.ai': 'ИИ-помощник',
   'settings.summary.offAI': 'Выключен',
+  'settings.summary.cpu': 'Процессор',
   'settings.group.transcoding': 'Перекодирование',
   'settings.tc.mode': 'Ускорение',
   'settings.tc.mode.hint': 'Чем перекодировать видео, которое устройство не воспроизводит как есть. «Авто» пробует видеокарты сервера и берёт первую, что справилась.',

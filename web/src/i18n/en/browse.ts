@@ -32,7 +32,7 @@ export default {
   'search.scope.all': 'All',
   'search.scope.audiobooksShort': 'Audio',
   'search.moreResults': 'More Results',
-  'search.section.library': 'Movies & TV Shows',
+  'search.section.library': 'Movies & Shows',
   'search.recent': 'Recent Searches',
   'search.browse': 'Browse',
   'search.hint': 'Search for movies, music and books in your library.',

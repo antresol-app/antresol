@@ -31,7 +31,7 @@ func init() {
 		"Загрузки": "Downloads",
 		// kids' requests through addons (requests.*, /requests/approve)
 		"Расширение «%s» не ответило":         "The extension «%s» didn’t respond",
-		"Просьбы недоступны":                  "Requests are unavailable",
+		"Запросы недоступны":                  "Requests are unavailable",
 		"Одобрить может только администратор": "Only an admin can approve",
 		"Путь вне файлов сервера: %s":         "The path is outside the server’s files: %s",
 		"Расширение, которое держит файлы, должно отвечать на хуки files.plan и files.pause":              "An extension that holds files must answer the files.plan and files.pause hooks",

@@ -181,11 +181,13 @@ func (s *Sessions) Devices(ctx context.Context, userID int64) ([]Session, error)
 type FamilyDevice struct {
 	Session
 	UserName, UserAvatar string
+	// UserPhoto: the profile's photo (User.Photo; "": none).
+	UserPhoto string
 }
 
 // AllDevices: every profile's apps and browsers, the most recent first.
 func (s *Sessions) AllDevices(ctx context.Context) ([]FamilyDevice, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT s.rowid, s.user_id, s.kind, s.device_id, s.device_name, s.device_model, s.app_version, s.created_at, s.last_seen, u.name, u.avatar
+	rows, err := s.db.QueryContext(ctx, `SELECT s.rowid, s.user_id, s.kind, s.device_id, s.device_name, s.device_model, s.app_version, s.created_at, s.last_seen, u.name, u.avatar, u.photo_version
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.kind IN (?,?) ORDER BY s.last_seen DESC, s.rowid DESC`, KindNative, KindWeb)
 	if err != nil {
 		return nil, err
@@ -194,13 +196,15 @@ func (s *Sessions) AllDevices(ctx context.Context) ([]FamilyDevice, error) {
 	out := []FamilyDevice{}
 	for rows.Next() {
 		var d FamilyDevice
+		var photo int64
 		ss, err := scanSession(scanFn(func(dest ...any) error {
-			return rows.Scan(append(dest, &d.UserName, &d.UserAvatar)...)
+			return rows.Scan(append(dest, &d.UserName, &d.UserAvatar, &photo)...)
 		}))
 		if err != nil {
 			return nil, err
 		}
 		d.Session = ss
+		d.UserPhoto = PhotoURL(ss.UserID, photo)
 		out = append(out, d)
 	}
 	return out, rows.Err()

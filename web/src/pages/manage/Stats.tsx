@@ -115,7 +115,7 @@ export function Stats() {
                 <ul className={m.group}>
                   {data.watchedByUser.map((u) => (
                     <li key={u.user} className={`${m.row} ${styles.userRow}`}>
-                      <Avatar name={u.user} avatar={u.avatar} size={30} />
+                      <Avatar name={u.user} avatar={u.avatar} photo={u.photo} size={30} />
                       <span className={styles.userName}>{u.user}</span>
                       <span className={styles.barTrack} aria-hidden>
                         <span className={styles.bar} style={{ width: `${(u.hours30d / maxHours) * 100}%` }} />

@@ -3,6 +3,7 @@
 // slots re-render when an addon registers.
 import { useMemo, useSyncExternalStore, type ReactElement } from 'react'
 import type { IconName } from '../components/Icon'
+import type { SettingsGlyph, SettingsTint } from '../ui/SettingsIcon'
 import type { CardKind, ImportJob, ImportService, ItemDetail, KidRequest, PlayerInput, TitleInfo, User } from '../api/types'
 import type { EpisodeCtx, EpisodePlay } from '../components/episodes/episodeTypes'
 import type { SearchScope } from '../app/sections'
@@ -32,7 +33,22 @@ export type AddonRouteProps = { params: Readonly<Record<string, string>> }
 export type AddonRoute = { path: string; element: (props: AddonRouteProps) => ReactElement; title: string; fullWindow?: true } & AdminOnly
 /** The title a watch way's `useAvailable` is asked about (`itemId` 0: not in the library). */
 export type WayTitle = { kind: 'movie' | 'series'; tmdbId: number; itemId: number }
-export type ManageTile = { label: string; icon: IconName; to: string } & AdminOnly
+/**
+ * The groups of «Управление» a tile can stand in (Manage.tsx draws them in
+ * this order): `family` (profiles, requests), `library` (what is in it, how it
+ * comes in), `playback`, `downloads` (downloads and sources: where titles come
+ * from), `server` (the server itself). A tile without one goes under
+ * «Расширения», after the addons' groups.
+ */
+export type ManageGroup = 'family' | 'library' | 'playback' | 'downloads' | 'server'
+/**
+ * A row of «Управление»: `icon` is a glyph of the settings tiles
+ * (ui/SettingsIcon, `SettingsGlyph`), drawn white on `tint`, a palette
+ * colour (`SettingsTint`; gray without one), in `group`. A line icon of the
+ * app (`IconName`, the contract before the tile glyphs) still draws: as the
+ * tile glyph of the same meaning, else the puzzle piece.
+ */
+export type ManageTile = { label: string; icon: SettingsGlyph | IconName; tint?: SettingsTint; group?: ManageGroup; to: string } & AdminOnly
 export type ItemAction = AdminOnly & {
   label: string
   icon: IconName

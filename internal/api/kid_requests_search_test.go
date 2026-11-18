@@ -138,7 +138,7 @@ func TestRequestSearch_Closed(t *testing.T) {
 	e := newReqEnv(t, fakeRequests{}, nil)
 	kid := e.kid("")
 	w := e.do("GET", "/api/requests/search?kind=video&q=x", "", kid)
-	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Просьбы здесь не принимаются") {
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Запросы здесь не принимаются") {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }

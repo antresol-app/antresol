@@ -68,6 +68,7 @@ type statsCounts struct {
 type userHours struct {
 	User     string  `json:"user"`
 	Avatar   string  `json:"avatar"`
+	Photo    string  `json:"photo,omitempty"` // auth.User.Photo
 	Hours30d float64 `json:"hours30d"`
 }
 
@@ -155,21 +156,22 @@ func (s *stats) overview(w http.ResponseWriter, r *http.Request) {
 	// the time played (watch_time, per UTC day), not the positions: a seek
 	// to the end of a film is not three hours watched
 	month := s.now().Add(-30 * 24 * time.Hour).UTC().Format(time.DateOnly)
-	rows, err := s.db.QueryContext(ctx, `SELECT u.name, u.avatar, COALESCE(SUM(w.ms), 0)
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.name, u.avatar, u.photo_version, COALESCE(SUM(w.ms), 0) AS played
 		FROM watch_time w JOIN users u ON u.id = w.user_id
-		WHERE w.day >= ? GROUP BY u.id ORDER BY 3 DESC`, month)
+		WHERE w.day >= ? GROUP BY u.id ORDER BY played DESC`, month)
 	if err != nil {
 		internalErr(w, r, "stats users", err)
 		return
 	}
 	for rows.Next() {
 		var h userHours
-		var ms int64
-		if err := rows.Scan(&h.User, &h.Avatar, &ms); err != nil {
+		var ms, id, photo int64
+		if err := rows.Scan(&id, &h.User, &h.Avatar, &photo, &ms); err != nil {
 			rows.Close()
 			internalErr(w, r, "stats users", err)
 			return
 		}
+		h.Photo = auth.PhotoURL(id, photo)
 		h.Hours30d = float64(ms) / float64(time.Hour/time.Millisecond)
 		out.WatchedByUser = append(out.WatchedByUser, h)
 	}

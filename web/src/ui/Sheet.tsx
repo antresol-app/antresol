@@ -17,7 +17,7 @@ import { MaterialContext } from './Button'
 import { useT } from '../i18n'
 import { useIsCompact, useReducedMotion } from '../state/useMediaQuery'
 import { IconButton } from './IconButton'
-import { useKeyboardInset } from './keyboard'
+import { takesText, touchPrimary, useKeyboardInset } from './keyboard'
 import { menuTrigger, recentMenuTrigger } from './Menu'
 import { useScrollLock } from './scrollLock'
 import styles from './Sheet.module.css'
@@ -148,12 +148,22 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
     const lost = !restore || restore === document.body
     const back = menu ? (menuTrigger(menu) ?? menu.parentElement?.querySelector<HTMLElement>('[aria-haspopup="menu"]')) : lost ? (recentMenuTrigger() ?? restore) : restore
     const el = ref.current
-    const first =
-      el?.querySelector<HTMLElement>('[data-autofocus]') ??
-      el?.querySelector<HTMLElement>('input') ??
+    // A field the caller marks (data-autofocus, or its own autoFocus: «Новый
+    // плейлист») is where the person is about to type. The first field of a
+    // form is only a guess: with a mouse and a keyboard typing can start
+    // there, but a finger would get the on-screen keyboard (and iOS's AutoFill
+    // bar) over a form that is mostly toggles and buttons, before it chose to
+    // type. There focus goes to the sheet itself, so a screen reader still
+    // lands in the dialog and Tab from it still reaches the first control.
+    const marked = el?.querySelector<HTMLElement>('[data-autofocus]')
+    // (an input the person cannot reach — a file picker behind a button — is no field)
+    const guess =
+      el?.querySelector<HTMLElement>('input:not([type="hidden"], [type="file"], [hidden], :disabled)') ??
       el?.querySelector<HTMLElement>('[data-primary="true"]') ??
       el?.querySelector('button')
-    first?.focus()
+    if (marked) marked.focus()
+    else if (guess && touchPrimary() && takesText(guess)) el?.focus({ preventScroll: true })
+    else guess?.focus()
     // only when focus would be lost: a control that went away meanwhile, or a
     // page that already moved focus elsewhere, is left alone
     return () => {
@@ -233,6 +243,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
         role={role}
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className={`${styles.sheet} ${styles[kind]} ${close ? styles.closable : ''} glass-strong`}
         data-placement={bottom ? 'bottom' : 'center'}
         data-closing={closing || undefined}

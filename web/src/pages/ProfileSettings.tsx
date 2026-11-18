@@ -1,10 +1,10 @@
 // «Настройки» of the signed-in profile (every profile, from the profile
-// menu): the language, «Звук и субтитры», mail, the app password, devices,
+// menu; an admin's are also the first row of «Управление», drawn in its frame): the photo (an adult's), the language, «Звук и субтитры», mail, the app password, devices,
 // what is saved on this device and «О сервере». One short list: a row opens
 // its sheet. What applies to the whole server is the admin's, in
 // «Управление → Настройки сервера». A kid's sound and mail are the admin's
 // (Профили), as «Скрывать прогресс» is.
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { updateMe } from '../api/client'
 import { APP_NAME } from '../brand'
@@ -15,6 +15,7 @@ import { AppPasswordSheet } from '../components/AppPasswordSheet'
 import { DevicesSheet } from '../components/DevicesSheet'
 import { NotifySheet } from '../components/NotifySheet'
 import { PlaybackPrefsSheet } from '../components/PlaybackPrefsSheet'
+import { ProfilePhotoRow } from '../components/ProfilePhotoRow'
 import { getLanguagePref, useLang, useT, type Key, type LangPref } from '../i18n'
 import { offlineSupported } from '../offline/store'
 import { showNotice } from '../state/notice'
@@ -24,6 +25,7 @@ import { chooseInterfaceLanguage } from '../state/uiLanguage'
 import { GroupedSection, ListLinkRow, ListRow } from '../ui/List'
 import { Select } from '../ui/Select'
 import { Toggle } from '../ui/Toggle'
+import { ManageFrame } from './manage/Manage'
 import m from './manage/Manage.module.css'
 import styles from './ProfileSettings.module.css'
 
@@ -70,14 +72,26 @@ export function ProfileSettings() {
       .catch(() => setHideFailed(true))
   }
 
+  // an admin's own settings are the first row of «Управление»: drawn in its
+  // frame, beside the server's sections (on a phone with the back link to
+  // its list); everyone else's are a page of their own
+  const Frame = user.isAdmin ? AdminFrame : PlainFrame
   return (
-    <div className={m.page}>
+    <Frame>
       <section aria-labelledby="prefs-title" className={styles.column}>
         <header className={m.header}>
           <h1 id="prefs-title" className={m.title}>
-            {t('common.settings')}
+            {user.isAdmin ? t('manage.profile') : t('common.settings')}
           </h1>
         </header>
+
+        {/* a kid's photo is the admin's (Профили), as «Скрывать прогресс» is */}
+        {adult && (
+          <GroupedSection>
+            {/* the answer without a photo has no «photo» at all: say so, or a merge keeps the old one */}
+            <ProfilePhotoRow user={user} onUser={(u) => session.updateUser({ ...u, photo: u.photo })} />
+          </GroupedSection>
+        )}
 
         <GroupedSection>
           <ListRow label={t('common.uiLanguage')}>
@@ -100,7 +114,7 @@ export function ProfileSettings() {
 
         {adult && (
           <GroupedSection title={t('prefs.watching')}>
-            <ListLinkRow icon="captions" tint="var(--blue)" label={t('prefs.playback')} onOpen={() => setOpen('playback')} />
+            <ListLinkRow icon="speaker" tint="pink" label={t('prefs.playback')} onOpen={() => setOpen('playback')} />
             <ListRow label={t('comp.profile.hideProgress')} hint={t('prefs.hideProgress.hint')} status={hideFailed ? t('comp.profile.hideProgressFailed') : undefined}>
               <Toggle label={t('comp.profile.hideProgress')} checked={!!user.hideProgress} onChange={toggleHidden} />
             </ListRow>
@@ -109,7 +123,7 @@ export function ProfileSettings() {
 
         {adult && (
           <GroupedSection title={t('prefs.notifications')}>
-            <ListLinkRow icon="send" tint="var(--red)" label={t('prefs.notify')} onOpen={() => setOpen('notify')} />
+            <ListLinkRow icon="bell" tint="red" label={t('prefs.notify')} onOpen={() => setOpen('notify')} />
           </GroupedSection>
         )}
 
@@ -117,13 +131,13 @@ export function ProfileSettings() {
         {adult && <MyShowsAccount />}
 
         <GroupedSection title={t('prefs.apps')}>
-          <ListLinkRow icon="lock" tint="var(--gray)" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />
-          <ListLinkRow icon="pip" tint="var(--indigo)" label={t('prefs.devices')} onOpen={() => setOpen('devices')} />
-          {offlineSupported() && <ListLinkRow icon="download" tint="var(--green)" label={t('comp.profile.onDevice')} onOpen={() => navigate('/offline')} />}
+          <ListLinkRow icon="key" tint="gray" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />
+          <ListLinkRow icon="devices" tint="blue" label={t('prefs.devices')} onOpen={() => setOpen('devices')} />
+          {offlineSupported() && <ListLinkRow icon="phoneDown" tint="green" label={t('comp.profile.onDevice')} onOpen={() => navigate('/offline')} />}
         </GroupedSection>
 
         <GroupedSection>
-          <ListLinkRow icon="info" tint="var(--gray)" label={t('prefs.about')} onOpen={() => setOpen('about')} />
+          <ListLinkRow icon="info" tint="gray" label={t('prefs.about')} onOpen={() => setOpen('about')} />
         </GroupedSection>
       </section>
 
@@ -132,8 +146,11 @@ export function ProfileSettings() {
       {open === 'appPassword' && <AppPasswordSheet userName={user.name} passwordless={!user.hasPassword} onClose={close} />}
       {open === 'devices' && <DevicesSheet onClose={close} />}
       {open === 'about' && <AboutSheet onClose={close} />}
-    </div>
+    </Frame>
   )
 }
+
+const AdminFrame = ({ children }: { children: ReactNode }) => <ManageFrame nested={false}>{children}</ManageFrame>
+const PlainFrame = ({ children }: { children: ReactNode }) => <div className={m.page}>{children}</div>
 
 export default ProfileSettings

@@ -1,6 +1,6 @@
-// Russian source strings (requests group: «Попросить» of kid profiles and the admin's «Просьбы»).
+// Russian source strings (requests group: «Попросить» of kid profiles and the admin's «Запросы»).
 export default {
-  'manage.section.requests': 'Просьбы',
+  'manage.section.requests': 'Запросы',
   'requests.ask': 'Попросить',
   'requests.askFor': 'Попросить «{title}»',
   'requests.askFailed': 'Не получилось попросить. Попробуй ещё раз.',
@@ -9,15 +9,15 @@ export default {
   'requests.inLibrary': 'Уже в медиатеке',
   'requests.declined': 'Родитель отказал',
   'requests.reasonLine': '«{reason}»',
-  'requests.mine': 'Мои просьбы',
-  'comp.notify.requests': 'Мои просьбы одобрены / в медиатеке',
+  'requests.mine': 'Мои запросы',
+  'comp.notify.requests': 'Мои запросы одобрены / в медиатеке',
   'requests.hidden': 'Недоступно для этого профиля',
   'requests.mineEmpty': 'Здесь будет то, что ты попросишь. Найди фильм, сериал, музыку или книгу в «Поиске» и нажми «Попросить».',
-  'requests.title': 'Просьбы',
-  'requests.lead': 'Что дети просят добавить в медиатеку. «Одобрить» подтверждает просьбу, а когда название появится в медиатеке, ребёнок увидит это сам.',
+  'requests.title': 'Запросы',
+  'requests.lead': 'Что дети просят добавить в медиатеку. «Одобрить» подтверждает запрос, а когда название появится в медиатеке, ребёнок увидит это сам.',
   'requests.waiting': 'Ждут ответа',
   'requests.decided': 'Отвеченные за 30 дней',
-  'requests.empty': 'Новых просьб нет.',
+  'requests.empty': 'Новых запросов нет.',
   'requests.from': '{name} · {when}',
   'requests.approve': 'Одобрить',
   'requests.approveFor': 'Одобрить «{title}»',
@@ -29,7 +29,7 @@ export default {
   'requests.declineFailed': 'Не получилось отказать. Попробуйте ещё раз.',
   'requests.admin.approved': 'Одобрено',
   'requests.admin.declined': 'Отказано',
-  'requests.badge': { one: '{count} просьба ждёт ответа', few: '{count} просьбы ждут ответа', many: '{count} просьб ждут ответа' },
+  'requests.badge': { one: '{count} запрос ждёт ответа', few: '{count} запроса ждут ответа', many: '{count} запросов ждут ответа' },
   'requests.approveFailed': 'Не получилось одобрить. Попробуйте ещё раз.',
   'requests.sheetFailed': 'Расширение не смогло открыть выбор — попробуйте ещё раз',
 

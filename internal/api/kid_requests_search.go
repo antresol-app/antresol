@@ -35,7 +35,7 @@ type kidCandidate struct {
 func (k *kidRequests) search(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if k.open == nil || !k.open(ctx) {
-		writeErr(w, r, http.StatusForbidden, "Просьбы здесь не принимаются")
+		writeErr(w, r, http.StatusForbidden, "Запросы здесь не принимаются")
 		return
 	}
 	u := userOf(r)

@@ -1,0 +1,23 @@
+/* «Обновления»: the command to copy and the word for a newer release. */
+.command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  width: 100%;
+}
+.code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--fill-3);
+  font: var(--t-footnote);
+  font-family: var(--font-mono);
+  color: var(--label);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.newer {
+  color: var(--accent);
+}

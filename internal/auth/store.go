@@ -51,6 +51,11 @@ type User struct {
 	// KindleEmail: the profile's Send to Kindle address, set by an admin.
 	// Only the profile and admins see it (never /api/profiles).
 	KindleEmail string `json:"kindleEmail"`
+	// Photo: the address of the profile's photo (PhotoURL; absent: none, the
+	// letter on the coloured circle Avatar names stands for it).
+	Photo string `json:"photo,omitempty"`
+	// PhotoVersion: users.photo_version, 0 without a photo.
+	PhotoVersion int64 `json:"-"`
 	// UID: the profile's stable key (users.uid), for addons only: an id
 	// may be given to a new profile once this one is deleted, a uid never.
 	UID string `json:"-"`
@@ -87,7 +92,7 @@ type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-const cols = `id, name, avatar, password_hash, is_admin, is_kid, max_rating, hide_progress, library_scope, kindle_email, COALESCE(uid, '')`
+const cols = `id, name, avatar, password_hash, is_admin, is_kid, max_rating, hide_progress, library_scope, kindle_email, COALESCE(uid, ''), photo_version`
 
 type scanner interface{ Scan(...any) error }
 
@@ -95,13 +100,14 @@ func scan(s scanner) (User, error) {
 	var u User
 	var admin, kid, hide int
 	var mr sql.NullString
-	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID); err != nil {
+	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID, &u.PhotoVersion); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
 		return User{}, err
 	}
 	u.HasPassword = u.hash.Valid && u.hash.String != ""
+	u.Photo = PhotoURL(u.ID, u.PhotoVersion)
 	u.IsAdmin, u.IsKid, u.HideProgress = admin != 0, kid != 0, hide != 0
 	if mr.Valid {
 		u.MaxRating = &mr.String
@@ -433,6 +439,10 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	// ON DELETE CASCADE covers it too; explicit so it never depends on the
 	// foreign_keys pragma.
 	if err := revokeAppTokens(ctx, tx, id); err != nil {
+		return err
+	}
+	// the photo too: the id may go to a new profile, which must not get this face
+	if _, err := tx.ExecContext(ctx, `DELETE FROM user_photos WHERE user_id=?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

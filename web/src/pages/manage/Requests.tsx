@@ -1,4 +1,4 @@
-// «Управление → Просьбы» (admin): what kid profiles asked for («Попросить»),
+// «Управление → Запросы» (admin): what kid profiles asked for («Попросить»),
 // the waiting ones first. «Одобрить» opens the sheet of the first addon
 // request action that wants the request (requestActions: a release picker,
 // whose download approves the request on the server); with none it

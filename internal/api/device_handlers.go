@@ -114,10 +114,11 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 			UserID     int64  `json:"userId"`
 			UserName   string `json:"userName"`
 			UserAvatar string `json:"userAvatar"`
+			UserPhoto  string `json:"userPhoto,omitempty"`
 		}
-		of := func(s auth.Session, name, avatar string) item {
+		of := func(s auth.Session, name, avatar, photo string) item {
 			return item{s.ID, s.Kind, s.Device.Name, s.Device.Model, s.Device.Version,
-				s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == cur.ID, s.UserID, name, avatar}
+				s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == cur.ID, s.UserID, name, avatar, photo}
 		}
 		var out []item
 		if u.IsAdmin {
@@ -128,7 +129,7 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 			}
 			out = make([]item, 0, len(list))
 			for _, d := range list {
-				out = append(out, of(d.Session, d.UserName, d.UserAvatar))
+				out = append(out, of(d.Session, d.UserName, d.UserAvatar, d.UserPhoto))
 			}
 		} else {
 			list, err := sessions.Devices(r.Context(), u.ID)
@@ -138,7 +139,7 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 			}
 			out = make([]item, 0, len(list))
 			for _, s := range list {
-				out = append(out, of(s, u.Name, u.Avatar))
+				out = append(out, of(s, u.Name, u.Avatar, u.Photo))
 			}
 		}
 		w.Header().Set("Cache-Control", "no-store")

@@ -498,6 +498,12 @@ func run() error {
 		Accounts:     accts.routes,
 		Voclean:      vocWorker,
 	}
+	// «Обновления»: the latest public release of the server (its own
+	// resolver: works with addons off too)
+	if repo, err := addons.ParseRepoURL("https://" + version.Repo); err == nil {
+		releases := &addons.Resolver{HTTP: &http.Client{Timeout: 15 * time.Second}}
+		deps.CoreRelease = func(ctx context.Context) (string, string, error) { return releases.LatestTag(ctx, repo) }
+	}
 	// external IPTV playlists and guides in «ТВ» (added by an admin);
 	// their secrets sealed with the server's key
 	seal, err := iptv.NewSealer(ctx, database)
@@ -654,7 +660,7 @@ func run() error {
 		chans.SetExtras(x)
 		deps.AddonRelay = relay
 	}
-	notifier.RequestsOpen = deps.RequestsOpen // «Просьбы» in the letters wherever requests are open
+	notifier.RequestsOpen = deps.RequestsOpen // «Запросы» in the letters wherever requests are open
 	webAPI, player := api.NewRouterWithPlayer(deps)
 	subsonicAPI := &subsonic.Server{Users: users, Library: repo, Music: musicStore, Network: network, Throttle: throttle,
 		Version: version.Version, ImageDir: filepath.Join(cfg.DataDir, "images"),

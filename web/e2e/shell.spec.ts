@@ -28,7 +28,7 @@ test('first run → profile picker → Главная with the scanned library',
 
   // Switch profile → «Кто смотрит?».
   await page.getByRole('button', { name: `Профиль: ${ADMIN.name}` }).click()
-  await expect(page.getByRole('menuitem', { name: 'Управление' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Настройки' })).toBeVisible()
   await page.getByRole('menuitem', { name: 'Сменить профиль' }).click()
   await expect(page).toHaveURL(/\/profiles$/)
   await expect(page.getByRole('heading', { name: 'Кто смотрит?' })).toBeVisible()

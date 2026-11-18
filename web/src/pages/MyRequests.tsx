@@ -1,4 +1,4 @@
-// «Мои просьбы» (a kid profile, from the profile menu): what this profile
+// «Мои запросы» (a kid profile, from the profile menu): what this profile
 // asked for and what the parents answered — «Ждёт ответа», «Одобрено —
 // скоро появится», «Уже в медиатеке» (a link to it), «Родитель отказал» with
 // the reason. Updates live (request.changed, library.updated).

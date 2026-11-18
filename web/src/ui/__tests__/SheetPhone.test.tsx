@@ -108,3 +108,64 @@ describe('Sheet on a phone', () => {
     }
   })
 })
+
+describe('Sheet focus on open', () => {
+  afterEach(() => setViewport(1440))
+  const form = (extra = {}) => (
+    <Sheet
+      title="Изменить профиль"
+      role="dialog"
+      wide
+      onCancel={() => {}}
+      actions={[
+        { label: 'Отмена', kind: 'cancel', run: () => {} },
+        { label: 'Сохранить', kind: 'primary', run: () => {} },
+      ]}
+    >
+      <input aria-label="Имя" {...extra} />
+      <input aria-label="Пароль" />
+    </Sheet>
+  )
+
+  it('with a mouse the first field takes focus, so typing can start', () => {
+    render(form())
+    expect(screen.getByLabelText('Имя')).toHaveFocus()
+  })
+
+  it('on a touch screen the form opens without a field focused (no keyboard, no AutoFill bar); the dialog has focus', () => {
+    setViewport(390, true)
+    render(form())
+    expect(screen.getByLabelText('Имя')).not.toHaveFocus()
+    expect(document.activeElement).toBe(document.querySelector('[role="dialog"]'))
+  })
+
+  it('a field the caller marks still takes focus on a touch screen (the person is about to type there)', () => {
+    setViewport(390, true)
+    render(form({ 'data-autofocus': true }))
+    expect(screen.getByLabelText('Имя')).toHaveFocus()
+  })
+
+  it('a touch screen still lands on a button when the sheet has no field', () => {
+    setViewport(390, true)
+    render(confirm)
+    expect(screen.getByRole('button', { name: 'Отменить' })).toHaveFocus()
+  })
+
+  it('a file picker behind a button is not the first field: the real one takes focus', () => {
+    render(
+      <Sheet title="Профиль" role="dialog" wide onCancel={() => {}} actions={[{ label: 'Сохранить', kind: 'primary', run: () => {} }]}>
+        <input type="file" hidden aria-label="Фото" />
+        <input aria-label="Имя" />
+      </Sheet>,
+    )
+    expect(screen.getByLabelText('Имя')).toHaveFocus()
+  })
+
+  it('Tab from the dialog reaches the first control (a keyboard on an iPad)', async () => {
+    setViewport(390, true)
+    const { default: userEvent } = await import('@testing-library/user-event')
+    render(form())
+    await userEvent.setup().tab()
+    expect(screen.getByLabelText('Имя')).toHaveFocus()
+  })
+})

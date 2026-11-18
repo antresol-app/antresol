@@ -1,6 +1,6 @@
-// «Настройки сервера» (admin): what applies to the whole server. The page
-// opens on a short list of its groups (System Settings style); each group is
-// its own screen, /manage/settings/<group>, one row per setting. A profile's own settings (the language,
+// «Настройки сервера» (admin): what applies to the whole server, a screen per
+// group, /manage/settings/<group>, one row per setting; the groups are rows
+// of «Управление»'s list (Manage.tsx), each in its place there. A profile's own settings (the language,
 // sound, mail) are in pages/ProfileSettings.tsx. Changes save
 // by themselves (like iOS); «Качество вне дома» applies at once on the
 // server. The core build has only the library's settings (docs/build-tags.md).
@@ -19,10 +19,10 @@ import { MultiSelect } from '../../ui/Select'
 import { StudioList } from '../../components/StudioList'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
-import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
-import type { IconName } from '../../components/Icon'
-import { Navigate, NavLink, useNavigate, useParams } from 'react-router'
-import { t, useT } from '../../i18n'
+import { GroupedSection, ListRow } from '../../ui/List'
+import { Navigate, useParams } from 'react-router'
+import { useIsCompact } from '../../state/useMediaQuery'
+import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
 import { TranscodingSection } from './TranscodingSettings'
@@ -41,49 +41,25 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
   return { languages, subtitleLangs: subs.length ? subs : [languages[0]!] }
 }
 
-/** The screens of «Настройки сервера», in their order on its first screen. */
+/** The screens of «Настройки сервера», in their order in «Управление» (Manage.tsx: MANAGE_SECTIONS). */
 export type SettingsGroup = 'library' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'kindle' | 'ai'
 
 interface GroupInfo {
   id: SettingsGroup
   label: 'settings.group.library' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai'
-  icon: IconName
-  tint: string
 }
 
 /** The groups of the page. */
 export function settingsGroups(): GroupInfo[] {
   return [
-    { id: 'library', label: 'settings.group.library', icon: 'film', tint: 'var(--blue)' },
-    { id: 'watching', label: 'settings.watching', icon: 'play', tint: 'var(--indigo)' },
-    { id: 'transcoding', label: 'settings.group.transcoding', icon: 'speed', tint: 'var(--red)' },
-    { id: 'music', label: 'common.music', icon: 'music', tint: 'var(--pink)' },
-    { id: 'subtitles', label: 'common.subtitles', icon: 'captions', tint: 'var(--teal)' },
-    { id: 'kindle', label: 'settings.mailGroup', icon: 'send', tint: 'var(--orange)' },
-    { id: 'ai', label: 'settings.group.ai', icon: 'sparkles', tint: 'var(--purple)' },
+    { id: 'library', label: 'settings.group.library' },
+    { id: 'watching', label: 'settings.watching' },
+    { id: 'transcoding', label: 'settings.group.transcoding' },
+    { id: 'music', label: 'common.music' },
+    { id: 'subtitles', label: 'common.subtitles' },
+    { id: 'kindle', label: 'settings.mailGroup' },
+    { id: 'ai', label: 'settings.group.ai' },
   ]
-}
-
-/** The current choice of a group, dimmed on its row of the first screen. */
-function summary(id: SettingsGroup, v: Values): string {
-  switch (id) {
-    case 'library':
-      return (v.languages?.length ? v.languages : DEFAULT_LANGS).map((c) => langLabel(c)).join(', ')
-    case 'watching':
-      return v.remoteQuality === 'original' ? t('common.original') : `${v.remoteQuality ?? '1080'}p`
-    case 'music':
-      return t(`settings.remoteMusic.${v.remoteMusic ?? 'high'}`)
-    case 'subtitles':
-      return v.subtitlesAvailable && v.autoSubtitles ? t('settings.summary.auto') : ''
-    case 'kindle':
-      return v.mail?.host && v.mail.from ? t('settings.summary.on') : t('settings.summary.off')
-    case 'transcoding':
-      return v.transcodingName === 'software' ? t('settings.tc.status.cpu') : (v.transcodingName ?? '')
-    case 'ai':
-      return v.ai?.url ? v.ai.model : v.aiFromEnv ? v.aiFromEnv : t('settings.summary.offAI')
-    default:
-      return ''
-  }
 }
 
 /** «Место для превью» choices, GB. */
@@ -97,8 +73,8 @@ export function Settings() {
   const latest = useRef<Values | null>(null)
   const pending = useRef(false)
   const t = useT()
-  const navigate = useNavigate()
   const group = useParams().group as SettingsGroup | undefined
+  const compact = useIsCompact()
 
   useEffect(() => {
     document.title = `${t('settings.serverTitle')} — ${APP_NAME}`
@@ -175,33 +151,14 @@ export function Settings() {
   const groups = settingsGroups()
   const current = groups.find((g) => g.id === group)
   if (!current) {
-    // the list of groups, or a group this build does not have
-    if (group) return <Navigate to="/manage/settings" replace />
-    return (
-      <section aria-labelledby="settings-title" className={styles.page}>
-        <header className={m.header}>
-          <h2 id="settings-title" className={m.title}>
-            {t('settings.serverTitle')}
-          </h2>
-        </header>
-        <GroupedSection>
-          {groups.map((g) => (
-            <ListLinkRow key={g.id} icon={g.icon} tint={g.tint} label={t(g.label)} value={summary(g.id, values)} onOpen={() => navigate(`/manage/settings/${g.id}`)} />
-          ))}
-        </GroupedSection>
-        <GroupedSection>
-          <ListLinkRow icon="tv" tint="var(--indigo)" label={t('tv.manage')} onOpen={() => navigate('/tv/manage')} />
-        </GroupedSection>
-      </section>
-    )
+    // the groups are rows of «Управление» (Manage.tsx), not a list of their own:
+    // the old address of the list, or a group this build does not have, lands
+    // on the first group (on a phone: on «Управление»'s list)
+    return <Navigate to={compact ? '/manage' : `/manage/settings/${groups[0]!.id}`} replace />
   }
   const at = (id: SettingsGroup) => group === id
   return (
     <section aria-labelledby="settings-title" className={styles.page}>
-      <NavLink to="/manage/settings" className={m.back}>
-        <Icon name="chevronLeft" size={18} strokeWidth={2.4} />
-        {t('settings.serverTitle')}
-      </NavLink>
       <header className={m.header}>
         <div>
           <h2 id="settings-title" className={m.title}>

@@ -8,6 +8,7 @@ import type {
   Trailer,
   TrailerPlay,
   About,
+  CoreUpdate,
   AccountsState,
   AddonInfo,
   AddonPreview,
@@ -226,6 +227,8 @@ export function imageSrcSet(ref: string | null | undefined, min = 240, max = 960
 
 // --- System & auth ---
 export const getAbout = () => request<About>('GET', '/api/about')
+/** «Обновления» (admin): the core's version and its latest release. */
+export const getCoreUpdate = (signal?: AbortSignal) => request<CoreUpdate>('GET', '/api/updates', undefined, signal)
 export const getSetup = () => request<SetupState>('GET', '/api/setup')
 export const setup = (name: string, password: string) => request<User>('POST', '/api/setup', { name, password })
 export const getProfiles = () => request<Profile[]>('GET', '/api/profiles')
@@ -411,6 +414,26 @@ export interface UserInput {
 export const createUser = (u: UserInput) => request<User>('POST', '/api/users', u)
 export const updateUser = (id: number, patch: Partial<UserInput>) => request<User>('PATCH', `/api/users/${id}`, patch)
 export const deleteUser = (id: number) => request<void>('DELETE', `/api/users/${id}`)
+/**
+ * Sets a profile's photo (an admin's): the square the person framed, as JPEG
+ * (components/photoCrop.ts); the server also takes a whole PNG, JPEG or WebP
+ * up to 8 MB and cuts its middle square. Answers the profile, with its new
+ * photo address.
+ */
+export function setUserPhoto(id: number, photo: Blob) {
+  const body = new FormData()
+  body.append('file', photo, 'photo.jpg')
+  return request<User>('POST', `/api/users/${id}/photo`, body)
+}
+/** The signed-in profile's own photo (an adult's; a kid's is the admin's): the profile as /api/me answers it. */
+export function setMyPhoto(photo: Blob) {
+  const body = new FormData()
+  body.append('file', photo, 'photo.jpg')
+  return request<User>('POST', '/api/me/photo', body)
+}
+export const removeMyPhoto = () => request<User>('DELETE', '/api/me/photo')
+/** Back to the letter on the coloured circle: the profile as it is now. */
+export const removeUserPhoto = (id: number) => request<User>('DELETE', `/api/users/${id}/photo`)
 /** Ends the profile's app password (Subsonic/OPDS apps must get a new one). */
 export const resetAppPassword = (id: number) => request<void>('DELETE', `/api/users/${id}/app-password`)
 

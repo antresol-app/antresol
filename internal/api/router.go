@@ -200,7 +200,7 @@ type Deps struct {
 	ScreenTime *screentime.Service
 
 	// Requests is where kids' requests get their titles (TMDB, covers, the
-	// library): «Попросить» and the admin's «Просьбы» (/api/requests*); nil
+	// library): «Попросить» and the admin's «Запросы» (/api/requests*); nil
 	// disables them. Needs DB.
 	Requests RequestCatalog
 	// RequestsOpen says whether kids' requests are offered on this server
@@ -246,6 +246,11 @@ type Deps struct {
 	// Accounts are the external-accounts routes (/api/accounts…); zero:
 	// none.
 	Accounts AccountRoutes
+
+	// CoreRelease answers the latest public release of the server (its tag
+	// and page) for «Обновления» (/api/updates); nil: the page says the
+	// check is not available.
+	CoreRelease func(ctx context.Context) (tag, page string, err error)
 
 	// Addons are the installed addons (usually *addons.Manager): the admin
 	// routes /api/addons*, the proxy /api/addons/{id}/x/…, the web bundles
@@ -451,6 +456,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			r.Use(guard.Require)
 			mountStats(r, newStats(deps, time.Now))
 			mountSettings(r, newSettingsAPI(deps))
+			mountUpdates(r, deps.CoreRelease)
 			mountTranscoding(r, deps)
 			mountVoclean(r, deps)
 		})

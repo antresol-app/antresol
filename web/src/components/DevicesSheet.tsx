@@ -39,6 +39,7 @@ interface Group {
   userId: number
   userName: string
   userAvatar: string
+  userPhoto?: string
   items: Device[]
 }
 
@@ -48,7 +49,7 @@ function groups(items: Device[]): Group[] {
   for (const d of items) {
     const id = d.userId ?? 0
     let g = by.get(id)
-    if (!g) by.set(id, (g = { userId: id, userName: d.userName ?? '', userAvatar: d.userAvatar ?? '', items: [] }))
+    if (!g) by.set(id, (g = { userId: id, userName: d.userName ?? '', userAvatar: d.userAvatar ?? '', userPhoto: d.userPhoto, items: [] }))
     g.items.push(d)
   }
   const mine = items.find((d) => d.current)?.userId ?? 0
@@ -115,7 +116,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
                 id={`devices-${g.userId}`}
                 title={
                   <span className={styles.profile}>
-                    <Avatar name={g.userName} avatar={g.userAvatar} size={22} />
+                    <Avatar name={g.userName} avatar={g.userAvatar} photo={g.userPhoto} size={22} />
                     {g.userName}
                   </span>
                 }

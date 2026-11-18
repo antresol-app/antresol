@@ -23,7 +23,7 @@ import (
 )
 
 // kidRequests is «Попросить»: a kid profile, which gets nothing from outside
-// the library, asks for a title; an admin («Управление → Просьбы») approves
+// the library, asks for a title; an admin («Управление → Запросы») approves
 // it (or an addon does, after the admin's download: approveFor) or
 // declines it. «Уже в медиатеке» is not stored: the
 // library is asked whenever a request is shown. Table kid_requests (0052).
@@ -91,6 +91,7 @@ type requestUser struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Avatar string `json:"avatar"`
+	Photo  string `json:"photo,omitempty"` // auth.User.Photo
 }
 
 // requestState is the kidRequest field of a kid's search result and title
@@ -189,7 +190,7 @@ func ratingBlock(ctx context.Context, u auth.User, rating string) string {
 // catalog result the client showed.
 func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 	if k.open == nil || !k.open(r.Context()) {
-		writeErr(w, r, http.StatusForbidden, "Просьбы здесь не принимаются")
+		writeErr(w, r, http.StatusForbidden, "Запросы здесь не принимаются")
 		return
 	}
 	u := userOf(r)
@@ -264,7 +265,7 @@ func (k *kidRequests) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if waiting >= maxPendingPerKid {
-		writeErr(w, r, http.StatusTooManyRequests, "Уже много просьб ждут ответа. Подожди, пока родители ответят")
+		writeErr(w, r, http.StatusTooManyRequests, "Уже много запросов ждут ответа. Подожди, пока родители ответят")
 		return
 	}
 	// an album or book with a catalog id is named by an addon (after the
@@ -409,7 +410,7 @@ func (k *kidRequests) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /api/requests/count (admin) → {pending}: the requests waiting for an
-// answer (the badge of «Просьбы»), not counting titles the library has.
+// answer (the badge of «Запросы»), not counting titles the library has.
 func (k *kidRequests) count(w http.ResponseWriter, r *http.Request) {
 	got, err := k.query(r.Context(), `r.status=?`, statusPending)
 	if err != nil {
@@ -442,7 +443,7 @@ func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
 			internalErr(w, r, "decline", qerr)
 			return
 		}
-		writeErr(w, r, http.StatusNotFound, "Просьба не найдена")
+		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
 		return
 	}
 	res, err := k.db.ExecContext(ctx, `UPDATE kid_requests SET status=?, reason=?, decided_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), decided_by=?
@@ -452,7 +453,7 @@ func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		writeErr(w, r, http.StatusConflict, "На эту просьбу уже ответили")
+		writeErr(w, r, http.StatusConflict, "На этот запрос уже ответили")
 		return
 	}
 	if got, err = k.query(ctx, `r.id=?`, id); err != nil || len(got) != 1 {
@@ -470,7 +471,7 @@ func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
 func (k *kidRequests) approve(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		writeErr(w, r, http.StatusNotFound, "Просьба не найдена")
+		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
 		return
 	}
 	ctx := r.Context()
@@ -480,7 +481,7 @@ func (k *kidRequests) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(got) != 1 {
-		writeErr(w, r, http.StatusNotFound, "Просьба не найдена")
+		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
 		return
 	}
 	approved, err := k.approveWhere(ctx, userOf(r).ID, `id=?`, id)
@@ -489,7 +490,7 @@ func (k *kidRequests) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(approved) == 0 {
-		writeErr(w, r, http.StatusConflict, "На эту просьбу уже ответили")
+		writeErr(w, r, http.StatusConflict, "На этот запрос уже ответили")
 		return
 	}
 	if got, err = k.query(ctx, `r.id=?`, id); err != nil || len(got) != 1 {
@@ -535,7 +536,7 @@ func (k *kidRequests) publish(id, userID int64) {
 // query reads requests (with who asked) matching where, newest first.
 func (k *kidRequests) query(ctx context.Context, where string, args ...any) ([]KidRequest, error) {
 	rows, err := k.db.QueryContext(ctx, `SELECT r.id, r.title_key, r.kind, r.tmdb_id, r.ext_id, r.title, r.subtitle, r.year, r.poster,
-		r.aliases_json, r.rating, r.status, r.reason, r.created_at, COALESCE(r.decided_at, ''), u.id, u.name, u.avatar
+		r.aliases_json, r.rating, r.status, r.reason, r.created_at, COALESCE(r.decided_at, ''), u.id, u.name, u.avatar, u.photo_version
 		FROM kid_requests r JOIN users u ON u.id = r.user_id WHERE `+where+` ORDER BY r.created_at DESC, r.id DESC LIMIT 500`, args...)
 	if err != nil {
 		return nil, err
@@ -546,10 +547,12 @@ func (k *kidRequests) query(ctx context.Context, where string, args ...any) ([]K
 		var x KidRequest
 		var aliases string
 		u := &requestUser{}
+		var photo int64
 		if err := rows.Scan(&x.ID, &x.Key, &x.Kind, &x.TMDBID, &x.ExtID, &x.Title, &x.Subtitle, &x.Year, &x.Poster,
-			&aliases, &x.Rating, &x.Status, &x.Reason, &x.CreatedAt, &x.DecidedAt, &u.ID, &u.Name, &u.Avatar); err != nil {
+			&aliases, &x.Rating, &x.Status, &x.Reason, &x.CreatedAt, &x.DecidedAt, &u.ID, &u.Name, &u.Avatar, &photo); err != nil {
 			return nil, err
 		}
+		u.Photo = auth.PhotoURL(u.ID, photo)
 		_ = json.Unmarshal([]byte(aliases), &x.Aliases)
 		x.Aliases = nonNil(x.Aliases)
 		x.User = u

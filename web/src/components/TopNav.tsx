@@ -81,7 +81,7 @@ export function TopNav({ user, onSwitchProfile }: TopNavProps) {
       {compact && (
         <TabBar
           label={t('comp.sections')}
-          items={SECTIONS.filter((s) => !s.iconOnly).map((s) => ({ to: s.to, label: s.label, icon: s.icon, end: s.to === '/' }))}
+          items={SECTIONS.filter((s) => !s.iconOnly).map((s) => ({ to: s.to, label: s.label, icon: s.icon, activeIcon: s.activeIcon, end: s.to === '/' }))}
           accessory={search && { to: searchHref(pathname), label: search.label, icon: search.icon }}
         />
       )}

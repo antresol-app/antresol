@@ -18,6 +18,27 @@ export function keyboardInset(windowHeight: number, vv: ViewportLike | null | un
   return covered > 80 ? Math.round(covered) : 0
 }
 
+/** Inputs that take no text: focusing one raises no keyboard. */
+const NO_TEXT = ['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color', 'image', 'hidden']
+
+/** Would focusing `el` open a text keyboard (a text field, a text area, an editable element)? */
+export function takesText(el: Element | null | undefined): boolean {
+  if (!el) return false
+  if (el instanceof HTMLInputElement) return !NO_TEXT.includes(el.type)
+  return el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)
+}
+
+/**
+ * The primary pointer is a finger: this device raises its on-screen keyboard
+ * (and, on iOS, the AutoFill bar) for any text field that takes focus. A
+ * script that focuses a field there is not a convenience (as with a mouse and
+ * a hardware keyboard, where typing can start at once) but a keyboard that
+ * covers half the screen before the person chose to type.
+ */
+export function touchPrimary(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
+}
+
 let users = 0
 let detach: (() => void) | null = null
 

@@ -4,9 +4,10 @@
 // (with a confirmation).
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useState } from 'react'
-import { createUser, deleteUser, getScreenLimited, getUsers, resetAppPassword, updateUser, type UserInput, errorText } from '../../api/client'
+import { createUser, deleteUser, getScreenLimited, getUsers, removeUserPhoto, resetAppPassword, setUserPhoto, updateUser, type UserInput, errorText } from '../../api/client'
 import type { ScreenLimited, User } from '../../api/types'
 import { Avatar } from '../../components/Avatar'
+import { AVATAR_COLORS, AvatarEditor, type PhotoChange } from '../../components/AvatarEditor'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
 import { Icon } from '../../components/Icon'
@@ -24,7 +25,6 @@ import { t, useT } from '../../i18n'
 import m from './Manage.module.css'
 import styles from './Profiles.module.css'
 
-const AVATARS = Array.from({ length: 8 }, (_, i) => `grad-${i + 1}`)
 const RATINGS = ['0+', '6+', '12+', '16+', '18+']
 
 function role(u: User) {
@@ -94,7 +94,7 @@ export function Profiles() {
         <ul className={m.group}>
           {list.map((u) => (
             <li key={u.id} className={m.row}>
-              <Avatar name={u.name} avatar={u.avatar} size={40} />
+              <Avatar name={u.name} avatar={u.avatar} photo={u.photo} size={40} />
               <div className={m.rowText}>
                 <p className={m.rowLabel}>
                   {u.name}
@@ -191,7 +191,10 @@ export function Profiles() {
 function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: () => void; onSaved: (u: User) => void }) {
   const t = useT()
   const [name, setName] = useState(user?.name ?? '')
-  const [avatar, setAvatar] = useState(user?.avatar ?? AVATARS[Math.floor(Math.random() * AVATARS.length)]!)
+  // the photo's staged change, applied with Save; `created` is the profile once it exists, so a retry after a failed photo updates it instead of creating it twice
+  const [photoChange, setPhotoChange] = useState<PhotoChange>(null)
+  const [created, setCreated] = useState<User | null>(null)
+  const [avatar, setAvatar] = useState(user?.avatar ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!)
   const [kid, setKid] = useState(user?.isKid ?? false)
   const [admin, setAdmin] = useState(user?.isAdmin ?? false)
   const [rating, setRating] = useState(user?.maxRating ?? '')
@@ -217,7 +220,11 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
     if (password) body.password = password
     else if (dropPassword) body.password = ''
     try {
-      const u = user ? await updateUser(user.id, body) : await createUser(body as UserInput)
+      const target = user ?? created
+      let u = target ? await updateUser(target.id, body) : await createUser(body as UserInput)
+      if (!target) setCreated(u)
+      if (photoChange?.kind === 'set') u = await setUserPhoto(u.id, photoChange.blob)
+      else if (photoChange?.kind === 'remove' && u.photo) u = await removeUserPhoto(u.id)
       onSaved(u)
     } catch (e) {
       setError(errorText(e, t('profiles.saveFailed')))
@@ -239,23 +246,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
       ]}
     >
       <div className={styles.form}>
-        <div className={styles.preview}>
-          <Avatar name={name || '?'} avatar={avatar} size={64} />
-        </div>
-        <div className={styles.avatars} role="radiogroup" aria-label={t('profiles.avatarColor')}>
-          {AVATARS.map((a) => (
-            <button
-              key={a}
-              type="button"
-              role="radio"
-              aria-checked={a === avatar}
-              aria-label={t('profiles.color', { n: a.slice(5) })}
-              className={styles.swatch}
-              style={{ background: `var(--${a})` }}
-              onClick={() => setAvatar(a)}
-            />
-          ))}
-        </div>
+        <AvatarEditor name={name} avatar={avatar} onAvatar={setAvatar} photo={user?.photo} change={photoChange} onChange={setPhotoChange} />
         <TextField label={t('common.name')} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
         <div className={styles.switchRow}>
           <div>
