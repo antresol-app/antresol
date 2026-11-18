@@ -12,6 +12,7 @@ func init() {
 		"Слишком длинное название модели":                      "The model’s name is too long",
 		"Неверный ключ":                                        "Invalid key",
 		"Адрес модели — http:// или https://":                  "The model’s address is http:// or https://",
+		"Для Anthropic нужен ключ API":                         "Anthropic needs an API key",
 		"Опишите, что показывать":                              "Describe what to show",
 		"Слишком длинное название":                             "The name is too long",
 		"Номер канала — от 1 до 99999":                         "The channel number is 1 to 99999",

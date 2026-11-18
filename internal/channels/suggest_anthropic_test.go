@@ -33,6 +33,22 @@ func anthropicServer(t *testing.T, reply string, got *map[string]any) *httptest.
 	return srv
 }
 
+// toServer sends everything the client asks for to srv (the address stays
+// the Anthropic API's, the way the settings store it).
+type toServer struct{ srv *httptest.Server }
+
+func (t toServer) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.URL.Scheme, r.URL.Host = "http", t.srv.Listener.Addr().String()
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// anthropicLLM: the model of the settings «https://api.anthropic.com» with
+// key, answered by srv.
+func anthropicLLM(srv *httptest.Server, key string) *LLM {
+	return &LLM{URL: AnthropicURL, Model: "claude-opus-5-5", Key: key, Client: &http.Client{Transport: toServer{srv}}}
+}
+
 func TestIsAnthropicURL(t *testing.T) {
 	for url, want := range map[string]bool{
 		"https://api.anthropic.com":    true,
@@ -60,7 +76,7 @@ func TestAnthropicSuggestMapping(t *testing.T) {
 		"usage": map[string]int{"input_tokens": 10, "output_tokens": 20},
 	})
 	srv := anthropicServer(t, string(reply), &body)
-	l := &LLM{URL: srv.URL, Model: "claude-opus-5-5", Key: "sk-test", Anthropic: true}
+	l := anthropicLLM(srv, "sk-test")
 	s, err := l.suggest(context.Background(), "комедии девяностых", Vocabulary{Genres: map[string]bool{"комедия": true}})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +116,7 @@ func TestAnthropicRefusal(t *testing.T) {
 		"stop_details":{"type":"refusal","category":null,"explanation":"policy"},
 		"content":[],"usage":{"input_tokens":1,"output_tokens":0}}`
 	srv := anthropicServer(t, reply, nil)
-	l := &LLM{URL: srv.URL, Model: "claude-opus-5-5", Key: "sk-test", Anthropic: true}
+	l := anthropicLLM(srv, "sk-test")
 	_, err := l.Ping(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Fatalf("err %v", err)
@@ -109,7 +125,7 @@ func TestAnthropicRefusal(t *testing.T) {
 
 func TestAnthropicPingAndError(t *testing.T) {
 	srv := anthropicServer(t, `{"id":"m","type":"message","role":"assistant","model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`, nil)
-	l := &LLM{URL: srv.URL, Model: "claude-opus-5-5", Key: "sk-test", Anthropic: true}
+	l := anthropicLLM(srv, "sk-test")
 	if out, err := l.Ping(context.Background()); err != nil || out != "ok" {
 		t.Fatalf("ping %q %v", out, err)
 	}
@@ -119,8 +135,77 @@ func TestAnthropicPingAndError(t *testing.T) {
 		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`)
 	}))
 	defer bad.Close()
-	l = &LLM{URL: bad.URL, Model: "claude-opus-5-5", Key: "sk-test", Anthropic: true}
+	l = anthropicLLM(bad, "sk-test")
 	if _, err := l.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "401") || err.Error() != "llm: 401 invalid x-api-key" {
 		t.Fatalf("err %v", err)
+	}
+}
+
+const okReply = `{"id":"m","type":"message","role":"assistant","model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`
+
+// People copy /v1 out of habit (the OpenAI-compatible addresses end in it):
+// the SDK adds /v1/messages itself, so only the host is used.
+func TestAnthropicAddressWithPathStillCallsV1Messages(t *testing.T) {
+	srv := anthropicServer(t, okReply, nil) // fails on any path but /v1/messages
+	for _, u := range []string{"https://api.anthropic.com", "https://api.anthropic.com/", "https://api.anthropic.com/v1", "https://api.anthropic.com/v1/",
+		"https://api.anthropic.com/v1/messages", "HTTPS://API.ANTHROPIC.COM/v1?x=1"} {
+		l := anthropicLLM(srv, "sk-test")
+		l.URL = u
+		if out, err := l.Ping(context.Background()); err != nil || out != "ok" {
+			t.Errorf("%s: %q %v", u, out, err)
+		}
+	}
+}
+
+// The model of the settings is the one the admin set: nothing from the
+// server's environment or the user's profile directory joins the request.
+func TestAnthropicIgnoresEnvironment(t *testing.T) {
+	var hdr http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hdr = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, okReply)
+	}))
+	defer srv.Close()
+	t.Setenv("ANTHROPIC_API_KEY", "env-key")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "env-token")
+	t.Setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("ANTHROPIC_CUSTOM_HEADERS", "X-From-Env: 1")
+	t.Setenv("ANTHROPIC_PROFILE", "nope")
+	t.Setenv("HOME", t.TempDir())
+	l := anthropicLLM(srv, "sk-test")
+	if out, err := l.Ping(context.Background()); err != nil || out != "ok" {
+		t.Fatalf("ping %q %v", out, err)
+	}
+	if hdr.Get("X-From-Env") != "" {
+		t.Errorf("a header of the environment was sent: %v", hdr)
+	}
+	if a := hdr.Get("Authorization"); a != "Bearer sk-test" && hdr.Get("X-Api-Key") != "sk-test" {
+		t.Errorf("credential %q", a)
+	}
+	for k, v := range hdr {
+		for _, x := range v {
+			if strings.Contains(x, "env-key") || strings.Contains(x, "env-token") {
+				t.Errorf("the environment's credential was sent in %s", k)
+			}
+		}
+	}
+}
+
+// Without a key the request is not sent at all: the SDK would otherwise
+// run it on whatever credential the host has.
+func TestAnthropicRefusesAnEmptyKey(t *testing.T) {
+	asked := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { asked++ }))
+	defer srv.Close()
+	t.Setenv("ANTHROPIC_API_KEY", "env-key")
+	for _, key := range []string{"", "  "} {
+		_, err := anthropicLLM(srv, key).Ping(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "key") {
+			t.Errorf("key %q: %v", key, err)
+		}
+	}
+	if asked != 0 {
+		t.Fatalf("%d requests went out without a key", asked)
 	}
 }

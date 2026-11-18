@@ -71,6 +71,7 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 		users: deps.Users, screen: deps.ScreenTime, dataDir: deps.DataDir, cards: cards}
 	if deps.ExtIPTV != nil && deps.DB != nil {
 		a.relay = newExtRelay(deps.DB)
+		a.relay.sourceLAN = a.sourceOnLAN
 	}
 	return a
 }

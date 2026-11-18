@@ -42,6 +42,9 @@ func (a AISettings) validate() string {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return "Адрес модели — http:// или https://"
 	}
+	if channels.IsAnthropicURL(a.URL) && a.Key == "" {
+		return "Для Anthropic нужен ключ API"
+	}
 	return ""
 }
 

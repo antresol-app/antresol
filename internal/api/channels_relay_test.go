@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -120,21 +119,28 @@ func newExtRelayEnv(t *testing.T) (*tvEnv, *relayUpstream, map[string]channelJSO
 	for i := 1; i <= 4; i++ {
 		pl += "#EXTINF:-1,TS" + strconv.Itoa(i) + "\n#EXTHTTP:{\"User-Agent\":\"" + relayUA + "\",\"Referer\":\"" + relayReferer + "\"}\n" + up.srv.URL + "/ts/" + strconv.Itoa(i) + "\n"
 	}
+	return e, up, e.addRelaySource(pl, e.p.srv.URL)
+}
+
+// addRelaySource: a source of playlist pl fetched from base (the address
+// the admin types) and its channels by name.
+func (e *tvEnv) addRelaySource(pl, base string) map[string]channelJSON {
+	e.t.Helper()
 	e.p.put("/get.php", pl)
-	w := e.do("POST", "/api/tv/sources", `{"name":"Relay","url":"`+e.p.srv.URL+`/get.php?username=u1&password=secret9"}`, e.admin)
+	w := e.do("POST", "/api/tv/sources", `{"name":"Relay","url":"`+base+`/get.php?username=u1&password=secret9"}`, e.admin)
 	if w.Code != 201 {
-		t.Fatalf("create %d %s", w.Code, w.Body)
+		e.t.Fatalf("create %d %s", w.Code, w.Body)
 	}
 	var src sourceJSON
 	json.Unmarshal(w.Body.Bytes(), &src)
 	if _, err := e.tv.RefreshSource(context.Background(), src.ID, false); err != nil {
-		t.Fatal(err)
+		e.t.Fatal(err)
 	}
 	byName := map[string]channelJSON{}
 	for _, c := range e.list(e.admin).Channels {
 		byName[c.Name] = c
 	}
-	return e, up, byName
+	return byName
 }
 
 var relayURI = regexp.MustCompile(`URI="([^"]*)"`)
@@ -376,7 +382,7 @@ func TestRelaySessionsEvictIdleAndExpire(t *testing.T) {
 	rl.now = func() time.Time { return now }
 	ctx := context.Background()
 	acq := func(user, ch int64) (func(), error) {
-		rel, _, err := rl.acquire(ctx, relayKey{user: user, channel: ch}, "http://127.0.0.1/x")
+		rel, _, err := rl.acquire(ctx, relayKey{user: user, channel: ch}, 1)
 		return rel, err
 	}
 	r1, _ := acq(1, 1)
@@ -413,27 +419,6 @@ func TestRelaySessionsEvictIdleAndExpire(t *testing.T) {
 	now = now.Add(time.Minute)
 	if _, err := rl.unseal(ref); !errors.Is(err, errRelayRef) {
 		t.Fatalf("expired: %v", err)
-	}
-}
-
-func TestRelayPublicClientRefusesLocalAddresses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	defer srv.Close()
-	if _, err := relayClient(true).Get(srv.URL); err == nil || !errors.Is(err, errRelayDial) {
-		t.Fatalf("public-only client reached loopback: %v", err)
-	}
-	if resp, err := relayClient(false).Get(srv.URL); err != nil {
-		t.Fatal(err)
-	} else {
-		resp.Body.Close()
-	}
-	rl := &extRelay{resolve: func(context.Context, string) ([]net.IPAddr, error) {
-		return []net.IPAddr{{IP: net.IPv4(10, 0, 0, 5)}}, nil
-	}}
-	for raw, want := range map[string]bool{"http://127.0.0.1/a": false, "http://192.168.1.4/a": false, "http://8.8.8.8/a": true, "http://lan.example.test/a": false, "http://localhost:1/a": false} {
-		if got := rl.publicHost(context.Background(), raw); got != want {
-			t.Errorf("publicHost(%s) = %v", raw, got)
-		}
 	}
 }
 

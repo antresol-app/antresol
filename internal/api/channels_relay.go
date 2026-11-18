@@ -15,13 +15,12 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
@@ -46,7 +45,8 @@ import (
 //
 // Access is the channel's: the viewer's set and rules, checked on every
 // request (cached for relayVisibleTTL). A viewer relays at most
-// relayPerUser streams at once, the server relayTotal.
+// relayPerUser streams at once, the server relayTotal, and a stream answers
+// at most relayInflight requests at a time.
 
 const (
 	relayPerUser = 3
@@ -59,16 +59,28 @@ const (
 	relayEvictAfter      = 5 * time.Second
 	relayPlaylistMax     = 4 << 20
 	relayPlaylistTimeout = 20 * time.Second
-	relayStall           = 30 * time.Second
 	relayConnect         = 10 * time.Second
 	relayHeaders         = 15 * time.Second
-	// relayPlaylistTTL: a variant playlist's reference lasts the viewing
-	// (players reload it without going back to the master);
+	// relayPlaylistTTL: a variant playlist's reference lasts the viewing: a
+	// player reloads it for as long as it plays and never asks the master
+	// again, and the server cannot hand it a new one. Nothing is lost by
+	// it being long: the reference opens only for the viewer it was made for,
+	// on the channel it was made for, while that channel is still theirs to
+	// see (checked on every request), and only for the URL the playlist
+	// linked. A new master reload makes new ones.
 	// relayMediaTTL: a segment's, key's or map's, until the next reload.
-	relayPlaylistTTL = 12 * time.Hour
+	relayPlaylistTTL = 30 * 24 * time.Hour
 	relayMediaTTL    = 10 * time.Minute
 	relayVisibleTTL  = 30 * time.Second
 )
+
+// relayStall: a provider that sends nothing for this long is cut off, and a
+// client that takes nothing for it (a variable for the tests).
+var relayStall = 30 * time.Second
+
+// relayInflight: requests on one stream at once (a player asks for a
+// playlist, its renditions, a segment and a key in parallel, not dozens).
+const relayInflight = 8
 
 var (
 	errRelayRef   = errors.New("relay: bad reference")
@@ -88,9 +100,11 @@ type relaySession struct {
 	inflight int
 	last     time.Time
 	started  time.Time
-	// public: the stream's own host is a public address, so every URL it
-	// leads to must be one too (no LAN or loopback through a provider).
-	public bool
+	// lan: the stream's source is on the LAN (its playlist address is), so
+	// its streams may dial the LAN's addresses too; otherwise public ones
+	// only (channels_relay_net.go). Set before ready is closed.
+	lan   bool
+	ready chan struct{}
 }
 
 type relaySeenKey struct {
@@ -108,10 +122,12 @@ type relaySeen struct {
 type extRelay struct {
 	db  *sql.DB
 	now func() time.Time
-	// open: the client for streams on public hosts (only public addresses
-	// dialled); local: for a stream on a LAN or loopback host.
+	// open: the client for streams of a source on the internet (public
+	// addresses only); local: for those of a source on the LAN.
 	open, local *http.Client
-	resolve     func(ctx context.Context, host string) ([]net.IPAddr, error)
+	// sourceLAN: whether the playlist address the admin typed for source id
+	// is the LAN's (nil: no source is).
+	sourceLAN func(ctx context.Context, sourceID int64) bool
 
 	keyOnce sync.Once
 	aead    cipher.AEAD
@@ -126,76 +142,8 @@ type extRelay struct {
 }
 
 func newExtRelay(db *sql.DB) *extRelay {
-	return &extRelay{db: db, now: time.Now, open: relayClient(true), local: relayClient(false), resolve: net.DefaultResolver.LookupIPAddr,
+	return &extRelay{db: db, now: time.Now, open: relayClient(false), local: relayClient(true),
 		perUser: relayPerUser, total: relayTotal, sessions: map[relayKey]*relaySession{}, seen: map[relaySeenKey]relaySeen{}}
-}
-
-func relayClient(publicOnly bool) *http.Client {
-	d := &net.Dialer{Timeout: relayConnect, KeepAlive: 30 * time.Second}
-	if publicOnly {
-		d.ControlContext = func(_ context.Context, _, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return err
-			}
-			if ip := net.ParseIP(host); ip == nil || !publicIP(ip) {
-				return errRelayDial
-			}
-			return nil
-		}
-	}
-	tr := &http.Transport{
-		DialContext:           d.DialContext,
-		TLSHandshakeTimeout:   relayConnect,
-		ResponseHeaderTimeout: relayHeaders,
-		MaxIdleConnsPerHost:   8,
-		IdleConnTimeout:       90 * time.Second,
-		ForceAttemptHTTP2:     true,
-	}
-	return &http.Client{Transport: tr, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 10 {
-			return errors.New("relay: too many redirects")
-		}
-		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-			return errRelayRef
-		}
-		return nil
-	}}
-}
-
-var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
-
-func publicIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || cgnat.Contains(ip))
-}
-
-// publicHost: every address of rawURL's host is public (a failed lookup
-// counts as public: the stricter client).
-func (rl *extRelay) publicHost(ctx context.Context, rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return true
-	}
-	host := u.Hostname()
-	if ip := net.ParseIP(host); ip != nil {
-		return publicIP(ip)
-	}
-	if strings.EqualFold(host, "localhost") {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(ctx, relayConnect)
-	defer cancel()
-	ips, err := rl.resolve(ctx, host)
-	if err != nil || len(ips) == 0 {
-		return true
-	}
-	for _, a := range ips {
-		if !publicIP(a.IP) {
-			return false
-		}
-	}
-	return true
 }
 
 // ---- references ----
@@ -284,15 +232,19 @@ func (rl *extRelay) unseal(s string) (relayRef, error) {
 
 // ---- sessions ----
 
-// acquire counts a request of relay k (public: its stream's host class,
-// asked only when the relay starts); release when the answer is done.
-func (rl *extRelay) acquire(ctx context.Context, k relayKey, streamURL string) (release func(), public bool, err error) {
+// acquire counts a request of relay k (lan: whether its stream's source is
+// on the LAN, asked only when the relay starts); release when the answer
+// is done. A new relay takes its place under the lock before anything is
+// asked outside it, so starts at once cannot pass the limits together; a
+// request that finds it still starting waits for the answer.
+func (rl *extRelay) acquire(ctx context.Context, k relayKey, sourceID int64) (release func(), lan bool, err error) {
 	rl.janitor.Do(func() { go rl.sweepLoop() })
 	rl.mu.Lock()
 	now := rl.now()
 	rl.sweepLocked(now)
 	s := rl.sessions[k]
-	if s == nil {
+	fresh := s == nil
+	if fresh {
 		mine := 0
 		var evict *relayKey
 		for ok, os := range rl.sessions {
@@ -305,36 +257,57 @@ func (rl *extRelay) acquire(ctx context.Context, k relayKey, streamURL string) (
 				evict = &kk
 			}
 		}
-		if mine >= rl.perUser && evict != nil {
-			rl.stopLocked(*evict, now)
-			mine--
+		// at the viewer's limit an idle relay of theirs gives its place, but
+		// only when the new one is admitted
+		freed := 0
+		if mine >= rl.perUser {
+			if evict == nil {
+				rl.mu.Unlock()
+				return nil, false, errRelayLimit
+			}
+			freed = 1
 		}
-		if mine >= rl.perUser || len(rl.sessions) >= rl.total {
+		if len(rl.sessions)-freed >= rl.total {
 			rl.mu.Unlock()
 			return nil, false, errRelayLimit
 		}
-		rl.mu.Unlock()
-		pub := rl.publicHost(ctx, streamURL) // outside the lock: a DNS lookup
-		rl.mu.Lock()
-		if s = rl.sessions[k]; s == nil {
-			s = &relaySession{started: now, public: pub}
-			rl.sessions[k] = s
-			log.Printf("channels: relay start: channel %d stream %d user %d", k.channel, k.n, k.user)
+		if freed > 0 {
+			rl.stopLocked(*evict, now)
 		}
+		s = &relaySession{started: now, ready: make(chan struct{})}
+		rl.sessions[k] = s
+		log.Printf("channels: relay start: channel %d stream %d user %d", k.channel, k.n, k.user)
+	}
+	if s.inflight >= relayInflight {
+		rl.mu.Unlock()
+		return nil, false, errRelayLimit
 	}
 	s.inflight++
 	s.last = now
-	public = s.public
 	rl.mu.Unlock()
 	var once sync.Once
-	return func() {
+	release = func() {
 		once.Do(func() {
 			rl.mu.Lock()
 			s.inflight--
 			s.last = rl.now()
 			rl.mu.Unlock()
 		})
-	}, public, nil
+	}
+	if fresh {
+		func() {
+			defer close(s.ready)
+			s.lan = rl.sourceLAN != nil && rl.sourceLAN(ctx, sourceID) // outside the lock: the store
+		}()
+	} else {
+		select {
+		case <-s.ready:
+		case <-ctx.Done():
+			release()
+			return nil, false, ctx.Err()
+		}
+	}
+	return release, s.lan, nil
 }
 
 func (rl *extRelay) stopLocked(k relayKey, now time.Time) {
@@ -386,10 +359,29 @@ func (rl *extRelay) visible(r *http.Request, u auth.User, id int64, look func() 
 	return x, ok
 }
 
+// sourceOnLAN: the playlist address the admin typed for source id is the
+// LAN's by its spelling (channels_relay_net.go). Anything unknown is not.
+func (a *channelsAPI) sourceOnLAN(ctx context.Context, id int64) bool {
+	if a.ext == nil || a.ext.Store == nil || id == 0 {
+		return false
+	}
+	src, err := a.ext.Store.Source(ctx, id)
+	if err != nil {
+		return false
+	}
+	raw, err := a.ext.PlaylistURL(ctx, src)
+	if err != nil {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil && lanSpelling(u.Hostname())
+}
+
 // ---- the handler ----
 
 // GET /api/channels/live/ext/{id}/{n}/relay[/{ref}]
 func (a *channelsAPI) extRelay(w http.ResponseWriter, r *http.Request) {
+	relayHardenHeaders(w)
 	rl := a.relay
 	id, err1 := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	n, err2 := strconv.Atoi(chi.URLParam(r, "n"))
@@ -420,19 +412,49 @@ func (a *channelsAPI) extRelay(w http.ResponseWriter, r *http.Request) {
 	if target == "" {
 		target = s.URL
 	}
-	release, public, err := rl.acquire(r.Context(), k, s.URL)
+	release, lan, err := rl.acquire(r.Context(), k, s.SourceID)
 	if err != nil {
+		if r.Context().Err() != nil {
+			return // the viewer went away while the relay started
+		}
 		w.Header().Set("Retry-After", "10")
 		writeErr(w, r, http.StatusTooManyRequests, "Слишком много каналов через сервер одновременно")
 		return
 	}
 	defer release()
-	rl.serve(w, r, k, s, target, public)
+	rl.serve(w, r, k, s, target, lan)
+}
+
+// relayCSP: nothing a relayed body says may run as a page of ours (a
+// provider's HTML or SVG opened as a link, same-origin with the session).
+// The sibling relays (input_relay.go, addons/relay.go) do the same.
+const relayCSP = "sandbox; default-src 'none'"
+
+// relayHardenHeaders: on every answer of the relay, errors included.
+func relayHardenHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Security-Policy", relayCSP)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Referrer-Policy", "no-referrer")
+}
+
+// relayType is the Content-Type a piped body goes out with: its media type
+// when that is video or audio (MPEG-TS, MP4, AAC, ...) or a plain binary
+// (keys, init segments), else application/octet-stream. Parameters
+// (charset) are dropped; the provider's word never makes a page.
+func relayType(ctype string) string {
+	mt, _, err := mime.ParseMediaType(ctype)
+	if err == nil && (strings.HasPrefix(mt, "video/") || strings.HasPrefix(mt, "audio/") ||
+		mt == "application/octet-stream" || mt == "application/mp4") {
+		return mt
+	}
+	return "application/octet-stream"
 }
 
 var playlistTypes = []string{"mpegurl"} // application/vnd.apple.mpegurl, application/x-mpegurl, audio/mpegurl
 
-func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s iptv.Stream, target string, public bool) {
+func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s iptv.Stream, target string, lan bool) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
@@ -453,29 +475,41 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 		req.Header.Set("Range", rg)
 	}
 	c := rl.open
-	if !public {
+	if lan {
 		c = rl.local
 	}
 	resp, err := c.Do(req)
 	if err != nil {
+		if errors.Is(err, errRelayDial) {
+			// the admin can tell a source on the internet that streams from the LAN
+			log.Printf("channels: relay: channel %d stream %d (source %d): address not allowed", k.channel, k.n, s.SourceID)
+		}
 		if r.Context().Err() == nil {
 			writeErr(w, r, http.StatusBadGateway, "Источник канала не ответил")
 		}
 		return
 	}
 	defer resp.Body.Close()
+	// a provider that stops sending is cut off, from the headers on (the
+	// first read below included: reset with every chunk, set to the
+	// playlist's own limit for a playlist)
+	stall := time.AfterFunc(relayStall, cancel)
+	defer stall.Stop()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		writeErr(w, r, http.StatusBadGateway, "Источник канала не ответил")
 		return
 	}
 	h := w.Header()
-	h.Set("Cache-Control", "no-store")
-	h.Set("Referrer-Policy", "no-referrer")
-	h.Set("X-Content-Type-Options", "nosniff")
 	br := bufio.NewReaderSize(resp.Body, 32<<10)
-	if isPlaylist(resp.Header.Get("Content-Type"), br) {
-		t := time.AfterFunc(relayPlaylistTimeout, cancel)
-		defer t.Stop()
+	playlist, err := isPlaylist(resp.Header.Get("Content-Type"), br)
+	if err != nil {
+		if r.Context().Err() == nil {
+			writeErr(w, r, http.StatusBadGateway, "Источник канала не ответил")
+		}
+		return
+	}
+	if playlist {
+		stall.Reset(relayPlaylistTimeout)
 		body, err := io.ReadAll(io.LimitReader(br, relayPlaylistMax+1))
 		if err != nil || len(body) > relayPlaylistMax {
 			writeErr(w, r, http.StatusBadGateway, "Источник канала не ответил")
@@ -503,14 +537,16 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 		w.Write(out)
 		return
 	}
-	for _, name := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
+	// only these of the provider's headers pass (no cookie, no CSP, no
+	// download name); its type only as a media type (relayType)
+	for _, name := range []string{"Content-Length", "Content-Range", "Accept-Ranges"} {
 		if v := resp.Header.Get(name); v != "" {
 			h.Set(name, v)
 		}
 	}
+	h.Set("Content-Type", relayType(resp.Header.Get("Content-Type")))
 	rc := http.NewResponseController(w)
-	stall := time.AfterFunc(relayStall, cancel) // an upstream that stops sending
-	defer stall.Stop()
+	stall.Reset(relayStall)
 	_ = rc.SetWriteDeadline(time.Now().Add(relayStall))
 	w.WriteHeader(resp.StatusCode)
 	buf := make([]byte, 32<<10)
@@ -530,20 +566,24 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 	}
 }
 
-// isPlaylist: an HLS playlist by its type or its first line.
-func isPlaylist(ctype string, br *bufio.Reader) bool {
+// isPlaylist: an HLS playlist by its type or its first line. The error is
+// a read that failed before that line was seen (not a short body).
+func isPlaylist(ctype string, br *bufio.Reader) (bool, error) {
 	ct := strings.ToLower(ctype)
 	for _, t := range playlistTypes {
 		if strings.Contains(ct, t) {
-			return true
+			return true, nil
 		}
 	}
 	if strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
-		return false
+		return false, nil
 	}
-	head, _ := br.Peek(16)
+	head, err := br.Peek(16)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
 	head = bytes.TrimPrefix(head, []byte("\xef\xbb\xbf"))
-	return bytes.HasPrefix(bytes.TrimLeft(head, " \t\r\n"), []byte("#EXTM3U"))
+	return bytes.HasPrefix(bytes.TrimLeft(head, " \t\r\n"), []byte("#EXTM3U")), nil
 }
 
 // relayRewrite points every URI of an HLS playlist (resolved against

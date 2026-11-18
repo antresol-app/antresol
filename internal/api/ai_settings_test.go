@@ -93,3 +93,28 @@ func newChannelsEnvWithSettings(t *testing.T) (*libEnv, *sql.DB) {
 	})
 	return e, db
 }
+
+// Anthropic's API is not asked without a key: the SDK would otherwise run
+// the request on whatever credential the host has.
+func TestAISettingsAnthropicNeedsKey(t *testing.T) {
+	t.Setenv("VAULT_LLM_URL", "")
+	t.Setenv("ANTHROPIC_API_KEY", "env-key")
+	e, _ := newChannelsEnvWithSettings(t)
+	w := e.do("POST", "/api/settings/ai/test", `{"url":"https://api.anthropic.com","model":"claude-opus-5-5"}`, e.admin)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "ключ") {
+		t.Fatalf("test without a key %d %s", w.Code, w.Body)
+	}
+	var cur map[string]any
+	_ = json.Unmarshal(e.do("GET", "/api/settings", "", e.admin).Body.Bytes(), &cur)
+	cur["ai"] = map[string]any{"url": "https://api.anthropic.com/v1", "model": "claude-opus-5-5"}
+	cur["streamCacheGB"], cur["quality"] = 50, 1080
+	b, _ := json.Marshal(cur)
+	if w := e.do("PUT", "/api/settings", string(b), e.admin); w.Code != 400 || !strings.Contains(w.Body.String(), "ключ") {
+		t.Fatalf("save without a key %d %s", w.Code, w.Body)
+	}
+	cur["ai"] = map[string]any{"url": "https://api.anthropic.com/v1", "model": "claude-opus-5-5", "key": "sk-ant-test"}
+	b, _ = json.Marshal(cur)
+	if w := e.do("PUT", "/api/settings", string(b), e.admin); w.Code != 200 {
+		t.Fatalf("save with a key %d %s", w.Code, w.Body)
+	}
+}

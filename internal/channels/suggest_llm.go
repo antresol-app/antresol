@@ -30,9 +30,6 @@ type LLM struct {
 	// Timeout of one answer (0: 45 s).
 	Timeout time.Duration
 	Client  *http.Client
-	// Anthropic: speak the Messages API whatever the URL (an address of
-	// api.anthropic.com does without it).
-	Anthropic bool
 }
 
 // LLMFromEnv: VAULT_LLM_URL, VAULT_LLM_MODEL, VAULT_LLM_KEY,

@@ -17,7 +17,7 @@ import (
 const AnthropicURL = "https://api.anthropic.com"
 
 // IsAnthropicURL: an address of the Anthropic API (api.anthropic.com, with
-// or without a path).
+// or without a path; a path such as /v1 is ignored, see anthropicBase).
 func IsAnthropicURL(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -27,7 +27,18 @@ func IsAnthropicURL(raw string) bool {
 	return h == "anthropic.com" || strings.HasSuffix(h, ".anthropic.com")
 }
 
-func (l *LLM) anthropic() bool { return l.Anthropic || IsAnthropicURL(l.URL) }
+func (l *LLM) anthropic() bool { return IsAnthropicURL(l.URL) }
+
+// anthropicBase is the address the SDK is given: the scheme and host only,
+// over https. The SDK adds /v1/messages itself, so an address copied with
+// its /v1 (as the OpenAI-compatible ones end) would call /v1/v1/messages.
+func anthropicBase(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return AnthropicURL
+	}
+	return "https://" + strings.ToLower(u.Host)
+}
 
 // chatAnthropic sends the messages to the Messages API: the system message
 // goes to System, the rest (the few-shot pairs end on the user's request)
@@ -35,7 +46,14 @@ func (l *LLM) anthropic() bool { return l.Anthropic || IsAnthropicURL(l.URL) }
 // reject both; a low effort keeps a short answer quick. The JSON contract
 // is the prompt's (jsonPart reads the object out of the text).
 func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string) (string, error) {
-	opts := []option.RequestOption{option.WithAPIKey(l.Key), option.WithBaseURL(l.URL)}
+	// Only the key of the settings: without one the SDK would take the
+	// host's (ANTHROPIC_API_KEY, a profile on disk), and it would also add
+	// ANTHROPIC_CUSTOM_HEADERS and ANTHROPIC_BASE_URL of the environment.
+	key := strings.TrimSpace(l.Key)
+	if key == "" {
+		return "", errors.New("llm: an API key is required for the Anthropic API")
+	}
+	opts := []option.RequestOption{option.WithoutEnvironmentDefaults(), option.WithAPIKey(key), option.WithBaseURL(anthropicBase(l.URL))}
 	if l.Client != nil {
 		opts = append(opts, option.WithHTTPClient(l.Client))
 	}
