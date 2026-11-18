@@ -490,12 +490,14 @@ function ChannelRow({
       {!c.present && <Badge tone="warning">{t('iptv.table.gone')}</Badge>}
     </>
   )
+  // a hidden channel is not on the air: its number (after N) means nothing to a viewer
+  const num = c.shown && c.present ? c.number : '—'
   const rowClass = [styles.tr, phone ? styles.phoneRow : '', c.shown ? '' : styles.off].filter(Boolean).join(' ')
   if (phone)
     return (
       <div className={rowClass}>
         <span role="cell" className={styles.cNum}>
-          {c.number}
+          {num}
         </span>
         <span role="cell" className={styles.cLogo}>
           <ChannelLogo url={c.logo || undefined} size="xs" reserve />
@@ -517,7 +519,7 @@ function ChannelRow({
   return (
     <div className={rowClass}>
       <span role="cell" className={styles.cNum}>
-        {c.number}
+        {num}
       </span>
       <span role="cell" className={styles.cLogo}>
         <ChannelLogo url={c.logo || undefined} size="xs" reserve />
