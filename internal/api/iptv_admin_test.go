@@ -210,7 +210,7 @@ func TestEditorPatchAndWhy(t *testing.T) {
 	if m := by["Кино 1 +2"]; m.Shown || m.Why != "preset-timeshift" || m.WhyText == "" || m.Number == 0 {
 		t.Fatalf("timeshift %+v", m)
 	}
-	if m := by["Новости 1"]; !m.Shown || m.Why != "source-default" || m.Number != 100 || m.Category != "Новости" || m.EPG.How != "tvg-id" || m.EPG.XMLID != "n1" {
+	if m := by["Новости 1"]; !m.Shown || m.Why != "source-default" || m.Number != 1 || m.Category != "Новости" || m.EPG.How != "tvg-id" || m.EPG.XMLID != "n1" {
 		t.Fatalf("news %+v", m)
 	}
 	n1 := by["Новости 1"].ChannelID
@@ -236,9 +236,9 @@ func TestEditorPatchAndWhy(t *testing.T) {
 	if c := e.channels(src.ID, "?state=hidden&group=Новости&limit=1"); c.Total != 2 || len(c.Channels) != 1 {
 		t.Fatalf("hidden page %+v", c)
 	}
-	// reset: back to the rules
+	// reset: back to the rules, the number automatic again (first of the shown)
 	e.do("PATCH", "/api/tv/channels", `{"channelIds":[`+itoa(n1)+`],"reset":true}`, e.admin)
-	if c := e.channels(src.ID, "?q=новости+1"); c.Channels[0].Why != "source-default" || !c.Channels[0].Shown || c.Channels[0].Number != 7 || c.Channels[0].NumberManual {
+	if c := e.channels(src.ID, "?q=новости+1"); c.Channels[0].Why != "source-default" || !c.Channels[0].Shown || c.Channels[0].Number != 1 || c.Channels[0].NumberManual {
 		t.Fatalf("reset %+v", c.Channels)
 	}
 	// categories: own and external, equal names once

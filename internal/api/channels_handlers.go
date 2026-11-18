@@ -594,6 +594,7 @@ func (a *channelsAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	c := channels.Channel{Enabled: true}
 	b.apply(&c, u)
+	c.NumberManual = c.Number > 0 // a number typed in is the admin's
 	c, err := a.svc.Store.Create(r.Context(), c)
 	if err != nil {
 		a.storeErr(w, r, err)

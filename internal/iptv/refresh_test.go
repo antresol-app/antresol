@@ -233,7 +233,7 @@ func TestRefreshDropOver30PercentWaitsForConfirm(t *testing.T) {
 	}
 }
 
-func TestRefreshCreatesChannelRowsNumberedFrom100(t *testing.T) {
+func TestRefreshNumbersOneListWithOwnChannels(t *testing.T) {
 	e := newSvcEnv(t)
 	ctx := context.Background()
 	for n := 1; n <= 12; n++ {
@@ -252,7 +252,9 @@ func TestRefreshCreatesChannelRowsNumberedFrom100(t *testing.T) {
 	for n, r := range rows {
 		nums[n] = r.Number
 	}
-	want := map[string]int{"Тест 1": 100, "Тест 2": 102, "Тест 3": 103, "Тест 4": 104, "Кино +2": 105, "Ночной": 106}
+	// the 13 own channels are 1…13, the shown external ones go on from 14,
+	// the hidden ones (timeshift, adult) come after them
+	want := map[string]int{"Тест 1": 14, "Тест 2": 15, "Тест 3": 16, "Тест 4": 17, "Кино +2": 18, "Ночной": 19}
 	if fmt.Sprint(nums) != fmt.Sprint(want) {
 		t.Fatalf("numbers %v", nums)
 	}
@@ -260,11 +262,16 @@ func TestRefreshCreatesChannelRowsNumberedFrom100(t *testing.T) {
 		!rows["Тест 1"].Enabled || rows["Тест 1"].Category != "Новости" || rows["Тест 1"].Why != WhySourceDefault {
 		t.Fatalf("rows %+v", rows)
 	}
-	// own channels untouched
+	// own channels keep their order and close the gap (101 → 13)
 	var own int
-	e.svc.Store.DB.QueryRow(`SELECT count(*) FROM channels WHERE kind='antresol' AND (number <= 12 OR number = 101)`).Scan(&own)
+	e.svc.Store.DB.QueryRow(`SELECT count(*) FROM channels WHERE kind='antresol' AND number <= 13`).Scan(&own)
 	if own != 13 {
 		t.Fatal(own)
+	}
+	var last string
+	e.svc.Store.DB.QueryRow(`SELECT name FROM channels WHERE number = 13`).Scan(&last)
+	if last != "Свой 101" {
+		t.Fatal(last)
 	}
 	// a manual number and a manual hide survive a refresh; the hidden keeps its number
 	ms, _ := e.svc.Store.Members(ctx, src.ID)
@@ -288,14 +295,21 @@ func TestRefreshCreatesChannelRowsNumberedFrom100(t *testing.T) {
 	if r := rows["Тест 2"]; r.Number != 150 || !r.Manual || r.Why != WhyManual {
 		t.Fatalf("manual number %+v", r)
 	}
-	if r := rows["Тест 3"]; r.Number != 103 || r.Enabled || r.Why != WhyManual {
+	// the shown ones close up: 14, 15, 16 (Тест 2 keeps its 150)
+	if r := rows["Тест 1"]; r.Number != 14 || !r.Enabled {
+		t.Fatalf("first %+v", r)
+	}
+	if r := rows["Тест 4"]; r.Number != 15 || !r.Enabled {
+		t.Fatalf("hidden channels take no number in 1…N %+v", r)
+	}
+	if r := rows["Тест 5"]; r.Number != 16 || !r.Enabled {
+		t.Fatalf("new channel at the end of the shown ones %+v", r)
+	}
+	// hidden (by hand, gone from the playlist): after N, in playlist order
+	if r := rows["Тест 3"]; r.Number != 17 || r.Enabled || r.Why != WhyManual {
 		t.Fatalf("manual hide %+v", r)
 	}
-	if r := rows["Тест 5"]; r.Number != 107 || !r.Enabled {
-		t.Fatalf("new channel takes the next free number %+v", r)
-	}
-	// gone from the playlist: disabled, its number kept
-	if r := rows["Кино +2"]; r.Number != 105 || r.Enabled {
+	if r := rows["Кино +2"]; r.Number != 18 || r.Enabled {
 		t.Fatalf("gone %+v", r)
 	}
 }

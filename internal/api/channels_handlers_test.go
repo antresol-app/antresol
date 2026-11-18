@@ -112,6 +112,12 @@ func TestChannelsCRUDAndList(t *testing.T) {
 	if w := e.do("DELETE", "/api/channels/"+itoa(c.ID), "", ann); w.Code != 204 {
 		t.Fatalf("delete %d", w.Code)
 	}
+	// a typed number takes its place (the automatic channel there steps
+	// aside); another typed one on it is refused
+	w = e.do("POST", "/api/channels", `{"name":"Первый","number":1,"rules":{}}`, e.admin)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), `"number":1,`) {
+		t.Fatalf("typed number %d %s", w.Code, w.Body)
+	}
 	if w := e.do("POST", "/api/channels", `{"name":"Дубль","number":1,"rules":{}}`, e.admin); w.Code != 409 {
 		t.Fatalf("duplicate number %d %s", w.Code, w.Body)
 	}

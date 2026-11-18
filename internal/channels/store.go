@@ -338,13 +338,15 @@ func (s *Store) NextNumber(ctx context.Context, min int) (int, error) {
 // one list 1…N, a new one takes the first free number.
 const ManualFrom = 1
 
-// Create adds a channel (Number 0: the next free from ManualFrom) and
-// returns it with its id.
+// Create adds a channel (Number 0: automatic; NumberManual: the admin's
+// number, an automatic channel holding it steps aside) and returns it with
+// its id and its number after Renumber.
 func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 	if err := normalize(&c); err != nil {
 		return c, err
 	}
 	if c.Number == 0 {
+		c.NumberManual = false
 		n, err := s.NextNumber(ctx, ManualFrom)
 		if err != nil {
 			return c, err
@@ -363,9 +365,25 @@ func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 	if c.UserID != 0 {
 		user = c.UserID
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return c, err
+	}
+	defer tx.Rollback()
+	var place map[int64]int64
+	if c.NumberManual {
+		p, ok, err := makeRoom(ctx, tx, c.Number, 0)
+		if err != nil {
+			return c, err
+		}
+		if !ok {
+			return c, ErrNumberTaken
+		}
+		place = p
+	}
 	now := s.now().UTC().Format(time.RFC3339)
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO channels (number, name, category, user_id, rules_json, auto_key, enabled, edited, seed, created_at, updated_at)
-	  VALUES (?,?,?,?,?,?,?,?,?,?,?)`, c.Number, c.Name, c.Category, user, string(rules), auto, c.Enabled, c.Edited, c.Seed, now, now)
+	res, err := tx.ExecContext(ctx, `INSERT INTO channels (number, name, category, user_id, rules_json, auto_key, enabled, edited, seed, created_at, updated_at, number_manual)
+	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, c.Number, c.Name, c.Category, user, string(rules), auto, c.Enabled, c.Edited, c.Seed, now, now, c.NumberManual)
 	if err != nil {
 		if isUnique(err, "number") {
 			return c, ErrNumberTaken
@@ -373,7 +391,18 @@ func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 		return c, err
 	}
 	c.ID, _ = res.LastInsertId()
-	return c, nil
+	if err := s.renumbered(ctx, tx, &c, place); err != nil {
+		return c, err
+	}
+	return c, tx.Commit()
+}
+
+// renumbered renumbers in tx and reads c's number back.
+func (s *Store) renumbered(ctx context.Context, tx *sql.Tx, c *Channel, place map[int64]int64) error {
+	if err := RenumberTx(ctx, tx, nil, place); err != nil {
+		return err
+	}
+	return tx.QueryRowContext(ctx, `SELECT number, number_manual FROM channels WHERE id=?`, c.ID).Scan(&c.Number, &c.NumberManual)
 }
 
 func isUnique(err error, col string) bool {
@@ -394,6 +423,8 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 	if c.Number == 0 {
 		c.Number = old.Number
 	}
+	// a number other than the one it has is the admin's: kept from now on
+	c.NumberManual = old.NumberManual || c.Number != old.Number
 	c.AutoKey, c.Seed = old.AutoKey, old.Seed
 	rules, _ := json.Marshal(c.Rules)
 	oldRules, _ := json.Marshal(old.Rules)
@@ -401,12 +432,34 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 	if c.UserID != 0 {
 		user = c.UserID
 	}
-	_, err = s.DB.ExecContext(ctx, `UPDATE channels SET number=?, name=?, category=?, user_id=?, rules_json=?, enabled=?, edited=?, updated_at=? WHERE id=?`,
-		c.Number, c.Name, c.Category, user, string(rules), c.Enabled, c.Edited, s.now().UTC().Format(time.RFC3339), c.ID)
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return c, err
+	}
+	defer tx.Rollback()
+	var place map[int64]int64
+	if c.Number != old.Number {
+		p, ok, err := makeRoom(ctx, tx, c.Number, c.ID)
+		if err != nil {
+			return c, err
+		}
+		if !ok {
+			return c, ErrNumberTaken
+		}
+		place = p
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE channels SET number=?, name=?, category=?, user_id=?, rules_json=?, enabled=?, edited=?, updated_at=?, number_manual=? WHERE id=?`,
+		c.Number, c.Name, c.Category, user, string(rules), c.Enabled, c.Edited, s.now().UTC().Format(time.RFC3339), c.NumberManual, c.ID)
 	if err != nil {
 		if isUnique(err, "number") {
 			return c, ErrNumberTaken
 		}
+		return c, err
+	}
+	if err := s.renumbered(ctx, tx, &c, place); err != nil {
+		return c, err
+	}
+	if err := tx.Commit(); err != nil {
 		return c, err
 	}
 	if string(rules) != string(oldRules) {
@@ -430,10 +483,13 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	}
 	if c.AutoKey != "" {
 		_, err = s.DB.ExecContext(ctx, `UPDATE channels SET enabled=0, edited=1 WHERE id=?`, id)
+	} else {
+		_, err = s.DB.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id)
+	}
+	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id)
-	return err
+	return s.Renumber(ctx)
 }
 
 // SetLogo records channel id's uploaded logo version (0: none).

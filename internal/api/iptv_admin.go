@@ -808,7 +808,7 @@ func (a *iptvAdmin) patchChannels(w http.ResponseWriter, r *http.Request) {
 		}
 		if *b.Number > 0 {
 			var other int64
-			err := a.svc.Store.DB.QueryRowContext(ctx, `SELECT id FROM channels WHERE number=? AND id<>?`, *b.Number, b.ChannelIDs[0]).Scan(&other)
+			err := a.svc.Store.DB.QueryRowContext(ctx, `SELECT id FROM channels WHERE number=? AND id<>? AND number_manual=1`, *b.Number, b.ChannelIDs[0]).Scan(&other)
 			if err == nil {
 				writeErr(w, r, http.StatusConflict, "Этот номер уже занят другим каналом")
 				return

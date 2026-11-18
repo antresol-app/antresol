@@ -61,13 +61,17 @@ func TestGeneratorLeavesExternalRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := f.st.Get(ctx, ext)
-	if err != nil || !c.Enabled || c.Number != 100 || c.Name != "Внешний" || c.Edited {
+	if err != nil || !c.Enabled || c.Name != "Внешний" || c.Edited {
 		t.Fatalf("external row touched: %+v %v", c, err)
 	}
+	// one list: the generated channels 1…n, the external one right after
 	all, _ := f.st.All(ctx)
-	for _, x := range all {
-		if x.ID != ext && x.Number >= 100 {
-			t.Fatalf("generated channel numbered past the external one: %+v", x)
+	if c.Number != len(all) {
+		t.Fatalf("external row numbered %d of %d", c.Number, len(all))
+	}
+	for i, x := range all {
+		if x.Number != i+1 {
+			t.Fatalf("not one list 1…N: %+v", all)
 		}
 	}
 }

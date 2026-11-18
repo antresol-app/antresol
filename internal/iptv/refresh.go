@@ -18,12 +18,10 @@ import (
 
 // Refreshing: a source's playlist and its guides are fetched, parsed and
 // checked before anything is stored (the guard), its entries become
-// logical channel rows (channels.kind='external') numbered from
-// FirstNumber, and the guides keep the programmes of matched channels in
+// logical channel rows (channels.kind='external') numbered after
+// Antresol's own channels in one list (channels.RenumberTx), and the guides keep the programmes of matched channels in
 // the window [now − EPGBefore, now + EPGAfter).
 const (
-	// FirstNumber: external channels take the free numbers from here up.
-	FirstNumber = 100
 	// MaxDropShare: a refresh losing more than this share of the present
 	// channels waits for the admin's confirmation (ConfirmDrop).
 	MaxDropShare = 0.30
@@ -359,7 +357,7 @@ func (s *Service) autoEPG(ctx context.Context, sourceID int64, urls []string) er
 // Sync makes the decision in effect of every present entry (the source's
 // rules, then the admin's) and brings the logical channel rows in step:
 // an entry without a channel joins the row of its DedupeKey (another
-// source's same channel) or gets a new one, numbered from FirstNumber; a
+// source's same channel) or gets a new one, numbered in the one list; a
 // row shows when any present entry of it is shown, with the name and the
 // category of its first shown entry (by source position); a row whose
 // entries all went is disabled, keeping its number.
@@ -418,7 +416,7 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 	defer tx.Rollback()
 	rows := map[int64]*extRow{}
 	byKey := map[string]int64{}
-	used := map[int64]int64{} // number → channel
+	maxNumber := int64(0) // a new row waits above every number until RenumberTx
 	q, err := tx.QueryContext(ctx, `SELECT id, number, name, category, why, COALESCE(auto_key,''), enabled, number_manual, kind FROM channels`)
 	if err != nil {
 		return err
@@ -430,7 +428,7 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 			q.Close()
 			return err
 		}
-		used[r.number] = r.id
+		maxNumber = max(maxNumber, r.number)
 		if r.key != "" {
 			byKey[r.key] = r.id
 		}
@@ -454,13 +452,6 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 		}
 		return order[i].Position < order[j].Position
 	})
-	next := int64(FirstNumber)
-	freeNumber := func() int64 {
-		for used[next] != 0 {
-			next++
-		}
-		return next
-	}
 	// a row's sources (an entry joins a row only once per source)
 	rowSrc := map[int64]map[int64]bool{}
 	for _, m := range order {
@@ -490,14 +481,15 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 				break
 			}
 			if !ok {
-				n := freeNumber()
+				maxNumber++
+				n := maxNumber
 				res, err := tx.ExecContext(ctx, `INSERT INTO channels (number, name, category, rules_json, auto_key, enabled, kind, why, seed)
 					VALUES (?,?,?,'{}',?,?,?,?,0)`, n, nameOr(d.Name, m.Name), d.Group, key, b2i(d.Shown != nil && *d.Shown), channels.KindExternal, d.Why)
 				if err != nil {
 					return fmt.Errorf("iptv: channel row %q: %w", m.Name, err)
 				}
 				row, _ = res.LastInsertId()
-				used[n], byKey[key] = row, row
+				byKey[key] = row
 				rows[row] = &extRow{id: row, number: n, name: nameOr(d.Name, m.Name), category: d.Group, why: d.Why, key: key, enabled: d.Shown != nil && *d.Shown}
 				break
 			}
@@ -521,7 +513,7 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 			byRow[m.ChannelID] = append(byRow[m.ChannelID], m)
 		}
 	}
-	upd, err := tx.PrepareContext(ctx, `UPDATE channels SET number=?, name=?, category=?, enabled=?, number_manual=?, why=? WHERE id=?`)
+	upd, err := tx.PrepareContext(ctx, `UPDATE channels SET name=?, category=?, enabled=?, why=? WHERE id=?`)
 	if err != nil {
 		return err
 	}
@@ -531,6 +523,7 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	manual := make(map[int64]int, len(ids))
 	for _, id := range ids {
 		r := rows[id]
 		want := *r
@@ -563,22 +556,18 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 			want.enabled = shown != nil
 			want.name, want.category, want.why = nameOr(d.Name, lead.Name), d.Group, d.Why
 		}
-		if manualNumber != 0 {
-			if n := int64(manualNumber); n != r.number && used[n] == 0 {
-				delete(used, r.number)
-				used[n] = id
-				want.number = n
-			}
-			want.numberManual = want.number == int64(manualNumber)
-		} else {
-			want.numberManual = false
-		}
+		manual[id] = manualNumber
 		if want != *r {
-			if _, err := upd.ExecContext(ctx, want.number, want.name, want.category, want.enabled, want.numberManual, want.why, id); err != nil {
+			if _, err := upd.ExecContext(ctx, want.name, want.category, want.enabled, want.why, id); err != nil {
 				return fmt.Errorf("iptv: channel row %d: %w", id, err)
 			}
 			*r = want
 		}
+	}
+	// one list with Antresol's own channels: the shown ones 1…N, the
+	// admin's numbers kept (channels.RenumberTx)
+	if err := channels.RenumberTx(ctx, tx, manual, nil); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

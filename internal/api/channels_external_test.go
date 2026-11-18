@@ -60,7 +60,7 @@ func TestListMergesExternalWithNumbersAndStream(t *testing.T) {
 	for _, c := range l.Channels {
 		got = append(got, fmt.Sprintf("%d:%s:%v", c.Number, c.Name, c.External))
 	}
-	if strings.Join(got, ",") != "1:Свой:false,100:Новости 1:true,101:Новости 2:true,102:Кино 1:true" {
+	if strings.Join(got, ",") != "1:Свой:false,2:Новости 1:true,3:Новости 2:true,4:Кино 1:true" {
 		t.Fatalf("list %v", got)
 	}
 	n1, n2 := l.Channels[1], l.Channels[2]
@@ -173,7 +173,7 @@ func TestIPTVM3UIncludesSetExternalsWithHeaders(t *testing.T) {
 	src := e.addSource("П")
 	base := e.iptvLink(0)
 	m := e.do("GET", base+"/playlist.m3u", "", nil).Body.String()
-	want := "#EXTINF:-1 tvg-id=\"n2\" tvg-chno=\"101\" tvg-name=\"Новости 2\" tvg-logo=\"http://example.com" + base + "/logo/" +
+	want := "#EXTINF:-1 tvg-id=\"n2\" tvg-chno=\"3\" tvg-name=\"Новости 2\" tvg-logo=\"http://example.com" + base + "/logo/" +
 		itoa(e.firstExternal()+1) + ".png\" group-title=\"Новости\",Новости 2\n#EXTVLCOPT:http-user-agent=TestUA/1\nhttp://stream.example.test/live/u1/secret9/2.ts\n"
 	if !strings.Contains(m, want) || !strings.Contains(m, `tvg-logo="http://logo.example.test/n1.png"`) || !strings.Contains(m, "/live/1/index.m3u8") ||
 		strings.Index(m, "Свой") > strings.Index(m, "Новости 1") {
