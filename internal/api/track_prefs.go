@@ -24,6 +24,9 @@ import (
 //     /api/users/{id}/…): «Выбирать очищенную озвучку», kept apart from the
 //     defaults (switching it keeps a profile on the household's; PUT and
 //     DELETE of the defaults leave it).
+//   - PUT /api/me/playback-prefs/auto-skip {"recap","intro","credits"}
+//     (admin: /api/users/{id}/…): «Пропускать сам»; unlike the rest a kid
+//     sets its own, it is a convenience of playback.
 //   - GET /api/items/{id}/track-prefs: what the player needs before it
 //     starts an item: the defaults, the tracks remembered for its series
 //     and the subtitle offsets of its files.
@@ -136,10 +139,10 @@ func (h *lib) savePreferCleaned(w http.ResponseWriter, r *http.Request, uid int6
 	h.playbackPrefsOut(w, r, uid)
 }
 
+// putMyAutoSkip: «Пропускать сам» is a convenience of playback, not a
+// restriction, so a kid sets its own like any profile (its screen time,
+// rating and the rest of its defaults stay an administrator's).
 func (h *lib) putMyAutoSkip(w http.ResponseWriter, r *http.Request) {
-	if kidLocked(w, r) {
-		return
-	}
 	h.saveAutoSkip(w, r, userOf(r).ID)
 }
 

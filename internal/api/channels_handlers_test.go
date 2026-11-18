@@ -526,3 +526,114 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 		}
 	}
 }
+
+// Typing a channel's number is the administrator's: another profile's
+// personal channel takes the next free one and never pushes the shared
+// lineup around, whether it is made or edited with a number.
+func TestChannelsNumbersAreTheAdministrators(t *testing.T) {
+	e, svc := newChannelsEnv(t)
+	ctx := context.Background()
+	shared, err := svc.Store.Create(ctx, channels.Channel{Name: "Общий", Number: 1, NumberManual: true, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := e.login(`{"name":"Второй"}`)
+	var c channelJSON
+	w := e.do("POST", "/api/channels", `{"name":"Свой","number":1,"rules":{}}`, other)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body)
+	}
+	json.Unmarshal(w.Body.Bytes(), &c)
+	if c.Number == 1 || !c.Personal {
+		t.Fatalf("a profile took number 1: %+v", c)
+	}
+	own := c.Number
+	if got, _ := svc.Store.Get(ctx, shared.ID); got.Number != 1 || !got.NumberManual {
+		t.Fatalf("the shared channel was pushed: %+v", got)
+	}
+	// edited with a number: the channel keeps its own
+	if w := e.do("PUT", "/api/channels/"+itoa(c.ID), `{"name":"Свой","number":1,"rules":{}}`, other); w.Code != 200 {
+		t.Fatalf("update %d %s", w.Code, w.Body)
+	}
+	got, _ := svc.Store.Get(ctx, c.ID)
+	if got.Number != own || got.NumberManual {
+		t.Fatalf("a typed number held: %+v (was %d)", got, own)
+	}
+	if got, _ := svc.Store.Get(ctx, shared.ID); got.Number != 1 {
+		t.Fatalf("the shared channel was pushed: %+v", got)
+	}
+	// the administrator may: the number is kept
+	if w := e.do("PUT", "/api/channels/"+itoa(shared.ID), `{"name":"Общий","number":7,"rules":{}}`, e.admin); w.Code != 200 {
+		t.Fatalf("admin %d %s", w.Code, w.Body)
+	}
+	if got, _ := svc.Store.Get(ctx, shared.ID); got.Number != 7 || !got.NumberManual {
+		t.Fatalf("admin's number: %+v", got)
+	}
+}
+
+// A generated channel saved from the editor (which has no field for
+// notGenres and sends the name it was shown) keeps its rules and stays the
+// generator's; what the generator must keep is an edit of its content or
+// hiding it, not a number, switching it on or sending the shown name back.
+func TestChannelsGeneratedEditFlag(t *testing.T) {
+	e, svc := newChannelsEnv(t)
+	ctx := context.Background()
+	g, err := svc.Store.Create(ctx, channels.Channel{Name: "Все сериалы", Category: channels.CatGeneral, AutoKey: "series", Enabled: true,
+		Rules: channels.Rules{Kinds: []string{"series"}, NotGenres: []string{"мультфильм"}, AudioLang: "ru", SkipSegments: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(body string, hdr ...string) channels.Channel {
+		t.Helper()
+		if w := e.do("PUT", "/api/channels/"+itoa(g.ID), body, e.admin, hdr...); w.Code != 200 {
+			t.Fatalf("PUT %s: %d %s", body, w.Code, w.Body)
+		}
+		got, err := svc.Store.Get(ctx, g.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	rules := `"rules":{"order":"shuffle","kinds":["series"],"skipSegments":true}` // the editor's: no notGenres, no audioLang
+	// unchanged, in English: the shown name and group go back, nothing is renamed
+	var list struct{ Channels []channelJSON }
+	json.Unmarshal(e.do("GET", "/api/channels?manage=1", "", e.admin, "Accept-Language", "en").Body.Bytes(), &list)
+	if len(list.Channels) != 1 || list.Channels[0].Name == "Все сериалы" { // translated for the viewer
+		t.Fatalf("shown: %+v", list.Channels)
+	}
+	shown := list.Channels[0]
+	got := put(`{"name":"`+shown.Name+`","category":"`+shown.Category+`","enabled":true,`+rules+`}`, "Accept-Language", "en")
+	if got.Edited || got.Name != "Все сериалы" || got.Category != channels.CatGeneral {
+		t.Fatalf("a save with no change: %+v", got)
+	}
+	if want := []string{"мультфильм"}; !reflect.DeepEqual(got.Rules.NotGenres, want) || got.Rules.AudioLang != "ru" {
+		t.Fatalf("rules the editor does not know were dropped: %+v", got.Rules)
+	}
+	// a number is not an edit
+	if got := put(`{"name":"Все сериалы","category":"` + channels.CatGeneral + `","number":9,"enabled":true,` + rules + `}`); got.Edited || got.Number != 9 {
+		t.Fatalf("a number: %+v", got)
+	}
+	// hiding it is (Sync would switch an unedited one on again) ...
+	hidden := put(`{"name":"Все сериалы","category":"` + channels.CatGeneral + `","enabled":false,` + rules + `}`)
+	if !hidden.Edited || hidden.Enabled {
+		t.Fatalf("hidden: %+v", hidden)
+	}
+	// ... and so is another rule set or name, with the rest kept
+	g2, err := svc.Store.Create(ctx, channels.Channel{Name: "Мультсериалы", Category: channels.CatGeneral, AutoKey: "toons", Enabled: true,
+		Rules: channels.Rules{Kinds: []string{"series"}, Genres: []string{"мультфильм"}, SkipSegments: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do("PUT", "/api/channels/"+itoa(g2.ID), `{"name":"Мультсериалы","category":"`+channels.CatGeneral+`","enabled":true,"rules":{"kinds":["series"],"genres":["мультфильм"]}}`, e.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if got, _ := svc.Store.Get(ctx, g2.ID); !got.Edited || got.Rules.SkipSegments {
+		t.Fatalf("a rule turned off: %+v", got)
+	}
+	if w := e.do("PUT", "/api/channels/"+itoa(g.ID), `{"name":"Сериалы","category":"`+channels.CatGeneral+`","enabled":true,`+rules+`}`, e.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if got, _ := svc.Store.Get(ctx, g.ID); got.Name != "Сериалы" || !got.Edited {
+		t.Fatalf("renamed: %+v", got)
+	}
+}

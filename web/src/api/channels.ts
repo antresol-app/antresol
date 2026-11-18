@@ -19,6 +19,8 @@ export type ChannelPick =
 export interface ChannelRules {
   kinds?: ("movie" | "series")[];
   genres?: string[];
+  /** None of these genres (the generated «Все сериалы» keeps animation out; the editor has no field for it, it carries it through). */
+  notGenres?: string[];
   yearFrom?: number;
   yearTo?: number;
   /** Made in any of these countries (ISO 3166-1, «SU» the Soviet Union). */
@@ -34,6 +36,8 @@ export interface ChannelRules {
   libraryUser?: number;
   maxRating?: string;
   order?: ChannelOrder;
+  /** The audio language the channel prefers (ISO 639; no field in the editor, carried through). */
+  audioLang?: string;
   /** Also films of these genres the library lacks, from an addon's titles (where the server offers it). */
   extras?: boolean;
   /** Episodes play without their recap and intro and end where their credits start (movies play whole). */

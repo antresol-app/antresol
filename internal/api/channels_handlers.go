@@ -579,9 +579,15 @@ func (a *channelsAPI) storeErr(w http.ResponseWriter, r *http.Request, err error
 }
 
 // apply puts the body into c for profile u: a non-admin's channel is its
-// own and plays its library or the whole one.
+// own and plays its library or the whole one. A channel's number is the
+// administrator's to type (a typed number is kept and pushes the shared
+// lineup around for every viewer): another profile's body number is
+// ignored, the channel keeps the one it has (a new one gets the next free).
 func (b channelBody) apply(c *channels.Channel, u auth.User) {
-	c.Name, c.Number, c.Category, c.Rules = b.Name, b.Number, b.Category, b.Rules
+	c.Name, c.Category, c.Rules = b.Name, b.Category, b.Rules
+	if u.IsAdmin {
+		c.Number = b.Number
+	}
 	if b.Enabled != nil {
 		c.Enabled = *b.Enabled
 	}
@@ -605,7 +611,7 @@ func (a *channelsAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	c := channels.Channel{Enabled: true}
 	b.apply(&c, u)
-	c.NumberManual = c.Number > 0 // a number typed in is the admin's
+	c.NumberManual = c.Number > 0 // only an administrator's body carries one (apply)
 	c, err := a.svc.Store.Create(r.Context(), c)
 	if err != nil {
 		a.storeErr(w, r, err)
@@ -636,12 +642,31 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &b) {
 		return
 	}
-	owner := c.UserID
+	old, owner := c, c.UserID
+	shown, shownCat := a.display(r.Context(), old)
 	b.apply(&c, u)
 	if u.IsAdmin && owner != 0 && owner != u.ID {
 		c.UserID = owner // another profile's channel stays theirs
 	}
-	if c.AutoKey != "" {
+	// what the client was shown (a generated channel's name and group in the
+	// viewer's language) sent back is no change: the stored ones stay
+	if b.Name == shown {
+		c.Name = old.Name
+	}
+	if b.Category == shownCat {
+		c.Category = old.Category
+	}
+	// rules the editor has no field for: a body that omits them (an older
+	// or cached client rebuilds the rules from its form) keeps the stored
+	if len(c.Rules.NotGenres) == 0 {
+		c.Rules.NotGenres = old.Rules.NotGenres
+	}
+	if c.Rules.AudioLang == "" {
+		c.Rules.AudioLang = old.Rules.AudioLang
+	}
+	// an administrator's edit of a generated channel is kept by the
+	// generator; a number, a logo or showing it again is not
+	if c.AutoKey != "" && channels.Edits(old, c) {
 		c.Edited = true
 	}
 	c, err := a.svc.Store.Update(r.Context(), c)

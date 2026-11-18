@@ -39,6 +39,9 @@ function server() {
           profiles: [],
           extrasAvailable: false,
         });
+      // the tags' preview (a POST too) is not a save
+      if (url.endsWith("/api/channels/preview"))
+        return json({ movies: 0, series: 0, episodes: 0, items: [] });
       if (init?.method === "POST" || init?.method === "PUT") {
         sent.push({ method: init.method, body: JSON.parse(String(init.body)) });
         return json(saved, init.method === "POST" ? 201 : 200);

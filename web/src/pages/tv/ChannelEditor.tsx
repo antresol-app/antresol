@@ -34,6 +34,16 @@ import { ChannelTags, tagRulesOf, type TagRules } from "./ChannelTags";
 import styles from "./Tv.module.css";
 
 const RATINGS = ["0+", "6+", "12+", "16+", "18+"];
+// the rules the tag rows own: all of them are the form's, set again below
+const TAGS_CLEARED: TagRules = {
+  kinds: undefined,
+  genres: undefined,
+  countries: undefined,
+  languages: undefined,
+  keywords: undefined,
+  yearFrom: undefined,
+  yearTo: undefined,
+};
 type Content = "rules" | "picks";
 
 export interface ChannelEditorProps {
@@ -117,13 +127,21 @@ export function ChannelEditor({
 
   const needPicks = content === "picks" && picks.length === 0;
   const save = async () => {
+    // the channel's own rules with the fields of this form replaced: what the
+    // form has no field for (notGenres, audioLang, whatever a newer server
+    // adds) goes back as it came, not lost
     const rules: ChannelRules = {
+      ...r,
       order,
       maxRating: rating || undefined,
       libraryUser: Number(libraryValue) || undefined,
       skipSegments: skipSegments || undefined,
+      // round 1's titles are rewritten as picks of kind «title»
+      titles: undefined,
+      picks: undefined,
+      extras: undefined,
+      ...TAGS_CLEARED,
     };
-    // round 1's titles are rewritten as picks of kind «title»
     if (content === "picks") rules.picks = picks;
     else {
       Object.assign(rules, tags);
@@ -241,7 +259,8 @@ export function ChannelEditor({
             />
           </div>
         </li>
-        {channel && (
+        {/* typing a number is the administrator's: it places the channel in the shared lineup */}
+        {channel && me.isAdmin && (
           <ListRow label={t("tv.editor.number")}>
             <NumberField
               label={t("tv.editor.number")}

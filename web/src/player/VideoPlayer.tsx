@@ -9,7 +9,7 @@
 // without dropping them. On AirPlay (Safari) they stay on the page: the
 // player says so (see airplay.ts for how the receiver gets the stream).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { getItem, getPlaybackPrefs, imageUrl, setAutoSkip as setAutoSkipPrefs, setSubtitleOffset } from '../api/client'
+import { getItem, getPlaybackPrefs, imageUrl, setSubtitleOffset } from '../api/client'
 import { queueRemember } from './rememberQueue'
 import type { TrackActionItem } from '../addons/registry'
 import type { MediaFile, PlaybackPrefs, PlayRequest, PlayResponse, Quality, SubTrack, TrackChoice, TrackPrefs } from '../api/types'
@@ -33,7 +33,8 @@ import { useScreenGuard } from '../state/screenTime'
 import { useCaps } from './useCaps'
 import { usePlayback } from './usePlayback'
 import { usePlayerKeys } from './usePlayerKeys'
-import { SkipControls, SkipMenu, type AutoSkip } from './SkipControls'
+import { SkipControls, SkipMenu } from './SkipControls'
+import { useAutoSkip } from './useAutoSkip'
 import { segmentAt, usableSegments } from './skipSegments'
 import { useProgress } from './useProgress'
 import styles from './VideoPlayer.module.css'
@@ -134,9 +135,6 @@ const PREF = {
   sub: 'vault.player.subLang',
   audio: 'vault.player.audioLang',
   quality: 'vault.player.quality',
-  // «Пропускать сам»: '1' skips the recap / the intro by itself
-  autoRecap: 'vault.player.autoSkipRecap',
-  autoIntro: 'vault.player.autoSkipIntro',
 }
 
 /** The quality chosen last time on this device («Авто» by default). */
@@ -552,20 +550,7 @@ export function VideoPlayer({
   const nextPillShown = Boolean(next) && lastPart && inCredits && !creditsDismissed
   const skipAction = useRef<(() => void) | null>(null)
   // «Пропускать сам» is the profile's (the server keeps it for every device)
-  const autoSkip: AutoSkip = prefs.autoSkip ?? { recap: false, intro: false, credits: false }
-  const changeAutoSkip = (v: AutoSkip) => {
-    setPrefs((x) => ({ ...x, autoSkip: v }))
-    setAutoSkipPrefs(v).catch(() => {})
-  }
-  // once: what this browser kept before the profile did goes to the profile
-  useEffect(() => {
-    const recap = pref(PREF.autoRecap) === '1'
-    const intro = pref(PREF.autoIntro) === '1'
-    if (!prefs.autoSkip || (!recap && !intro)) return
-    setPref(PREF.autoRecap, '0')
-    setPref(PREF.autoIntro, '0')
-    if (!prefs.autoSkip.recap && !prefs.autoSkip.intro) changeAutoSkip({ ...prefs.autoSkip, recap, intro })
-  }, [prefs.autoSkip])
+  const [autoSkip, changeAutoSkip] = useAutoSkip(prefs, setPrefs)
   const playNext = () => {
     if (!next) return
     videoRef.current?.pause()

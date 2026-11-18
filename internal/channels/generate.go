@@ -312,6 +312,15 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 	return res, nil
 }
 
+// Edits reports whether saving c over old is an edit the generator must
+// leave alone: another name, group or rules, or the channel switched off
+// (Sync would switch an unedited one on again). Its number and switching it
+// on are not.
+func Edits(old, c Channel) bool {
+	return strings.TrimSpace(c.Name) != old.Name || strings.TrimSpace(c.Category) != old.Category ||
+		!sameRules(old.Rules, c.Rules) || (old.Enabled && !c.Enabled)
+}
+
 func sameRules(a, b Rules) bool {
 	na, nb := Channel{Name: "x", Rules: a}, Channel{Name: "x", Rules: b}
 	_ = normalize(&na)

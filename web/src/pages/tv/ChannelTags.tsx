@@ -14,12 +14,13 @@ import { ToggleChips } from '../../ui/ToggleChips'
 import { countryName, languageName, themeName } from './tagNames'
 import styles from './ChannelTags.module.css'
 
-/** The part of the rules the tags set. */
-export type TagRules = Pick<ChannelRules, 'kinds' | 'genres' | 'countries' | 'languages' | 'keywords' | 'yearFrom' | 'yearTo'>
+/** The part of the rules the tags set (notGenres has no chip: it rides along, so the preview counts what the channel plays). */
+export type TagRules = Pick<ChannelRules, 'kinds' | 'genres' | 'notGenres' | 'countries' | 'languages' | 'keywords' | 'yearFrom' | 'yearTo'>
 
 export const tagRulesOf = (r: ChannelRules): TagRules => ({
   kinds: r.kinds,
   genres: r.genres,
+  notGenres: r.notGenres,
   countries: r.countries,
   languages: r.languages,
   keywords: r.keywords,

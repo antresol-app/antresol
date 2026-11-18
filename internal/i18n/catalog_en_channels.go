@@ -69,6 +69,7 @@ func init() {
 		"Моё":                  "Mine",
 		"Все фильмы":           "All Movies",
 		"Все сериалы":          "All Series",
+		"Мультсериалы":         "Animated Series",
 		"Детский":              "Kids Channel",
 		"Моя медиатека":        "My Library",
 		"Боевики":              "Action",

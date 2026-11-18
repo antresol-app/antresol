@@ -4,7 +4,8 @@
 // episode, unless a scene follows the credits; «Смотреть титры» dismisses
 // it), «Пропустить титры» at the credits of a last episode or a film. With
 // «Пропускать сам» a recap or intro is skipped at once, with a short note
-// that can take it back. The credits are never skipped by themselves.
+// that can take it back. With «Пропускать сам · Титры» the credits go on to
+// the next episode by themselves (the end of a last episode or a film).
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import type { PlaySegment } from '../api/types'
 import { MenuHeading, MenuItem, Menu } from '../ui/Menu'

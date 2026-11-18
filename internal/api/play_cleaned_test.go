@@ -348,7 +348,18 @@ func TestAutoSkipPerProfile(t *testing.T) {
 	if p := x.prefs(kid); p.AutoSkip != (library.AutoSkip{}) {
 		t.Fatalf("another profile sees it: %+v", p.AutoSkip)
 	}
-	if w := x.do("PUT", "/api/me/playback-prefs/auto-skip", `{"intro":true}`, kid); w.Code != 403 {
-		t.Fatalf("kid: %d", w.Code)
+	// a convenience, not a restriction: a kid sets its own (and only its own)
+	if w := x.do("PUT", "/api/me/playback-prefs/auto-skip", `{"recap":true}`, kid); w.Code != 200 {
+		t.Fatalf("kid: %d %s", w.Code, w.Body)
+	}
+	if p := x.prefs(kid); p.AutoSkip != (library.AutoSkip{Recap: true}) {
+		t.Fatalf("the kid's own: %+v", p.AutoSkip)
+	}
+	if p := x.prefs(x.admin); p.AutoSkip != (library.AutoSkip{Intro: true}) {
+		t.Fatalf("the admin's changed: %+v", p.AutoSkip)
+	}
+	// its other defaults stay locked
+	if w := x.do("PUT", "/api/me/playback-prefs/prefer-cleaned", `{"on":true}`, kid); w.Code != 403 {
+		t.Fatalf("kid prefer-cleaned: %d", w.Code)
 	}
 }
