@@ -6,11 +6,9 @@
 // code names (in branches the core build never runs), so they are
 // keys of the catalog type; the text stays in the sources build.
 type Named =
-  | 'common.watchOnline'
   | 'import.preview.hint'
   | 'import.state.noFormat'
   | 'import.state.searching'
   | 'music.pending.searching'
-  | 'settings.online.unreachable'
 
 export default {} as Record<Named, string>

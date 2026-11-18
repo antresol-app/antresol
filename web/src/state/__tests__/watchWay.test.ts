@@ -1,17 +1,18 @@
 // The remembered way of «Смотреть ▾» per profile (state/watchWay.ts): ids
-// are `online` or an addon way's `<addonId>:<label>`.
+// are an addon way's `<addonId>:<label>`; a remembered or default `online`
+// (the in-core way of before) reads as `online:way`.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { pickWay, readWatchWay, useWatchWay, writeWatchWay } from '../watchWay'
+import { pickWay, readWatchWay, useWatchWay, wayId, writeWatchWay } from '../watchWay'
 
 describe('watchWay storage', () => {
   beforeEach(() => localStorage.clear())
 
   it('round-trips per profile', () => {
     writeWatchWay(1, 'fake:way')
-    writeWatchWay(2, 'online')
+    writeWatchWay(2, 'other:way')
     expect(readWatchWay(1)).toBe('fake:way')
-    expect(readWatchWay(2)).toBe('online')
+    expect(readWatchWay(2)).toBe('other:way')
     expect(readWatchWay(3)).toBeNull()
     expect(localStorage.getItem('antresol.watchWay.1')).toBe('fake:way')
   })
@@ -53,10 +54,10 @@ describe('useWatchWay', () => {
   it('follows another tab through the storage event', () => {
     const a = renderHook(() => useWatchWay(1))
     act(() => {
-      localStorage.setItem('antresol.watchWay.1', 'online')
+      localStorage.setItem('antresol.watchWay.1', 'other:way')
       window.dispatchEvent(new StorageEvent('storage', { key: 'antresol.watchWay.1' }))
     })
-    expect(a.result.current).toBe('online')
+    expect(a.result.current).toBe('other:way')
   })
 
   it('blocked storage: no throw, nothing remembered', () => {
@@ -72,15 +73,34 @@ describe('useWatchWay', () => {
 
 describe('pickWay', () => {
   it('keeps the remembered way when it is available', () => {
-    expect(pickWay('fake:way', ['online', 'fake:way'])).toBe('fake:way')
+    expect(pickWay('fake:way', ['online:way', 'fake:way'])).toBe('fake:way')
   })
   it('an id no way has any more reads as none', () => {
-    expect(pickWay('gone:way', ['online', 'fake:way'])).toBe('online')
+    expect(pickWay('gone:way', ['online:way', 'fake:way'])).toBe('online:way')
     expect(pickWay('gone:way', ['fake:way'])).toBe('fake:way')
   })
-  it('falls back to online, then to the first available', () => {
-    expect(pickWay('online', ['fake:way'])).toBe('fake:way')
-    expect(pickWay(null, ['online', 'fake:way'])).toBe('online')
+  it('falls back to online:way, then to the first available', () => {
+    expect(pickWay('online:way', ['fake:way'])).toBe('fake:way')
+    expect(pickWay(null, ['fake:way', 'online:way'])).toBe('online:way')
     expect(pickWay(null, ['fake:way'])).toBe('fake:way')
+  })
+})
+
+describe('the in-core online way of before', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('a remembered or default online reads as online:way', () => {
+    // remembered before this release
+    localStorage.setItem('antresol.watchWay.1', 'online')
+    expect(readWatchWay(1)).toBe('online:way')
+    expect(renderHook(() => useWatchWay(1)).result.current).toBe('online:way')
+    // the one mapping, for a way id a caller still spells the old way
+    expect(wayId('online')).toBe('online:way')
+    expect(wayId('fake:way')).toBe('fake:way')
+    // the default way is the same way as before: online:way leads when nothing is remembered
+    expect(pickWay(null, ['fake:way', 'online:way'])).toBe('online:way')
+    expect(pickWay(readWatchWay(1), ['fake:way', 'online:way'])).toBe('online:way')
+    // nothing reads as the bare id any more
+    expect(pickWay('online', ['fake:way', 'online:way'])).toBe('online:way')
   })
 })

@@ -1,5 +1,5 @@
 // Pill-shaped choices in a wrapping row: toggles (aria-pressed, «Языки
-// субтитров») or a radio group (the online picker). The one chip style.
+// субтитров») or a radio group (an addon's picker). The one chip style.
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes } from 'react'
 import styles from './Chips.module.css'
 

@@ -1,4 +1,5 @@
-// Signed-in layout: floating navigation, page content, mini player. The
+// Signed-in layout: floating navigation, page content, mini player (none
+// around an addon's fullWindow route, which covers the window). The
 // audio engine is a module singleton, so music keeps playing across routes.
 import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
@@ -12,7 +13,10 @@ import { useAudioSelect } from '../player/audio/useAudio'
 import { useSession } from '../state/session'
 import { useLang, useT } from '../i18n'
 import { prefetchSections } from './chunks'
+import { useFullWindowAddon } from '../addons/slots'
+import { AddonWaysOutlet } from '../addons/watchWays'
 import styles from './Shell.module.css'
+import appStyles from './App.module.css'
 
 export function Shell() {
   // «Сейчас играет», opened from the mini player.
@@ -44,7 +48,21 @@ export function Shell() {
     return () => cancelIdleCallback(id)
   }, [])
 
+  // an addon's fullWindow route (its player) covers the window: none of
+  // the shell around it; the shell itself stays mounted, so its parts keep
+  // their state across the switch. `pending`: the player's black fallback
+  // until the addon registers (a cold load of a route it had last time).
+  const fullWindow = useFullWindowAddon()
+
   if (!user) return null
+  if (fullWindow !== 'off')
+    return (
+      <>
+        {fullWindow === 'pending' ? <div className={appStyles.playerFallback} /> : null}
+        <Outlet key={lang} />
+        <AddonWaysOutlet />
+      </>
+    )
   return (
     <>
       <a href="#main" className="skip-link">
@@ -57,6 +75,8 @@ export function Shell() {
       <MiniPlayer onExpand={openFull} />
       <NowPlaying open={full} onClose={closeFull} />
       <Notice />
+      {/* the SDK's useWatchWays: its ways' availability and sheets */}
+      <AddonWaysOutlet />
       <WritePrompt />
       <AudioScreenStop />
     </>

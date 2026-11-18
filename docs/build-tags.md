@@ -44,7 +44,7 @@ never needs it and never links to it. You will see the seam in three places.
   (`resolve.extensions`) resolve `X` to the real module when it exists and
   to the stub otherwise, so core code imports `./X` and works either way.
   Stubs render nothing, return empty values and keep the real module's
-  types. The edition is decided by whether `web/src/app/routesFull.tsx`
+  types. The edition is decided by whether `web/src/api/clientFull.ts`
   exists; in this repository it does not, so `__LIBRARY_EDITION__` is `true`.
 - **Database.** Core migrations live in `internal/db/migrations` and are
   numbered as `internal/db/migrations/README.md` says; numbers from 10001 up

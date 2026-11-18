@@ -162,8 +162,9 @@ type ItemDetail struct {
 	Next          *EpisodeCard `json:"next,omitempty"` // series: episode to play next
 	InWatchlist   bool         `json:"inWatchlist"`
 	Actions       Actions      `json:"actions"`
-	// TmdbID (movies and series): «Смотреть онлайн», and for a series the
-	// seasons that are not on the server yet («Добавить сезон…»).
+	// TmdbID (movies and series): the addons' ways to watch a title, and
+	// for a series the seasons that are not on the server yet («Добавить
+	// сезон…»).
 	TmdbID int64 `json:"tmdbId,omitempty"`
 	// ImdbID (movies and series, "tt0816692"): its ratings come from
 	// /api/ratings/{imdbId}.
@@ -193,6 +194,9 @@ func mountLibrary(r chi.Router, h *lib) {
 func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 	ctx, u := r.Context(), userOf(r)
 	limit := ratingLimit(u)
+	// the addons' «Продолжить» (?addons=1) under its own 500 ms while the
+	// core's shelves are read
+	fromAddons := h.addonContinueAsync(r, u)
 	// ?scope=mine: the hero and the «recently added» shelves keep the
 	// profile's own titles; «Продолжить», «Хочу посмотреть» and the
 	// played/reading shelves are the profile's already
@@ -266,12 +270,7 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 			dated = append(dated, datedCard{e.UpdatedAt, c})
 		}
 	}
-	onl, err := h.onlineContinue(r, u)
-	if err != nil {
-		internalErr(w, r, "home continue online", err)
-		return
-	}
-	dated = append(dated, onl...)
+	dated = append(dated, <-fromAddons...)
 	sort.SliceStable(dated, func(i, j int) bool { return dated[i].at.After(dated[j].at) })
 	cont := []Card{}
 	for _, d := range dated[:min(len(dated), shelfSize)] {

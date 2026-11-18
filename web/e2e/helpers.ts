@@ -12,7 +12,7 @@ const IMAGES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures
  * reference pictures always show a full, stable Главная.
  */
 export async function mockLibrary(page: Page, home = homeFixture) {
-  // the app asks /api/home?online=1 (online entries of «Продолжить просмотр»)
+  // the app asks /api/home with query parameters (addons, family, scope)
   await page.route(/\/api\/home(\?|$)/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(home) }),
   )

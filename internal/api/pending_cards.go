@@ -41,8 +41,9 @@ const maxPendingHint = 200
 
 // mountPendingCards: GET /api/library/pending, the titles on their way
 // into the library, from the addons answering library.pending (none: []).
-func mountPendingCards(r chi.Router, hooks *addons.Hooks) {
-	r.Get("/api/library/pending", func(w http.ResponseWriter, r *http.Request) { libraryPending(w, r, hooks) })
+// maxHeight is the user header's remote quality cap (remoteMaxHeight).
+func mountPendingCards(r chi.Router, hooks *addons.Hooks, maxHeight func(*http.Request) int) {
+	r.Get("/api/library/pending", func(w http.ResponseWriter, r *http.Request) { libraryPending(w, r, hooks, maxHeight) })
 }
 
 // libraryPending asks every addon for its pending cards ({scope}: "mine"
@@ -53,7 +54,7 @@ func mountPendingCards(r chi.Router, hooks *addons.Hooks) {
 // "<addonId>:", error cards reach admins only, a card with an unknown
 // status is dropped, a poster that is not an image-cache name and an href
 // that is not an app path are emptied.
-func libraryPending(w http.ResponseWriter, r *http.Request, hooks *addons.Hooks) {
+func libraryPending(w http.ResponseWriter, r *http.Request, hooks *addons.Hooks, maxHeight func(*http.Request) int) {
 	u := userOf(r)
 	out := []LibraryPendingCard{}
 	if hooks == nil || u.IsKid || ratingLimit(u) != "" {
@@ -64,7 +65,8 @@ func libraryPending(w http.ResponseWriter, r *http.Request, hooks *addons.Hooks)
 	if scopeOwner(r, u) != 0 {
 		scope = auth.ScopeMine
 	}
-	who := &addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(r.Context())}
+	who := &addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(r.Context()),
+		MaxHeight: maxHeight(r)}
 	hooks.Each(r.Context(), "library.pending", who, addonkit.PendingQuery{Scope: scope}, func(id string, raw json.RawMessage) {
 		var ans addonkit.PendingAnswer
 		if err := json.Unmarshal(raw, &ans); err != nil {

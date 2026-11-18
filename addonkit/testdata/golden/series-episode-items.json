@@ -1,0 +1,19 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/library/series/126308/episode-items?userId=2",
+  "status": 200,
+  "body": {
+    "episodes": [
+      {
+        "season": 1,
+        "episode": 1,
+        "itemId": 4
+      },
+      {
+        "season": 1,
+        "episode": 2,
+        "itemId": 5
+      }
+    ]
+  }
+}

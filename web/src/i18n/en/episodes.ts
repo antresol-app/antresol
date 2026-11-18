@@ -12,7 +12,6 @@ export default {
   'episodes.choose': 'Choose a source',
   'episodes.moreTags': '+{n}',
   'episodes.kind.library': 'Disk',
-  'episodes.kind.online': 'Online',
   'episodes.sheet.title': 'Episode {n} · {name}',
   'episodes.sheet.otherLang': 'Other',
   'episodes.sheet.subs': 'Subtitles',

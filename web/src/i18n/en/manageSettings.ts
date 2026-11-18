@@ -101,9 +101,6 @@ export default {
   'stats.transcoding.cpu': 'Video transcoding: CPU',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'settings.online.hint': 'Movies and TV shows from the server’s online sources, without downloading',
-  'settings.online.notConfigured': 'Not set up on the server',
-  'settings.online.sources': 'Online sources: {n}',
   'settings.uploadLimit.aria': 'Upload speed, MB/s',
   'stats.ratio': ' · {n}× what was downloaded',
   'stats.uploaded': 'uploaded to others',

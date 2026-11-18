@@ -23,7 +23,7 @@ import { activeCues, clock, langKey, parseVtt, type Cue } from './timeline'
 import { asPrefs, choiceOf, offsetCueTime, pickAudio, pickSubtitle } from './trackPrefs'
 import { clampSubtitleOffset, useSubtitleOffset } from './useSubtitleOffset'
 import look from './SubtitleLook.module.css'
-import { OnlineQualityMenu, QualityMenu, QUALITIES } from './QualityMenu'
+import { QualityMenu, QUALITIES, StreamQualityMenu } from './QualityMenu'
 import { TrackMenu } from './TrackMenu'
 import { SubtitleSearchSheet, tracksNotRefreshed, type SubtitleLang } from './SubtitleSearchSheet'
 import { usePlayerTrackActions } from './trackActions'
@@ -74,7 +74,7 @@ export interface VideoPlayerProps {
   /** Extra controls at the right of the top bar (e.g. «Оставить на сервере»). */
   topActions?: ReactNode
   /**
-   * A sheet over the player (the online «Другой источник» picker), drawn
+   * A sheet over the player (a stream's «Другой источник» picker), drawn
    * inside the player's root so it shows in full screen too: `root` is
    * the Sheet's container, `position` the profile's own place now
    * (seconds; the one held during a family jump).
@@ -82,8 +82,8 @@ export interface VideoPlayerProps {
   overlay?: (root: HTMLElement | null, position: () => number) => ReactNode
   /** A sheet is over the player (`overlay`): the controls and the cursor stay. */
   overlayOpen?: boolean
-  /** «Смотреть онлайн»: a source through the server's proxy (see usePlayback). */
-  online?: OnlinePlayback
+  /** A stream: a source through a proxy, not a library file (see usePlayback). */
+  stream?: StreamPlayback
   /** Keyboard shortcuts off (a sheet over the player has the keys). */
   suspendKeys?: boolean
   /**
@@ -94,7 +94,7 @@ export interface VideoPlayerProps {
   tracks?: TrackPrefs
   /**
    * What the addons' track actions (the audio menu's last rows) are of: the
-   * movie, or the series of an episode (none during online playback).
+   * movie, or the series of an episode (none while a stream plays).
    */
   trackActionItem?: TrackActionItem
   /**
@@ -104,8 +104,8 @@ export interface VideoPlayerProps {
   saveProgress?: (positionMs: number, durationMs: number, keepalive: boolean) => Promise<void>
 }
 
-export interface OnlinePlayback {
-  /** Closes the proxy session. */
+export interface StreamPlayback {
+  /** Closes the proxy session (the play answer's `session`). */
   stop: (session: string, keepalive?: boolean) => Promise<void>
   /** The source quality asked for first («1080p»; '' = the server's default). */
   initialQuality?: string
@@ -207,7 +207,7 @@ export function VideoPlayer({
   topActions,
   overlay,
   overlayOpen = false,
-  online,
+  stream,
   suspendKeys = false,
   tracks,
   trackActionItem,
@@ -244,15 +244,15 @@ export function VideoPlayer({
     start,
     slowSource,
     sourceProgress,
-    online: online ? { stop: online.stop, initialQuality: online.initialQuality } : undefined,
+    stream: stream ? { stop: stream.stop, initialQuality: stream.initialQuality } : undefined,
   })
   // a jump to another profile's place is only looked at until it plays on (useProgress)
   const holdRef = useRef<Hold | null>(null)
-  const save = useProgress({ itemId, absRef: p.absRef, durRef: p.durRef, playing: p.playing, saver: saveProgress ?? online?.saveProgress, holdRef })
+  const save = useProgress({ itemId, absRef: p.absRef, durRef: p.durRef, playing: p.playing, saver: saveProgress ?? stream?.saveProgress, holdRef })
   // «Экранное время» of a kid: a toast five minutes before the end, a
   // friendly stop at it (the server stops the stream there anyway)
   const kid = Boolean(useSession().user?.isKid)
-  const screenGuard = useScreenGuard(kid && !online, t('player.screen.overFallback'))
+  const screenGuard = useScreenGuard(kid && !stream, t('player.screen.overFallback'))
   useEffect(() => {
     const v = videoRef.current
     if (!screenGuard.over || !v) return
@@ -293,8 +293,8 @@ export function VideoPlayer({
   const [visible, setVisible] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
   const [findingSubs, setFindingSubs] = useState(false)
-  // the addons' rows of the track menu: a library movie or episode (none online; kids none)
-  const trackActions = usePlayerTrackActions(online ? undefined : trackActionItem)
+  // the addons' rows of the track menu: a library movie or episode (none for a stream; kids none)
+  const trackActions = usePlayerTrackActions(stream ? undefined : trackActionItem)
   const trackSheetOpen = Boolean(trackActions.node)
   const [scrubbing, setScrubbing] = useState(false)
   const hideTimer = useRef<number | undefined>(undefined)
@@ -306,9 +306,9 @@ export function VideoPlayer({
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
 
   // ---------- «Семья»: the other profiles' places on the timeline ----------
-  // (library items only: an online or remote stream has no family progress)
+  // (library items only: a stream or a remote one has no family progress)
   const { user } = useSession()
-  const family = useFamily(itemId, !online && !user?.isKid)
+  const family = useFamily(itemId, !stream && !user?.isKid)
   const places = useMemo<FamilyPlace[]>(
     () =>
       family
@@ -441,7 +441,7 @@ export function VideoPlayer({
   const subs = subsOverride && subsOverride.fileId === fileId ? subsOverride.subs : p.subs
   // scrub previews of a library file (a film in parts: its timeline spans
   // several files, so none)
-  const preview = useTrickplay(!online && itemId > 0 && parts.length === 1 ? fileId : undefined)
+  const preview = useTrickplay(!stream && itemId > 0 && parts.length === 1 ? fileId : undefined)
   const [cues, setCues] = useState<Cue[]>([])
   useEffect(() => {
     if (tracks) return
@@ -736,13 +736,13 @@ export function VideoPlayer({
             )}
           </div>
           <div className={styles.toolsRight}>
-            {online ? (
-              p.onlineQuality && (
-                <OnlineQualityMenu
-                  info={p.onlineQuality}
+            {stream ? (
+              p.streamQuality && (
+                <StreamQualityMenu
+                  info={p.streamQuality}
                   onChange={(q) => {
-                    online.onQuality?.(q)
-                    p.chooseOnlineQuality(q)
+                    stream.onQuality?.(q)
+                    p.chooseStreamQuality(q)
                   }}
                   onOpenChange={setMenuOpen}
                 />
@@ -907,19 +907,19 @@ export function VideoPlayer({
             <Icon name="warning" size={36} strokeWidth={1.6} />
             <h2>{t('player.video.playFailed')}</h2>
             <p>{p.error}</p>
-            {online ? (
+            {stream ? (
               <div className={styles.errorActions}>
-                <button type="button" className={styles.errorPrimary} onClick={online.onOtherSource}>
+                <button type="button" className={styles.errorPrimary} onClick={stream.onOtherSource}>
                   {t('player.video.otherSource')}
                 </button>
-                {p.onlineQuality && otherQuality(p.onlineQuality.options, p.onlineQuality.current) && (
+                {p.streamQuality && otherQuality(p.streamQuality.options, p.streamQuality.current) && (
                   <button
                     type="button"
                     className={styles.errorSecondary}
                     onClick={() => {
-                      const q = otherQuality(p.onlineQuality!.options, p.onlineQuality!.current)
-                      online.onQuality?.(q)
-                      p.chooseOnlineQuality(q)
+                      const q = otherQuality(p.streamQuality!.options, p.streamQuality!.current)
+                      stream.onQuality?.(q)
+                      p.chooseStreamQuality(q)
                     }}
                   >
                     {t('player.video.otherQuality')}

@@ -9,7 +9,6 @@ export default {
   'episodes.choose': 'Выбрать источник',
   'episodes.moreTags': '+{n}',
   'episodes.kind.library': 'Диск',
-  'episodes.kind.online': 'Онлайн',
   'episodes.sheet.title': 'Серия {n} · {name}',
   'episodes.sheet.otherLang': 'Другое',
   'episodes.sheet.subs': 'Субтитры',

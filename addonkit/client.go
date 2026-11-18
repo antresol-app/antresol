@@ -67,7 +67,7 @@ const (
 )
 
 // maxTMDBIDs is the core's limit of ids per /library/tmdb/{kind} call
-// (and per list of a /watched call).
+// (and per list of a /watched call, and of a /progress call).
 const maxTMDBIDs = 500
 
 // APIError is an answer of the core API other than 2xx.
@@ -255,18 +255,11 @@ func (c *Client) ItemIDsByTMDB(ctx context.Context, kind string, ids []int64) (m
 // ids: they go in calls of at most 500 per list (permission library.read).
 func (c *Client) Watched(ctx context.Context, userID int64, items, series []int64) (map[int64]bool, error) {
 	out := map[int64]bool{}
-	join := func(ids []int64) string {
-		parts := make([]string, len(ids))
-		for i, id := range ids {
-			parts[i] = strconv.FormatInt(id, 10)
-		}
-		return strings.Join(parts, ",")
-	}
 	for len(items) > 0 || len(series) > 0 {
 		ni, ns := min(len(items), maxTMDBIDs), min(len(series), maxTMDBIDs)
 		v := url.Values{"userId": {strconv.FormatInt(userID, 10)}}
-		set(v, "items", join(items[:ni]))
-		set(v, "series", join(series[:ns]))
+		set(v, "items", joinIDs(items[:ni]))
+		set(v, "series", joinIDs(series[:ns]))
 		items, series = items[ni:], series[ns:]
 		var body struct {
 			Watched map[string]bool `json:"watched"`
@@ -285,6 +278,53 @@ func (c *Client) Watched(ctx context.Context, userID int64, items, series []int6
 		}
 	}
 	return out, nil
+}
+
+// joinIDs is ids, comma-separated.
+func joinIDs(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ",")
+}
+
+// Progress is, of the item ids, profile userID's progress in the movies
+// and episodes it may see, by item id (permission progress). Any number of
+// ids: they go in calls of at most 500. An id with no progress, or that the
+// profile may not see (over its rating limit, or no movie or episode), is
+// not in the answer. An unknown or a kid profile is a 400 *APIError.
+func (c *Client) Progress(ctx context.Context, userID int64, itemIDs []int64) (map[int64]ProgressEntry, error) {
+	out := map[int64]ProgressEntry{}
+	for len(itemIDs) > 0 {
+		n := min(len(itemIDs), maxTMDBIDs)
+		v := url.Values{"userId": {strconv.FormatInt(userID, 10)}, "items": {joinIDs(itemIDs[:n])}}
+		itemIDs = itemIDs[n:]
+		var body struct {
+			Progress map[string]ProgressEntry `json:"progress"`
+		}
+		if err := c.get(ctx, "/progress"+query(v), &body); err != nil {
+			return nil, err
+		}
+		for k, e := range body.Progress {
+			id, err := strconv.ParseInt(k, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("antresol core API: progress id %q", k)
+			}
+			out[id] = e
+		}
+	}
+	return out, nil
+}
+
+// SaveProgress records profile p.UserID's position in a movie or an
+// episode (PUT /progress, permission progress). A refusal comes back as an
+// *APIError with the core's message: 404 for an item the profile may not
+// see (or that does not exist), 400 for a season or other non-video item, a
+// kid or unknown profile, a negative position, or a time more than 5
+// minutes ahead of the core's clock.
+func (c *Client) SaveProgress(ctx context.Context, p ProgressSave) error {
+	return c.do(ctx, DefaultTimeout, http.MethodPut, "/progress", p, nil)
 }
 
 // findItem GETs path?v: the item, or ok=false on 404.
@@ -345,6 +385,28 @@ func (c *Client) HaveEpisodes(ctx context.Context, tmdbID int64) (map[[2]int]boo
 		out[p] = true
 	}
 	return out, nil
+}
+
+// EpisodeItems is the episodes of the series that have a file, with the
+// library item of each, for profile userID (an adult one), by season and
+// episode (permission library.read): the pairs of HaveEpisodes that the
+// profile may see (the series over its rating limit has none), each with
+// the id of the episode item holding its file, the id the player saves
+// progress under (SaveProgress). Empty, not an error, when the library has
+// no such series; an unknown or a kid profile is a 400 *APIError.
+func (c *Client) EpisodeItems(ctx context.Context, userID, tmdbID int64) ([]EpisodeItem, error) {
+	var body struct {
+		Episodes []EpisodeItem `json:"episodes"`
+	}
+	v := url.Values{"userId": {strconv.FormatInt(userID, 10)}}
+	ok, err := found(c.get(ctx, fmt.Sprintf("/library/series/%d/episode-items", tmdbID)+query(v), &body))
+	if err != nil {
+		return nil, err
+	}
+	if !ok || body.Episodes == nil {
+		return []EpisodeItem{}, nil
+	}
+	return body.Episodes, nil
 }
 
 // SeriesFolder is the absolute folder directly under root (one of

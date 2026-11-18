@@ -38,20 +38,36 @@ func ViaMediaKey(ctx context.Context) (string, bool) {
 
 // mediaKeyRoute: the paths a media key opens (file streams, HLS playlists
 // and segments, a live channel's playlist and segments, music tracks,
-// audiobook parts, the online stream proxy with its subtitles, an addon
-// input's direct stream, a cached trailer), for GET and HEAD only.
+// audiobook parts, an addon input's direct stream, a cached trailer, an
+// addon's media prefix), for GET and HEAD only, and only on a plain path:
+// the router matches the raw path, so a path with a raw form (an encoded
+// slash, or any escape Go would not have written) could look like one of
+// these prefixes here and reach another route there. No media URL the
+// server hands out needs one (its ids are numbers, hex and [A-Za-z0-9_-]).
 func mediaKeyRoute(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	if r.URL.RawPath != "" {
 		return false
 	}
 	p := r.URL.Path
 	return strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/hls/") ||
 		strings.HasPrefix(p, "/api/audio/") ||
-		strings.HasPrefix(p, "/api/online/s/") ||
 		strings.HasPrefix(p, "/api/channels/live/") ||
 		(strings.HasPrefix(p, "/api/trailers/") && strings.HasSuffix(p, ".mp4")) ||
 		(strings.HasPrefix(p, "/api/tracks/") && strings.HasSuffix(p, "/stream")) ||
-		inputDirect(p)
+		inputDirect(p) || addonMedia(r)
+}
+
+// addonMedia: /api/addons/{id}/x/media/…, the prefix an addon serves its
+// streams under (the proxy checks the rest of the path). mediaKeyRoute
+// has refused a path with a raw form already: an encoded slash could hide
+// "x/media/" in the id and reach another route.
+func addonMedia(r *http.Request) bool {
+	p := r.URL.Path
+	id, rest, ok := strings.Cut(strings.TrimPrefix(p, "/api/addons/"), "/")
+	return ok && strings.HasPrefix(p, "/api/addons/") && id != "" && strings.HasPrefix(rest, "x/media/")
 }
 
 // inputDirect: /api/play/input/{id}/direct, an addon input's file as it is.

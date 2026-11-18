@@ -215,7 +215,7 @@ func echoAddon(t *testing.T) *echo {
 			hits.Add(1) // a path the core should have refused
 		}
 		switch r.URL.Path {
-		case "/api/echo":
+		case "/api/echo", "/api/media/echo":
 			w.Header().Set("Content-Type", "application/json")
 			for _, h := range []string{"Clear-Site-Data", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials", "Service-Worker-Allowed"} {
 				w.Header().Set(h, "*")
@@ -1107,5 +1107,93 @@ func TestAddonProxyHeaders_MaxRating(t *testing.T) {
 		if u := header(c); u["maxRating"] != nil || len(fmt.Sprint(u["uid"])) != 32 || u["uid"] == lu["uid"] {
 			t.Fatalf("%s: %v", name, u)
 		}
+	}
+}
+
+// TestAddonMediaKey: a media key opens an addon's media prefix (GET and
+// HEAD) through the proxy, which still sends the profile and drops the
+// credentials; it opens nothing else of the addon, and a kid's key still
+// meets the proxy's refusal.
+func TestAddonMediaKey(t *testing.T) {
+	e := newAddonEnv(t, func(d *Deps) { withMediaKeys(d, nil) })
+	key := e.mediaKey(e.deviceLogin(1, "secret", "phone-0001"))
+	w := e.do("GET", "/api/addons/hello/x/media/echo?a=1&"+mk(key), "", nil)
+	if w.Code != 200 {
+		t.Fatalf("keyed media: %d %s", w.Code, w.Body)
+	}
+	var got struct {
+		Path, Query string
+		Headers     http.Header
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	var u addonkit.User
+	if got.Path != "/api/media/echo" || !strings.Contains(got.Query, "a=1") ||
+		json.Unmarshal([]byte(got.Headers.Get("X-Antresol-User")), &u) != nil || u.ID != 1 || !u.IsAdmin {
+		t.Fatalf("forwarded %+v", got)
+	}
+	if w := e.do("HEAD", "/api/addons/hello/x/media/echo?"+mk(key), "", nil); w.Code != 200 {
+		t.Fatalf("keyed HEAD: %d", w.Code)
+	}
+	for _, c := range [][2]string{{"POST", "/api/addons/hello/x/media/echo"}, {"DELETE", "/api/addons/hello/x/media/echo"},
+		{"GET", "/api/addons/hello/x/echo"}, {"GET", "/api/addons/hello/x/admin/foo"}, {"GET", "/api/addons/web"},
+		// the router matches the raw path: the admins' log behind encoded slashes
+		{"GET", "/api/addons/hello%2Fx%2Fmedia%2F/log"}, {"GET", "/api/addons/hello/x/media/echo%2F..%2Fadmin%2Ffoo"}} {
+		if w := e.do(c[0], c[1]+"?"+mk(key), "", nil); w.Code != 401 {
+			t.Errorf("%s %s with a media key only: %d %s", c[0], c[1], w.Code, w.Body)
+		}
+	}
+	kid := e.mediaKey(e.deviceLogin(3, "", "phone-0003"))
+	if w := e.do("GET", "/api/addons/hello/x/media/echo?"+mk(kid), "", nil); w.Code != 403 ||
+		!strings.Contains(w.Body.String(), "Недоступно в детском профиле") {
+		t.Fatalf("kid key: %d %s", w.Code, w.Body)
+	}
+}
+
+// TestAddonProxyHeaders_MaxHeight: outside the home network the user
+// header carries the height «Качество вне дома» caps «Авто» at; at home,
+// and when that setting is «Оригинал», it carries none.
+func TestAddonProxyHeaders_MaxHeight(t *testing.T) {
+	var remote atomic.Bool
+	e := newAddonEnv(t, func(d *Deps) { d.ClientIsRemote = func(*http.Request) bool { return remote.Load() } })
+	header := func() map[string]any {
+		t.Helper()
+		w := e.do("POST", "/api/addons/hello/x/echo", `{}`, e.admin)
+		var got struct{ Headers http.Header }
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+			t.Fatalf("proxy: %d %s", w.Code, w.Body)
+		}
+		var u map[string]any
+		if err := json.Unmarshal([]byte(got.Headers.Get("X-Antresol-User")), &u); err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	set := func(q string) {
+		t.Helper()
+		if err := saveAppSettings(context.Background(), e.db, AppSettings{RemoteQuality: q}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u := header(); u["maxHeight"] != nil {
+		t.Fatalf("at home: %v", u)
+	}
+	remote.Store(true)
+	if u := header(); u["maxHeight"] != float64(1080) {
+		t.Fatalf("remote, default setting: %v", u)
+	}
+	set("480")
+	if u := header(); u["maxHeight"] != float64(480) {
+		t.Fatalf("remote, 480: %v", u)
+	}
+	set("original")
+	if u := header(); u["maxHeight"] != nil {
+		t.Fatalf("remote, original: %v", u)
+	}
+	set("720")
+	remote.Store(false)
+	if u := header(); u["maxHeight"] != nil {
+		t.Fatalf("home again: %v", u)
 	}
 }

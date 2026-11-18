@@ -1,4 +1,4 @@
-/* Pill-shaped choices («Языки субтитров», the online picker's «Сезон» and «Качество»). */
+/* Pill-shaped choices («Языки субтитров», an addon picker's «Сезон» and «Качество»). */
 .chips {
   display: flex;
   flex-wrap: wrap;

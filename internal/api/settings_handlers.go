@@ -395,8 +395,7 @@ func (v *settingsView) fitLanguages() {
 }
 
 func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
-	// A client that does not know the subtitle or online fields keeps the
-	// stored ones.
+	// A client that does not know the subtitle fields keeps the stored ones.
 	stored, err := LoadAppSettings(r.Context(), s.db, s.defaults)
 	if err != nil {
 		internalErr(w, r, "settings", err)
@@ -407,8 +406,8 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "settings", err)
 		return
 	}
-	// the subtitle, online and language fields a client leaves out keep
-	// the stored values
+	// the subtitle and language fields a client leaves out keep the stored
+	// values
 	var v settingsView
 	v.AppSettings = stored
 	v.Languages = stored.LanguagesOrDefault()

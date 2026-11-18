@@ -95,7 +95,7 @@ func (f *fatalT) Fatalf(string, ...any) {
 func TestCoreGoldens(t *testing.T) {
 	gs := LoadGoldens(t, GoldenDir())
 	want := []string{"info", "item", "item-files", "tmdb-item", "tmdb-ids", "find-title", "find-album", "find-book",
-		"series-episodes", "series-folder", "series-audio", "album-dir", "files-under", "file-by-path", "file-by-id",
+		"series-episodes", "series-episode-items", "series-folder", "series-audio", "album-dir", "files-under", "file-by-path", "file-by-id",
 		"paths", "search", "ref-files", "users", "watched", "studios", "import", "refs-batch", "owners",
 		"tracking-title", "tracking-episodes", "tracking-sources",
 		"imports-active-count", "imports-job-ids", "imports-job", "imports-candidates", "imports-groups", "imports-groups-all",
@@ -105,7 +105,7 @@ func TestCoreGoldens(t *testing.T) {
 		"imports-snapshot", "imports-job-fail", "imports-fail-reading", "imports-delete",
 		"album-tracks", "tracking-title-tmdb", "tracking-title-id", "tracking-kick", "event", "refs-replace", "ref-tracks",
 		"refs-delete", "voiceover-queue", "voiceover-state", "holds-put", "holds", "play-input", "play-input-drop", "notify",
-		"requests-approve", "image"}
+		"requests-approve", "image", "progress", "progress-put"}
 	var got []string
 	for n := range gs {
 		got = append(got, n)
@@ -131,6 +131,19 @@ func TestCoreGoldens(t *testing.T) {
 	// the core's recording: Маша (2) watched the movie (1), not the series (2)
 	if m, err := c.Watched(ctx, 2, []int64{1}, []int64{2}); err != nil || len(m) != 1 || !m[1] {
 		t.Fatalf("watched %v %v", m, err)
+	}
+	// Маша's saved position in an episode (4), none in the next (5)
+	at := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	if err := c.SaveProgress(ctx, addonkit.ProgressSave{UserID: 2, ItemID: 4, PositionMs: 600000, DurationMs: 3480000, At: at}); err != nil {
+		t.Fatalf("save progress %v", err)
+	}
+	if m, err := c.Progress(ctx, 2, []int64{4, 5}); err != nil || len(m) != 1 || m[4].PositionMs != 600000 || m[4].Watched || !m[4].UpdatedAt.Equal(at) {
+		t.Fatalf("progress %+v %v", m, err)
+	}
+	// the series' two episodes' item ids (4, 5), for Маша, who may see them
+	if eps, err := c.EpisodeItems(ctx, 2, 126308); err != nil || len(eps) != 2 || eps[0] != (addonkit.EpisodeItem{Season: 1, Episode: 1, ItemID: 4}) ||
+		eps[1] != (addonkit.EpisodeItem{Season: 1, Episode: 2, ItemID: 5}) {
+		t.Fatalf("episode items %+v %v", eps, err)
 	}
 	// the tracked series, its two episodes and three sources
 	ti, err := c.EnsureTitle(ctx, "series", 126308, "Сёгун", "/shogun.jpg")

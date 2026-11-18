@@ -16,13 +16,14 @@
 // waitVerdict); a stream that brings nothing for minutes is «stalled» and
 // never falls back to a transcode of the same slow source.
 //
-// Online playback (mode 'online', «Смотреть онлайн») plays a source through
-// the server's proxy: hls.js, Safari's native HLS, or an MP4 as is. Its
-// stream is the whole video from 0, so every seek is local, and there is no
-// heartbeat (no /api/hls/ session). A stale link (a 410, a long stall) is
-// played again with `refresh` at the same place, at most twice in 5 minutes
-// (recoverOnline); after that the viewer is asked for another quality or
-// source.
+// Stream playback (the `stream` option, mode 'stream') plays a source
+// through a proxy (an addon's, through the core's): hls.js, Safari's native
+// HLS, or an MP4 as is. Its stream is the whole video from 0, so every seek
+// is local, and there is no heartbeat (no /api/hls/ session). A stale link
+// (a 410, a long stall) is played again with `refresh` at the same place, at
+// most twice in 5 minutes (recoverStream); after that the viewer is asked
+// for another quality or source. Whatever mode the `start` answer names, a
+// stream session is mode 'stream'.
 //
 // AirPlay (Safari): the receiver fetches the stream without the cookie, so
 // while the video plays on one (`setRemote(true)`) every session URL gets a
@@ -38,16 +39,16 @@ import type Hls from 'hls.js'
 import type { ErrorData } from 'hls.js'
 import { ApiError, play, stopHls, touchHls } from '../api/client'
 import { nativeHls } from './hlsSupport'
-import type { ClientCaps, MediaFile, OnlineQualityInfo, PlayRequest, PlayResponse, PlaySegment, Quality, QualityInfo, SubTrack, Track } from '../api/types'
+import type { ClientCaps, MediaFile, PlayRequest, PlayResponse, PlaySegment, Quality, QualityInfo, StreamQualityInfo, SubTrack, Track } from '../api/types'
 import { EXTERNAL_AUDIO_BASE } from '../api/types'
 import {
   endedEarly,
   mediaErrorReason,
-  onlineExpired,
-  recoverOnline,
+  recoverStream,
   repeatedEarlyEnd,
   planSeek,
   recover,
+  streamExpired,
   waitVerdict,
   type FailReason,
   type HlsHealth,
@@ -67,7 +68,7 @@ const NATIVE_PAUSE_LIMIT_MS = 100_000
 
 export const finalError = () => t('player.video.finalError')
 export const stalledError = () => t('player.slowSourceStalled')
-export const onlineError = () => t('player.video.onlineError')
+export const streamError = () => t('player.video.streamError')
 const offlineError = () => t('player.video.offline')
 
 const sessionOf = (url: string) => /\/api\/hls\/([^/]+)\//.exec(url)?.[1]
@@ -82,22 +83,22 @@ const retryCaps = (c: ClientCaps) =>
   withoutCodecs(c, [...c.videoCodecs.filter((v) => v !== 'h264'), ...c.audioCodecs.filter((a) => a !== 'aac')])
 
 /** hls.js retries: the server answers 503 while ffmpeg works on the first segment. */
-function hlsConfig(slow: boolean, online = false) {
+function hlsConfig(slow: boolean, stream = false) {
   const manifest = {
     maxTimeToFirstByteMs: Infinity,
     maxLoadTimeMs: 30_000, // the server waits up to 15 s before its 503
     timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 },
-    // online: the proxy answers at once (a source error is a 502, a stale link a 410)
-    errorRetry: { maxNumRetry: online ? 2 : slow ? 600 : 60, retryDelayMs: 2000, maxRetryDelayMs: 2000 },
+    // a stream: the proxy answers at once (a source error is a 502, a stale link a 410)
+    errorRetry: { maxNumRetry: stream ? 2 : slow ? 600 : 60, retryDelayMs: 2000, maxRetryDelayMs: 2000 },
   }
   return {
     startPosition: 0,
-    // online CDNs stall now and then: a longer buffer rides it out (the byte
+    // a stream's CDN stalls now and then: a longer buffer rides it out (the byte
     // cap, hls.js's 60 MB maxBufferSize, still bounds memory); the first
     // fragment is fetched while the manifest is still being parsed
-    maxBufferLength: online ? 60 : 30,
-    maxMaxBufferLength: online ? 120 : 600,
-    startFragPrefetch: online,
+    maxBufferLength: stream ? 60 : 30,
+    maxMaxBufferLength: stream ? 120 : 600,
+    startFragPrefetch: stream,
     backBufferLength: 60,
     enableWorker: true,
     manifestLoadPolicy: { default: manifest },
@@ -141,8 +142,12 @@ export interface PlaybackOptions {
   slowSource?: boolean
   /** Bytes the stream has downloaded so far (growing = data is still coming). */
   sourceProgress?: () => number
-  /** Online playback: `start` plays a source through the proxy; `stop` closes its session. */
-  online?: { stop: (session: string, keepalive?: boolean) => Promise<void>; initialQuality?: string }
+  /**
+   * Stream playback: `start` plays a source through a proxy (its answer's
+   * `session`); `stop` closes that session; `initialQuality` is the
+   * source quality asked for first («1080p»).
+   */
+  stream?: { stop: (session: string, keepalive?: boolean) => Promise<void>; initialQuality?: string }
 }
 
 export function usePlayback({
@@ -156,11 +161,11 @@ export function usePlayback({
   start,
   slowSource = false,
   sourceProgress,
-  online,
+  stream,
 }: PlaybackOptions) {
-  const onlineRef = useRef(online)
-  onlineRef.current = online
-  const isOnline = Boolean(online)
+  const streamRef = useRef(stream)
+  streamRef.current = stream
+  const isStream = Boolean(stream)
   const startRef = useRef(start)
   startRef.current = start
   const progressRef = useRef(sourceProgress)
@@ -193,12 +198,12 @@ export function usePlayback({
   // This session has shown frames: only then is a pause the viewer's (WebKit
   // also fires «pause» when it refuses a play() that had no tap behind it).
   const hasPlayed = useRef(false)
-  /** Online: when the stale-link re-plays happened (ms), and whether the next load is one. */
+  /** A stream: when the stale-link re-plays happened (ms), and whether the next load is one. */
   const replays = useRef<number[]>([])
   const refreshNext = useRef(false)
   /** A frame was shown at least once in this player. */
   const played = useRef(false)
-  const onlineQualityRef = useRef(online?.initialQuality ?? '')
+  const streamQualityRef = useRef(stream?.initialQuality ?? '')
   /** The video plays on an AirPlay receiver: session URLs carry a media key. */
   const remote = useRef(false)
   /** The URL the element was given last (keyed or not). */
@@ -234,8 +239,8 @@ export function usePlayback({
   const segmentsPart = useRef(-1)
   const [quality, setQuality] = useState<Quality>(initialQuality)
   const [qualityInfo, setQualityInfo] = useState<QualityInfo | null>(null)
-  const [onlineQuality, setOnlineQuality] = useState<OnlineQualityInfo | null>(null)
-  /** Online: a stale link is being fetched again («Обновляем ссылку…»). */
+  const [streamQuality, setStreamQuality] = useState<StreamQualityInfo | null>(null)
+  /** A stream: a stale link is being fetched again («Обновляем ссылку…»). */
   const [refreshing, setRefreshing] = useState(false)
 
   const setAbs = useCallback((t: number) => {
@@ -250,9 +255,9 @@ export function usePlayback({
   /** Seconds into the current part (from absRef, valid even when the element is not). */
   const partTime = useCallback(() => absRef.current - (startsRef.current[session.current.part] ?? 0), [])
 
-  /** Closes a server session: an online proxy session, else an HLS one. */
+  /** Closes a server session: a stream's proxy session, else an HLS one. */
   const stopSession = (sid: string, keepalive = false) => {
-    const o = onlineRef.current
+    const o = streamRef.current
     return (o ? o.stop(sid, keepalive) : stopHls(sid, keepalive)).catch(() => {})
   }
 
@@ -297,7 +302,7 @@ export function usePlayback({
     async (phase: 'start' | 'stall', token: number) => {
       const s = session.current
       if (s.token !== token || stopped.current) return
-      const h = s.mode !== '' && s.mode !== 'direct' && s.mode !== 'online' ? await heartbeat(token) : undefined
+      const h = s.mode !== '' && s.mode !== 'direct' && s.mode !== 'stream' ? await heartbeat(token) : undefined
       if (session.current.token !== token) return
       const bytes = progressRef.current?.() ?? -1
       const seen = lastSeen.current
@@ -336,30 +341,30 @@ export function usePlayback({
       if (!video) return
       // Direct play seeks to the position; a copied (remux) video starts on
       // the keyframe before it and skips the rest inside the stream.
-      // An online stream is the whole video: it seeks like direct play.
-      const local = r.mode === 'direct' || r.mode === 'online'
+      // A stream is the whole video: it seeks like direct play.
+      const local = r.mode === 'direct' || r.mode === 'stream'
       const skipIn = local ? localStart : localStart - r.startSec
       pendingSeek.current = skipIn > 0.3 ? skipIn : null
       lastSeen.current = { bytes: progressRef.current?.() ?? -1, segments: -1, idle: 0 }
       window.clearTimeout(startTimer.current)
       startTimer.current = window.setTimeout(() => void checkWait('start', token), START_TIMEOUT_MS)
-      if (session.current.sid && r.mode !== 'online') {
+      if (session.current.sid && r.mode !== 'stream') {
         window.clearInterval(beat.current)
         beat.current = window.setInterval(() => void heartbeat(token), HEARTBEAT_MS)
       }
-      if (r.mode === 'direct' || session.current.native || (r.mode === 'online' && r.kind === 'mp4')) {
+      if (r.mode === 'direct' || session.current.native || (r.mode === 'stream' && r.kind === 'mp4')) {
         video.src = r.url
       } else {
         const startPosition = pendingSeek.current ?? 0
         pendingSeek.current = null // hls.js starts there itself
         void loadHls().then(({ default: Hls }) => {
           if (session.current.token !== token || videoRef.current !== video) return
-          const hls = new Hls({ ...hlsConfig(slowSource, r.mode === 'online'), startPosition })
+          const hls = new Hls({ ...hlsConfig(slowSource, r.mode === 'stream'), startPosition })
           hlsRef.current = hls
           hls.on(Hls.Events.ERROR, (_e, data: ErrorData) => {
             if (session.current.token !== token) return
-            // online: the proxy's 410 (a stale link) never gets better by retrying
-            const stale = r.mode === 'online' && onlineExpired(data.response?.code)
+            // a stream: the proxy's 410 (a stale link) never gets better by retrying
+            const stale = r.mode === 'stream' && streamExpired(data.response?.code)
             if (!data.fatal && !stale) return
             const expired = stale || data.type === Hls.ErrorTypes.NETWORK_ERROR
             fail.current(expired ? 'expired' : 'media', token)
@@ -416,13 +421,16 @@ export function usePlayback({
       const body: PlayRequest = {
         caps: capsRef.current,
         startSec: Math.max(0, localStart),
-        quality: onlineRef.current ? onlineQualityRef.current : qualityRef.current,
+        quality: streamRef.current ? streamQualityRef.current : qualityRef.current,
         ...(ai !== undefined && ai >= 0 ? { audioIndex: ai } : {}),
         ...(audioSrc ? { audioSrc } : {}),
         ...(replace ? { replaceSession: replace } : {}),
         ...(refresh ? { refresh: true } : {}),
       }
       r = await (startRef.current ? startRef.current(file, body) : play(file.id, body))
+      // a stream session is a stream whatever mode its answer names (an
+      // older answer has a mode of its own)
+      if (streamRef.current) r = { ...r, mode: 'stream' }
     } catch (e) {
       if (session.current.token !== token) return
       if (e instanceof DOMException && e.name === 'AbortError') return
@@ -431,7 +439,7 @@ export function usePlayback({
       setError(e instanceof ApiError && e.status !== 0 ? e.message : offlineError())
       return
     }
-    const sid = r.mode === 'online' ? r.session : r.mode === 'direct' ? undefined : sessionOf(r.url)
+    const sid = r.mode === 'stream' ? r.session : r.mode === 'direct' ? undefined : sessionOf(r.url)
     if (session.current.token !== token || stopped.current) {
       if (sid) void stopSession(sid)
       return
@@ -449,7 +457,7 @@ export function usePlayback({
       }
     }
     urlRef.current = r.url
-    const offset = r.mode === 'direct' || r.mode === 'online' ? 0 : r.startSec
+    const offset = r.mode === 'direct' || r.mode === 'stream' ? 0 : r.startSec
     session.current = { ...session.current, mode: r.mode, offset, sid }
     setMode(r.mode)
     if (r.durationMs && r.durationMs > 0) {
@@ -466,8 +474,8 @@ export function usePlayback({
     if (r.segments || segmentsPart.current !== partIdx) setSegments(r.segments ?? [])
     segmentsPart.current = partIdx
     if (r.quality && 'options' in r.quality) {
-      setOnlineQuality(r.quality)
-      onlineQualityRef.current = r.quality.current
+      setStreamQuality(r.quality)
+      streamQualityRef.current = r.quality.current
       setQualityInfo(null)
     } else setQualityInfo(r.quality ?? null)
     attach(r, token, localStart)
@@ -480,9 +488,9 @@ export function usePlayback({
     // On a receiver a failure may be its refused key (a session ended
     // elsewhere): the restart asks for a new one.
     if (remote.current) forgetMediaKey()
-    if (onlineRef.current) {
+    if (streamRef.current) {
       // A decoding failure is this device; anything else is a stale link.
-      const o = reason === 'media' ? ({ action: 'error' } as const) : recoverOnline(replays.current, Date.now(), played.current)
+      const o = reason === 'media' ? ({ action: 'error' } as const) : recoverStream(replays.current, Date.now(), played.current)
       if (o.action === 'replay') {
         replays.current = o.replays
         refreshNext.current = true
@@ -492,7 +500,7 @@ export function usePlayback({
         teardown()
         setWait(false)
         setRefreshing(false)
-        setError(reason === 'media' ? finalError() : onlineError())
+        setError(reason === 'media' ? finalError() : streamError())
       }
       return
     }
@@ -571,7 +579,7 @@ export function usePlayback({
       setAbs(t)
       // Still waiting for the server or for the first frame: move the start instead.
       if (loc.part === s.part && s.mode === '') return void reload(s.part, loc.offset)
-      if (loc.part === s.part && (s.mode === 'direct' || s.mode === 'online') && pendingSeek.current !== null) {
+      if (loc.part === s.part && (s.mode === 'direct' || s.mode === 'stream') && pendingSeek.current !== null) {
         pendingSeek.current = loc.offset
         return
       }
@@ -615,12 +623,12 @@ export function usePlayback({
     [reload, partTime],
   )
 
-  /** Online: another source quality, played again at the current position. */
-  const chooseOnlineQuality = useCallback(
+  /** A stream: another source quality, played again at the current position. */
+  const chooseStreamQuality = useCallback(
     (q: string) => {
-      if (q === onlineQualityRef.current) return
-      onlineQualityRef.current = q
-      setOnlineQuality((info) => (info ? { ...info, current: q } : info))
+      if (q === streamQualityRef.current) return
+      streamQualityRef.current = q
+      setStreamQuality((info) => (info ? { ...info, current: q } : info))
       replays.current = []
       void reload(session.current.part, partTime())
     },
@@ -645,7 +653,7 @@ export function usePlayback({
 
   // ---------- media element events ----------
   const isHls = () => session.current.mode !== '' && session.current.mode !== 'direct'
-  const nativeLibraryHls = () => session.current.native && isHls() && session.current.mode !== 'online'
+  const nativeLibraryHls = () => session.current.native && isHls() && session.current.mode !== 'stream'
 
   const armStall = () => {
     window.clearTimeout(stallTimer.current)
@@ -682,8 +690,8 @@ export function usePlayback({
     onLoadedMetadata: () => {
       const v = videoRef.current
       if (!v) return
-      // An online stream knows its own length (the proxy has no probe of it).
-      if (session.current.mode === 'online' && Number.isFinite(v.duration) && v.duration > 0) {
+      // A stream knows its own length (the proxy has no probe of it).
+      if (session.current.mode === 'stream' && Number.isFinite(v.duration) && v.duration > 0) {
         const d = v.duration
         setDurations((ds) => (Math.abs((ds[0] ?? 0) - d) > 0.5 ? [d] : ds))
         durRef.current = [d]
@@ -790,16 +798,16 @@ export function usePlayback({
     segments,
     quality,
     qualityInfo,
-    onlineQuality,
+    streamQuality,
     refreshing,
-    online: isOnline,
+    stream: isStream,
     seek,
     seekPart,
     skip,
     toggle,
     chooseAudio,
     chooseQuality,
-    chooseOnlineQuality,
+    chooseStreamQuality,
     retry,
     stop,
     setRemote,

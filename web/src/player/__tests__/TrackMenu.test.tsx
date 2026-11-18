@@ -24,14 +24,14 @@ vi.mock('hls.js', () => {
   return { default: FakeHls }
 })
 
-import { VideoPlayer, type OnlinePlayback } from '../VideoPlayer'
+import { VideoPlayer, type StreamPlayback } from '../VideoPlayer'
 
 const adult: User = { id: 2, name: 'Мама', avatar: 'grad-1', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
 const kid: User = { ...adult, id: 3, name: 'Вася', isKid: true }
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
 const series: TrackActionItem = { id: 40, title: 'Миллиарды', kind: 'series' }
 
-async function open(user: User, o: { online?: OnlinePlayback } = {}) {
+async function open(user: User, o: { stream?: StreamPlayback } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/api/login') ? json(user) : json({}))),
@@ -43,7 +43,7 @@ async function open(user: User, o: { online?: OnlinePlayback } = {}) {
   }))
   render(
     <VideoPlayer itemId={41} title="Миллиарды" parts={[{ id: 5, name: 'e1.mkv', durationMs: 60000 } as MediaFile]} startSec={0}
-      onClose={() => {}} start={start as never} trackActionItem={series} online={o.online} />,
+      onClose={() => {}} start={start as never} trackActionItem={series} stream={o.stream} />,
   )
   await waitFor(() => expect(start).toHaveBeenCalled())
   await userEvent.click(screen.getByRole('button', { name: 'Аудио и субтитры' }))
@@ -98,10 +98,10 @@ describe('the player’s track menu: addon rows', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Дорожки дополнения' })).toBeNull())
   })
 
-  it('none during online playback or for a kid', async () => {
+  it('none while a stream plays or for a kid', async () => {
     registerFake()
-    const online: OnlinePlayback = { stop: async () => {}, saveProgress: async () => {}, onOtherSource: () => {} }
-    const first = await open(adult, { online })
+    const stream: StreamPlayback = { stop: async () => {}, saveProgress: async () => {}, onOtherSource: () => {} }
+    const first = await open(adult, { stream })
     expect(within(first).queryByRole('menuitem', { name: 'Найти дорожку…' })).toBeNull()
     document.body.innerHTML = ''
     session.reset()

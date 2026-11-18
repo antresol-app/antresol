@@ -264,8 +264,8 @@ func TestRefresh_MixedKinds(t *testing.T) {
 
 // TestScanners_EnabledRunningOnly: a disabled addon gives no scanner (its
 // stored rows stay, nothing is logged each round); a kind declared twice
-// (which install refuses) is the first addon's; library and online are
-// never an addon's.
+// (which install refuses) is the first addon's; library is never an addon's,
+// online is (D12).
 func TestScanners_EnabledRunningOnly(t *testing.T) {
 	h, tg := newHooks(t)
 	var logs bytes.Buffer
@@ -277,7 +277,7 @@ func TestScanners_EnabledRunningOnly(t *testing.T) {
 	off.Enabled = false
 	tg.ins["c"] = off
 	scs := h.Scanners(context.Background())
-	if got := scannerKinds(scs); !slices.Equal(got, []string{"alpha", "beta"}) {
+	if got := scannerKinds(scs); !slices.Equal(got, []string{"alpha", "online", "beta"}) {
 		t.Fatalf("kinds %v", got)
 	}
 	if scs[0].(*hookScanner).addon != "a" {
@@ -289,8 +289,8 @@ func TestScanners_EnabledRunningOnly(t *testing.T) {
 }
 
 // TestHooks_ScanKinds (E2): the kinds a profile may see of the installed
-// addons it has access to, enabled or not; kids none (they keep the
-// library's).
+// addons it has access to, enabled or not (online too, D12); kids none
+// (they keep the library's).
 func TestHooks_ScanKinds(t *testing.T) {
 	tg := &hookTarget{ins: map[string]Installed{
 		"a": {ID: "a", Enabled: true, Manifest: Manifest{ID: "a", Access: "adults", Hooks: []string{"tracking.scan:beta", "tracking.scan:alpha", "disk.usage"}}},
@@ -299,10 +299,10 @@ func TestHooks_ScanKinds(t *testing.T) {
 		"d": {ID: "d", Enabled: true, Manifest: Manifest{ID: "d", Access: "adults", Hooks: []string{"tracking.scan:online", "tracking.scan:library"}}},
 	}}
 	h := &Hooks{T: tg, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if got := h.ScanKinds(auth.User{ID: 1, IsAdmin: true}); !slices.Equal(got, []string{"alpha", "beta", "gamma", "zeta"}) {
+	if got := h.ScanKinds(auth.User{ID: 1, IsAdmin: true}); !slices.Equal(got, []string{"alpha", "beta", "gamma", "online", "zeta"}) {
 		t.Fatalf("admin %v", got)
 	}
-	if got := h.ScanKinds(auth.User{ID: 2}); !slices.Equal(got, []string{"alpha", "beta", "zeta"}) {
+	if got := h.ScanKinds(auth.User{ID: 2}); !slices.Equal(got, []string{"alpha", "beta", "online", "zeta"}) {
 		t.Fatalf("adult %v", got)
 	}
 	if got := h.ScanKinds(auth.User{ID: 3, IsKid: true}); len(got) != 0 {

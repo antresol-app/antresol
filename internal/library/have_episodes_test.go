@@ -115,3 +115,90 @@ func TestResolutionOf(t *testing.T) {
 		t.Error("no probe")
 	}
 }
+
+// EpisodeItems is HaveEpisodes with the episode item that holds each
+// pair's file: a range file's later episodes carry its item, an episode of
+// its own wins over a range that also covers it, and a missing file, item
+// or season leaves the pair out.
+func TestEpisodeItems(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	r := NewRepo(d)
+	ctx := context.Background()
+	dir := t.TempDir()
+	add := func(season, ep int, name string) int64 {
+		t.Helper()
+		id, err := r.UpsertEpisode(ctx, EpisodeInput{SeriesTitle: "Сёгун", SeriesTmdbID: 42, Season: season, Episode: ep,
+			File: FileInput{Path: filepath.Join(dir, name), Size: 1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	s2e1 := add(2, 1, "Shogun.S02E01.mkv") // added first: the order of the answer is not the order of insertion
+	s1e1 := add(1, 1, "Сёгун - S01E01-E02.mkv")
+	s1e3 := add(1, 3, "Shogun.S01E03E04.mkv")
+	var series int64
+	if err := d.QueryRow(`SELECT parent_id FROM items WHERE id=(SELECT parent_id FROM items WHERE id=?)`, s1e1).Scan(&series); err != nil {
+		t.Fatal(err)
+	}
+	if series == 0 {
+		t.Fatal("no series")
+	}
+	ref := func(season, ep int, item int64) EpisodeRef {
+		return EpisodeRef{Season: season, Episode: ep, ItemID: item, SeriesID: series}
+	}
+
+	got, err := r.EpisodeItems(ctx, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []EpisodeRef{ref(1, 1, s1e1), ref(1, 2, s1e1), ref(1, 3, s1e3), ref(1, 4, s1e3), ref(2, 1, s2e1)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v\nwant %+v", got, want)
+	}
+	// the pairs are HaveEpisodes' pairs
+	have, err := r.HaveEpisodes(ctx, 42)
+	if err != nil || len(have) != len(got) {
+		t.Fatalf("have %v %v", have, err)
+	}
+	for _, e := range got {
+		if !have[[2]int{e.Season, e.Episode}] {
+			t.Errorf("S%dE%d is not in HaveEpisodes", e.Season, e.Episode)
+		}
+	}
+
+	// an episode of its own, with its own file, beats the range over it
+	s1e2 := add(1, 2, "Shogun.S01E02.mkv")
+	if got, err = r.EpisodeItems(ctx, 42); err != nil || len(got) != 5 || got[1] != ref(1, 2, s1e2) || got[0] != ref(1, 1, s1e1) {
+		t.Fatalf("own episode: %+v %v", got, err)
+	}
+
+	// a missing file takes its pair (and the range's pairs only with it)
+	if _, err := d.Exec(`UPDATE files SET missing_since='2026-01-01T00:00:00Z' WHERE item_id=?`, s1e3); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = r.EpisodeItems(ctx, 42); err != nil || len(got) != 3 || got[2] != ref(2, 1, s2e1) {
+		t.Fatalf("missing file: %+v %v", got, err)
+	}
+	// a missing episode item, and a missing season
+	if _, err := d.Exec(`UPDATE items SET missing_since='2026-01-01T00:00:00Z' WHERE id=?`, s1e1); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = r.EpisodeItems(ctx, 42); err != nil || len(got) != 2 || got[0] != ref(1, 2, s1e2) {
+		t.Fatalf("missing episode: %+v %v", got, err)
+	}
+	if _, err := d.Exec(`UPDATE items SET missing_since='2026-01-01T00:00:00Z' WHERE id=(SELECT parent_id FROM items WHERE id=?)`, s2e1); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = r.EpisodeItems(ctx, 42); err != nil || len(got) != 1 || got[0] != ref(1, 2, s1e2) {
+		t.Fatalf("missing season: %+v %v", got, err)
+	}
+	// a series the library lacks: none
+	if got, err := r.EpisodeItems(ctx, 7); err != nil || len(got) != 0 {
+		t.Fatalf("%v %v", got, err)
+	}
+}

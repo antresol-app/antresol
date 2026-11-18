@@ -503,8 +503,8 @@ func TestManager_RemoveCallsOnRemove(t *testing.T) {
 }
 
 // TestInstall_ScanKindCollision (E2): a scan kind another installed addon
-// declares, or library or online, is refused with its message, and the
-// refused addon leaves nothing behind.
+// declares, or library, is refused with its message, and the refused addon
+// leaves nothing behind.
 func TestInstall_ScanKindCollision(t *testing.T) {
 	m, dev := newManager(t)
 	ctx := context.Background()
@@ -512,7 +512,7 @@ func TestInstall_ScanKindCollision(t *testing.T) {
 	if _, err := m.Install(ctx, "local:one", ""); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ id, kind string }{{"two", "alpha"}, {"three", "online"}, {"four", "library"}} {
+	for _, c := range []struct{ id, kind string }{{"two", "alpha"}, {"four", "library"}} {
 		writeLocalHooks(t, dev, c.id, "1.0.0", "ok", false, []string{"tracking.scan:beta", "tracking.scan:" + c.kind})
 		_, err := m.Install(ctx, "local:"+c.id, "")
 		if !errors.Is(err, ErrScanKindTaken) {
@@ -547,6 +547,40 @@ func TestInstall_ScanKindCollision(t *testing.T) {
 	}
 }
 
+// TestInstall_OnlineKindAllowedOnce (D12): `online` is no longer the core's;
+// the first addon to declare it installs (and keeps it over an update), a
+// second one declaring it is refused as for any other kind, on or off.
+func TestInstall_OnlineKindAllowedOnce(t *testing.T) {
+	m, dev := newManager(t)
+	ctx := context.Background()
+	writeLocalHooks(t, dev, "one", "1.0.0", "ok", false, []string{"tracking.scan:online"})
+	if _, err := m.Install(ctx, "local:one", ""); err != nil {
+		t.Fatalf("the first addon with online: %v", err)
+	}
+	writeLocalHooks(t, dev, "two", "1.0.0", "ok", false, []string{"tracking.scan:beta", "tracking.scan:online"})
+	_, err := m.Install(ctx, "local:two", "")
+	if !errors.Is(err, ErrScanKindTaken) {
+		t.Fatalf("a second addon with online: %v", err)
+	}
+	if msg, ok := UserMessage(err); !ok || msg != "Вид источника «online» уже занят" {
+		t.Fatalf("message %q %v", msg, ok)
+	}
+	if _, err := m.Store.Get(ctx, "two"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("store row: %v", err)
+	}
+	// its own update keeps the kind; turned off, the kind is still taken
+	writeLocalHooks(t, dev, "one", "1.0.1", "ok", false, []string{"tracking.scan:online"})
+	if _, err := m.Update(ctx, "one", ""); err != nil {
+		t.Fatalf("own update: %v", err)
+	}
+	if err := m.SetEnabled(ctx, "one", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Install(ctx, "local:two", ""); !errors.Is(err, ErrScanKindTaken) {
+		t.Fatalf("second over a disabled addon: %v", err)
+	}
+}
+
 // TestUpdate_ScanKindCollision (E2, R3): an update that newly declares a
 // kind another addon has is refused; the running version stays, with its
 // files and its record.
@@ -560,7 +594,7 @@ func TestUpdate_ScanKindCollision(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, kind := range []string{"alpha", "online"} {
+	for _, kind := range []string{"alpha", "library"} {
 		writeLocalHooks(t, dev, "two", "1.1.0", "ok", false, []string{"tracking.scan:beta", "tracking.scan:" + kind})
 		_, err := m.Update(ctx, "two", "")
 		if !errors.Is(err, ErrScanKindTaken) {

@@ -9,11 +9,11 @@ const backend = process.env.VAULT_DEV_BACKEND ?? 'http://localhost:8420'
 // The edition is the tree's, not a setting: the sources build's modules live
 // beside their stubs (X.stub.ts / X.stub.tsx, picked by resolve.extensions
 // below only when X itself is absent), and a tree without
-// src/app/routesFull.tsx (the public one) builds the core build:
+// src/api/clientFull.ts (the public one) builds the core build:
 // __LIBRARY_EDITION__ is the literal true, so the screens, routes and
 // strings of the sources build's other features are dead code and left out of
 // the bundle (docs/build-tags.md).
-const libraryEdition = !existsSync(new URL('src/app/routesFull.tsx', import.meta.url))
+const libraryEdition = !existsSync(new URL('src/api/clientFull.ts', import.meta.url))
 
 // The boot script (src/boot): an input of its own, so it stays a tiny chunk
 // with no imports, put first in <head> as an async module. It starts GET

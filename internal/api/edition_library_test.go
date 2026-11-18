@@ -41,7 +41,7 @@ func TestLibraryEditionSettings(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	keys := jsonKeys(t, w.Body.Bytes())
-	for _, k := range []string{"uploadLimited", "uploadLimitKBs", "streamCacheGB", "onlineEnabled", "quality", "voice", "voices",
+	for _, k := range []string{"uploadLimited", "uploadLimitKBs", "streamCacheGB", "quality", "voice", "voices",
 		"maxSizeGB", "preferLossless", "musicFormat", "mp3Bitrate", "bookLangs", "audiobookLangs", "comicLangs"} {
 		if keys[k] {
 			t.Errorf("settings has %q: %s", k, w.Body)
@@ -109,7 +109,7 @@ func TestLibraryEditionRoutesAbsent(t *testing.T) {
 		d.DB = db
 		d.MediaImport = testMediaImport(t, d) // «Переезд» is core; its sources build's parts are not
 	})
-	for _, p := range []string{"/api/online/status", "/api/discover?q=x", "/api/sources", "/api/follow",
+	for _, p := range []string{"/api/discover?q=x", "/api/sources", "/api/follow",
 		"/api/migrate/switch", "/api/disk", "/api/acquire/progress?kind=movie&tmdbId=1"} {
 		if w := e.do("GET", p, "", e.admin); w.Code != 404 {
 			t.Errorf("GET %s: %d %s", p, w.Code, w.Body)

@@ -15,13 +15,16 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { matchPath } from 'react-router'
+import { matchPath, useLocation } from 'react-router'
 import type { EpisodeCtx, EpisodePlay } from '../components/episodes/episodeTypes'
 import { useLang, useT } from '../i18n'
 import { useSession } from '../state/session'
 import { Notice } from '../ui/Notice'
 import {
   addonString,
+  contributionsOf,
+  rememberedFullWindow,
+  useAddonsLoading,
   useAddonsSettledFor,
   useContributions,
   useRegistryVersion,
@@ -119,6 +122,31 @@ export function useAddonRoute(addonId: string, rest: string) {
   return useMemo(() => matchAddonRoute(routes, addonId, rest), [routes, addonId, rest])
 }
 
+const ADDON_PATH = /^\/addons\/([^/]+)(?:\/|$)/i
+
+/**
+ * Whether the page at the current location is an addon's fullWindow route
+ * (`on`: the shell draws none of itself around it). `pending`: the addon
+ * has not registered yet in this tab, but on this device its last
+ * registration had a fullWindow route matching the path, so the shell
+ * draws the player's black fallback instead of itself until the bundle
+ * comes (or the profile's addons settled without it). Never for a kid.
+ */
+export function useFullWindowAddon(): 'off' | 'pending' | 'on' {
+  const { user } = useSession()
+  const { pathname } = useLocation()
+  const addonId = ADDON_PATH.exec(pathname)?.[1] ?? ''
+  const rest = addonId ? addonRest(pathname, addonId) : ''
+  const found = useAddonRoute(addonId, rest)
+  const loading = useAddonsLoading()
+  const settled = useAddonsSettledFor()
+  if (!addonId || !user || user.isKid || user.addons === false) return 'off'
+  if (found) return found.route.fullWindow ? 'on' : 'off'
+  if (contributionsOf(addonId) || (!loading && settled === user.id)) return 'off'
+  const want = '/' + decodePath(trimSlashes(rest))
+  return rememberedFullWindow(addonId).some((p) => matchPath({ path: '/' + trimSlashes(p), caseSensitive: true, end: true }, want)) ? 'pending' : 'off'
+}
+
 /** Where an addon's `to` leads: an app path (starting with `/`) as it is, else under /addons/<id>/. */
 export function resolveAddonPath(addonId: string, to: string): string {
   return to.startsWith('/') ? to : `/addons/${addonId}/${to}`
@@ -206,19 +234,24 @@ export function useAddonSheet(onFail?: (addonId: string) => void): {
     }
     return said as Exclude<R, ReactElement>
   }, [])
-  const node = open ? (
-    <AddonBoundary
-      key={open.token}
-      addonId={open.addonId}
-      fallback={null}
-      onError={() => {
-        setOpen((o) => (o?.token === open.token ? null : o))
-        fail.current?.(open.addonId)
-      }}
-    >
-      {open.el}
-    </AddonBoundary>
-  ) : null
+  // the same element until the sheet changes: a caller that draws it elsewhere (useWatchWays) redraws only then
+  const node = useMemo(
+    () =>
+      open ? (
+        <AddonBoundary
+          key={open.token}
+          addonId={open.addonId}
+          fallback={null}
+          onError={() => {
+            setOpen((o) => (o?.token === open.token ? null : o))
+            fail.current?.(open.addonId)
+          }}
+        >
+          {open.el}
+        </AddonBoundary>
+      ) : null,
+    [open],
+  )
   const closeAll = useCallback(() => setOpen(null), [])
   return { node, run, closeAll }
 }
@@ -323,27 +356,27 @@ function warnOnce(use: EpisodeAction['use'], line: string) {
 }
 
 /** The source kinds the core plays itself; an addon's entry never takes them. */
-const CORE_KINDS = new Set(['library', 'online'])
+const CORE_KINDS = new Set(['library'])
 
 /** How the episode guide sorts and names source kinds (useSourceKinds). */
 export type SourceKinds = {
-  /** Each kind's place (pickSource's `order`): the core's (library 0, online 20), then the addons'. */
+  /** Each kind's place (pickSource's `order`): the library's 0, then the addons'. */
   order: Record<string, number>
-  /** A kind's name: the core's, its addon's label, else the kind itself. */
+  /** A kind's name: the library's, its addon's label, else the kind itself. */
   label: (kind: string) => string
 }
 
 /**
- * The core's kinds (library, online) and the profile's addons' kinds, as
- * their episodeActions entries order and name them (none for a kid); the
- * first entry that names a kind wins.
+ * The library's kind and the profile's addons' kinds, as their
+ * episodeActions entries order and name them (none for a kid); the first
+ * entry that names a kind wins.
  */
 export function useSourceKinds(): SourceKinds {
   const entries = useEpisodeActions()
   const t = useT()
   const lang = useLang()
   return useMemo(() => {
-    const order: Record<string, number> = { library: 0, online: 20 }
+    const order: Record<string, number> = { library: 0 }
     const labelOf = new Map<string, { addonId: string; key: string }>()
     for (const e of entries) {
       for (const k of e.kinds) {
@@ -354,7 +387,6 @@ export function useSourceKinds(): SourceKinds {
     }
     const label = (kind: string) => {
       if (kind === 'library') return t('episodes.kind.library')
-      if (kind === 'online') return t('episodes.kind.online')
       const l = labelOf.get(kind)
       return l ? addonString(l.addonId, lang, l.key) : kind
     }

@@ -18,7 +18,7 @@ export interface ProgressOptions {
   /** Durations of all parts, seconds. */
   durRef: RefObject<number[]>
   playing: boolean
-  /** Saves somewhere else than the library item (online playback); used even with itemId 0. */
+  /** Saves somewhere else than the library item (a stream's playback); used even with itemId 0. */
   saver?: (positionMs: number, durationMs: number, keepalive: boolean) => Promise<void>
   /** A held jump (seconds on the whole timeline); cleared here once it played on. */
   holdRef?: RefObject<Hold | null>

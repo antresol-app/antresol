@@ -1,7 +1,7 @@
 // «Качество»: Авто / Оригинал / 1080p / 720p / 480p. «Авто» is the original at
 // home and «Качество вне дома» (Настройки) outside it. A choice restarts the
 // video at the same place.
-import type { OnlineQualityInfo, Quality, QualityInfo } from '../api/types'
+import type { Quality, QualityInfo, StreamQualityInfo } from '../api/types'
 import { MenuHeading, MenuItem, Menu } from '../ui/Menu'
 import { t, useT } from '../i18n'
 import styles from './QualityMenu.module.css'
@@ -67,15 +67,15 @@ export function QualityMenu({ quality, info, onChange, onOpenChange }: QualityMe
   )
 }
 
-export interface OnlineQualityMenuProps {
+export interface StreamQualityMenuProps {
   /** The source's qualities («1080p», «720p»…) and the one playing. */
-  info: OnlineQualityInfo
+  info: StreamQualityInfo
   onChange: (q: string) => void
   onOpenChange?: (open: boolean) => void
 }
 
-/** «Качество» of an online stream: the qualities its source offers; a choice plays it again at the same place. */
-export function OnlineQualityMenu({ info, onChange, onOpenChange }: OnlineQualityMenuProps) {
+/** «Качество» of a stream: the qualities its source offers; a choice plays it again at the same place. */
+export function StreamQualityMenu({ info, onChange, onOpenChange }: StreamQualityMenuProps) {
   if (info.options.length === 0) return null
   const t = useT()
   const shown = info.current || info.options[0]!

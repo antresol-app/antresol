@@ -2,13 +2,12 @@
 import type { EpisodeSource, SourceChoice, SourceKind } from '../api/types'
 
 /**
- * Where a source kind sorts: the core's kinds on a fixed scale (library 0,
- * online 20); an addon's kind takes the `order` of its episodeActions entry
- * (useSourceKinds; above 0, so the library always ranks first); a kind
- * with none sorts last.
+ * Where a source kind sorts: the library's own file first (0); every other
+ * kind takes the `order` of its addon's episodeActions entry (useSourceKinds;
+ * above 0, so the library always ranks first); a kind with none sorts last.
  */
 export type KindOrder = Readonly<Record<string, number>>
-export const CORE_KIND_ORDER: KindOrder = { library: 0, online: 20 }
+export const CORE_KIND_ORDER: KindOrder = { library: 0 }
 const UNKNOWN = Number.MAX_SAFE_INTEGER
 // the library always ranks first: an addon's order counts only above its 0
 const rankOf = (kind: string, order: KindOrder) => {

@@ -13,10 +13,8 @@ import type { WatchWay } from '../components/WatchButton'
 import { ButtonLink, Button } from '../ui/Button'
 import { itemHref } from '../components/Card'
 import { SubtitleSearchSheet } from '../player/SubtitleSearchSheet'
-// the sources build's «Онлайн» way (none in the core build: see docs/build-tags.md)
-import { OnlineWay } from './ItemDetailFull'
 import { fromTitle } from './titleDetail'
-import { TitleActionRow, useAddonWatchWays } from './TitleActionRow'
+import { TitleActionRow, useTitleWays } from './TitleActionRow'
 import { EpisodeList, episodesCount } from '../components/EpisodeList'
 import { EpisodeGuide } from '../components/episodes/EpisodeGuide'
 import { FamilyProgress, useFamily, type FamilyKind } from '../components/FamilyProgress'
@@ -284,16 +282,16 @@ export function ItemDetail() {
   ]
   const shownInfo = info.filter(([, v]) => v)
 
-  // «Смотреть» plays the server's file; «Онлайн» (the sources build) and the
-  // addons' watch ways join its ▾
+  // «Смотреть» plays the server's file; the addons' watch ways join its ▾
   // the mark is the one «Хочу посмотреть» of a library movie or series (it keeps the watchlist in step)
   const marked = (it.kind === 'series' || it.kind === 'movie') && it.id > 0 && Boolean(it.tmdbId)
-  const actionBar = (moreWays?: WatchWay[]) => (
+  const actionBar = (moreWays?: WatchWay[], waysMenu?: boolean) => (
     <ActionBar
       item={it}
       watchlistButton={!marked}
       onPlay={play}
       moreWays={moreWays}
+      waysMenu={waysMenu}
       onChanged={() => load(true)}
       onFindSubtitles={subsFile ? () => setFindingSubs(true) : undefined}
       trailers={trailers}
@@ -372,26 +370,12 @@ export function ItemDetail() {
           )}
           {isTitle ? (
             <>
-              <TitleActionRow item={it} tmdbId={tmdbId} seasons={title?.seasons ?? []} kidRequest={title?.kidRequest} guide={guide} />
+              <TitleActionRow item={it} tmdbId={tmdbId} kidRequest={title?.kidRequest} guide={guide} />
               <ItemPanels item={it} title={title} />
             </>
           ) : (
             <>
-              {(it.kind === 'series' || it.kind === 'movie') && it.tmdbId ? (
-                <OnlineWay
-                  kind={it.kind}
-                  tmdbId={it.tmdbId}
-                  title={it.title}
-                  poster={it.poster}
-                  canWatchOnline={Boolean(user?.canWatchOnline)}
-                  isKid={Boolean(user?.isKid)}
-                  openFromUrl
-                >
-                  {(online) => <LibraryActions item={it} ways={online} render={actionBar} />}
-                </OnlineWay>
-              ) : (
-                <LibraryActions item={it} ways={[]} render={actionBar} />
-              )}
+              <LibraryActions item={it} render={actionBar} />
               <FamilyProgress
                 members={family}
                 kind={FAMILY_KIND[it.kind] ?? 'movie'}
@@ -491,13 +475,17 @@ export function ItemDetail() {
   )
 }
 
-/** A library item's action row: its «Смотреть ▾» gets `ways` (online) and the addons' watch ways after them. */
-function LibraryActions({ item, ways, render }: { item: Detail; ways: WatchWay[]; render: (more: WatchWay[]) => ReactNode }) {
-  const addon = useAddonWatchWays(item)
+/**
+ * A library item's action row: its «Смотреть ▾» gets «С сервера», then the
+ * addons' watch ways, the title page's one way list (useTitleWays: ids,
+ * `useAvailable`, `?way=`).
+ */
+function LibraryActions({ item, render }: { item: Detail; render: (more: WatchWay[], menu: boolean) => ReactNode }) {
+  const list = useTitleWays(item, 1)
   return (
     <>
-      {render([...ways, ...addon.ways])}
-      {addon.node}
+      {render(list.ways, list.menu)}
+      {list.node}
     </>
   )
 }

@@ -266,6 +266,10 @@ type Deps struct {
 	// the tracking routes take the addons' scan kinds from it (ScanKinds).
 	// nil: none is called, and no addon kind is shown.
 	AddonHooks *addons.Hooks
+	// AddonRelay is the loopback relay the server's own ffmpeg reads addon
+	// streams through (/api/addon-relay/…: a «ТВ» channel's titles from
+	// an addon); nil: not mounted.
+	AddonRelay *addons.Relay
 	// InputBase is how ffmpeg reaches this server ("http://127.0.0.1:8420")
 	// and InputToken the per-process token that lets it read an input
 	// through the loopback relay /api/addon-input/… without a session;
@@ -284,7 +288,8 @@ type Deps struct {
 	VoiceOverFit *vofit.Worker
 
 	// fullDeps are the sources build's own dependencies (deps_full.go); an
-	// empty struct in the core build. Set them by name: deps.Online.
+	// empty struct in the core build, and in the sources build until it
+	// has one again. Set them by name.
 	fullDeps
 }
 
@@ -340,7 +345,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	// the one session check of every authenticated route
 	guard := &auth.Guard{Sessions: deps.Sessions, Network: deps.Network, Keys: deps.MediaKeys}
 	if deps.Users != nil && deps.Sessions != nil {
-		mountAuth(r, deps.Users, guard, deps.Throttle, newMeCaps(deps), deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen)
+		mountAuth(r, deps.Users, guard, deps.Throttle, deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen)
 	}
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
@@ -432,7 +437,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	if deps.Sessions != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(guard.Require)
-			mountPendingCards(r, deps.AddonHooks)
+			mountPendingCards(r, deps.AddonHooks, func(r *http.Request) int { return remoteMaxHeight(&deps, r) })
 		})
 	}
 	if deps.Sessions != nil && deps.DiskUsage != nil {
@@ -490,6 +495,11 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			r.Use(guard.Require)
 			mountInputPlay(r, ip)
 		})
+	}
+	if deps.AddonRelay != nil {
+		// the key and the token in the path, loopback only, no session
+		r.Get(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
+		r.Head(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
 	}
 	r.Handle("/api/*", http.NotFoundHandler())
 	r.NotFound(spa(webui.FS).ServeHTTP)
@@ -565,8 +575,8 @@ func (v *varyWriter) Unwrap() http.ResponseWriter { return v.ResponseWriter }
 // images, archives, the event stream).
 func mediaRoute(p string) bool {
 	for _, pre := range []string{"/api/stream/", "/api/hls/", "/api/audio/", "/api/download/",
-		"/api/images/", "/api/comics/", "/api/device-copies/", "/api/events", "/api/online/s/", "/api/files/content",
-		"/api/files/thumb", "/api/subs/", "/api/channels/live/", "/api/addon-input/"} {
+		"/api/images/", "/api/comics/", "/api/device-copies/", "/api/events", "/api/files/content",
+		"/api/files/thumb", "/api/subs/", "/api/channels/live/", "/api/addon-input/", addons.RelayPrefix} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}

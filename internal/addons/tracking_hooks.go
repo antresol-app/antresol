@@ -16,9 +16,10 @@ import (
 // scanHookPrefix starts a scanner hook's name: tracking.scan:<kind>.
 const scanHookPrefix = "tracking.scan:"
 
-// coreKinds are the source kinds of the core's own scanners: never an
-// addon's.
-var coreKinds = map[string]bool{"library": true, "online": true}
+// coreKinds are the source kinds of the core's own scanner: never an
+// addon's. Only the library's: every other kind, `online` too, is an
+// installed addon's to declare (D12).
+var coreKinds = map[string]bool{"library": true}
 
 // ScanKindsOf are the scan kinds a manifest declares, in its order.
 func ScanKindsOf(m Manifest) []string {
@@ -34,8 +35,8 @@ func ScanKindsOf(m Manifest) []string {
 // Scanners are the tracking scanners of this round (tracking.Service's
 // SetScanners): one per tracking.scan:<kind> of each addon that is on and
 // running, in addon-id order. A stopped, crashed or disabled addon gives
-// none, so its stored rows stay as they are and nothing is logged. A kind
-// of the core, or one an earlier addon has (install refuses both), is
+// none, so its stored rows stay as they are and nothing is logged. The
+// library's kind, or one an earlier addon has (install refuses both), is
 // skipped.
 func (h *Hooks) Scanners(ctx context.Context) []tracking.Scanner {
 	list, err := h.T.List(ctx)

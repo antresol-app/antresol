@@ -55,3 +55,11 @@ func TestPlaybackRequest_Inputs(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayPort(t *testing.T) {
+	for base, want := range map[string]int{"http://127.0.0.1:8420": 8420, "http://[::1]:8420": 0, "": 0, "http://127.0.0.1:x": 0} {
+		if got := relayPort(base); got != want {
+			t.Errorf("%q: %d", base, got)
+		}
+	}
+}

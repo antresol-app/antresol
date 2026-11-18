@@ -99,9 +99,6 @@ export default {
   'stats.transcoding.cpu': 'Перекодирование видео: процессор',
 
   // the sources build's, but named by core code (were in ./full.ts)
-  'settings.online.hint': 'Фильмы и сериалы с онлайн-источников сервера, без загрузки',
-  'settings.online.notConfigured': 'Не настроено на сервере',
-  'settings.online.sources': 'Источники онлайн: {n}',
   'settings.uploadLimit.aria': 'Скорость отдачи, МБ/с',
   'stats.ratio': ' · в {n} раза больше, чем скачано',
   'stats.uploaded': 'отдано другим',

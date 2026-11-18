@@ -1,16 +1,15 @@
 // Episode-first guide of a series: seasons, every episode with the sources it
-// can be watched from (disk, online, an addon's kinds). A tap plays the
-// profile's remembered source, else the best one (of the kinds the players
-// prefer, when they say). A library source plays here, an online one through
-// the build's player (EpisodePlay), any other kind through the addon whose
-// episodeActions declare it (useEpisodeActions); a long press, a right-click
-// or ▾ opens the source sheet. Renders nothing when the server has no guide
-// for the title: the caller keeps its own UI then.
+// can be watched from (disk, an addon's kinds). A tap plays the profile's
+// remembered source, else the best one (of the kinds the players prefer, when
+// they say). A library source plays here, any other kind through the addon
+// whose episodeActions declare it (useEpisodeActions); a long press, a
+// right-click or ▾ opens the source sheet. Renders nothing when the server has
+// no guide for the title: the caller keeps its own UI then.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { getSourceChoice, getTitleEpisodes, putSourceChoice } from '../../api/client'
-import type { EpisodeSource, SourceChoice, SourceKind, TitleEpisode, TitleEpisodes } from '../../api/types'
-import type { EpisodeCtx, EpisodePlay } from './episodeTypes'
+import type { EpisodeSource, SourceChoice, TitleEpisode, TitleEpisodes } from '../../api/types'
+import type { EpisodeCtx } from './episodeTypes'
 import { clock } from '../../player/timeline'
 import { locale, useLang, useT } from '../../i18n'
 import { useSourceKinds } from '../../addons/slots'
@@ -140,11 +139,9 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
   }, [loaded, episodes, choice])
   // the guide's context, stable while nothing in it changes (each addon's Host re-runs on a new one)
   const ctx = useMemo<EpisodeCtx>(() => ({ kind, tmdbId, title, poster, episodes, choice }), [kind, tmdbId, title, poster, episodes, choice])
-  // the build's and the addons' players by source kind (each addon Host draws its own sheets)
+  // the addons' players by source kind (each addon Host draws its own sheets)
   const players = useEpisodePlayers(ctx)
-  const { core, anyPlay, prefer, canDownload } = players
-  /** The player of a source kind (library: none, the guide plays it). */
-  const playerFor = (k: SourceKind): EpisodePlay | null => (k === 'library' ? null : players.playerFor(k))
+  const { playerFor, anyPlay, prefer, canDownload } = players
   const addonHosts = players.hosts
   // how the kinds sort and what they are called (the core's, and the addons' entries')
   const kinds = useSourceKinds()
@@ -222,7 +219,6 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
             onClose={() => setSheet(null)}
           />
         )}
-        {core?.node}
       </section>
     </>
   )

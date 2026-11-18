@@ -18,6 +18,7 @@ func init() {
 		"Неверный манифест расширения: неверный доступ":                   "Invalid addon manifest: invalid access",
 		"Неверный манифест расширения: неизвестный хук":                   "Invalid addon manifest: unknown hook",
 		"Неверный манифест расширения: повторяется хук":                   "Invalid addon manifest: a hook is repeated",
+		"Нужны все хуки channels.*":                                       "The addon must declare all channels.* hooks",
 		"Неверный манифест расширения: неверная тема уведомлений":         "Invalid addon manifest: invalid notification topic",
 		"Неверный манифест расширения: повторяется тема уведомлений":      "Invalid addon manifest: a notification topic is repeated",
 		"Неверный манифест расширения: неверная аудитория уведомлений":    "Invalid addon manifest: invalid notification audience",
@@ -145,5 +146,7 @@ func init() {
 		"Подгонка озвучек недоступна": "Voice-over fitting is unavailable",
 		"Файл не найден в медиатеке":  "The file is not in the library",
 		"Озвучка не найдена":          "Voice-over not found",
+		// /api/addon-core/v1/progress (internal/api/addon_core_progress.go)
+		"Время позиции опережает часы сервера больше чем на 5 минут": "The position’s time is more than 5 minutes ahead of the server’s clock",
 	})
 }

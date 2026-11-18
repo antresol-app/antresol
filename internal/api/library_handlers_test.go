@@ -432,7 +432,7 @@ func TestStatsCountsMedia(t *testing.T) {
 	}
 }
 
-// «Смотреть онлайн» on a library movie page needs its TMDB id.
+// A library movie page carries its TMDB id (the addons' ways to watch need it).
 func TestItemDetailMovieTmdbID(t *testing.T) {
 	e := newLibEnv(t)
 	id, err := e.repo.UpsertMovie(context.Background(), library.MovieInput{Title: "Дюна", Year: 2024, TmdbID: 438631,

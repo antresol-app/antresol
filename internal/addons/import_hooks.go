@@ -38,7 +38,7 @@ func (h *Hooks) importServices(ctx context.Context) ([]playlistimport.ServiceInf
 	out := []playlistimport.ServiceInfo{}
 	owners := map[string]string{}
 	var slow []string
-	res, _, _ := h.fanout(ctx, "import.services", nil, nil)
+	res, _, _ := h.fanout(ctx, "import.services", nil, nil, nil)
 	for _, r := range res {
 		switch {
 		case errors.Is(r.err, errCooling):
@@ -180,7 +180,7 @@ func (h *Hooks) ImportCatalog() playlistimport.Catalog { return importCatalog{h}
 type importCatalog struct{ h *Hooks }
 
 func (c importCatalog) DiscoverMedia(ctx context.Context, kind, q string) ([]playlistimport.Candidate, error) {
-	res, declared, _ := c.h.fanout(ctx, "import.search", nil, addonkit.ImportSearchRequest{Kind: kind, Q: q})
+	res, declared, _ := c.h.fanout(ctx, "import.search", nil, nil, addonkit.ImportSearchRequest{Kind: kind, Q: q})
 	if declared == 0 {
 		return nil, playlistimport.ErrCatalogOffline
 	}

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks the core build of the server: the binary published as
 # Antresol Server, built with `go build` over the web bundle of
-# `npm run build` in the public tree (no web/src/app/routesFull.tsx, see
+# `npm run build` in the public tree (no web/src/api/clientFull.ts, see
 # docs/build-tags.md). It must contain no
 # acquisition code at all — not code that is switched off:
 #

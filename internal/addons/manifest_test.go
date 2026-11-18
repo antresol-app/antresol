@@ -111,9 +111,9 @@ func TestParseManifest_NameInOneLanguage(t *testing.T) {
 
 func TestParseManifest_Stage2Fields(t *testing.T) {
 	in := strings.Replace(validJSON(), `"permissions":["library.read","events"]`,
-		`"access":"adults","hooks":["files.plan","tracking.scan:pinned","requests.search"],
+		`"access":"adults","hooks":["files.plan","tracking.scan:pinned","requests.search","library.afterScan","home.continue"],
 "notify":[{"topic":"done","title":{"ru":"Готово","en":"Done"},"audience":"adults"}],
-"permissions":["library.read","events","library.write","files.holds","metadata","images","play","notify","users.read","tracking","imports","requests","voiceover"]`, 1)
+"permissions":["library.read","events","library.write","files.holds","metadata","images","play","notify","users.read","tracking","imports","requests","voiceover","progress"]`, 1)
 	m, err := ParseManifest([]byte(in))
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestParseManifest_Stage2Fields(t *testing.T) {
 	if m.Access != "adults" || !m.ForAdults() {
 		t.Errorf("access %q", m.Access)
 	}
-	if !m.Answers("files.plan") || !m.Answers("tracking.scan:pinned") || !m.Answers("requests.search") || m.Answers("files.stop") {
+	if !m.Answers("files.plan") || !m.Answers("tracking.scan:pinned") || !m.Answers("requests.search") || !m.Answers("library.afterScan") || !m.Answers("home.continue") || m.Answers("files.stop") {
 		t.Error("Answers wrong")
 	}
 	if len(m.Notify) != 1 || m.Notify[0].Topic != "done" || m.Notify[0].Title.EN != "Done" || m.Notify[0].Audience != "adults" {
@@ -135,5 +135,28 @@ func TestParseManifest_Stage2Fields(t *testing.T) {
 		if (Manifest{Access: a}).ForAdults() {
 			t.Errorf("%q is not adults", a)
 		}
+	}
+}
+
+// The four channels.* hooks come together: a manifest with some of them
+// only is refused.
+func TestManifest_ChannelsHooksAllOrNone(t *testing.T) {
+	with := func(hooks string) string {
+		return strings.Replace(validJSON(), `"permissions"`, `"hooks":[`+hooks+`],"permissions"`, 1)
+	}
+	all := `"channels.ready","channels.candidates","channels.resolve","channels.release"`
+	m, err := ParseManifest([]byte(with(all)))
+	if err != nil || !m.Answers("channels.resolve") {
+		t.Fatalf("all four: %v", err)
+	}
+	for _, some := range []string{`"channels.ready"`, `"channels.ready","channels.candidates","channels.resolve"`,
+		`"channels.release","files.plan"`} {
+		_, err := ParseManifest([]byte(with(some)))
+		if err == nil || err.Error() != "Нужны все хуки channels.*" {
+			t.Errorf("%s: %v", some, err)
+		}
+	}
+	if _, err := ParseManifest([]byte(with(`"files.plan"`))); err != nil {
+		t.Fatalf("none of them: %v", err)
 	}
 }

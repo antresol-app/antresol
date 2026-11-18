@@ -1,10 +1,13 @@
 // An addon's own page: /addons/<addonId>/<path> draws the route the addon
-// registered under that path (inside the app's shell; not for kids), with the
-// values of its `:name` segments (the element's `params`, and the addon's
-// useParams()). While the addons are still loading it waits; an addon
-// without such a page gets the plain «not here» screen, and one that throws
-// a notice.
-import { useEffect, useMemo } from 'react'
+// registered under that path (not for kids), with the values of its
+// `:name` segments (the element's `params`, and the addon's useParams()).
+// A page is drawn inside the app's shell; a `fullWindow` route over the
+// whole window (the shell draws none of itself around it:
+// useFullWindowAddon), in a Suspense of the player's black fallback (its
+// ui.Player loads on the first render). While the addons are still loading
+// it waits; an addon without such a page gets the plain «not here» screen,
+// and one that throws a notice.
+import { Suspense, useEffect, useMemo } from 'react'
 import { useLocation, useParams } from 'react-router'
 import { APP_NAME } from '../brand'
 import { useT } from '../i18n'
@@ -12,6 +15,7 @@ import { useAddonsLoading } from '../addons/registry'
 import { AddonRouteParams } from '../addons/routeParams'
 import { AddonBoundary, addonRest, useAddonLabel, useAddonRoute } from '../addons/slots'
 import { ComingSoon } from './ComingSoon'
+import appStyles from '../app/App.module.css'
 
 export default function AddonPage() {
   const t = useT()
@@ -35,11 +39,13 @@ export default function AddonPage() {
   }
   const Element = found.route.element
   // a new page of the addon starts with a fresh boundary
-  return (
+  const page = (
     <AddonBoundary key={`${addonId}/${rest}`} addonId={addonId}>
       <AddonRouteParams.Provider value={params}>
         <Element params={params} />
       </AddonRouteParams.Provider>
     </AddonBoundary>
   )
+  if (!found.route.fullWindow) return page
+  return <Suspense fallback={<div className={appStyles.playerFallback} />}>{page}</Suspense>
 }

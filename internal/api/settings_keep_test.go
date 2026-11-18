@@ -9,12 +9,12 @@ import (
 
 // TestSaveSettingsKeepsUnknownKeys: app_settings is one JSON row shared by
 // every build that opens the database. A save keeps the keys another
-// build wrote (the sources build's upload limit, stream cache and online
-// switch survive a PUT on core), and a key of this build's own is
+// build wrote (an older build's upload limit and stream cache, an
+// addon's key survive a PUT on core), and a key of this build's own is
 // written as this build has it.
 func TestSaveSettingsKeepsUnknownKeys(t *testing.T) {
 	e := newSettingsEnv(t)
-	const row = `{"uploadLimited":true,"uploadLimitKBs":512,"streamCacheGB":33,"onlineEnabled":false,"packKey":{"a":[1,2]},"remoteQuality":"720"}`
+	const row = `{"uploadLimited":true,"uploadLimitKBs":512,"streamCacheGB":33,"packKey":{"a":[1,2]},"remoteQuality":"720"}`
 	if _, err := e.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?)`, appSettingsKey, row); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestSaveSettingsKeepsUnknownKeys(t *testing.T) {
 	}
 	got := storedAppSettings(t, e)
 	for k, want := range map[string]any{"uploadLimited": true, "uploadLimitKBs": 512.0, "streamCacheGB": 33.0,
-		"onlineEnabled": false, "packKey": map[string]any{"a": []any{1.0, 2.0}}, "remoteQuality": "480"} {
+		"packKey": map[string]any{"a": []any{1.0, 2.0}}, "remoteQuality": "480"} {
 		if !reflect.DeepEqual(got[k], want) {
 			t.Errorf("%s = %#v, want %#v", k, got[k], want)
 		}

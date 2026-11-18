@@ -75,7 +75,6 @@ import type {
   ItemSort,
   ItemsPage,
   LibraryStatus,
-  OnlineStatus,
   PlayRequest,
   PlayResponse,
   Profile,
@@ -266,11 +265,15 @@ export const updateMe = (patch: { hideProgress?: boolean }) => request<User>('PA
 const scopeParam = (scope?: LibraryScope) => (scope === 'mine' ? 'mine' : undefined)
 /** «Общая медиатека / Моя медиатека» of the profile, kept on the server; answers /api/me. */
 export const setLibraryScope = (scope: LibraryScope) => request<User>('PUT', '/api/me/library-scope', { scope })
-/** With the online entries of «Продолжить просмотр» (the server leaves them out of a plain /api/home). */
-// ?online=1: the sources build's online titles in «Продолжить»
+// ?addons=1: the addons' cards in «Продолжить» (home.continue)
 // ?family=1: «Семья смотрит» (the app's /api/home has no such shelf)
 export const getHome = (signal?: AbortSignal, scope?: LibraryScope) =>
-  request<Home>('GET', `/api/home${qs({ online: __LIBRARY_EDITION__ ? undefined : 1, family: 1, scope: scopeParam(scope) })}`, undefined, signal)
+  request<Home>(
+    'GET',
+    `/api/home${qs({ addons: 1, family: 1, scope: scopeParam(scope) })}`,
+    undefined,
+    signal,
+  )
 export interface ItemsOptions {
   sort?: ItemSort
   limit?: number
@@ -339,9 +342,6 @@ export const deleteItem = (itemId: number) => request<DeleteResult>('POST', `/ap
 export const addToWatchlist = (itemId: number) => request<void>('POST', `/api/watchlist/${itemId}`)
 export const removeFromWatchlist = (itemId: number) => request<void>('DELETE', `/api/watchlist/${itemId}`)
 export const downloadUrl = (fileId: number) => `/api/download/${fileId}`
-// --- «Смотреть онлайн» (not for kid profiles; 404 while it is off; the rest: ./clientFull) ---
-/** Admin: is the sidecar there, how many sources it lists (404: not configured, or switched off). */
-export const onlineStatus = (signal?: AbortSignal) => request<OnlineStatus>('GET', '/api/online/status', undefined, signal)
 // --- The core title page: a TMDB title that may not be in the library (a kid's carries its «Попросить») ---
 export const getTitle = (kind: string, tmdbId: number, signal?: AbortSignal) =>
   request<TitleInfo>('GET', `/api/title/${encodeURIComponent(kind)}/${tmdbId}`, undefined, signal)

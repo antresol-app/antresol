@@ -5,8 +5,8 @@ import { existsSync } from 'node:fs'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  // the edition as in vite.config.ts: the tree's (no src/app/routesFull.tsx: library)
-  define: { __LIBRARY_EDITION__: JSON.stringify(!existsSync(new URL('src/app/routesFull.tsx', import.meta.url))) },
+  // the edition as in vite.config.ts: the tree's (no src/api/clientFull.ts: library)
+  define: { __LIBRARY_EDITION__: JSON.stringify(!existsSync(new URL('src/api/clientFull.ts', import.meta.url))) },
   publicDir: false,
   build: {
     outDir: 'dist',

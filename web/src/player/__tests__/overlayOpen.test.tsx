@@ -46,7 +46,7 @@ function playAndTapAway() {
   return root
 }
 
-// A sheet over the player (the online picker) keeps the controls, and so
+// A sheet over the player (an addon's picker) keeps the controls, and so
 // the cursor, visible: the idle state would hide the cursor over the sheet.
 describe('VideoPlayer: an overlay keeps the controls', () => {
   beforeEach(() => {

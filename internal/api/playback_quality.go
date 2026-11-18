@@ -43,13 +43,7 @@ type qualityInfo struct {
 // home plays the original; «Авто» from outside is capped by «Качество вне
 // дома» (1080p 8 Мбит/с by default); an explicit choice applies anywhere.
 func (h *lib) playbackCaps(r *http.Request, c media.ClientCaps, quality string) (media.ClientCaps, qualityInfo) {
-	var remote bool
-	if h.ClientIsRemote != nil {
-		remote = h.ClientIsRemote(r)
-	} else {
-		remote = !h.Network.IsTrusted(r) // the same home rule as passwordless sign-in
-	}
-	q := qualityInfo{Selected: quality, Remote: remote}
+	q := qualityInfo{Selected: quality, Remote: viewerRemote(&h.Deps, r)}
 	c.Lang = i18n.FromContext(r.Context()) // the language of Decision.Reason
 	if _, ok := qualityCaps[quality]; !ok && quality != qualityOriginal {
 		q.Selected = qualityAuto
@@ -73,14 +67,37 @@ func (h *lib) playbackCaps(r *http.Request, c media.ClientCaps, quality string) 
 }
 
 // remoteQuality is the saved «Качество вне дома».
-func (h *lib) remoteQuality(r *http.Request) string {
-	if h.DB == nil {
+func (h *lib) remoteQuality(r *http.Request) string { return savedRemoteQuality(&h.Deps, r) }
+
+// viewerRemote: the viewer of r is outside the home network, as the
+// quality cap decides it (ClientIsRemote, else the same home rule as
+// passwordless sign-in).
+func viewerRemote(d *Deps, r *http.Request) bool {
+	if d.ClientIsRemote != nil {
+		return d.ClientIsRemote(r)
+	}
+	return !d.Network.IsTrusted(r)
+}
+
+// savedRemoteQuality is the saved «Качество вне дома».
+func savedRemoteQuality(d *Deps, r *http.Request) string {
+	if d.DB == nil {
 		return defaultRemoteQuality
 	}
-	s, err := LoadAppSettings(r.Context(), h.DB, h.SettingsDefaults)
+	s, err := LoadAppSettings(r.Context(), d.DB, d.SettingsDefaults)
 	if err != nil {
 		log.Printf("api: settings for remote quality: %v", err)
 		return defaultRemoteQuality
 	}
 	return s.RemoteQualityOrDefault()
+}
+
+// remoteMaxHeight is the height «Качество вне дома» caps «Авто» at for
+// the viewer of r, as addons get it in the user header (maxHeight): 0 at
+// home and when that setting is «Оригинал».
+func remoteMaxHeight(d *Deps, r *http.Request) int {
+	if !viewerRemote(d, r) {
+		return 0
+	}
+	return qualityCaps[savedRemoteQuality(d, r)].height
 }

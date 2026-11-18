@@ -11,10 +11,10 @@ import { ItemDetail } from '../pages/ItemDetail'
 import { OfflineHome } from '../pages/OfflineHome'
 import { offlineAvailable } from '../offline/store'
 import { session, useSession } from '../state/session'
+import { useFullWindowAddon } from '../addons/slots'
 import { ChunkBoundary } from './ChunkBoundary'
 import { auth, books, browse, calendar, music, search, tv } from './chunks'
 import { chunk, lazyFrom, type Chunk } from './lazyChunk'
-import { fullPlayerRoutes } from './routesFull'
 import { Shell } from './Shell'
 import styles from './App.module.css'
 import { useT } from '../i18n'
@@ -105,12 +105,16 @@ const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 
 
 // An addon's page (/addons/<id>/<path>, not for kids): its own small chunk.
 const AddonPage = lazy(() => import('../pages/AddonPage'))
-const AddonRoute = () => (
-  <ChunkBoundary>
-    <AddonPage />
-  </ChunkBoundary>
-)
-
+// A fullWindow route (an addon's player) waits on the player's black
+// screen, as the core players do, never on the section spinner.
+function AddonRoute() {
+  const fullWindow = useFullWindowAddon() !== 'off'
+  return (
+    <ChunkBoundary fallback={fullWindow ? <div className={styles.playerFallback} /> : undefined}>
+      <AddonPage />
+    </ChunkBoundary>
+  )
+}
 // «Мои просьбы» (kids) load on first visit too.
 const MyRequests = lazy(() => import('../pages/MyRequests'))
 // a profile's own «Настройки» (every profile)
@@ -196,8 +200,6 @@ export const routes: RouteObject[] = [
       { path: '/tv/:id', element: page(tv, (m) => m.LivePlayer) },
       // The reader too; the music engine keeps playing.
       { path: '/read/:id', element: <ReaderRoute /> },
-      // the sources build's full-window players (none in the core build)
-      ...(__LIBRARY_EDITION__ ? [] : fullPlayerRoutes()),
       {
         element: <Shell />,
         children: [
@@ -273,7 +275,9 @@ export const routes: RouteObject[] = [
             children: [
               { path: 'files/*', element: <FilesRoute /> },
               { path: 'tv/manage', element: page(tv, (m) => m.TvManage) },
-              // the server lists an addon for the profiles it is for (admins, or adults too)
+              // the server lists an addon for the profiles it is for (admins, or
+              // adults too); a fullWindow route covers the window like the
+              // players above (the shell draws none of itself: useFullWindowAddon)
               { path: 'addons/:addonId/*', element: <AddonRoute /> },
             ],
           },

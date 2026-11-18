@@ -5,6 +5,7 @@ import { ApiError, generic, getDisk, getItem, getTitle, imageUrl, offline, readR
 export { ApiError } from '../api/client'
 import { getLanguage, useLang, type Lang } from '../i18n'
 import { useSession } from '../state/session'
+import { audio } from '../player/audio/engine'
 import { useWatchWay as useProfileWatchWay } from '../state/watchWay'
 import { addonString } from './registry'
 
@@ -28,12 +29,19 @@ export type {
   SearchBlock,
   StatsBlock,
   TrackActionItem,
+  WayTitle,
 } from './registry'
 export { registerAddon } from './registry'
-export * as ui from '../ui'
+// every addon's «Смотреть ▾» ways for a title (another addon's rows draw them)
+export { useWatchWays } from './watchWays'
+// the design system, and the core's video player behind React.lazy (ui.Player)
+export * as ui from './sdkUi'
+export type { PlayerProps, StreamPlayback, UpNext } from './sdkUi'
 export { Icon, type IconName } from '../components/Icon'
 export { useEvents } from '../api/events'
 export type { EpisodeSource, ItemDetail, KidRequest, PendingState, PlayerInput, ServerEvent, TitleEpisode, TitleInfo } from '../api/types'
+// what ui.Player plays: a part, a play request and its answer, a stream's qualities
+export type { MediaFile, PlayRequest, PlayResponse, StreamQualityInfo } from '../api/types'
 export type { EpisodeCtx, EpisodePlay } from '../components/episodes/episodeTypes'
 // «Переезд»: the core's page, reusable over an addon's own API and part
 export { Migrate as MigratePage } from '../pages/manage/Migrate'
@@ -50,6 +58,10 @@ export { KIND_ICON, kindLabel, useDebounced, type Found } from '../state/searchK
 export { formatSize, formatRate } from '../state/format'
 export { formatPercent, locale } from '../i18n'
 export { useIsCompact } from '../state/useMediaQuery'
+// the core's pill choices (a radio group or toggles), the one chip style
+export { Chip, Chips, type ChipProps } from '../components/Chips'
+// the player's language and time helpers: a track's badge («RU») and name, a clock («1:02:03»)
+export { clock, langBadge, langCode, languageName } from '../player/timeline'
 export {
   ViewMenu,
   ViewToolbar,
@@ -63,16 +75,32 @@ export {
   type ViewSpec,
 } from '../components/ViewMenu'
 
-/** Who is signed in (null: nobody yet), with the interface language; re-renders when that changes. */
-export function useUser(): { id: number; name: string; isAdmin: boolean; isKid: boolean; lang: Lang } | null {
+/**
+ * Who is signed in (null: nobody yet), with the interface language and
+ * whether the session is away from the home network (`remote`: a source
+ * quality's default); re-renders when that changes.
+ */
+export function useUser(): { id: number; name: string; isAdmin: boolean; isKid: boolean; lang: Lang; remote: boolean } | null {
   const { user } = useSession()
   const lang = useLang()
-  return useMemo(() => (user ? { id: user.id, name: user.name, isAdmin: user.isAdmin, isKid: user.isKid, lang } : null), [user, lang])
+  return useMemo(
+    () => (user ? { id: user.id, name: user.name, isAdmin: user.isAdmin, isKid: user.isKid, lang, remote: Boolean(user.remote) } : null),
+    [user, lang],
+  )
 }
 
 /**
- * The «Смотреть ▾» way the signed-in profile chose last (`online`, or an
- * addon way's `<addonId>:<label>`), read only and live: it re-renders when
+ * Pauses the music and hands the system media controls back: what a page
+ * playing its own video calls when it opens (ui.Player does not), so the
+ * music does not play on under it.
+ */
+export function yieldSession(): void {
+  audio.yieldSession()
+}
+
+/**
+ * The «Смотреть ▾» way the signed-in profile chose last (an addon way's
+ * `<addonId>:<label>`), read only and live: it re-renders when
  * the profile chooses another way, here or in another tab. null: none
  * chosen, nobody signed in, or a kid.
  */

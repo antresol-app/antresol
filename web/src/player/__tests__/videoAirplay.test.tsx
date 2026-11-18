@@ -169,7 +169,7 @@ describe('media key URLs', () => {
   it('withMediaKeyKeepsTheQueryAndReplacesAnOldKey', () => {
     expect(withMediaKey('/api/hls/abc/index.m3u8', 'k+1')).toBe('/api/hls/abc/index.m3u8?mk=k%2B1')
     expect(withMediaKey('/api/stream/5?t=3&mk=old', 'new')).toBe('/api/stream/5?t=3&mk=new')
-    expect(withMediaKey('https://h/api/online/s/x/v.m3u8?q=1#f', 'k')).toBe('https://h/api/online/s/x/v.m3u8?q=1&mk=k#f')
+    expect(withMediaKey('https://h/api/addons/demo/media/x/v.m3u8?q=1#f', 'k')).toBe('https://h/api/addons/demo/media/x/v.m3u8?q=1&mk=k#f')
     expect(hasMediaKey('/a?mk=1')).toBe(true)
     expect(hasMediaKey('/a?xmk=1')).toBe(false)
   })

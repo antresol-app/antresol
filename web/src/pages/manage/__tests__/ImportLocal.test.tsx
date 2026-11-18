@@ -96,7 +96,7 @@ describe('Import without services', () => {
     expect(screen.queryByText(/Свободно на сервере/)).toBeNull()
   })
 
-  // runs only where the tree is the public one (no src/app/routesFull.tsx: vite.config.ts
+  // runs only where the tree is the public one (no src/api/clientFull.ts: vite.config.ts
   // makes __LIBRARY_EDITION__ true), i.e. in the exported tree
   it.runIf(__LIBRARY_EDITION__)('core build: files only, no sign-ins, no download words; a .m3u shows the preview', async () => {
     renderImport()

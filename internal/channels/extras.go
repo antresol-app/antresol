@@ -77,6 +77,22 @@ const (
 	extraFailedFor = 24 * time.Hour
 )
 
+type channelCtxKey struct{}
+
+// WithChannel is ctx of an Extras call made for channel c (Candidates
+// and Resolve): an implementation that serves only some profiles judges
+// by the channel's (Channel.UserID; 0 shared, seen by every profile).
+func WithChannel(ctx context.Context, c Channel) context.Context {
+	return context.WithValue(ctx, channelCtxKey{}, c)
+}
+
+// ChannelFrom is the channel an Extras call is made for (false: none
+// said).
+func ChannelFrom(ctx context.Context) (Channel, bool) {
+	c, ok := ctx.Value(channelCtxKey{}).(Channel)
+	return c, ok
+}
+
 // ExtrasOn: the rules take titles outside the library — the rule is on,
 // the channel is not a hand-picked list or an ordered one (an extra would
 // break its order), and it shows movies.
@@ -117,7 +133,7 @@ func (b *Builder) refreshExtras(ctx context.Context, c Channel, limit int) error
 		return nil
 	}
 	actx, cancel := context.WithTimeout(ctx, extrasAskTimeout)
-	ts, err := b.Extras.Candidates(actx, c.Rules, min(limit, extrasMax))
+	ts, err := b.Extras.Candidates(WithChannel(actx, c), c.Rules, min(limit, extrasMax))
 	cancel()
 	if err != nil {
 		if ctx.Err() != nil {
@@ -268,7 +284,11 @@ func (s *Service) resolveExtra(ctx context.Context, e Entry) (Stream, error) {
 	if err != nil {
 		return Stream{}, err
 	}
-	rctx, cancel := context.WithTimeout(ctx, extraResolveTimeout)
+	c, err := s.Store.Get(ctx, e.Channel)
+	if err != nil {
+		return Stream{}, err
+	}
+	rctx, cancel := context.WithTimeout(WithChannel(ctx, c), extraResolveTimeout)
 	defer cancel()
 	st, err := s.Extras.Resolve(rctx, e.Channel, t)
 	if err == nil && st.URL == "" {
@@ -394,7 +414,7 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 func (s *Service) describeExtras(ctx context.Context, ids []int64, out map[int64]Info) error {
 	for part := range chunks(ids, 500) {
 		in, args := inArgs(part)
-		rows, err := s.Store.DB.QueryContext(ctx, `SELECT id, kind, title, year, overview, rating, genres_json, poster, backdrop, season, episode
+		rows, err := s.Store.DB.QueryContext(ctx, `SELECT id, key, kind, title, year, overview, rating, genres_json, poster, backdrop, season, episode
 		  FROM channel_extras WHERE id IN `+in, args...)
 		if err != nil {
 			return err
@@ -403,7 +423,7 @@ func (s *Service) describeExtras(ctx context.Context, ids []int64, out map[int64
 			var id int64
 			var genres string
 			x := Info{External: true}
-			if err := rows.Scan(&id, &x.Kind, &x.Title, &x.Year, &x.Overview, &x.Rating, &genres, &x.Poster, &x.Backdrop, &x.Season, &x.Number); err != nil {
+			if err := rows.Scan(&id, &x.ExtraKey, &x.Kind, &x.Title, &x.Year, &x.Overview, &x.Rating, &genres, &x.Poster, &x.Backdrop, &x.Season, &x.Number); err != nil {
 				rows.Close()
 				return err
 			}

@@ -307,7 +307,4 @@ export default {
   'comp.screen.passwordless': 'Your child can switch to profiles without a password: {names}. Set passwords for them so the limits work.',
   'comp.screen.dayStart': 'The day starts at',
   'comp.screen.dayStartHint': 'Time and the bonus reset then. Hours may run past midnight (say, 20:00–02:00 on Friday), not past the day start.',
-
-  // the sources build's, but named by core code (were in ./full.ts)
-  'comp.card.online': 'Online',
 } satisfies EnOf<typeof ru>

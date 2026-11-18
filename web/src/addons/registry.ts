@@ -23,20 +23,35 @@ type AdminOnly = { admin?: boolean }
 export type AddonRouteProps = { params: Readonly<Record<string, string>> }
 /**
  * A page of the addon; it mounts at /addons/<id>/<path>. `path` may hold
- * `:name` segments (`sources/:id/edit`); the values reach the element as its
+ * `:name` segments (`play/:kind/:id`); the values reach the element as its
  * `params` prop and as `useParams()` (the app's react-router, shared).
+ * `fullWindow: true`: drawn over the whole window like the core's
+ * players, outside the shell (no navigation, no mini player); never for
+ * kids, as every addon route.
  */
-export type AddonRoute = { path: string; element: (props: AddonRouteProps) => ReactElement; title: string } & AdminOnly
+export type AddonRoute = { path: string; element: (props: AddonRouteProps) => ReactElement; title: string; fullWindow?: true } & AdminOnly
+/** The title a watch way's `useAvailable` is asked about (`itemId` 0: not in the library). */
+export type WayTitle = { kind: 'movie' | 'series'; tmdbId: number; itemId: number }
 export type ManageTile = { label: string; icon: IconName; to: string } & AdminOnly
 export type ItemAction = AdminOnly & {
   label: string
   icon: IconName
   visible?: (item: ItemDetail) => boolean
   /**
-   * Offered as a way of the page's «Смотреть ▾» (beside the online ways,
-   * way id `<addonId>:<label>`) instead of as a round button.
+   * Offered as a way of the page's «Смотреть ▾» (beside the other addons'
+   * ways, way id `<addonId>:<label>`) instead of as a round button.
    */
   watchWay?: true
+  /**
+   * A hook (a watch way's): whether the way is offered for the title,
+   * `true` offered, `false` not, `null` still asking (not offered yet; the
+   * «Смотреть ▾» menu gains the way when it answers `true`, nothing else
+   * moves). The core calls it in a component of its own per entry, with
+   * `itemId` 0 for a title outside the library; one that throws hides only
+   * its way. Only for a movie or a series: on another kind the way is not
+   * offered.
+   */
+  useAvailable?: (t: WayTitle) => boolean | null
   /**
    * Text it returns (non-empty) shows in a notice under the item's action
    * row; an element it returns is drawn by the core (a sheet, `ui.Sheet`)
@@ -48,11 +63,11 @@ export type ItemAction = AdminOnly & {
 export type ItemPanel = AdminOnly & { element: (props: { item: ItemDetail; title?: TitleInfo }) => ReactElement | null }
 /**
  * What the episode guide does with the episodes' sources of `kinds` (kinds
- * the addon's scanners declare; the core's own `library` and `online` are
- * dropped). `use` is a hook: the core calls it in a component of its own
- * per entry, once per guide. `labels`: a kind's name, a key of the addon's
- * strings (none: the kind as it is). `order`: where a kind sorts among the
- * sources, on the core's scale (library 0, online 20; none: last).
+ * the addon's scanners declare; the core's own `library` is dropped). `use`
+ * is a hook: the core calls it in a component of its own per entry, once
+ * per guide. `labels`: a kind's name, a key of the addon's strings (none:
+ * the kind as it is). `order`: where a kind sorts among the sources, on a
+ * scale where the core's `library` is 0 (none: last).
  */
 export type EpisodeAction = AdminOnly & {
   kinds: string[]
@@ -212,6 +227,31 @@ const underUI = (path: string) => {
   return p === 'ui' || p.startsWith('ui/')
 }
 
+// The path patterns of an addon's fullWindow routes, kept on this device:
+// a cold load of such a URL draws the player's black fallback (not the
+// shell) until the bundle registers. Storage may be missing or refuse.
+const FULL_WINDOW_KEY = 'antresol.addonFullWindow.'
+
+/** The fullWindow route patterns addon `id` registered last time on this device ([] when none or no storage). */
+export function rememberedFullWindow(id: string): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(FULL_WINDOW_KEY + id) ?? '[]')
+    return Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function rememberFullWindow(id: string, routes: AddonRoute[] | undefined) {
+  const paths = (routes ?? []).filter((r) => r.fullWindow).map((r) => r.path)
+  try {
+    if (paths.length) localStorage.setItem(FULL_WINDOW_KEY + id, JSON.stringify(paths))
+    else localStorage.removeItem(FULL_WINDOW_KEY + id)
+  } catch {
+    // no storage: a cold load shows the shell first, as for an addon never seen
+  }
+}
+
 /** Called by an addon's bundle (as soon as it loads): its contributions; a second call replaces the first. */
 export function registerAddon(id: string, c: AddonContributions): void {
   const routes = c.routes?.filter((r) => {
@@ -220,6 +260,7 @@ export function registerAddon(id: string, c: AddonContributions): void {
     return false
   })
   registered.set(id, routes ? { ...c, routes } : c)
+  rememberFullWindow(id, routes)
   changed()
 }
 

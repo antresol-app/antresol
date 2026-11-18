@@ -65,15 +65,20 @@ var ErrUnchanged = errors.New("tracking: scanner skipped this title")
 type Service struct {
 	Store    *Store
 	Skeleton Skeleton
-	// Scanners are the core's own (library, online); the addons' come
-	// through SetScanners.
+	// Scanners are the core's own (library); the addons' come through
+	// SetScanners.
 	Scanners []Scanner
 	Notify   Notifier
 	// Interest lists the profiles to tell about a title's new episodes.
 	Interest func(ctx context.Context, titleID int64) ([]int64, error)
-	Interval time.Duration // 0 = 30m tick
-	Now      func() time.Time
-	Log      *slog.Logger
+	// SourceKinds are the source kinds a profile may open (the library's,
+	// and the scan kinds of the addons it has access to): a profile is
+	// told of a new episode only when one of its new sources is of such a
+	// kind. An error tells that profile nothing (logged). nil: every kind.
+	SourceKinds func(ctx context.Context, userID int64) (map[string]bool, error)
+	Interval    time.Duration // 0 = 30m tick
+	Now         func() time.Time
+	Log         *slog.Logger
 	// TitlePath is the web page of a title off the library that a letter
 	// links to (nil or "": none).
 	TitlePath func(t Title) string
@@ -81,10 +86,11 @@ type Service struct {
 	// all of them (every kind). An error is logged, not fatal.
 	OnAdded []func(ctx context.Context, t Title, added []Source) error
 	// Watched say which episodes a profile has watched (the library's
-	// progress, and more in the full build); the feed leaves them out.
+	// progress, and the addons' through tracking.watched); the feed leaves
+	// them out.
 	Watched []WatchedFunc
-	// WatchStates are the same with positions, for the episodes endpoint;
-	// the full build appends «Смотреть онлайн» progress in trackingHooks.
+	// WatchStates are the same with positions, for the episodes endpoint
+	// (the library's, and the addons' through tracking.watched).
 	WatchStates []WatchStateFunc
 
 	// scanners are the scanners from outside the core (the addons'),
@@ -101,7 +107,7 @@ type Service struct {
 
 // SetScanners adds scanners that come and go (the addons' scan kinds): f
 // is called on every refresh and its scanners run after Scanners. One
-// whose kind an earlier scanner has (library, online, or a repeat) is not
+// whose kind an earlier scanner has (library, or a repeat) is not
 // run. Call it before Run.
 func (s *Service) SetScanners(f func(ctx context.Context) []Scanner) { s.scanners = f }
 
@@ -322,7 +328,8 @@ func (s *Service) Refresh(ctx context.Context, titleID int64) error {
 
 // notifyNew queues one event per interested profile for each episode among
 // added that had no source before, got one of a kind other than library and
-// did not air more than mailMaxAge before now.
+// did not air more than mailMaxAge before now; only a profile that may open
+// one of those kinds (SourceKinds) is told.
 func (s *Service) notifyNew(ctx context.Context, t Title, eps []Episode, added []Source, had map[[2]int]bool, now time.Time) {
 	if s.Notify == nil || s.Interest == nil || len(added) == 0 {
 		return
@@ -336,7 +343,7 @@ func (s *Service) notifyNew(ctx context.Context, t Title, eps []Episode, added [
 	// an episode whose only new sources are the library's is left to
 	// notify.Collect, which already mails new library episodes
 	var order [][2]int
-	nonLibrary := map[[2]int]bool{}
+	nonLibrary := map[[2]int][]string{} // the new sources' kinds besides the library
 	for _, a := range added {
 		k := [2]int{a.Season, a.Episode}
 		if had[k] {
@@ -344,16 +351,16 @@ func (s *Service) notifyNew(ctx context.Context, t Title, eps []Episode, added [
 		}
 		if _, seen := nonLibrary[k]; !seen {
 			order = append(order, k)
-			nonLibrary[k] = false
+			nonLibrary[k] = nil
 		}
-		if a.Kind != "library" {
-			nonLibrary[k] = true
+		if a.Kind != "library" && !slices.Contains(nonLibrary[k], a.Kind) {
+			nonLibrary[k] = append(nonLibrary[k], a.Kind)
 		}
 	}
 	var fresh [][2]int
 	for _, k := range order {
 		// an unknown air date ("") is not old
-		if nonLibrary[k] && !(aired[k] != "" && aired[k] < oldest) {
+		if len(nonLibrary[k]) > 0 && !(aired[k] != "" && aired[k] < oldest) {
 			fresh = append(fresh, k)
 		}
 	}
@@ -369,8 +376,34 @@ func (s *Service) notifyNew(ctx context.Context, t Title, eps []Episode, added [
 	if s.TitlePath != nil {
 		path = s.TitlePath(t)
 	}
+	// mayOpen: profile uid may open one of the kinds (SourceKinds, read
+	// once per profile; unreadable: none)
+	kindsOf := map[int64]map[string]bool{}
+	mayOpen := func(uid int64, kinds []string) bool {
+		if s.SourceKinds == nil {
+			return true
+		}
+		allowed, ok := kindsOf[uid]
+		if !ok {
+			var err error
+			if allowed, err = s.SourceKinds(ctx, uid); err != nil {
+				s.log().Warn("tracking: the source kinds of a profile", "title", t.ID, "user", uid, "err", err)
+				allowed = nil
+			}
+			kindsOf[uid] = allowed
+		}
+		for _, k := range kinds {
+			if allowed[k] {
+				return true
+			}
+		}
+		return false
+	}
 	for _, k := range fresh {
 		for _, uid := range users {
+			if !mayOpen(uid, nonLibrary[k]) {
+				continue
+			}
 			// listed under the title: a group id of its own (negative: it
 			// never meets a library series id)
 			e := notify.Event{UserID: uid, Topic: notify.Episodes, GroupID: -t.ID,

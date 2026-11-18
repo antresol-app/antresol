@@ -21,8 +21,6 @@ export interface User extends Profile {
   kindleEmail?: string
   /** Set by /api/me, login and setup: this device is outside the home network. */
   remote?: boolean
-  /** «Смотреть онлайн» works for this profile on this server (never for a kid). */
-  canWatchOnline?: boolean
   /** A kid profile may ask for titles here («Попросить»). */
   canRequest?: boolean
   /** An admin has kids' requests to answer here («Управление → Просьбы»). */
@@ -118,14 +116,18 @@ export interface Card {
   badges?: string[]
   /** Episodes and seasons: the parent series. */
   seriesId?: number
-  /** «Продолжить просмотр» of an online title (id is 0: route on tmdbKind and tmdbId). */
-  online?: boolean
   tmdbKind?: 'movie' | 'series'
   tmdbId?: number
-  /** Online series: the episode to resume (missing = 0). */
+  /** A series title card: the episode it names (missing = 0). */
   season?: number
   episode?: number
   resumeSec?: number
+  /** «Продолжить» from an addon (home.continue, /api/home?addons=1; id is 0): the addon that sent it. */
+  addonId?: string
+  /** An addon card's key, namespaced by the core («addon:<id>:<key>»). */
+  key?: string
+  /** The app page an addon card opens («/…»); without it the card opens its TMDB title page. */
+  href?: string
   /**
    * Sources build: a title on its way into the library (GET /api/library/pending).
    * With id 0 the card is the download's own (tinted, opened by tmdbKind/tmdbId);
@@ -333,7 +335,7 @@ export interface ItemDetail extends Card {
   next?: Episode
   inWatchlist: boolean
   actions: ItemActions
-  /** Movies and series: the TMDB id («Смотреть онлайн»; a series' seasons that are not on the server yet). */
+  /** Movies and series: the TMDB id (a series' seasons that are not on the server yet). */
   tmdbId?: number
   /** Movies and series: the IMDb id ("tt0816692"), the key of GET /api/ratings/{imdbId}. */
   imdbId?: string
@@ -426,11 +428,11 @@ export interface PlayRequest {
   /** The id (Track.src) of the external track audioIndex names. */
   audioSrc?: string
   startSec?: number
-  /** The quality menu's choice; online playback sends a source quality («1080p»). */
+  /** The quality menu's choice; a stream sends a source quality («1080p»). */
   quality?: Quality | (string & {})
   /** The HLS session this one replaces (seek, track or quality change). */
   replaceSession?: string
-  /** Online: a re-play after a stale link, resolved fresh past the caches. */
+  /** A stream: a re-play after a stale link, resolved fresh past the caches. */
   refresh?: boolean
 }
 
@@ -481,13 +483,13 @@ export interface PlayResponse {
   durationMs?: number
   /**
    * The file's recap, intro and credits (library files; [] when none are
-   * known yet, absent from older servers and online streams).
+   * known yet, absent from older servers and from an addon's streams).
    */
   segments?: PlaySegment[]
-  quality?: QualityInfo | OnlineQualityInfo
-  /** Online (mode 'online'): what the stream is. */
+  quality?: QualityInfo | StreamQualityInfo
+  /** A stream (mode 'stream'): what it is. */
   kind?: 'hls' | 'mp4' | (string & {})
-  /** Online: the proxy session (DELETE /api/online/s/{session} on close). */
+  /** A stream: its proxy session (the player's `stream.stop` closes it). */
   session?: string
 }
 
@@ -502,131 +504,10 @@ export interface PlaySegment {
   endSec: number
 }
 
-/** The qualities of an online stream and the one playing. */
-export interface OnlineQualityInfo {
+/** The qualities of a stream's source and the one playing. */
+export interface StreamQualityInfo {
   options: string[]
   current: string
-}
-
-// --- «Смотреть онлайн» (/api/online/*) ---
-
-/** GET /api/online/sources: a working online source of a title. */
-export interface OnlineSource {
-  id: string
-  name: string
-  /** The quality hint of the source («1080p»), '' when unknown. */
-  quality: string
-  ref: string
-}
-
-/** A voice-over: the same level in that voice. */
-export interface OnlineChoice {
-  name: string
-  active: boolean
-  ref: string
-}
-
-export interface OnlineSeason {
-  number: number
-  name: string
-  ref: string
-}
-
-/** A subtitle track of an online file or episode, as the picker shows it. */
-export interface OnlineSubInfo {
-  label: string
-  lang: string
-}
-
-/** A playable episode; ref is a file ref (POST /api/online/play). */
-export interface OnlineEpisode {
-  season: number
-  episode: number
-  name: string
-  ref: string
-  qualities: string[]
-  maxQuality?: string
-  subtitles: number
-  /** Its subtitles (label as the source gives it, language code or empty); a «call» entry knows them only when played. */
-  subtitleTracks?: OnlineSubInfo[]
-  unsupported?: boolean
-}
-
-/** A playable film entry (usually one per voice-over). */
-export interface OnlineFile {
-  name: string
-  voice: string
-  qualities: string[]
-  maxQuality?: string
-  ref: string
-  subtitles: number
-  subtitleTracks?: OnlineSubInfo[]
-  unsupported?: boolean
-}
-
-export interface OnlineCandidate {
-  title: string
-  year?: number
-  details?: string
-  ref: string
-}
-
-/** GET /api/online/browse: one level of a source. */
-export interface OnlineLevel {
-  level: 'movie' | 'seasons' | 'episodes' | 'pick' | (string & {})
-  voices?: OnlineChoice[]
-  seasons?: OnlineSeason[]
-  season?: number
-  episodes?: OnlineEpisode[]
-  files?: OnlineFile[]
-  candidates?: OnlineCandidate[]
-}
-
-/** POST /api/online/play. */
-export interface OnlinePlayRequest {
-  ref: string
-  /** A source quality («1080p»); '' = the server's default. */
-  quality?: string
-  startSec?: number
-  caps: ClientCaps
-  replaceSession?: string
-  refresh?: boolean
-}
-
-/** An online watch position (GET /api/online/progress). */
-export interface OnlineEntry {
-  kind: 'movie' | 'series'
-  tmdbId: number
-  season: number
-  episode: number
-  positionMs: number
-  durationMs: number
-  finished: boolean
-  source: string
-  voice: string
-  quality: string
-  updatedAt: string
-}
-
-export interface OnlineLast {
-  source: string
-  voice: string
-  quality: string
-  season: number
-  episode: number
-}
-
-export interface OnlineProgress {
-  entries: OnlineEntry[]
-  last: OnlineLast | null
-}
-
-/** GET /api/online/status (admin). */
-export interface OnlineStatus {
-  configured: boolean
-  reachable: boolean
-  sources: number
-  version: string
 }
 
 /** The catalog «Найти и добавить» searches: TMDB, MusicBrainz, Open Library, or the query itself (manga). */
@@ -803,8 +684,6 @@ export interface Settings {
   subtitleLangs: LangCode[]
   /** An OpenSubtitles key is set on the server (response only). */
   subtitlesAvailable: boolean
-  /** «Смотреть онлайн» (matters only when the server has online sources configured). */
-  onlineEnabled?: boolean
   /** «Язык описаний медиатеки»: the language of stored TMDB metadata, applied to new scans (absent on older servers). */
   metadataLanguage?: 'ru' | 'en'
   /** «Отправка на Kindle»: the SMTP account books leave from. An answer never carries the password. */
@@ -1772,7 +1651,7 @@ export interface SourceMeta {
   itemId?: number
   fileId?: number
   sourceId?: string
-  /** online: balancer id */
+  /** the addon's own id of the source's provider */
   providerId?: string
   voice?: string
   /** audio language, ISO 639-1; absent = unknown */
@@ -1784,8 +1663,8 @@ export interface SourceMeta {
   fileIndex?: number
 }
 
-/** The core's kinds, or an addon's (its scanners' `tracking.scan:<kind>`; opaque to the core). */
-export type SourceKind = 'library' | 'online' | (string & {})
+/** The core's kind (`library`), or an addon's (its scanners' `tracking.scan:<kind>`; opaque to the core). */
+export type SourceKind = 'library' | (string & {})
 
 export interface EpisodeSource {
   kind: SourceKind

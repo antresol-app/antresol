@@ -1,0 +1,5 @@
+{
+  "method": "PUT",
+  "path": "/api/addon-core/v1/progress",
+  "status": 204
+}

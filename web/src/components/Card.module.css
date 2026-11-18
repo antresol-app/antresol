@@ -96,21 +96,6 @@
   color: var(--label-over-art);
 }
 
-/* «Онлайн»: an online title in «Продолжить просмотр» (not on the server) */
-.chip {
-  position: absolute;
-  top: var(--s-2);
-  right: var(--s-2);
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 var(--s-2);
-  border-radius: var(--r-pill);
-  background: var(--scrim-art-strong);
-  font: var(--t-caption);
-  color: var(--label-over-art);
-}
-
 .progress {
   position: absolute;
   left: 10px;

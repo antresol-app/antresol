@@ -70,8 +70,8 @@ var (
 	// both. The error Install returns carries a user message naming them.
 	ErrPrefixOverlap = errors.New("addon env prefix overlaps another addon")
 	// ErrScanKindTaken: a tracking.scan:<kind> the addon declares is the
-	// core's (library, online) or another installed addon's (E2). The
-	// error Install returns carries a user message naming the kind.
+	// core's (library) or another installed addon's (E2). The error
+	// Install returns carries a user message naming the kind.
 	ErrScanKindTaken = errors.New("addon scan kind taken")
 )
 
@@ -627,6 +627,10 @@ func (m *Manager) Status(id string) Status { return m.Sup.Status(id) }
 
 // Serving: the addon's status and, while it is running, its socket.
 func (m *Manager) Serving(id string) (Status, string) { return m.Sup.Serving(id) }
+
+// OnStatus adds f to hear every status change of every addon (see
+// Supervisor.OnStatus: f runs under its lock and must return quickly).
+func (m *Manager) OnStatus(f func(id string, st Status)) { m.Sup.OnStatus(f) }
 
 // WebDir is the web bundle of an installed version.
 func (m *Manager) WebDir(id, version string) string { return m.Sup.WebDir(id, version) }

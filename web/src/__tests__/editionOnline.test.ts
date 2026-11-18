@@ -1,34 +1,27 @@
-// The edition flag is left only where the sources build has online viewing
-// (nothing else). Every other place asks a slot (what only some servers have
-// comes from an addon). The list below is every source file that names the
-// flag; a new one fails here. The same goes for the stubs (X.stub.ts(x)
-// beside the sources build's X): each is online viewing's; a stub whose real
-// module left for an addon fails here.
+// The edition flag marks what only the full build has. Watching titles
+// online is not one of those things any more: it is an addon's, so no site,
+// stub or route serves it. What is left of the flag is the
+// full build's other features (the import's strings, the channel editor's
+// row). Every source file that names the flag, and every stub, is listed
+// below with what it serves; a new one fails here.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const WEB = path.resolve(SRC, '..')
 const FLAG = '__LIBRARY_EDITION__'
 
 type Site =
-  // online viewing of the sources build: what each line must name
-  | { online: RegExp }
-  // the flag's own declaration, the stubs' and catalogs' notes
+  // the flag's own declaration, the stubs' and the catalog's notes
   | { note: true }
-  // the two catalogs merge the sources build's strings: what each line must be
+  // the two catalogs merge the full build's strings: what each line must be
   | { catalog: RegExp }
 
+/** Each file that names the flag, and what it serves. */
 const SITES: Record<string, Site> = {
-  'api/client.ts': { online: /online: __LIBRARY_EDITION__ \? undefined : 1/ },
-  'app/routes.tsx': { online: /fullPlayerRoutes\(\)/ },
-  'components/Card.tsx': { online: /\.online\b/ },
-  'pages/manage/Settings.tsx': { online: /<OnlineRow\b/ },
   'vite-env.d.ts': { note: true },
-  'app/routesFull.tsx': { note: true },
-  'app/routesFull.stub.tsx': { note: true },
-  'pages/ItemDetailFull.tsx': { note: true },
   'i18n/ru/full.ts': { note: true },
   'i18n/ru/full.stub.ts': { note: true },
   'i18n/en/full.stub.ts': { note: true },
@@ -36,22 +29,20 @@ const SITES: Record<string, Site> = {
   'i18n/en.ts': { catalog: /\? \(\{\} as typeof full\) : full/ },
 }
 
-/** Every stub, and whose its real module is. */
-const STUBS: Record<string, 'online'> = {
-  'app/routesFull.stub.tsx': 'online',
-  'components/episodes/EpisodePlay.stub.tsx': 'online',
-  // the sources build's keys that the core names
-  'i18n/ru/full.stub.ts': 'online',
-  'i18n/en/full.stub.ts': 'online',
-  'pages/ItemDetailFull.stub.tsx': 'online',
-  'pages/tv/ChannelExtrasRow.stub.tsx': 'online',
+/** Every stub, and what its real module is for. */
+const STUBS: Record<string, string> = {
+  // the keys of the full build's catalog that core code names
+  'i18n/ru/full.stub.ts': 'the import’s strings',
+  'i18n/en/full.stub.ts': 'the import’s strings',
+  'pages/tv/ChannelExtrasRow.stub.tsx': 'the channel editor’s row',
 }
 
 /** The real module of a stub: X.stub.tsx → X.tsx (or .ts). */
 const realOf = (stub: string) => [stub.replace(/\.stub\.(tsx?)$/, '.$1'), stub.replace(/\.stub\.tsx?$/, '.ts'), stub.replace(/\.stub\.tsx?$/, '.tsx')]
 
-// vault has the sources build's modules beside the stubs; the public tree has none of them
-const VAULT = existsSync(path.join(SRC, 'api/clientFull.ts'))
+// the edition is the tree's: the full build's modules sit beside their stubs, the public tree has none of them
+const MARKER = 'api/clientFull.ts'
+const VAULT = existsSync(path.join(SRC, MARKER))
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const n of readdirSync(dir)) {
@@ -63,57 +54,61 @@ function sources(dir: string, out: string[] = []): string[] {
   return out
 }
 
-const flagged = sources(SRC)
-  .filter((p) => readFileSync(p, 'utf8').includes(FLAG))
-  .map((p) => path.relative(SRC, p).split(path.sep).join('/'))
-  .sort()
+const rel = (p: string) => path.relative(SRC, p).split(path.sep).join('/')
+const all = sources(SRC).map(rel).sort()
 
-const flagLines = (rel: string) =>
-  readFileSync(path.join(SRC, rel), 'utf8')
+const flagged = all.filter((f) => readFileSync(path.join(SRC, f), 'utf8').includes(FLAG))
+
+const flagLines = (f: string) =>
+  readFileSync(path.join(SRC, f), 'utf8')
     .split('\n')
     .filter((l) => l.includes(FLAG))
 
 const isNote = (l: string) => /^\s*(\/\/|\/?\*)/.test(l) || /^declare const __LIBRARY_EDITION__/.test(l)
 
-describe('edition flag: online only', () => {
+describe('edition flag', () => {
   it('is named only by the listed files', () => {
     expect(flagged.filter((f) => !(f in SITES))).toEqual([])
   })
 
-  it('is its listed site wherever it is code in an online or catalog file', () => {
-    const pattern = (site: Site): RegExp | null => ('online' in site ? site.online : 'catalog' in site ? site.catalog : null)
+  it('is only a note, or the catalog merge, where it is listed', () => {
     for (const [f, site] of Object.entries(SITES)) {
-      const re = pattern(site)
-      if (!re || !flagged.includes(f)) continue
+      if (!flagged.includes(f)) continue
       const code = flagLines(f).filter((l) => !isNote(l))
+      if ('note' in site) {
+        expect(code, f).toEqual([])
+        continue
+      }
       expect(code.length, f).toBeGreaterThan(0)
       expect(
-        code.filter((l) => !re.test(l)),
+        code.filter((l) => !site.catalog.test(l)),
         f,
       ).toEqual([])
     }
   })
 
-  it('is only a note in the note files', () => {
-    for (const [f, site] of Object.entries(SITES)) {
-      if (!('note' in site) || !flagged.includes(f)) continue
-      expect(
-        flagLines(f).filter((l) => !isNote(l)),
-        f,
-      ).toEqual([])
-    }
-  })
-
-  it('leaves only online\'s stubs', () => {
-    const stubs = sources(SRC)
-      .map((p) => path.relative(SRC, p).split(path.sep).join('/'))
-      .filter((f) => /\.stub\.tsx?$/.test(f))
-      .sort()
+  it('leaves only the listed stubs', () => {
+    const stubs = all.filter((f) => /\.stub\.tsx?$/.test(f))
     expect(stubs.filter((f) => !(f in STUBS))).toEqual([])
     expect(Object.keys(STUBS).filter((f) => !stubs.includes(f))).toEqual([])
     if (!VAULT) return
-    // the real module is still in vault (not gone to an addon)
+    // the real module is still in the full build (not gone to an addon)
     for (const f of stubs) expect(realOf(f).some((r) => existsSync(path.join(SRC, r))), f).toBe(true)
+  })
+
+  it('has no site, stub, route or module for watching titles online', () => {
+    // no source file is named for it
+    expect(all.filter((f) => /online/i.test(path.basename(f)))).toEqual([])
+    expect(readdirSync(path.join(SRC, 'pages')).filter((n) => /online/i.test(n))).toEqual([])
+    // the routes know no full-window player of the full build
+    const routes = readFileSync(path.join(SRC, 'app/routes.tsx'), 'utf8')
+    expect(routes).not.toMatch(/fullPlayerRoutes|routesFull/)
+  })
+
+  it('is decided by the same marker file in both configs', () => {
+    for (const cfg of ['vite.config.ts', 'vite.sw.config.ts']) {
+      expect(readFileSync(path.join(WEB, cfg), 'utf8'), cfg).toContain(`src/${MARKER}`)
+    }
   })
 
   it('leaves no follow route in routes.tsx', () => {

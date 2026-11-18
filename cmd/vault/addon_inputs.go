@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net"
+	"strconv"
+	"strings"
 )
 
 // The loopback relay of addon inputs (/api/addon-input/…): the URL ffmpeg
@@ -34,4 +36,19 @@ func newInputToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+// relayPort is the port of an IPv4 loopback base (inputLoopbackBase),
+// which the addon stream relay's URLs use; 0 otherwise (the relay opens
+// nothing).
+func relayPort(base string) int {
+	p, ok := strings.CutPrefix(base, "http://127.0.0.1:")
+	if !ok {
+		return 0
+	}
+	n, err := strconv.Atoi(p)
+	if err != nil || n <= 0 || n > 65535 {
+		return 0
+	}
+	return n
 }

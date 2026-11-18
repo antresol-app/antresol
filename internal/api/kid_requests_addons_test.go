@@ -451,7 +451,7 @@ func TestMe_CapabilityKeysAreCore(t *testing.T) {
 			set[k] = true
 		}
 		for _, k := range capabilityKeys(set) {
-			if k != "canRequest" && k != "canWatchOnline" {
+			if k != "canRequest" {
 				t.Fatalf("me has %s: %s", k, w.Body)
 			}
 		}

@@ -123,7 +123,7 @@ export default {
   'player.audio.skipNotice': 'Не удалось воспроизвести трек — включаю следующий',
   'player.audio.stopError': 'Не удалось воспроизвести музыку. Проверьте связь с сервером.',
   'player.video.finalError': 'Это видео не получается воспроизвести на этом устройстве.',
-  'player.video.onlineError': 'Этот источник сейчас недоступен. Выберите другой.',
+  'player.video.streamError': 'Источник не отвечает',
   'player.video.offline': 'Нет связи с сервером. Проверьте подключение.',
   'player.video.aria': 'Плеер: {title}',
   'player.video.close': 'Закрыть плеер',

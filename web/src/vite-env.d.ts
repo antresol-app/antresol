@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 /**
- * true in the core build (a tree without src/app/routesFull.tsx: the
+ * true in the core build (a tree without src/api/clientFull.ts: the
  * public one), false in the sources build: vite.config.ts replaces it with a
  * literal at build time. The sources build's modules have stubs beside them
  * (X.stub.ts / X.stub.tsx) that the public tree resolves to instead.

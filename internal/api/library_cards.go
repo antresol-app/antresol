@@ -42,16 +42,22 @@ type Card struct {
 	// kinds.
 	Thumb    string `json:"thumb,omitempty"`
 	SeriesID int64  `json:"seriesId,omitempty"` // episodes, seasons and comic volumes
-	// Online cards of «Продолжить» (a title watched online, not in the
-	// library; ID 0, only for /api/home?online=1): the TMDB title, the
-	// episode and where to resume. A missing season or episode is 0
-	// (specials are season 0).
-	Online    bool    `json:"online,omitempty"`
+	// Cards of «Продолжить» for a title that is not in the library (ID 0):
+	// the TMDB title, the episode and where to resume. A missing season or
+	// episode is 0 (specials are season 0).
 	TmdbKind  string  `json:"tmdbKind,omitempty"` // "movie" | "series"
 	TmdbID    int     `json:"tmdbId,omitempty"`
 	Season    int     `json:"season,omitempty"`
 	Episode   int     `json:"episode,omitempty"`
 	ResumeSec float64 `json:"resumeSec,omitempty"`
+	// Addon cards of «Продолжить» (home.continue, only for
+	// /api/home?addons=1; ID 0): AddonID is the addon that sent it, Key its
+	// key as "addon:<id>:<key>", Href the app page it opens. TmdbKind,
+	// TmdbKind and TmdbID name the title, Season and Episode a series'
+	// episode, ResumeSec where to resume.
+	AddonID string `json:"addonId,omitempty"`
+	Key     string `json:"key,omitempty"`
+	Href    string `json:"href,omitempty"`
 }
 
 // cacheName is a file of the image cache (metadata.Images.Fetch).

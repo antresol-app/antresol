@@ -125,7 +125,7 @@ export default {
   'player.audio.skipNotice': 'Couldn’t play the song — playing the next one',
   'player.audio.stopError': 'Couldn’t play music. Check your connection to the server.',
   'player.video.finalError': 'This video can’t be played on this device.',
-  'player.video.onlineError': 'This source isn’t available right now. Choose another one.',
+  'player.video.streamError': 'The source isn’t responding',
   'player.video.offline': 'Can’t reach the server. Check your connection.',
   'player.video.aria': 'Player: {title}',
   'player.video.close': 'Close player',

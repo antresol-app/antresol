@@ -572,7 +572,7 @@ func TestChoiceRoute(t *testing.T) {
 	if w := e.do("GET", "/api/tracking/series/70/choice", "", e.admin); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"choice":null}` {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"online","provider":"b1","voice":"A","lang":"ru","quality":"1080p"}`, e.admin); w.Code != 204 {
+	if w := e.do("PUT", "/api/tracking/series/70/choice", `{"kind":"alpha","provider":"b1","voice":"A","lang":"ru","quality":"1080p"}`, e.admin); w.Code != 204 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	w := e.do("GET", "/api/tracking/series/70/choice", "", e.admin)
@@ -580,7 +580,7 @@ func TestChoiceRoute(t *testing.T) {
 		Choice *tracking.Choice `json:"choice"`
 	}
 	json.Unmarshal(w.Body.Bytes(), &out)
-	if out.Choice == nil || *out.Choice != (tracking.Choice{Kind: "online", Provider: "b1", Voice: "A", Lang: "ru", Quality: "1080p"}) {
+	if out.Choice == nil || *out.Choice != (tracking.Choice{Kind: "alpha", Provider: "b1", Voice: "A", Lang: "ru", Quality: "1080p"}) {
 		t.Fatalf("%s", w.Body)
 	}
 	// per profile
@@ -602,9 +602,9 @@ func TestChoiceRoute(t *testing.T) {
 	}
 }
 
-// TestPutChoice_UnknownKind: a choice's kind is library, online, or
-// a scan kind of an installed addon the profile may use (a disabled one's
-// too); a kid's is the library's alone.
+// TestPutChoice_UnknownKind: a choice's kind is library, or a scan kind of
+// an installed addon the profile may use (a disabled one's too, and online
+// once an addon declares it, D12); a kid's is the library's alone.
 func TestPutChoice_UnknownKind(t *testing.T) {
 	e := newTrackEnv(t)
 	e.addons.installed["off"] = scanAddon("off", "adults", false, "gamma")
@@ -625,9 +625,10 @@ func TestPutChoice_UnknownKind(t *testing.T) {
 		status int
 	}{
 		{"admin", e.admin, "zeta", 400}, {"admin", e.admin, "alpha", 204}, {"admin", e.admin, "beta", 204},
-		{"admin", e.admin, "gamma", 204}, {"admin", e.admin, "delta", 204}, {"admin", e.admin, "online", 204},
+		{"admin", e.admin, "gamma", 204}, {"admin", e.admin, "delta", 204}, {"admin", e.admin, "online", 400},
 		{"admin", e.admin, "library", 204},
 		{"adult", ac, "alpha", 204}, {"adult", ac, "gamma", 204}, {"adult", ac, "delta", 400}, {"adult", ac, "zeta", 400},
+		{"adult", ac, "online", 400},
 		{"kid", kc, "library", 204}, {"kid", kc, "", 204}, {"kid", kc, "alpha", 400}, {"kid", kc, "online", 400},
 		{"kid", kc, "zeta", 400},
 	} {
@@ -635,24 +636,47 @@ func TestPutChoice_UnknownKind(t *testing.T) {
 			t.Errorf("%s %q: %d, want %d", c.who, c.kind, got, c.status)
 		}
 	}
-	// no addons at all: only library and online
+	// an addon declares online: it is a kind like any other
+	e.addons.installed["onl"] = scanAddon("onl", "adults", true, "online")
+	for _, c := range []struct {
+		who    string
+		c      *http.Cookie
+		status int
+	}{{"admin", e.admin, 204}, {"adult", ac, 204}, {"kid", kc, 400}} {
+		if got := put(c.c, "online"); got != c.status {
+			t.Errorf("%s online with its addon: %d, want %d", c.who, got, c.status)
+		}
+	}
+	// no addons at all: only the library's
 	e.addons.installed = map[string]addons.Installed{}
-	if got := put(e.admin, "alpha"); got != 400 {
-		t.Errorf("alpha with no addon: %d", got)
+	for _, kind := range []string{"alpha", "online"} {
+		if got := put(e.admin, kind); got != 400 {
+			t.Errorf("%s with no addon: %d", kind, got)
+		}
 	}
 
-	// a library-only server: the addons' kinds, no online
+	// a library-only server: the addons' kinds on it as on any, online
+	// among them (no addon, no online)
 	lo := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
 	_, lac := lo.profile(`{"name":"Взрослый"}`)
 	lo.series("Сёгун", "6+", 42)
 	lo.refresh(lo.track(1, "series", 42, "Сёгун"))
+	lput := func(c *http.Cookie, kind string) int {
+		return lo.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+kind+`"}`, c).Code
+	}
 	for _, c := range []struct {
 		c      *http.Cookie
 		kind   string
 		status int
 	}{{lo.admin, "alpha", 204}, {lac, "beta", 204}, {lo.admin, "library", 204}, {lo.admin, "online", 400}, {lac, "online", 400}} {
-		if got := lo.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+c.kind+`"}`, c.c).Code; got != c.status {
+		if got := lput(c.c, c.kind); got != c.status {
 			t.Errorf("library-only %q: %d, want %d", c.kind, got, c.status)
+		}
+	}
+	lo.addons.installed["onl"] = scanAddon("onl", "adults", true, "online")
+	for _, c := range []*http.Cookie{lo.admin, lac} {
+		if got := lput(c, "online"); got != 204 {
+			t.Errorf("library-only online with its addon: %d", got)
 		}
 	}
 }
@@ -685,8 +709,8 @@ func TestSourceKinds_Addons(t *testing.T) {
 		t.Fatalf("kid kinds %s", got)
 	}
 
-	// a library-only server: an adult still gets the addons' kinds, no
-	// online (R9: library-only gates online only); a kid the library's
+	// a library-only server: an adult still gets the addons' kinds, and no
+	// online without an addon that declares it; a kid the library's
 	lo := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
 	_, lac := lo.profile(`{"name":"Взрослый"}`)
 	lo.series("Сёгун", "6+", 42)
@@ -708,12 +732,50 @@ func TestSourceKinds_Addons(t *testing.T) {
 	}
 }
 
-// TestEpisodeGuideKindsFromAddons: the core names no source kind
-// of an addon; the episode guide's kinds are the library's, online's (the
-// sources build, for a profile that may watch online) and the tracking.scan
-// kinds of the installed addons. An enabled addon's kind is listed and may
-// be chosen; a disabled one's is still listed; a kind no installed
-// addon declares, or that of an addon since uninstalled, is refused.
+// TestSourceKinds_OnlineOnlyWithAddon (D12): the core names no `online`
+// kind. Stored rows of it are listed only while an installed addon declares
+// tracking.scan:online and the profile has access to that addon, on or off,
+// on every server; a kid never has them.
+func TestSourceKinds_OnlineOnlyWithAddon(t *testing.T) {
+	for _, libraryOnly := range []bool{false, true} {
+		e := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = libraryOnly })
+		_, ac := e.profile(`{"name":"Взрослый"}`)
+		e.series("Сёгун", "6+", 42)
+		ti := e.track(1, "series", 42, "Сёгун")
+		e.refresh(ti)
+		if _, err := e.svc.Store.UpsertSources(context.Background(), ti.ID, "online",
+			[]tracking.Source{{Season: 1, Episode: 1, Ref: "online-ref"}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		hasOnline := func(c *http.Cookie) bool { return slices.Contains(e.episodes(42, c).kinds(0), "online") }
+		who := map[string]*http.Cookie{"admin": e.admin, "adult": ac, "kid": e.kid("")}
+		check := func(step string, want map[string]bool) {
+			t.Helper()
+			for name, c := range who {
+				if got := hasOnline(c); got != want[name] {
+					t.Errorf("libraryOnly=%v, %s: %s sees online = %v, want %v", libraryOnly, step, name, got, want[name])
+				}
+			}
+		}
+		// the rows are stored, no addon declares the kind: nobody sees them
+		check("no addon", map[string]bool{})
+		e.addons.installed["onl"] = scanAddon("onl", "adults", true, "online")
+		check("addon on", map[string]bool{"admin": true, "adult": true})
+		e.addons.installed["onl"] = scanAddon("onl", "adults", false, "online")
+		check("addon off", map[string]bool{"admin": true, "adult": true})
+		e.addons.installed["onl"] = scanAddon("onl", "admins", true, "online")
+		check("admins only", map[string]bool{"admin": true})
+		delete(e.addons.installed, "onl")
+		check("uninstalled", map[string]bool{})
+	}
+}
+
+// TestEpisodeGuideKindsFromAddons: the core names no source kind but the
+// library's; the episode guide's kinds are the library's and the
+// tracking.scan kinds of the installed addons (online's among them, D12). An
+// enabled addon's kind is listed and may be chosen; a disabled one's is
+// still listed; a kind no installed addon declares, or that of an addon
+// since uninstalled, is refused.
 func TestEpisodeGuideKindsFromAddons(t *testing.T) {
 	e := newTrackEnv(t)
 	e.addons.installed = map[string]addons.Installed{
@@ -733,8 +795,7 @@ func TestEpisodeGuideKindsFromAddons(t *testing.T) {
 	put := func(kind string) int {
 		return e.do("PUT", "/api/tracking/series/42/choice", `{"kind":"`+kind+`"}`, e.admin).Code
 	}
-	// no Online dep here: online rows are listed by the sources build only
-	// with «Смотреть онлайн» (TestEpisodesFilterSourcesByCaller)
+	// online rows are stored too; no addon declares the kind
 	if got := listed(); !slices.Equal(got, []string{"alpha", "gamma", "library"}) {
 		t.Fatalf("kinds %v, want [alpha gamma library]", got)
 	}
@@ -818,8 +879,8 @@ func TestLibraryRowsCarryEpisodeItem(t *testing.T) {
 	}
 }
 
-// TestEpisodesFilterLibraryOnly: a library-only server shows no online
-// rows; the addons' kinds stay (R9: library-only gates online only).
+// TestEpisodesFilterLibraryOnly: a library-only server shows the addons'
+// kinds as any server does; with no addon declaring online, no online rows.
 func TestEpisodesFilterLibraryOnly(t *testing.T) {
 	e := newTrackEnvWith(t, func(d *Deps) { d.LibraryOnly = true })
 	e.series("Сёгун", "", 42)

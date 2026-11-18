@@ -1,9 +1,9 @@
 // The shapes the episode guide hands a player of non-library sources
-// (the build's own, or an addon's `episodeActions` entry) and takes back.
+// (an addon's `episodeActions` entry) and takes back.
 import type { ReactNode } from 'react'
 import type { EpisodeSource, SourceChoice, SourceKind, TitleEpisode } from '../../api/types'
 
-/** `choice`: the profile's source choice of the title (an online source plays at its quality). */
+/** `choice`: the profile's source choice of the title (a source plays at its quality). */
 export type EpisodeCtx = { kind: 'series' | 'movie'; tmdbId: number; title: string; poster?: string; episodes: TitleEpisode[]; choice?: SourceChoice | null }
 
 export interface EpisodePlay {

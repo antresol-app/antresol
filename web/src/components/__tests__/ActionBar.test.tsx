@@ -91,23 +91,22 @@ describe('ActionBar on a library title', () => {
 
   it('with another way the ▾ menu has «С сервера» checked, and the main part plays the server file', async () => {
     const onPlay = vi.fn()
-    const online = vi.fn()
-    render(<ActionBar item={film([file(5)])} onPlay={onPlay} moreWays={[{ id: 'online', label: 'Онлайн', run: online }]} />)
+    const other = vi.fn()
+    render(<ActionBar item={film([file(5)])} onPlay={onPlay} moreWays={[{ id: 'demo:way', label: 'Другой способ', run: other }]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Смотреть' }))
     expect(onPlay).toHaveBeenCalledTimes(1)
     await userEvent.click(screen.getByRole('button', { name: 'Другие способы просмотра' }))
     expect(screen.getByRole('menuitemradio', { name: /С сервера/ })).toHaveAttribute('aria-checked', 'true')
-    await userEvent.click(screen.getByRole('menuitemradio', { name: /Онлайн/ }))
-    expect(online).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('menuitemradio', { name: /Другой способ/ }))
+    expect(other).toHaveBeenCalledTimes(1)
     // the server way stays the main part's: a library item never remembers another
     await userEvent.click(screen.getByRole('button', { name: 'Смотреть' }))
     expect(onPlay).toHaveBeenCalledTimes(2)
   })
 })
 
-// The page wires the online way only in the sources build.
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
-const user = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null, canWatchOnline: true }
+const user = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
 
 async function openPage() {
   vi.stubGlobal(
@@ -143,7 +142,7 @@ describe('library page', () => {
     expect(screen.queryByRole('button', { name: 'Хочу посмотреть' })).toBeNull()
   })
 
-  it.runIf(__LIBRARY_EDITION__)('core build: a plain «Смотреть», no ▾ and no «Онлайн»', async () => {
+  it('with no addon way: a plain «Смотреть», no ▾', async () => {
     await openPage()
     expect(screen.getByRole('button', { name: 'Смотреть' })).not.toHaveAttribute('aria-haspopup')
     expect(screen.queryByRole('button', { name: 'Другие способы просмотра' })).toBeNull()

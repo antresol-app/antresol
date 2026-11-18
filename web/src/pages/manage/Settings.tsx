@@ -3,12 +3,12 @@
 // its own screen, /manage/settings/<group>, one row per setting. A profile's own settings (the language,
 // sound, mail) are in pages/ProfileSettings.tsx. Changes save
 // by themselves (like iOS); «Качество вне дома» applies at once on the
-// server. The core build has only the library's settings: no online viewing
-// (docs/build-tags.md). An addon's own settings are its pages.
+// server. The core build has only the library's settings (docs/build-tags.md).
+// An addon's own settings are its pages.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getLibraryStatus, getSettings, onlineStatus, saveSettings, scanLibrary, errorText } from '../../api/client'
-import type { LangCode, LibraryStatus, MailSettings, OnlineStatus, Settings as Values } from '../../api/types'
+import { getLibraryStatus, getSettings, saveSettings, scanLibrary, errorText } from '../../api/client'
+import type { LangCode, LibraryStatus, MailSettings, Settings as Values } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Sheet } from '../../ui/Sheet'
 import { langChoices, langLabel } from '../../components/langs'
@@ -295,7 +295,6 @@ export function Settings() {
             <StudioList labelledBy="studios" studios={values.studios ?? []} onChange={(studios) => change({ studios })} />
           </ListRow>
         )}
-        {!__LIBRARY_EDITION__ && <OnlineRow enabled={values.onlineEnabled ?? true} onChange={(on) => change({ onlineEnabled: on })} />}
       </GroupedSection>
       )}
 
@@ -484,38 +483,6 @@ function MailFields({ mail, passwordSet, onChange, saved: saveState, error }: { 
         </p>
       )}
     </div>
-  )
-}
-
-/** What /api/online/status says, as the status line under «Смотреть онлайн». */
-/** What /api/online/status said (null: not known — loading, an older server, or an error). */
-export function onlineLine(st: OnlineStatus | null): string {
-  if (!st) return ''
-  if (!st.configured) return t('settings.online.notConfigured')
-  if (!st.reachable) return t('settings.online.unreachable')
-  return t('settings.online.sources', { n: st.sources })
-}
-
-/**
- * «Смотреть онлайн» (admin): the switch and the sidecar's status. The status
- * says whether the server has online sources configured, whatever the
- * switch; it is read once, so saving the switch never races it. Without a
- * configuration the switch cannot be turned on, but a stored «on» can
- * still be turned off.
- */
-function OnlineRow({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
-  const [st, setSt] = useState<OnlineStatus | null>(null)
-  useEffect(() => {
-    const ac = new AbortController()
-    onlineStatus(ac.signal).then(setSt, () => {})
-    return () => ac.abort()
-  }, [])
-  const notConfigured = st !== null && !st.configured
-  const t = useT()
-  return (
-    <ListRow label={t('common.watchOnline')} hint={t('settings.online.hint')} status={onlineLine(st)}>
-      <Toggle label={t('common.watchOnline')} checked={enabled} disabled={notConfigured && !enabled} onChange={onChange} />
-    </ListRow>
   )
 }
 

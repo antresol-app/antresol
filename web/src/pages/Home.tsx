@@ -38,7 +38,7 @@ const SEE_ALL: Record<string, string> = {
 /** The shelves that show titles still downloading, and of which kinds. */
 const PENDING: Record<string, CardKind[]> = { 'recent-movies': ['movie'], 'recent-series': ['series'] }
 
-/** The shelves that carry positions: «Продолжить» (an online card's link resumes at its second) and «Смотрят дома» (other profiles' progress, which they may hide at any time). */
+/** The shelves that carry positions: «Продолжить» (a card's link may resume at its second) and «Смотрят дома» (other profiles' progress, which they may hide at any time). */
 const POSITION_SHELVES = new Set(['continue', 'family'])
 
 /**
@@ -52,7 +52,7 @@ export function positionFree(data: HomeData): HomeData {
     ...data,
     shelves: data.shelves
       .filter((s) => !POSITION_SHELVES.has(s.id))
-      .map((s) => ({ ...s, cards: s.cards.filter((c) => !c.online && !c.resumeSec) })),
+      .map((s) => ({ ...s, cards: s.cards.filter((c) => !c.resumeSec) })),
   }
 }
 

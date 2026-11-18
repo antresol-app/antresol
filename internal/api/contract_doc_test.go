@@ -82,6 +82,17 @@ func TestContractDocLines(t *testing.T) {
 	if !strings.Contains(header, `"uid":"…"`) || !strings.Contains(header, "`uid` is the stable profile key") {
 		t.Error("the proxy section does not give X-Antresol-User's uid as the stable profile key")
 	}
+	// the remote quality cap in the header, and the media prefix a media key opens
+	if !strings.Contains(header, "`\"maxHeight\"`") || !regexp.MustCompile(`«Качество\s+вне\s+дома»`).MatchString(header) {
+		t.Error("the proxy section does not give X-Antresol-User's maxHeight as «Качество вне дома»")
+	}
+	if !regexp.MustCompile(`caps the addon's default\s+\(«Авто»\) choice`).MatchString(header) {
+		t.Error("the proxy section does not say maxHeight caps only the default («Авто») choice")
+	}
+	if !strings.Contains(header, "`/api/addons/<id>/x/media/…`") || !strings.Contains(header, "**`GET` or `HEAD`**") ||
+		!strings.Contains(header, "must not log or store it") {
+		t.Error("the proxy section does not state the media routes' rule (prefix, GET/HEAD, the key not logged or stored)")
+	}
 	users := tableRow(doc, "| `GET /users` |")
 	if !strings.Contains(users, `"uid"`) || !strings.Contains(users, "`uid` is the stable profile key") {
 		t.Errorf("the GET /users row does not name uid as the stable profile key: %q", users)

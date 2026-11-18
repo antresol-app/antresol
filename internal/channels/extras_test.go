@@ -22,14 +22,23 @@ type fakeExtras struct {
 	url      string
 	ready    bool
 	err      error
+	// chans: the channel each Candidates and Resolve call was made for
+	// (ChannelFrom; 0 none)
+	chans []int64
+}
+
+func (f *fakeExtras) seen(ctx context.Context) {
+	c, _ := ChannelFrom(ctx)
+	f.chans = append(f.chans, c.ID)
 }
 
 func (f *fakeExtras) Ready(context.Context) bool { return f.ready }
 
-func (f *fakeExtras) Candidates(_ context.Context, r Rules, limit int) ([]ExtraTitle, error) {
+func (f *fakeExtras) Candidates(ctx context.Context, r Rules, limit int) ([]ExtraTitle, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked++
+	f.seen(ctx)
 	f.rules, f.limits = append(f.rules, r), append(f.limits, limit)
 	if f.err != nil {
 		return nil, f.err
@@ -42,9 +51,10 @@ func (f *fakeExtras) Candidates(_ context.Context, r Rules, limit int) ([]ExtraT
 	return out, nil
 }
 
-func (f *fakeExtras) Resolve(_ context.Context, ch int64, t ExtraTitle) (Stream, error) {
+func (f *fakeExtras) Resolve(ctx context.Context, ch int64, t ExtraTitle) (Stream, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.seen(ctx)
 	f.resolved = append(f.resolved, t.Key)
 	if f.fail[t.Key] {
 		return Stream{}, errors.New("source failed")
@@ -264,6 +274,32 @@ func TestProgramResolvesAnExtraAndDescribesIt(t *testing.T) {
 	x := info[e.ItemID]
 	if !x.External || x.Title == "" || x.Year != 2001 || x.Poster != "/p.jpg" || x.Backdrop != "/b.jpg" || x.Kind != "movie" {
 		t.Fatalf("%+v", x)
+	}
+}
+
+// An implementation learns whose channel it answers for (an addon's
+// access is judged by the channel's profile): Candidates and Resolve run
+// under WithChannel.
+func TestExtrasKnowTheirChannel(t *testing.T) {
+	ex := &fakeExtras{n: 10, url: "http://127.0.0.1:9/s.m3u8"}
+	f, svc, c := extrasFixture(t, ex, Rules{Genres: []string{"комедия"}, Extras: true})
+	ctx := context.Background()
+	if err := svc.BuildChannel(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	e := firstExtra(t, f.entries(c.ID))
+	if _, err := svc.Program(ctx, c.ID, e.Start.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	if len(ex.chans) < 2 {
+		t.Fatalf("calls %v", ex.chans)
+	}
+	for _, id := range ex.chans {
+		if id != c.ID {
+			t.Fatalf("calls made for channels %v, want %d", ex.chans, c.ID)
+		}
 	}
 }
 

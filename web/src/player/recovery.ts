@@ -31,27 +31,27 @@ export function recover(s: RecoveryState, reason: FailReason): Recovery {
   return { action: 'error' }
 }
 
-/** Online: stale-link re-plays allowed within ONLINE_REPLAY_WINDOW_MS before the viewer is asked to pick another source. */
-export const ONLINE_REPLAYS = 2
-export const ONLINE_REPLAY_WINDOW_MS = 5 * 60_000
+/** A stream: stale-link re-plays allowed within STREAM_REPLAY_WINDOW_MS before the viewer is asked to pick another source. */
+export const STREAM_REPLAYS = 2
+export const STREAM_REPLAY_WINDOW_MS = 5 * 60_000
 
-export type OnlineRecovery = { action: 'replay'; replays: number[] } | { action: 'error' }
+export type StreamRecovery = { action: 'replay'; replays: number[] } | { action: 'error' }
 
 /**
- * An online stream whose link went stale (a 410, `X-Vault-Online: expired`,
+ * A stream whose link went stale (a 410, or the proxy's `expired` header,
  * a long stall) is played again from the source, past the caches, at the
  * same position — at most twice in 5 minutes, and only once while it has
  * never `played` a frame. `replays` are the times of the earlier re-plays (ms).
  */
-export function recoverOnline(replays: number[], now: number, played = true): OnlineRecovery {
-  const recent = replays.filter((t) => now - t < ONLINE_REPLAY_WINDOW_MS)
+export function recoverStream(replays: number[], now: number, played = true): StreamRecovery {
+  const recent = replays.filter((t) => now - t < STREAM_REPLAY_WINDOW_MS)
   // a source that never showed a frame gets one fresh try, not two
-  if (recent.length >= (played ? ONLINE_REPLAYS : 1)) return { action: 'error' }
+  if (recent.length >= (played ? STREAM_REPLAYS : 1)) return { action: 'error' }
   return { action: 'replay', replays: [...recent, now] }
 }
 
-/** Whether an answer of the online proxy says the link went stale. */
-export function onlineExpired(status: number | undefined, header?: string | null): boolean {
+/** Whether an answer of a stream's proxy says the link went stale. */
+export function streamExpired(status: number | undefined, header?: string | null): boolean {
   return status === 410 || (header ?? '').toLowerCase() === 'expired'
 }
 
@@ -60,8 +60,8 @@ export function onlineExpired(status: number | undefined, header?: string | null
  * remote stream (`slow`), a network error is the source, not the device.
  */
 export function mediaErrorReason(mode: string, code: number | undefined, slow = false, started = true): FailReason {
-  // online: a refused first request (the proxy's 410 on an MP4) reads as «source not supported»
-  if (mode === 'online' && code === 4 && !started) return 'expired'
+  // a stream: a refused first request (the proxy's 410 on an MP4) reads as «source not supported»
+  if (mode === 'stream' && code === 4 && !started) return 'expired'
   if (code === 2 && slow) return 'stalled'
   // MEDIA_ERR_NETWORK on an HLS stream: the session went away (Safari, long pause).
   if (mode !== 'direct' && code === 2) return 'expired'
@@ -94,8 +94,8 @@ export interface WaitContext {
 
 /** Checks without progress before a stream counts as stalled (× the timer, ~1.5 min). */
 export const SLOW_IDLE_CHECKS = 3
-/** The longest an online stream may take to its first frame (some sources are slow to start). */
-export const ONLINE_START_LIMIT_SEC = 90
+/** The longest a stream may take to its first frame (some sources are slow to start). */
+export const STREAM_START_LIMIT_SEC = 90
 /** The longest a library HLS session may take to its first segment (slow 4K transcode). */
 export const HLS_START_LIMIT_SEC = 180
 
@@ -105,9 +105,9 @@ export const HLS_START_LIMIT_SEC = 180
  * was there and the browser still did nothing with it.
  */
 export function waitVerdict(c: WaitContext): 'wait' | FailReason {
-  // Online: the proxy relays a source; no frames for this long is a stale
+  // A stream: the proxy relays a source; no frames for this long is a stale
   // link (a slow source gets a while for its first bytes).
-  if (c.mode === 'online') return c.phase === 'start' && c.elapsedSec < ONLINE_START_LIMIT_SEC ? 'wait' : 'expired'
+  if (c.mode === 'stream') return c.phase === 'start' && c.elapsedSec < STREAM_START_LIMIT_SEC ? 'wait' : 'expired'
   const hls = c.mode !== '' && c.mode !== 'direct'
   if (hls && c.hls?.gone) return 'expired'
   if (c.slow) {
@@ -176,8 +176,8 @@ export type SeekPlan =
 /** How to reach `offset` seconds into `part`. */
 export function planSeek(c: SeekContext, part: number, offset: number): SeekPlan {
   if (part !== c.part) return { kind: 'reload', part, at: offset }
-  // An online stream is the whole video from 0 (the source seeks, not a transcode).
-  if (c.mode === 'direct' || c.mode === 'online') return { kind: 'local', time: offset }
+  // A stream is the whole video from 0 (the source seeks, not a transcode).
+  if (c.mode === 'direct' || c.mode === 'stream') return { kind: 'local', time: offset }
   const rel = offset - c.offset
   // Inside what is already transcoded (one second of slack for the live edge).
   if (rel >= 0 && rel <= c.seekableEnd + 1) return { kind: 'local', time: rel }

@@ -39,8 +39,10 @@ export interface ActionBarProps {
   onPlay: (opts?: PlayOptions) => void
   /** Called after something changed on the server (watched state). */
   onChanged?: () => void
-  /** Ways after «С сервера» in the ▾ menu (the sources build's «Онлайн»). */
+  /** Ways after «С сервера» in the ▾ menu (the addons' watch ways). */
   moreWays?: WatchWay[]
+  /** Keep the ▾ drawn (a way of `moreWays` may still come: WatchButton's `menu`). */
+  waysMenu?: boolean
   /** Replaces the built-in «Смотреть» (a title not on the server: «Смотреть ▾»). */
   primary?: ReactNode
   /** Rendered right after `primary`; replaces the library's download button (to this device). */
@@ -104,7 +106,7 @@ function fileBadges(f: MediaFile, quality = true): string {
   return [quality && f.resolution, langs(f.audio), subs && t('comp.action.subs', { langs: subs }), formatSize(f.size)].filter(Boolean).join(' · ')
 }
 
-export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, trailers = [] }: ActionBarProps) {
+export function ActionBar({ item, onPlay, onChanged, moreWays = [], waysMenu, primary, download, toggles, watchlistButton = true, deletion, onFindSubtitles, trailers = [] }: ActionBarProps) {
   const t = useT()
   const [inList, setInList] = useState(item.inWatchlist)
   const [busy, setBusy] = useState(false)
@@ -183,6 +185,7 @@ export function ActionBar({ item, onPlay, onChanged, moreWays = [], primary, dow
         // a library item always plays the server's file first: no remembered way here
         ways={[{ id: 'server', label: t('comp.way.server'), run: () => onPlay() }, ...moreWays]}
         current="server"
+        menu={waysMenu}
       />
     ))
   const dl = download ?? toDevice

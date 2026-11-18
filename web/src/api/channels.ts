@@ -31,7 +31,7 @@ export interface ChannelRules {
   libraryUser?: number
   maxRating?: string
   order?: ChannelOrder
-  /** Also films of these genres the library lacks, from online sources (where the server offers it). */
+  /** Also films of these genres the library lacks, from an addon's titles (where the server offers it). */
   extras?: boolean
 }
 
@@ -65,7 +65,7 @@ export interface ChannelProgram {
   end: string
   poster?: string
   backdrop?: string
-  /** From an online source, not in the library (itemId is negative). */
+  /** From an addon, not in the library (itemId is negative). */
   external?: boolean
   /** Absent: unknown; empty: none. */
   audio?: ChannelTrack[]

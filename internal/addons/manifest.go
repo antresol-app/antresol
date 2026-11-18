@@ -39,7 +39,12 @@ type NotifyTopic struct {
 var KnownHooks = []string{"files.plan", "files.pause", "files.resume", "files.stop", "files.detach", "files.attach",
 	"play.progress", "library.pending", "disk.usage", "requests.open", "requests.title", "requests.search", "tracking.titles", "tracking.watched",
 	"notify.interest", "voiceover.origLang", "trailers.fetch", "import.services", "import.stop", "import.resolve", "import.search",
-	"migrate.leftovers"}
+	"migrate.leftovers", "library.afterScan", "home.continue",
+	"channels.ready", "channels.candidates", "channels.resolve", "channels.release"}
+
+// ChannelHooks are the hooks of «ТВ» channels' titles outside the
+// library: a manifest declares all four or none.
+var ChannelHooks = []string{"channels.ready", "channels.candidates", "channels.resolve", "channels.release"}
 
 // Manifest describes an addon release.
 type Manifest struct {
@@ -70,7 +75,8 @@ var (
 		"addon": true, "core": true, "contract": true, "locale": true}
 	knownPerms = map[string]bool{"library.read": true, "events": true,
 		"library.write": true, "files.holds": true, "metadata": true, "images": true, "play": true, "notify": true,
-		"users.read": true, "tracking": true, "imports": true, "requests": true, "voiceover": true}
+		"users.read": true, "tracking": true, "imports": true, "requests": true, "voiceover": true,
+		"progress": true}
 	knownPlatforms = map[string]bool{"linux/amd64": true, "linux/arm64": true, "darwin/arm64": true}
 )
 
@@ -140,6 +146,15 @@ func ParseManifest(data []byte) (Manifest, error) {
 		}
 		hooks[h] = true
 	}
+	n := 0
+	for _, h := range ChannelHooks {
+		if hooks[h] {
+			n++
+		}
+	}
+	if n != 0 && n != len(ChannelHooks) {
+		return Manifest{}, userError("Нужны все хуки channels.*")
+	}
 	topics := make(map[string]bool, len(m.Notify))
 	for _, n := range m.Notify {
 		if !topicRe.MatchString(n.Topic) {
@@ -171,6 +186,22 @@ func knownHook(h string) bool {
 // ForAdults reports whether the addon's UI is open to adult members, not
 // only admins.
 func (m Manifest) ForAdults() bool { return m.Access == "adults" }
+
+// OpenTo is the one rule of who gets an addon (its bundle, its hooks run
+// for a profile): an admin gets every addon, any other profile only one
+// for adults. Kids are kept out by the callers before this.
+func (m Manifest) OpenTo(admin bool) bool { return admin || m.ForAdults() }
+
+// AnswersChannels: the manifest declares the channels.* hooks (all four,
+// as ParseManifest makes sure).
+func (m Manifest) AnswersChannels() bool {
+	for _, h := range ChannelHooks {
+		if !m.Answers(h) {
+			return false
+		}
+	}
+	return true
+}
 
 // Answers reports whether the manifest declares the hook.
 func (m Manifest) Answers(hook string) bool {

@@ -37,11 +37,26 @@ export function BadgeLabel({ text }: { text: string }) {
   )
 }
 
-export function Badges({ items, className }: { items?: string[]; className?: string }) {
+/**
+ * A row of badges. `inline`: spans in place of a list, for a row inside
+ * a button or a label (where a list may not go); the text still reads.
+ */
+export function Badges({ items, className, inline }: { items?: string[]; className?: string; inline?: boolean }) {
   const t = useT()
   if (!items || items.length === 0) return null
+  const cls = [styles.badges, className].filter(Boolean).join(' ')
+  if (inline)
+    return (
+      <span className={cls}>
+        {items.map((b) => (
+          <span key={b} className={styles.badge}>
+            <BadgeLabel text={b} />
+          </span>
+        ))}
+      </span>
+    )
   return (
-    <ul className={[styles.badges, className].filter(Boolean).join(' ')} aria-label={t('comp.badges')}>
+    <ul className={cls} aria-label={t('comp.badges')}>
       {items.map((b) => (
         <li key={b} className={styles.badge}>
           <BadgeLabel text={b} />

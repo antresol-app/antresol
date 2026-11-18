@@ -254,6 +254,90 @@ func TestGuardMediaKeyRoutes(t *testing.T) {
 	}
 }
 
+// An addon's media prefix, /api/addons/<id>/x/media/…, opens with a media
+// key for GET and HEAD, for any addon id; nothing else under /api/addons
+// does.
+func TestMediaKeyRoute_AddonMedia(t *testing.T) {
+	for _, c := range []struct {
+		method, path string
+		want         bool
+	}{
+		{"GET", "/api/addons/a/x/media/s1/index.m3u8", true},
+		{"HEAD", "/api/addons/a/x/media/s1/index.m3u8", true},
+		{"GET", "/api/addons/other-id/x/media/s1/subs/0.vtt", true},
+		{"GET", "/api/addons/a/x/media/", true},
+		{"POST", "/api/addons/a/x/media/s1", false},
+		{"DELETE", "/api/addons/a/x/media/s1", false},
+		{"PUT", "/api/addons/a/x/media/s1", false},
+		{"GET", "/api/addons/a/x/media", false},
+		{"GET", "/api/addons/a/x/mediax/s1", false},
+		{"GET", "/api/addons/a/x/s/s1/index.m3u8", false},
+		{"GET", "/api/addons/a/x/admin/media/s1", false},
+		{"GET", "/api/addons/a/x/sources", false},
+		{"GET", "/api/addons/a/media/s1", false},
+		{"GET", "/api/addons//x/media/s1", false},
+		{"GET", "/api/addons/a/b/x/media/s1", false},
+		{"GET", "/api/addons/web", false},
+		{"GET", "/api/addons", false},
+		// encoded slashes: the router matches the raw path, so a decoded
+		// "x/media/" may sit inside the id and route elsewhere (/log)
+		{"GET", "/api/addons/a%2Fx%2Fmedia%2F/log", false},
+		{"GET", "/api/addons/a%2fx%2fmedia%2f/log", false},
+		{"GET", "/api/addons/a/x/media/s1%2F..%2F..%2Fadmin", false},
+		{"GET", "/api/addons/a/x/media/s1/seg%20one.ts", true},
+	} {
+		if got := mediaKeyRoute(httptest.NewRequest(c.method, c.path, nil)); got != c.want {
+			t.Errorf("%s %s: %v, want %v", c.method, c.path, got, c.want)
+		}
+	}
+}
+
+// TestGuardMediaKey_AddonMedia: through the guard, a media key reaches an
+// addon's media prefix (a kid's too: the proxy and the addon gate kids),
+// and nothing else of /api/addons.
+func TestGuardMediaKey_AddonMedia(t *testing.T) {
+	ctx := context.Background()
+	s, ss := newStores(t)
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	kid, err := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true, Password: "kidpass"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := newKeys(t, ss)
+	g := &Guard{Sessions: ss, Keys: mk}
+	var reached []int64
+	h := g.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, _ := UserFrom(r.Context())
+		reached = append(reached, u.ID)
+		w.WriteHeader(204)
+	}))
+	for _, who := range []User{a, kid} {
+		tok, sess := nativeKey(t, ss, who.ID, "phone-"+strconv.FormatInt(who.ID, 10)+"000")
+		key, _ := mk.Issue(sess, tok, time.Hour)
+		q := "?mk=" + url.QueryEscape(key)
+		for _, c := range []struct {
+			method, path string
+			want         int
+		}{
+			{"GET", "/api/addons/a/x/media/s1/index.m3u8", 204}, {"HEAD", "/api/addons/b/x/media/s1/seg1.ts", 204},
+			{"POST", "/api/addons/a/x/media/s1", 401}, {"DELETE", "/api/addons/a/x/media/s1", 401},
+			{"GET", "/api/addons/a/x/sources", 401}, {"GET", "/api/addons/a/x/s/s1/index.m3u8", 401},
+			{"GET", "/api/addons/web", 401}, {"POST", "/api/addons/a/x/play", 401},
+			{"GET", "/api/addons/a%2Fx%2Fmedia%2F/log", 401}, {"GET", "/api/addons/a/x/media/s1%2Fx", 401},
+		} {
+			reached = nil
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest(c.method, c.path+q, nil))
+			if w.Code != c.want {
+				t.Errorf("%s: %s %s: %d, want %d", who.Name, c.method, c.path, w.Code, c.want)
+			}
+			if c.want == 204 && (len(reached) != 1 || reached[0] != who.ID) {
+				t.Errorf("%s: %s %s reached as %v", who.Name, c.method, c.path, reached)
+			}
+		}
+	}
+}
+
 func TestMediaKeyRoute_InputDirect(t *testing.T) {
 	for _, c := range []struct {
 		method, path string
@@ -272,6 +356,43 @@ func TestMediaKeyRoute_InputDirect(t *testing.T) {
 	} {
 		if got := mediaKeyRoute(httptest.NewRequest(c.method, c.path, nil)); got != c.want {
 			t.Errorf("%s %s: %v, want %v", c.method, c.path, got, c.want)
+		}
+	}
+}
+
+// TestMediaKeyRoute_PlainPathOnly: every path a media key opens is judged
+// on a plain path only. The router matches the raw path, so a path with a
+// raw form (an encoded slash, an escape Go would not write) could pass for
+// a media prefix here and reach another route; no media URL the server
+// hands out has one.
+func TestMediaKeyRoute_PlainPathOnly(t *testing.T) {
+	for _, c := range []struct {
+		path string
+		want bool
+	}{
+		{"/api/stream/12", true},
+		{"/api/stream/12%2F..%2F..%2Fusers", false},
+		{"/api/hls/abc/index.m3u8", true},
+		{"/api/hls/abc%2Findex.m3u8", false},
+		{"/api/hls/abc/%69ndex.m3u8", false},
+		{"/api/audio/7", true},
+		{"/api/audio/7%2fx", false},
+		{"/api/channels/live/3/index.m3u8", true},
+		{"/api/channels/live/3%2F..%2F..%2Fadmin", false},
+		{"/api/trailers/abcdefghijk.mp4", true},
+		{"/api/trailers/x%2F..%2Fy.mp4", false},
+		{"/api/tracks/5/stream", true},
+		{"/api/tracks/5%2Fa/stream", false},
+		{"/api/play/input/ab/direct", true},
+		{"/api/play/input/a%62/direct", false},
+		{"/api/addons/a/x/media/s1/seg%20one.ts", true},
+		// a prefix the core no longer serves opens nothing
+		{"/api/streams/12", false},
+	} {
+		for _, m := range []string{"GET", "HEAD"} {
+			if got := mediaKeyRoute(httptest.NewRequest(m, c.path, nil)); got != c.want {
+				t.Errorf("%s %s: %v, want %v", m, c.path, got, c.want)
+			}
 		}
 	}
 }

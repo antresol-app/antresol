@@ -86,6 +86,8 @@ type addonsAPI struct {
 	rt    addonRuntime
 	bus   *events.Bus
 	proxy *httputil.ReverseProxy
+	// pools: the proxy's kept connections, one pool per addon process
+	pools addonPools
 	info  addonkit.Info // the server's part of /info (no id, version)
 	// the core API's library and users (nil: those routes answer 503)
 	lib    *library.Repo
@@ -122,12 +124,16 @@ type addonsAPI struct {
 	fileDirs []string
 	// imports: «Импорт медиатеки» (/imports/…; nil: 503)
 	imports *playlistimport.Service
+	// maxHeight is the user header's remote quality cap for a request
+	// (remoteMaxHeight; nil: none)
+	maxHeight func(*http.Request) int
 }
 
 func newAddonsAPI(deps Deps) *addonsAPI {
 	a := &addonsAPI{rt: deps.Addons, bus: deps.Events, lib: deps.Library, jobs: deps.Jobs, users: deps.Users,
 		refs: deps.AddonRefs, images: deps.Images, db: deps.DB, settings: deps.SettingsDefaults, meta: deps.Metadata, holds: deps.AddonHolds,
 		inputs: deps.AddonInputs, notify: deps.Notify, imports: deps.PlaylistImport}
+	a.maxHeight = func(r *http.Request) int { return remoteMaxHeight(&deps, r) }
 	if deps.Tracking != nil && deps.Tracking.Store != nil {
 		a.trackStore, a.trackKick = deps.Tracking.Store, deps.Tracking.Kick
 	}
@@ -156,16 +162,106 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 		ModifyResponse: addonResponse,
 		ErrorHandler:   a.proxyError,
 		FlushInterval:  -1,
-		Transport: &http.Transport{
-			DisableKeepAlives:     true, // the socket changes with every restart
-			ResponseHeaderTimeout: addonProxyTimeout,
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				sock, _ := ctx.Value(addonSockKey{}).(string)
-				return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", sock)
-			},
-		},
+		Transport:      addonTransport{shared: newAddonSockTransport(true)},
+	}
+	if src, ok := deps.Addons.(addonStatusSource); ok {
+		src.OnStatus(a.pools.statusChanged)
 	}
 	return a
+}
+
+// addonStatusSource is the runtime's status feed (the Manager has one;
+// a runtime without it only gets its pools replaced by the proxy itself).
+type addonStatusSource interface {
+	OnStatus(func(id string, st addons.Status))
+}
+
+// newAddonSockTransport dials the socket the request's context names
+// (addonSockKey). With keep-alives, it keeps up to addonIdlePerSocket idle
+// connections: segment after segment of a stream then skips the dial.
+func newAddonSockTransport(noKeepAlive bool) *http.Transport {
+	return &http.Transport{
+		DisableKeepAlives:     noKeepAlive,
+		MaxIdleConnsPerHost:   addonIdlePerSocket,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: addonProxyTimeout,
+		DisableCompression:    true, // what the addon sends passes as it is
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			sock, _ := ctx.Value(addonSockKey{}).(string)
+			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", sock)
+		},
+	}
+}
+
+// addonIdlePerSocket: idle connections kept to one addon process.
+const addonIdlePerSocket = 16
+
+// addonTransport sends a proxied request through the pool of the addon
+// process serveProxy picked (addonPoolKey). Without one it uses shared,
+// which keeps no connection.
+type addonTransport struct{ shared *http.Transport }
+
+type addonPoolKey struct{}
+
+func (t addonTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if p, ok := r.Context().Value(addonPoolKey{}).(*http.Transport); ok {
+		return p.RoundTrip(r)
+	}
+	return t.shared.RoundTrip(r)
+}
+
+// addonPools: one keep-alive Transport per addon id and process. A
+// process is told apart by its socket (a new one at every start: <id>.<n>
+// .sock), so no connection is ever reused across addons or across an
+// addon's restart. A pool is closed (CloseIdleConnections) and dropped
+// when its addon stops or restarts: by the runtime's status feed, and by
+// serveProxy when it sees another socket or none.
+type addonPools struct {
+	mu sync.Mutex
+	m  map[string]addonPool
+}
+
+type addonPool struct {
+	sock string
+	tr   *http.Transport
+}
+
+// get is id's pool for sock, replacing (and closing) a pool for an older
+// process of id.
+func (p *addonPools) get(id, sock string) *http.Transport {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cur, ok := p.m[id]; ok {
+		if cur.sock == sock {
+			return cur.tr
+		}
+		cur.tr.CloseIdleConnections()
+	}
+	if p.m == nil {
+		p.m = map[string]addonPool{}
+	}
+	tr := newAddonSockTransport(false)
+	p.m[id] = addonPool{sock: sock, tr: tr}
+	return tr
+}
+
+// drop closes and forgets id's pool.
+func (p *addonPools) drop(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cur, ok := p.m[id]; ok {
+		cur.tr.CloseIdleConnections()
+		delete(p.m, id)
+	}
+}
+
+// statusChanged: any status but running ends the addon's process (or is
+// a restart in progress), so its pool goes. Called under the
+// supervisor's lock: it only takes p.mu.
+func (p *addonPools) statusChanged(id string, st addons.Status) {
+	if st != addons.StatusRunning {
+		p.drop(id)
+	}
 }
 
 // mountAddons: the session routes (after guard.Require). The routes that
@@ -296,6 +392,7 @@ func mountAddonCore(r chi.Router, a *addonsAPI) {
 		mountAddonCoreRequests(r, a)
 		mountAddonCoreVoiceover(r, a)
 		mountAddonCoreImports(r, a)
+		mountAddonCoreProgress(r, a)
 		r.NotFound(http.NotFoundHandler().ServeHTTP)
 	})
 }
@@ -519,7 +616,7 @@ func (a *addonsAPI) web(w http.ResponseWriter, r *http.Request) {
 	}
 	admin := userOf(r).IsAdmin
 	for _, in := range list {
-		if !admin && !in.Manifest.ForAdults() {
+		if !in.Manifest.OpenTo(admin) {
 			continue
 		}
 		if in.Enabled && in.Manifest.Web != nil && a.rt.Status(in.ID) == addons.StatusRunning {
@@ -575,7 +672,11 @@ func (a *addonsAPI) static(w http.ResponseWriter, r *http.Request) {
 type addonSockKey struct{}
 
 func (a *addonsAPI) serveProxy(w http.ResponseWriter, r *http.Request) {
-	st, sock := a.rt.Serving(chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	st, sock := a.rt.Serving(id)
+	if sock == "" {
+		a.pools.drop(id) // not running: its process's pool is done
+	}
 	if st == addons.StatusStarting {
 		writeErr(w, r, http.StatusServiceUnavailable, msgAddonStarting)
 		return
@@ -584,13 +685,16 @@ func (a *addonsAPI) serveProxy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusServiceUnavailable, msgAddonNotRunning)
 		return
 	}
-	a.proxy.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), addonSockKey{}, sock)))
+	ctx := context.WithValue(r.Context(), addonSockKey{}, sock)
+	ctx = context.WithValue(ctx, addonPoolKey{}, a.pools.get(id, sock))
+	a.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 
 // addonUser is the X-Antresol-User header: who is asking. MaxRating is
 // the profile's rating limit as the core's own gate applies it
 // (auth.User.RatingLimit, compared by library.RatingAllowed); left out when
-// the profile has none.
+// the profile has none. MaxHeight is the remote quality cap
+// (remoteMaxHeight); left out at home and when it is «Оригинал».
 type addonUser struct {
 	ID        int64  `json:"id"`
 	UID       string `json:"uid"`
@@ -599,6 +703,7 @@ type addonUser struct {
 	IsKid     bool   `json:"isKid"`
 	Lang      string `json:"lang"`
 	MaxRating string `json:"maxRating,omitempty"`
+	MaxHeight int    `json:"maxHeight,omitempty"`
 }
 
 // rewrite: /api/addons/{id}/x/<rest> → /api/<rest> on the addon's socket.
@@ -623,7 +728,7 @@ func (a *addonsAPI) rewrite(pr *httputil.ProxyRequest) {
 	h.Del("Authorization")
 	u := userOf(in)
 	b, _ := json.Marshal(addonUser{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(in.Context()),
-		MaxRating: ratingLimit(u)})
+		MaxRating: ratingLimit(u), MaxHeight: a.maxHeight(in)})
 	h.Set("X-Antresol-User", addons.ASCIIJSON(b))
 }
 

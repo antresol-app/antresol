@@ -108,7 +108,7 @@ describe('Настройки: музыка и субтитры', () => {
 describe('Настройки сервера: the groups', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('has exactly the core groups, in order; «Просмотр» keeps the studios (and online in the full build)', async () => {
+  it('has exactly the core groups, in order; «Просмотр» keeps the studios and has no online switch', async () => {
     stub({ ...base, languages: ['ru', 'en'] })
     const { go } = renderSettings()
     await screen.findByRole('button', { name: /Медиатека и языки/ })
@@ -121,7 +121,7 @@ describe('Настройки сервера: the groups', () => {
     expect(await screen.findByRole('button', { name: /Медиатека и языки/ })).toBeInTheDocument()
     go('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
-    if (!__LIBRARY_EDITION__) expect(screen.getByRole('switch', { name: 'Смотреть онлайн' })).toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: /онлайн/i })).toBeNull()
   })
 })
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createElement, Profiler, useSyncExternalStore } from 'react'
 import * as sdk from '../sdk'
 import * as client from '../../api/client'
 import * as format from '../../state/format'
@@ -11,11 +12,18 @@ import * as watch from '../../components/WatchButton'
 import * as card from '../../components/Card'
 import * as request from '../../components/RequestButton'
 import * as kinds from '../../state/searchKinds'
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { registerAddon, resetAddonsForTests } from '../registry'
+import { AddonWaysOutlet } from '../watchWays'
 import * as watchWay from '../../state/watchWay'
 import { session } from '../../state/session'
 import * as migrate from '../../pages/manage/Migrate'
 import type * as registry from '../registry'
+import * as timeline from '../../player/timeline'
+import * as chips from '../../components/Chips'
+import * as badge from '../../ui/Badge'
+import { audio } from '../../player/audio/engine'
+import type * as player from '../../player/VideoPlayer'
 import type * as types from '../../api/types'
 
 // the 2f types an addon's «Переезд» page and import sign-ins are typed with:
@@ -157,7 +165,7 @@ describe('addon sdk', () => {
     const user = { id: 4, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(user), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     await session.login(4)
-    expect(renderHook(() => sdk.useUser()).result.current).toEqual({ id: 4, name: 'Мама', isAdmin: false, isKid: false, lang: 'ru' })
+    expect(renderHook(() => sdk.useUser()).result.current).toEqual({ id: 4, name: 'Мама', isAdmin: false, isKid: false, lang: 'ru', remote: false })
     session.reset()
   })
 
@@ -271,3 +279,157 @@ export type SdkTypes2e = [
   sdk.TrackActionItem,
   sdk.ProfileMenuEntry,
 ]
+
+// the stream player's types are the core's own (tsc fails here otherwise)
+export const sdkTypesStream = {
+  StreamPlayback: true satisfies Same<sdk.StreamPlayback, player.StreamPlayback>,
+  UpNext: true satisfies Same<sdk.UpNext, player.UpNext>,
+  MediaFile: true satisfies Same<sdk.MediaFile, types.MediaFile>,
+  PlayRequest: true satisfies Same<sdk.PlayRequest, types.PlayRequest>,
+  PlayResponse: true satisfies Same<sdk.PlayResponse, types.PlayResponse>,
+  StreamQualityInfo: true satisfies Same<sdk.StreamQualityInfo, types.StreamQualityInfo>,
+}
+
+describe('addon sdk: what a stream player page needs', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('ui.Player is lazy (the main chunk does not import player/VideoPlayer)', () => {
+    // a React.lazy component: the player's module loads on its first render only
+    expect((sdk.ui.Player as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for('react.lazy'))
+    // the rest of ui is the design system as it was
+    expect(sdk.ui.Button).toBeDefined()
+    expect(sdk.ui.Badges).toBe(badge.Badges)
+  })
+
+  it('the SDK exports yieldSession and the timeline helpers', () => {
+    const pause = vi.spyOn(audio, 'yieldSession').mockImplementation(() => {})
+    sdk.yieldSession()
+    expect(pause).toHaveBeenCalledTimes(1)
+    expect(sdk.langBadge).toBe(timeline.langBadge)
+    expect(sdk.languageName).toBe(timeline.languageName)
+    expect(sdk.langCode).toBe(timeline.langCode)
+    expect(sdk.clock).toBe(timeline.clock)
+    expect(sdk.Chips).toBe(chips.Chips)
+    expect(sdk.Chip).toBe(chips.Chip)
+  })
+
+  it('the SDK exports Chips and ui.Badge', () => {
+    // what the moved online sheet draws its choices and badges with
+    expect(sdk.Chips).toBe(chips.Chips)
+    expect(sdk.Chip).toBe(chips.Chip)
+    expect(sdk.ui.Badge).toBe(badge.Badge)
+    expect(sdk.ui.BadgeLabel).toBe(badge.BadgeLabel)
+  })
+
+  it('useUser says whether the profile is away from home (a source quality default)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 2, name: 'Мама', isAdmin: false, isKid: false, remote: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await session.login(2)
+    const { result } = renderHook(() => sdk.useUser())
+    expect(result.current).toMatchObject({ id: 2, remote: true })
+    vi.unstubAllGlobals()
+    session.reset()
+  })
+})
+
+describe('addon sdk: ways across addons', () => {
+  const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  const adult = { id: 4, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
+  const signIn = async (u: typeof adult) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => json(u))
+    await session.login(u.id)
+  }
+  afterEach(() => {
+    vi.restoreAllMocks()
+    session.reset()
+    resetAddonsForTests()
+  })
+
+  it("useWatchWays returns other addons' ways for a title, none for kids", async () => {
+    const ran: string[] = []
+    // the addon's answer (null: still asking), as a store its hook reads
+    let answer: boolean | null = null
+    const listeners = new Set<() => void>()
+    const useAnswer = () =>
+      useSyncExternalStore(
+        (l) => (listeners.add(l), () => void listeners.delete(l)),
+        () => answer,
+      )
+    const asked: unknown[] = []
+    registerAddon('beta', {
+      strings: { ru: { way: 'Способ Б' }, en: {} },
+      itemActions: [
+        {
+          label: 'way',
+          icon: 'play',
+          watchWay: true,
+          useAvailable: (t) => (asked.push(t), useAnswer()),
+          run: (item) => void ran.push(`beta:${item.title}:${item.tmdbId}`),
+        },
+        // not a way: none of useWatchWays
+        { label: 'Кнопка', icon: 'download', run: () => undefined },
+      ],
+    })
+    registerAddon('alpha', {
+      itemActions: [
+        { label: 'Способ А', icon: 'play', watchWay: true, run: (item) => void ran.push(`alpha:${item.kind}`) },
+        { label: 'Не для сериалов', icon: 'play', watchWay: true, visible: (item) => item.kind === 'movie', run: () => undefined },
+      ],
+    })
+    await signIn(adult)
+    const target = { kind: 'series' as const, tmdbId: 77, title: 'Сёгун', poster: '/p.jpg' }
+    const outlet = render(createElement(AddonWaysOutlet))
+    const { result } = renderHook(() => sdk.useWatchWays(target))
+    // beta still asks: only alpha's way, in addon order
+    expect(result.current.map((w) => [w.id, w.label])).toEqual([['alpha:Способ А', 'Способ А']])
+    expect(asked).toContainEqual({ kind: 'series', tmdbId: 77, itemId: 0 })
+    act(() => ((answer = true), listeners.forEach((l) => l())))
+    await waitFor(() => expect(result.current.map((w) => w.id)).toEqual(['alpha:Способ А', 'beta:way']))
+    act(() => result.current[1]!.run())
+    act(() => result.current[0]!.run())
+    expect(ran).toEqual(['beta:Сёгун:77', 'alpha:series'])
+    outlet.unmount()
+
+    // a kid: no way of any addon
+    session.reset()
+    vi.restoreAllMocks()
+    await signIn({ ...adult, id: 5, isKid: true })
+    expect(renderHook(() => sdk.useWatchWays(target)).result.current).toEqual([])
+  })
+
+  it('useWatchWays redraws the outlet only when what it draws changed', async () => {
+    registerAddon('beta', {
+      itemActions: [{ label: 'way', icon: 'play', watchWay: true, useAvailable: () => true, run: () => undefined }],
+    })
+    await signIn(adult)
+    // each commit of the outlet (it renders only when a caller drew something new)
+    let commits = 0
+    render(createElement(Profiler, { id: 'outlet', onRender: () => void commits++ }, createElement(AddonWaysOutlet)))
+    const target = { kind: 'movie' as const, tmdbId: 42, title: 'Дюна' }
+    const { result, rerender } = renderHook(({ n }: { n: number }) => (void n, sdk.useWatchWays(target)), { initialProps: { n: 0 } })
+    await waitFor(() => expect(result.current.map((w) => w.id)).toEqual(['beta:way']))
+    const settled = commits
+    // the caller renders again and again, with nothing new to draw
+    for (let n = 1; n <= 3; n++) rerender({ n })
+    expect(commits).toBe(settled)
+  })
+
+  it('useWatchWays: an element a way returns is drawn by the app until it closes', async () => {
+    registerAddon('beta', {
+      itemActions: [
+        {
+          label: 'way',
+          icon: 'play',
+          watchWay: true,
+          run: (_item, close) => createElement('div', { role: 'dialog', 'aria-label': 'Лист' }, createElement('button', { onClick: close }, 'Закрыть')),
+        },
+      ],
+    })
+    await signIn(adult)
+    render(createElement(AddonWaysOutlet))
+    const { result } = renderHook(() => sdk.useWatchWays({ kind: 'movie', tmdbId: 42, title: 'Дюна' }))
+    act(() => result.current[0]!.run())
+    expect(await screen.findByRole('dialog', { name: 'Лист' })).toBeInTheDocument()
+    act(() => screen.getByRole('button', { name: 'Закрыть' }).click())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Лист' })).toBeNull())
+  })
+})

@@ -433,7 +433,12 @@ func run() error {
 		return err
 	}
 	jobs.AfterScan = func(ctx context.Context) {
-		ext.afterScan(ctx)
+		// the addons that declare library.afterScan are told in the
+		// background: a scan never waits for one (holds.Hooks is set below,
+		// before the jobs run; no addons: nil)
+		if holds != nil && holds.Hooks != nil {
+			holds.Hooks.AfterScan(ctx)
+		}
 		// new episodes and titles for the letters (enriched by now)
 		if err := notifier.Collect(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("notify: collect: %v", err)
@@ -583,6 +588,20 @@ func run() error {
 		})
 		trackSvc.Watched = append(trackSvc.Watched, holds.Hooks.Watched())
 		trackSvc.WatchStates = append(trackSvc.WatchStates, holds.Hooks.WatchStates())
+		// a letter about a new episode goes only to a profile that may
+		// open one of its new sources (the feed's rule: the library's
+		// kind, and the scan kinds of the addons it has access to)
+		trackSvc.SourceKinds = func(ctx context.Context, id int64) (map[string]bool, error) {
+			u, err := users.Get(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			k := map[string]bool{"library": true}
+			for _, a := range holds.Hooks.ScanKinds(u) {
+				k[a] = true
+			}
+			return k, nil
+		}
 		// the profiles an addon names for a title's new episodes
 		// (notify.interest), beside those who marked it
 		notifier.Interest = append(notifier.Interest, holds.Hooks.Interest())
@@ -616,6 +635,16 @@ func run() error {
 	deps.PlaylistImport = playlists
 	if err := ext.apiDeps(&deps, users); err != nil {
 		return err
+	}
+	if addonMgr != nil && chans.Extras == nil {
+		// «ТВ» channels' titles outside the library from an addon
+		// (channels.*), read by ffmpeg through the core's loopback relay;
+		// an in-core implementation set above wins
+		relay := addons.NewRelay(addonMgr.Serving, func() int { return relayPort(deps.InputBase) })
+		x := addons.NewChannelExtras(holds.Hooks, addonMgr.Sup, relay)
+		x.Users, x.Library = users.Get, repo
+		chans.SetExtras(x)
+		deps.AddonRelay = relay
 	}
 	notifier.RequestsOpen = deps.RequestsOpen // «Просьбы» in the letters wherever requests are open
 	webAPI, player := api.NewRouterWithPlayer(deps)

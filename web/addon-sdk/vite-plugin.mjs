@@ -32,7 +32,7 @@ export const SHARED = {
   'react-dom': ['createPortal'],
   'react-router': ['Link', 'NavLink', 'Navigate', 'Outlet', 'useLocation', 'useNavigate', 'useNavigationType', 'useParams', 'useSearchParams'],
   '@antresol/addon-sdk': [
-    'ApiError', 'DownloadButton', 'Icon', 'KIND_ICON', 'MEDIA_SEGMENTS', 'MigratePage', 'PendingOverlay', 'ViewMenu', 'ViewToolbar', 'WatchButton', 'addonApi', 'cardHref', 'core', 'formatPercent', 'formatRate', 'formatSize', 'kindLabel', 'locale', 'mediaKindIcon', 'mediaSegmentIcon', 'mediaSegmentOf', 'registerAddon', 'titlePath', 'ui', 'useAddonT', 'useDebounced', 'useEvents', 'useIsCompact', 'useMediaSegments', 'useUrlView', 'useUser', 'useWatchWay',
+    'ApiError', 'Chip', 'Chips', 'DownloadButton', 'Icon', 'KIND_ICON', 'MEDIA_SEGMENTS', 'MigratePage', 'PendingOverlay', 'ViewMenu', 'ViewToolbar', 'WatchButton', 'addonApi', 'cardHref', 'clock', 'core', 'formatPercent', 'formatRate', 'formatSize', 'kindLabel', 'langBadge', 'langCode', 'languageName', 'locale', 'mediaKindIcon', 'mediaSegmentIcon', 'mediaSegmentOf', 'registerAddon', 'titlePath', 'ui', 'useAddonT', 'useDebounced', 'useEvents', 'useIsCompact', 'useMediaSegments', 'useUrlView', 'useUser', 'useWatchWay', 'useWatchWays', 'yieldSession',
   ],
 }
 

@@ -38,15 +38,21 @@ function ChunkFailed() {
   )
 }
 
-export function ChunkBoundary({ children }: { children: ReactNode }) {
+/**
+ * `fallback`: what shows while the chunk downloads instead of the spinner
+ * (a full-window page: the player's black screen).
+ */
+export function ChunkBoundary({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
   const t = useT()
   return (
     <Boundary>
       <Suspense
         fallback={
-          <div className={styles.box} aria-busy="true" aria-label={t('common.loading')}>
-            <span className={styles.spinner} />
-          </div>
+          fallback ?? (
+            <div className={styles.box} aria-busy="true" aria-label={t('common.loading')}>
+              <span className={styles.spinner} />
+            </div>
+          )
         }
       >
         {children}

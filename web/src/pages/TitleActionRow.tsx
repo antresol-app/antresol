@@ -1,15 +1,16 @@
 // The action row of the core title page (/title/:kind/:tmdbId): a TMDB
-// title that may not be in the library. «Смотреть ▾» offers the online ways
-// (OnlineWay, the sources build's) and the addons' `watchWay` item actions
-// (way id `<addonId>:<label>`), the one the profile chose last first; the
-// other item actions are the row's round buttons (ActionBar). A series whose
-// episode guide knows the next episode plays it. A kid gets «Попросить» and
-// nothing of an addon.
-import { useMemo, useState, type ReactNode } from 'react'
-import type { ItemDetail as Detail, KidRequestState, SourceChoice, TitleEpisode, TitleInfo } from '../api/types'
-import { errorText } from '../api/client'
-import { addonString, useRegistryVersion } from '../addons/registry'
-import { useAddonSheet, useAddonSlot, useSourceKinds } from '../addons/slots'
+// title that may not be in the library. «Смотреть ▾» offers the addons'
+// `watchWay` item actions (way id `<addonId>:<label>`, useTitleWays:
+// `useAvailable` applied, `?way=` run once), the one the profile chose last
+// first; the other item actions are the row's round buttons (ActionBar). A
+// series whose episode guide knows the next episode plays it. A kid gets
+// «Попросить» and nothing of an addon.
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router'
+import type { ItemDetail as Detail, KidRequestState, SourceChoice, TitleEpisode } from '../api/types'
+import { useAddonsSettledFor } from '../addons/registry'
+import { useSourceKinds } from '../addons/slots'
+import { useAddonWays } from '../addons/watchWays'
 import { ActionBar } from '../components/ActionBar'
 import { episodeCode } from '../components/EpisodeList'
 import { MarkButton } from '../components/MarkButton'
@@ -17,13 +18,11 @@ import { RequestButton } from '../components/RequestButton'
 import { WatchButton, type WatchWay } from '../components/WatchButton'
 import type { EpisodeCtx } from '../components/episodes/episodeTypes'
 import { useEpisodePlayers } from '../components/episodes/useEpisodePlayers'
-import { useLang, useT } from '../i18n'
+import { useT } from '../i18n'
 import { pickSource } from '../state/pickSource'
 import { useSession } from '../state/session'
-import { pickWay, useWatchWay, writeWatchWay } from '../state/watchWay'
+import { pickWay, useWatchWay, wayId, writeWatchWay } from '../state/watchWay'
 import { Notice } from '../ui/Notice'
-// the sources build's «Онлайн» way (none in the core build)
-import { OnlineWay } from './ItemDetailFull'
 import styles from './ItemDetail.module.css'
 
 /** The page's episode guide (EpisodeGuide's onLoaded). */
@@ -43,56 +42,16 @@ export function nextGuideEpisode(episodes: TitleEpisode[]): TitleEpisode | undef
 
 /**
  * The addons' `watchWay` item actions of `item` as ways of «Смотреть ▾» (id
- * `<addonId>:<label>`, labels resolved); `node` draws what they open (an
- * element a run returns) and what they say. None for a kid.
+ * `<addonId>:<label>`, labels resolved, `useAvailable` applied: a way whose
+ * hook still asks is not offered yet, `pending`); `node` draws the hooks'
+ * Hosts, what the ways open and what they say. None for a kid.
  */
-export function useAddonWatchWays(item: Detail): { ways: WatchWay[]; node: ReactNode } {
-  const t = useT()
-  const lang = useLang()
-  const v = useRegistryVersion()
-  const actions = useAddonSlot('itemActions')
-  const [said, setSaid] = useState<{ text: string; failed: boolean } | null>(null)
-  const sheet = useAddonSheet(() => setSaid({ text: t('addons.actionFailed'), failed: true }))
-  const run = sheet.run
-  const ways = useMemo(() => {
-    void v
-    const out: WatchWay[] = []
-    for (const a of actions) {
-      if (!a.watchWay) continue
-      try {
-        if (a.visible && !a.visible(item)) continue
-      } catch (e) {
-        console.warn(`antresol: addon ${a.addonId} watch way failed`, e)
-        continue
-      }
-      out.push({
-        id: `${a.addonId}:${a.label}`,
-        label: addonString(a.addonId, lang, a.label),
-        run: () => {
-          setSaid(null)
-          let answer: ReturnType<typeof a.run> | undefined
-          try {
-            answer = run(a.addonId, (close) => a.run(item, close))
-          } catch (e) {
-            console.warn(`antresol: addon ${a.addonId} watch way failed`, e)
-            setSaid({ text: errorText(e, t('addons.actionFailed')), failed: true })
-            return
-          }
-          void Promise.resolve(answer).then(
-            (text) => typeof text === 'string' && text && setSaid({ text, failed: false }),
-            (e: unknown) => {
-              console.warn(`antresol: addon ${a.addonId} watch way failed`, e)
-              setSaid({ text: errorText(e, t('addons.actionFailed')), failed: true })
-            },
-          )
-        },
-      })
-    }
-    return out
-  }, [actions, item, lang, v, run, t])
+export function useAddonWatchWays(item: Detail): { ways: WatchWay[]; node: ReactNode; pending: number } {
+  const addon = useAddonWays(item)
+  const said = addon.said
   const node = (
     <>
-      {sheet.node}
+      {addon.node}
       {said?.failed && (
         <p className={styles.acquireError} role="alert">
           {said.text}
@@ -101,20 +60,63 @@ export function useAddonWatchWays(item: Detail): { ways: WatchWay[]; node: React
       {said && !said.failed && <Notice tone="accent">{said.text}</Notice>}
     </>
   )
-  return { ways, node }
+  return { ways: addon.ways, node, pending: addon.pending }
+}
+
+/**
+ * The one way list of an item's and a title's «Смотреть ▾»: the addons'
+ * ways. `?way=<addonId>:<label>` runs that way once, when it is offered (an addon
+ * still asking is waited for), and leaves the URL (replace); a way the
+ * profile's settled addons do not offer just leaves it. `menu`: keep the ▾
+ * drawn, since a way may still come (or came and went): once drawn it stays
+ * for the title, so the row never changes its shape. `base`: the ways the
+ * button holds before these (a library item's «С сервера»).
+ */
+export function useTitleWays(item: Detail, base = 0): { ways: WatchWay[]; node: ReactNode; menu: boolean } {
+  const addon = useAddonWatchWays(item)
+  const ways = addon.ways
+  const titleKey = `${item.kind}:${item.tmdbId ?? 0}:${item.id}`
+  const kept = useRef({ key: titleKey, on: false })
+  if (kept.current.key !== titleKey) kept.current = { key: titleKey, on: false }
+  const menu = kept.current.on || addon.pending > 0 || base + ways.length > 1
+  useLayoutEffect(() => {
+    if (menu) kept.current.on = true
+  })
+
+  const { user } = useSession()
+  const settled = useAddonsSettledFor()
+  const known = Boolean(user) && (user?.addons !== true || settled === user?.id)
+  const [params, setParams] = useSearchParams()
+  const want = params.get('way')
+  const done = useRef<string | null>(null)
+  useEffect(() => {
+    if (!want || done.current === want) return
+    const way = ways.find((w) => w.id === wayId(want))
+    if (!way && (addon.pending > 0 || !known)) return
+    done.current = want
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        next.delete('way')
+        return next
+      },
+      { replace: true },
+    )
+    way?.run()
+  }, [want, ways, addon.pending, known, setParams])
+  return { ways, node: addon.node, menu }
 }
 
 export interface TitleActionRowProps {
   /** The title as an item (`id` 0: fromTitle). */
   item: Detail
   tmdbId: number
-  seasons: TitleInfo['seasons']
   /** A kid's title page: «Попросить» in place of every other action. */
   kidRequest?: KidRequestState
   guide?: TitleGuide
 }
 
-export function TitleActionRow({ item, tmdbId, seasons, kidRequest, guide }: TitleActionRowProps) {
+export function TitleActionRow({ item, tmdbId, kidRequest, guide }: TitleActionRowProps) {
   const { user } = useSession()
   if (!user) return null
   if (user.isKid)
@@ -123,31 +125,17 @@ export function TitleActionRow({ item, tmdbId, seasons, kidRequest, guide }: Tit
         <RequestButton ask={{ kind: item.kind, tmdbId, title: item.title }} state={kidRequest} size="large" />
       </div>
     ) : null
-  return (
-    <OnlineWay
-      kind={item.kind}
-      tmdbId={tmdbId}
-      title={item.title}
-      poster={item.poster}
-      seasons={seasons}
-      canWatchOnline={Boolean(user.canWatchOnline)}
-      isKid={false}
-      openFromUrl
-      warm
-    >
-      {(online) => <Row item={item} tmdbId={tmdbId} online={online} guide={guide} profileId={user.id} />}
-    </OnlineWay>
-  )
+  return <Row item={item} tmdbId={tmdbId} guide={guide} profileId={user.id} />
 }
 
-function Row({ item, tmdbId, online, guide, profileId }: { item: Detail; tmdbId: number; online: WatchWay[]; guide?: TitleGuide; profileId: number }) {
+function Row({ item, tmdbId, guide, profileId }: { item: Detail; tmdbId: number; guide?: TitleGuide; profileId: number }) {
   const t = useT()
-  const addon = useAddonWatchWays(item)
+  const addon = useTitleWays(item)
   const remembered = useWatchWay(profileId)
   const series = item.kind === 'series'
   const titleKind: 'series' | 'movie' = series ? 'series' : 'movie'
-  // the guide's next episode: «Смотреть» plays it — online by the build's
-  // player, the addons' kinds by their episodeActions (as the guide does)
+  // the guide's next episode: «Смотреть» plays it through the addons' kinds'
+  // episodeActions (as the guide does)
   const episodes = guide?.episodes ?? NO_EPISODES
   const choice = guide?.choice
   const ctx = useMemo<EpisodeCtx>(() => ({ kind: titleKind, tmdbId, title: item.title, poster: item.poster, episodes, choice }), [titleKind, tmdbId, item.title, item.poster, episodes, choice])
@@ -159,7 +147,7 @@ function Row({ item, tmdbId, online, guide, profileId }: { item: Detail; tmdbId:
   // only among what plays here: with no playable source the next episode is not offered
   const nextSources = nextEp ? players.playable(nextEp.sources) : []
   const next = nextSources.length > 0 ? nextEp : undefined
-  const ways = [...online, ...addon.ways]
+  const ways = addon.ways
 
   let primary: ReactNode
   if (next && guidePlay) {
@@ -177,6 +165,7 @@ function Row({ item, tmdbId, online, guide, profileId }: { item: Detail; tmdbId:
         label={t('comp.action.watch')}
         ways={ways}
         current={pickWay(remembered, ways.map((w) => w.id))}
+        menu={addon.menu}
         // shared: every other «Смотреть ▾» of the profile follows the choice
         onChoose={(id) => writeWatchWay(profileId, id)}
       />
@@ -194,7 +183,6 @@ function Row({ item, tmdbId, online, guide, profileId }: { item: Detail; tmdbId:
         toggles={markable ? <MarkButton key={`${titleKind}-${tmdbId}`} kind={titleKind} tmdbId={tmdbId} name={item.title} poster={item.poster} /> : null}
       />
       {addon.node}
-      {players.core?.node}
       {/* the addons' episode players (each Host draws its own sheets) */}
       {players.hosts}
     </div>

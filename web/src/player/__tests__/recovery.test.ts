@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { PlayRequest, PlayResponse } from '../../api/types'
-import { mediaErrorReason, onlineExpired, ONLINE_REPLAY_WINDOW_MS, planSeek, recover, recoverOnline, repeatedEarlyEnd, waitVerdict } from '../recovery'
+import { mediaErrorReason, planSeek, recover, recoverStream, repeatedEarlyEnd, STREAM_REPLAY_WINDOW_MS, streamExpired, waitVerdict } from '../recovery'
 
 vi.mock('../../api/client', async (orig) => ({
   ...(await orig<typeof import('../../api/client')>()),
@@ -22,7 +22,7 @@ vi.mock('hls.js', () => {
 })
 
 import { touchHls } from '../../api/client'
-import { onlineError, usePlayback } from '../usePlayback'
+import { streamError, usePlayback } from '../usePlayback'
 
 describe('recover', () => {
   it('restarts an expired session, then falls back, then gives up', () => {
@@ -75,36 +75,36 @@ describe('repeatedEarlyEnd', () => {
 
 describe('online playback', () => {
   it('online seek is local', () => {
-    expect(planSeek({ part: 0, mode: 'online', offset: 0, seekableEnd: 0 }, 0, 3000)).toEqual({ kind: 'local', time: 3000 })
-    expect(planSeek({ part: 0, mode: 'online', offset: 0, seekableEnd: 120 }, 0, 10)).toEqual({ kind: 'local', time: 10 })
+    expect(planSeek({ part: 0, mode: 'stream', offset: 0, seekableEnd: 0 }, 0, 3000)).toEqual({ kind: 'local', time: 3000 })
+    expect(planSeek({ part: 0, mode: 'stream', offset: 0, seekableEnd: 120 }, 0, 10)).toEqual({ kind: 'local', time: 10 })
   })
 
   it('a stale link is a 410 or the proxy header', () => {
-    expect(onlineExpired(410)).toBe(true)
-    expect(onlineExpired(200, 'expired')).toBe(true)
-    expect(onlineExpired(502)).toBe(false)
-    expect(onlineExpired(undefined, null)).toBe(false)
+    expect(streamExpired(410)).toBe(true)
+    expect(streamExpired(200, 'expired')).toBe(true)
+    expect(streamExpired(502)).toBe(false)
+    expect(streamExpired(undefined, null)).toBe(false)
   })
 
   it('re-plays a stale link twice in 5 minutes, then gives up', () => {
     const t0 = 1_000_000
-    const a = recoverOnline([], t0)
+    const a = recoverStream([], t0)
     expect(a).toEqual({ action: 'replay', replays: [t0] })
-    const b = recoverOnline(a.action === 'replay' ? a.replays : [], t0 + 60_000)
+    const b = recoverStream(a.action === 'replay' ? a.replays : [], t0 + 60_000)
     expect(b.action).toBe('replay')
-    expect(recoverOnline(b.action === 'replay' ? b.replays : [], t0 + 120_000)).toEqual({ action: 'error' })
+    expect(recoverStream(b.action === 'replay' ? b.replays : [], t0 + 120_000)).toEqual({ action: 'error' })
     // after 5 minutes the old re-plays no longer count
-    expect(recoverOnline([t0, t0 + 60_000], t0 + 60_000 + ONLINE_REPLAY_WINDOW_MS + 1).action).toBe('replay')
+    expect(recoverStream([t0, t0 + 60_000], t0 + 60_000 + STREAM_REPLAY_WINDOW_MS + 1).action).toBe('replay')
   })
 
   it('a stall is a stale link; a slow first byte gets a while', () => {
-    const c = { phase: 'stall' as const, mode: 'online', slow: false, progressed: false, idleChecks: 0, elapsedSec: 40 }
+    const c = { phase: 'stall' as const, mode: 'stream', slow: false, progressed: false, idleChecks: 0, elapsedSec: 40 }
     expect(waitVerdict(c)).toBe('expired')
     expect(waitVerdict({ ...c, phase: 'start' })).toBe('wait')
     expect(waitVerdict({ ...c, phase: 'start', elapsedSec: 120 })).toBe('expired')
   })
 
-  it('online expired replays twice then fails', async () => {
+  it('a stream whose link expired replays twice then fails', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
     vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
@@ -113,7 +113,7 @@ describe('online playback', () => {
     const start = vi.fn(async (_f: unknown, _b: PlayRequest): Promise<PlayResponse> => {
       n++
       return {
-        mode: 'online', kind: 'mp4', url: `/api/online/s/sid${n}/blob`, session: `sid${n}`, startSec: 0, audio: [], audioIndex: -1, subtitles: [],
+        mode: 'stream', kind: 'mp4', url: `/api/addons/demo/media/sid${n}/blob`, session: `sid${n}`, startSec: 0, audio: [], audioIndex: -1, subtitles: [],
         quality: { options: ['1080p', '720p'], current: '1080p' },
       }
     })
@@ -121,17 +121,17 @@ describe('online playback', () => {
     const caps = { videoCodecs: ['h264'], audioCodecs: ['aac'], containers: ['mp4'] }
     const parts = [{ id: 0, name: 'Фильм', size: 0, audio: [], subs: [] }]
     const { result } = renderHook(() =>
-      usePlayback({ videoRef: { current: video }, parts, startSec: 42, caps, onFinished: () => {}, start, online: { stop } }),
+      usePlayback({ videoRef: { current: video }, parts, startSec: 42, caps, onFinished: () => {}, start, stream: { stop } }),
     )
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/online/s/sid1/blob'))
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/addons/demo/media/sid1/blob'))
     act(() => result.current.mediaProps.onCanPlay()) // it played
     const expire = async (calls: number) => {
       // the proxy's 410 on a range: the element reports a network error
       Object.defineProperty(video, 'error', { configurable: true, value: { code: 2 } })
       act(() => result.current.mediaProps.onError())
       await waitFor(() => expect(start).toHaveBeenCalledTimes(calls))
-      await waitFor(() => expect(video.getAttribute('src')).toBe(`/api/online/s/sid${calls}/blob`))
+      await waitFor(() => expect(video.getAttribute('src')).toBe(`/api/addons/demo/media/sid${calls}/blob`))
     }
     await expire(2)
     expect(start.mock.calls[1]![1]).toMatchObject({ refresh: true, startSec: 42, replaceSession: 'sid1', quality: '1080p' })
@@ -141,18 +141,18 @@ describe('online playback', () => {
     // the third within 5 minutes: ask for another source
     Object.defineProperty(video, 'error', { configurable: true, value: { code: 2 } })
     act(() => result.current.mediaProps.onError())
-    await waitFor(() => expect(result.current.error).toBe(onlineError()))
+    await waitFor(() => expect(result.current.error).toBe(streamError()))
     expect(start).toHaveBeenCalledTimes(3)
     expect(stop).toHaveBeenCalledWith('sid3', false)
-    // no heartbeat for an online session
+    // no heartbeat for a stream session
     expect(touchHls).not.toHaveBeenCalled()
   })
 
   it('a source that never showed a frame gets one fresh try; a refused first MP4 request is a stale link', async () => {
-    expect(recoverOnline([], 0, false).action).toBe('replay')
-    expect(recoverOnline([0], 1000, false)).toEqual({ action: 'error' })
-    expect(mediaErrorReason('online', 4, false, false)).toBe('expired')
-    expect(mediaErrorReason('online', 4, false, true)).toBe('media')
+    expect(recoverStream([], 0, false).action).toBe('replay')
+    expect(recoverStream([0], 1000, false)).toEqual({ action: 'error' })
+    expect(mediaErrorReason('stream', 4, false, false)).toBe('expired')
+    expect(mediaErrorReason('stream', 4, false, true)).toBe('media')
 
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
@@ -161,21 +161,21 @@ describe('online playback', () => {
     let n = 0
     const start = vi.fn(async (_f: unknown, _b: PlayRequest): Promise<PlayResponse> => {
       n++
-      return { mode: 'online', kind: 'mp4', url: `/api/online/s/sid${n}/blob`, session: `sid${n}`, startSec: 0, audio: [], audioIndex: -1, subtitles: [] }
+      return { mode: 'stream', kind: 'mp4', url: `/api/addons/demo/media/sid${n}/blob`, session: `sid${n}`, startSec: 0, audio: [], audioIndex: -1, subtitles: [] }
     })
     const parts = [{ id: 0, name: 'Фильм', size: 0, audio: [], subs: [] }]
     const caps = { videoCodecs: ['h264'], audioCodecs: ['aac'], containers: ['mp4'] }
     const { result } = renderHook(() =>
-      usePlayback({ videoRef: { current: video }, parts, startSec: 0, caps, onFinished: () => {}, start, online: { stop: () => Promise.resolve() } }),
+      usePlayback({ videoRef: { current: video }, parts, startSec: 0, caps, onFinished: () => {}, start, stream: { stop: () => Promise.resolve() } }),
     )
-    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/online/s/sid1/blob'))
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/addons/demo/media/sid1/blob'))
     // Chrome: a 410 on the first request of video.src is MEDIA_ERR_SRC_NOT_SUPPORTED
     Object.defineProperty(video, 'error', { configurable: true, value: { code: 4 } })
     act(() => result.current.mediaProps.onError())
-    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/online/s/sid2/blob'))
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/api/addons/demo/media/sid2/blob'))
     expect(start.mock.calls[1]![1]).toMatchObject({ refresh: true })
     act(() => result.current.mediaProps.onError())
-    await waitFor(() => expect(result.current.error).toBe(onlineError()))
+    await waitFor(() => expect(result.current.error).toBe(streamError()))
     expect(start).toHaveBeenCalledTimes(2)
   })
 })

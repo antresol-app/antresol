@@ -489,3 +489,47 @@ func TestSetScanners_ReadEachRoundAfterInCore(t *testing.T) {
 		t.Fatalf("in-core scanners changed: %d", len(s.Scanners))
 	}
 }
+
+// TestNewEpisodeMailedOnlyWhereTheProfileMayOpenIt: a letter about a new
+// episode goes only to a profile that may open one of its new sources'
+// kinds (SourceKinds: the addons it has access to); a profile whose kinds
+// cannot be read gets none (logged).
+func TestNewEpisodeMailedOnlyWhereTheProfileMayOpenIt(t *testing.T) {
+	sk := &fakeSkeleton{status: "airing", eps: []Episode{
+		{Season: 1, Number: 7, AirDate: "2026-03-01"},
+		{Season: 1, Number: 8, AirDate: "2026-03-08"},
+		{Season: 1, Number: 9, AirDate: "2026-03-09"},
+	}}
+	alpha := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 7, Ref: "a"}}}
+	beta := &fakeScanner{kind: "beta"}
+	s, n, logs := newService(t, sk, alpha, beta)
+	ti, users := watched(t, s, "all", "beta-only", "unknown")
+	s.SourceKinds = func(_ context.Context, id int64) (map[string]bool, error) {
+		switch id {
+		case users[0]:
+			return map[string]bool{"library": true, "alpha": true, "beta": true}, nil
+		case users[1]:
+			return map[string]bool{"library": true, "beta": true}, nil
+		}
+		return nil, errors.New("no such profile")
+	}
+	ctx := context.Background()
+	if err := s.Refresh(ctx, ti.ID); err != nil {
+		t.Fatal(err)
+	}
+	alpha.srcs = append(alpha.srcs, Source{Season: 1, Episode: 9, Ref: "a9"})
+	beta.srcs = []Source{{Season: 1, Episode: 8, Ref: "b8"}}
+	if err := s.Refresh(ctx, ti.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64][]int{}
+	for _, e := range n.got {
+		got[e.UserID] = append(got[e.UserID], e.Data.Episode)
+	}
+	if len(got[users[0]]) != 2 || len(got[users[1]]) != 1 || got[users[1]][0] != 8 || len(got[users[2]]) != 0 {
+		t.Fatalf("letters %v", got)
+	}
+	if !strings.Contains(logs.String(), "no such profile") {
+		t.Fatalf("not logged: %s", logs.String())
+	}
+}

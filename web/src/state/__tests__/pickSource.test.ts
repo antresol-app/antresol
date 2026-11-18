@@ -30,9 +30,9 @@ describe('pickSource', () => {
     expect(pickSource([onA, libEn], null)).toBe(libEn)
     expect(pickSource([], choice)).toBeNull()
   })
-  it('kinds sort on one scale: library, an addon\'s order, online at 20, unknown last', () => {
-    // an addon's kinds alpha (10) and beta (30), from its episodeActions entry
-    const order = { alpha: 10, beta: 30 }
+  it('kinds sort on one scale: library, then the addons\' orders (online\'s too), unknown last', () => {
+    // the addons' kinds alpha (10), online (20) and beta (30), from their episodeActions entries
+    const order = { alpha: 10, beta: 30, online: 20 }
     const u = src({ kind: 'gamma', quality: '2160p' })
     const b = src({ kind: 'beta', quality: '2160p' })
     const a = src({ kind: 'alpha', quality: '720p' })
@@ -43,8 +43,9 @@ describe('pickSource', () => {
     expect(bestSource([u, b, o], order)).toBe(o)
     expect(bestSource([u, b], order)).toBe(b)
     expect(bestSource([u], order)).toBe(u)
-    // with no addon's order its kinds are unknown: after online
+    // with no order every kind but the library's is unknown: the quality decides
     expect(bestSource([a, o])).toBe(o)
+    expect(bestSource([a, o, l])).toBe(l)
     // an order of 0 or below never outranks the library
     const hiA = src({ kind: 'alpha', quality: '2160p' })
     expect(bestSource([hiA, l], { alpha: -1 })).toBe(l)
@@ -53,6 +54,23 @@ describe('pickSource', () => {
     expect(groupSources([u, b, o, a, l], '', order)[0]!.dubs[0]!.items).toEqual([l, a, o, b, u])
     const hi = src({ kind: 'online', quality: '1080p' })
     expect(bestSource([o, hi, src({ kind: 'online', quality: '720p' })])).toBe(o)
+  })
+  it('online\'s order comes from its addon', () => {
+    const o = src({ kind: 'online', quality: '720p' })
+    const a = src({ kind: 'alpha', quality: '2160p' })
+    const l = src({ kind: 'library', quality: '480p' })
+    // no entry names online: it sorts as an unknown kind, after the named ones
+    expect(bestSource([o, a], { alpha: 30 })).toBe(a)
+    // its addon's order puts it where the addon says, whatever its quality
+    expect(bestSource([a, o], { alpha: 30, online: 20 })).toBe(o)
+    expect(bestSource([o, a], { alpha: 30, online: 40 })).toBe(a)
+    expect(groupSources([a, o, l], '', { alpha: 30, online: 20 })[0]!.dubs[0]!.items).toEqual([l, o, a])
+    // the library's file stays first, and an order of 0 or below never outranks it
+    expect(bestSource([o, l], { online: 20 })).toBe(l)
+    expect(bestSource([o, l], { online: 0 })).toBe(l)
+    // a preferred way's kind wins over the order, the library still first
+    expect(pickSource([a, o], null, ['online'], { alpha: 10, online: 20 })).toBe(o)
+    expect(pickSource([o, l], null, ['online'], { online: 20 })).toBe(l)
   })
   it('exact provider at lower quality beats other provider when quality missing', () => {
     const lo = src({ ref: 'lo', provider: 'Alpha', quality: '720p', meta: { providerId: 'alpha', voice: 'V' } })

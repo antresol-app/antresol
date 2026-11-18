@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/api/addon-core/v1/progress?items=4%2C5\u0026userId=2",
+  "status": 200,
+  "body": {
+    "progress": {
+      "4": {
+        "positionMs": 600000,
+        "durationMs": 3480000,
+        "watched": false,
+        "updatedAt": "2026-11-01T12:00:00Z"
+      }
+    }
+  }
+}

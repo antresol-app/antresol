@@ -453,6 +453,44 @@ func TestAddonCoreLibraryUsers(t *testing.T) {
 	c.get("tok-lib", "/users", 403, nil)
 }
 
+// TestAddonCoreUsers_MaxRating: GET /users carries each profile's rating
+// limit as the X-Antresol-User header does (auth.User.RatingLimit): its
+// own, a kid without one of its own: 12+, and nothing for an unlimited
+// adult.
+func TestAddonCoreUsers_MaxRating(t *testing.T) {
+	c := newCoreLib(t)
+	// Маша gets a limit of her own; the admin and Вася (a kid, whose own
+	// limit the fixture sets: cleared) have none
+	if _, err := c.db.Exec(`UPDATE users SET max_rating='16+' WHERE name='Маша'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.db.Exec(`UPDATE users SET max_rating=NULL WHERE name='Вася'`); err != nil {
+		t.Fatal(err)
+	}
+	var users []map[string]any
+	c.get("tok-ppl", "/users", 200, &users)
+	got := map[string]any{}
+	for _, u := range users {
+		got[fmt.Sprint(u["name"])] = u["maxRating"]
+	}
+	if len(users) != 3 || got["Маша"] != "16+" || got["Вася"] != "12+" {
+		t.Fatalf("limits %v", got)
+	}
+	// an unlimited adult carries no maxRating at all, as in the header
+	if v, ok := users[0]["maxRating"]; ok || users[0]["isAdmin"] != true {
+		t.Fatalf("admin: maxRating %v (present %v), want absent: %v", v, ok, users[0])
+	}
+	// a kid's own limit wins over the kid default
+	if _, err := c.db.Exec(`UPDATE users SET max_rating='6+' WHERE name='Вася'`); err != nil {
+		t.Fatal(err)
+	}
+	var typed []addonkit.User
+	c.get("tok-ppl", "/users", 200, &typed)
+	if typed[2].Name != "Вася" || typed[2].MaxRating != "6+" || typed[1].MaxRating != "16+" || typed[0].MaxRating != "" {
+		t.Fatalf("typed %+v", typed)
+	}
+}
+
 // TestAddonCoreLibraryPermissions: every route answers 403 to an addon
 // without its permission, before it looks at the request.
 func TestAddonCoreLibraryPermissions(t *testing.T) {
@@ -460,7 +498,7 @@ func TestAddonCoreLibraryPermissions(t *testing.T) {
 	routes := []string{
 		"/library/items/1", "/library/items/1/files", "/library/tmdb/movie/603", "/library/tmdb/movie?ids=603",
 		"/library/tmdb/movie?ids=x", "/library/find/title?kind=movie&tmdbId=603", "/library/find/album?mbid=x",
-		"/library/find/book?kind=book&title=x", "/library/series/42/episodes", "/library/series/42/folder?root=x",
+		"/library/find/book?kind=book&title=x", "/library/series/42/episodes", "/library/series/42/episode-items?userId=1", "/library/series/42/folder?root=x",
 		"/library/series/42/audio", "/library/albums/1/dir", "/library/albums/1/tracks", "/library/files?path=x",
 		"/library/paths", "/library/search?kind=movie&title=x&limit=99", "/library/refs/r1", "/library/tracks?ref=r1",
 	}
@@ -556,5 +594,198 @@ func TestAddonCoreItem_Aliases(t *testing.T) {
 	}
 	if body := c.get("tok-lib", "/library/search?kind=movie&title="+qe("Матрица"), 200, nil); !strings.Contains(body, `"aliases":[]`) {
 		t.Errorf("search: %s", body)
+	}
+}
+
+// episodeItems reads GET /library/series/{tmdbId}/episode-items?userId as
+// the addon of tok; the answer must be {"episodes": [...]}, never null.
+func (c *coreLib) episodeItems(tok string, tmdb, user int64, want int) []addonkit.EpisodeItem {
+	c.t.Helper()
+	var out struct {
+		Episodes []addonkit.EpisodeItem `json:"episodes"`
+	}
+	body := c.get(tok, fmt.Sprintf("/library/series/%d/episode-items?userId=%d", tmdb, user), want, &out)
+	if want == 200 && (out.Episodes == nil || !strings.HasPrefix(body, `{"episodes":[`)) {
+		c.t.Fatalf("episode-items answer %s", body)
+	}
+	return out.Episodes
+}
+
+// addEpisode stores an episode of the series (TMDB 42) with a file of that
+// name; the item id.
+func (c *coreLib) addEpisode(season, episode int, name string) int64 {
+	c.t.Helper()
+	id, err := c.repo.UpsertEpisode(context.Background(), library.EpisodeInput{SeriesTitle: "Сёгун", SeriesTmdbID: 42, Season: season, Episode: episode,
+		File: library.FileInput{Path: filepath.Join(c.series, "Shogun", name), Size: 1}})
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return id
+}
+
+// The ids are the episode items', in season and episode order; a file of
+// two episodes gives both the item that holds it. Whoever asks (an
+// admin, an adult with a limit the series is under) gets them.
+func TestAddonEpisodeItems_Visible(t *testing.T) {
+	f := newProgFix(t)
+	s2e1 := f.addEpisode(2, 1, "Shogun.S02E01.mkv") // before the others: the order is the numbers', not the ids'
+	s1e3 := f.addEpisode(1, 3, "Shogun.S01E03-E04.mkv")
+	want := []addonkit.EpisodeItem{{Season: 1, Episode: 1, ItemID: f.eps[0]}, {Season: 1, Episode: 2, ItemID: f.eps[1]},
+		{Season: 1, Episode: 3, ItemID: s1e3}, {Season: 1, Episode: 4, ItemID: s1e3}, {Season: 2, Episode: 1, ItemID: s2e1}}
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Маша: %+v\nwant %+v", got, want)
+	}
+	if got := f.episodeItems("tok-lib", 42, f.admin, 200); !reflect.DeepEqual(got, want) {
+		t.Fatalf("admin: %+v", got)
+	}
+	// the answer's keys
+	body := f.get("tok-lib", fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.masha), 200, nil)
+	if !strings.HasPrefix(body, fmt.Sprintf(`{"episodes":[{"season":1,"episode":1,"itemId":%d},`, f.eps[0])) {
+		t.Fatalf("body %s", body)
+	}
+	// the pairs of the pair route are the same
+	var pairs [][2]int
+	f.get("tok-lib", "/library/series/42/episodes", 200, &pairs)
+	if len(pairs) != len(want) {
+		t.Fatalf("pairs %v", pairs)
+	}
+	for i, p := range pairs {
+		if p != [2]int{want[i].Season, want[i].Episode} {
+			t.Fatalf("pair %d: %v vs %+v", i, p, want[i])
+		}
+	}
+	// under her limit: the same
+	f.limit("16+", "16+", "12+")
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); !reflect.DeepEqual(got, want) {
+		t.Fatalf("under the limit: %+v", got)
+	}
+	// an addon with users.read too is no different: the permission is library.read
+	if got := f.episodeItems("tok-both", 42, f.masha, 200); !reflect.DeepEqual(got, want) {
+		t.Fatalf("both: %+v", got)
+	}
+}
+
+// A series over the profile's limit (or one with no rating, which a
+// limited profile does not see) has no episodes for it: an empty list, not
+// an error; a profile with no limit still gets them.
+func TestAddonEpisodeItems_HiddenOverLimitOmitted(t *testing.T) {
+	f := newProgFix(t)
+	f.limit("12+", "12+", "18+")
+	if body := f.get("tok-lib", fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.masha), 200, nil); strings.TrimSpace(body) != `{"episodes":[]}` {
+		t.Fatalf("over the limit: %s", body)
+	}
+	f.limit("12+", "12+", "") // unrated
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 0 {
+		t.Fatalf("unrated: %+v", got)
+	}
+	if got := f.episodeItems("tok-lib", 42, f.admin, 200); len(got) != 2 {
+		t.Fatalf("admin: %+v", got)
+	}
+	// the limit lifted, or the series rated under it
+	f.limit("12+", "12+", "6+")
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 2 {
+		t.Fatalf("under: %+v", got)
+	}
+	f.limit("", "", "18+")
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 2 {
+		t.Fatalf("no limit: %+v", got)
+	}
+}
+
+// A kid profile is refused (400), as a missing or unknown one is.
+func TestAddonEpisodeItems_KidRefused(t *testing.T) {
+	f := newProgFix(t)
+	for _, c := range []struct {
+		path string
+		msg  string
+	}{
+		{fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.vasya), msgAddonKidProfile},
+		{"/library/series/42/episode-items", msgAddonNoUser},
+		{"/library/series/42/episode-items?userId=", msgAddonNoUser},
+		{"/library/series/42/episode-items?userId=0", msgAddonNoUser},
+		{"/library/series/42/episode-items?userId=x", msgAddonNoUser},
+		{"/library/series/42/episode-items?userId=99999", msgAddonNoUser},
+	} {
+		body := f.get("tok-lib", c.path, 400, nil)
+		if got := progErrText(t, body); got != c.msg {
+			t.Errorf("%s: %q, want %q", c.path, got, c.msg)
+		}
+	}
+	// a kid is refused before the series is looked at
+	f.get("tok-lib", fmt.Sprintf("/library/series/7/episode-items?userId=%d", f.vasya), 400, nil)
+}
+
+// A series the library lacks is 404 «Не найдено», as on the pair route; a
+// bad id is 400.
+func TestAddonEpisodeItems_UnknownSeries404(t *testing.T) {
+	f := newProgFix(t)
+	for _, tmdb := range []string{"7", "603"} { // 603 is a movie
+		for _, route := range []string{"episodes", "episode-items"} {
+			body := f.get("tok-lib", fmt.Sprintf("/library/series/%s/%s?userId=%d", tmdb, route, f.masha), 404, nil)
+			if progErrText(t, body) != msgAddonNotFoundItem {
+				t.Errorf("%s %s: %s", tmdb, route, body)
+			}
+		}
+	}
+	for _, tmdb := range []string{"x", "0", "-1"} {
+		f.get("tok-lib", fmt.Sprintf("/library/series/%s/episode-items?userId=%d", tmdb, f.masha), 400, nil)
+	}
+	// a series gone from disk is unknown too
+	if _, err := f.db.Exec(`UPDATE items SET missing_since='2026-01-01T00:00:00Z' WHERE id=?`, f.show); err != nil {
+		t.Fatal(err)
+	}
+	f.get("tok-lib", "/library/series/42/episodes", 404, nil)
+	f.get("tok-lib", fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.masha), 404, nil)
+}
+
+// An episode with no file left, a missing episode item or season is not
+// listed; the rest still is.
+func TestAddonEpisodeItems_MissingFileOmitted(t *testing.T) {
+	f := newProgFix(t)
+	s2e1 := f.addEpisode(2, 1, "Shogun.S02E01.mkv")
+	s3e1 := f.addEpisode(3, 1, "Shogun.S03E01.mkv")
+	if len(f.episodeItems("tok-lib", 42, f.masha, 200)) != 4 {
+		t.Fatal("the fixture is not four episodes")
+	}
+	missing := func(q string, args ...any) {
+		t.Helper()
+		if _, err := f.db.Exec(q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	missing(`UPDATE files SET missing_since='2026-01-01T00:00:00Z' WHERE item_id=?`, f.eps[1])
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 3 || got[1].ItemID != s2e1 {
+		t.Fatalf("missing file: %+v", got)
+	}
+	missing(`UPDATE items SET missing_since='2026-01-01T00:00:00Z' WHERE id=?`, f.eps[0])
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 2 || got[0].ItemID != s2e1 {
+		t.Fatalf("missing episode: %+v", got)
+	}
+	missing(`UPDATE items SET missing_since='2026-01-01T00:00:00Z' WHERE id=(SELECT parent_id FROM items WHERE id=?)`, s3e1)
+	if got := f.episodeItems("tok-lib", 42, f.masha, 200); len(got) != 1 || got[0].ItemID != s2e1 {
+		t.Fatalf("missing season: %+v", got)
+	}
+	// nothing left: an empty list, and the series is still there
+	missing(`UPDATE files SET missing_since='2026-01-01T00:00:00Z'`)
+	if body := f.get("tok-lib", fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.masha), 200, nil); strings.TrimSpace(body) != `{"episodes":[]}` {
+		t.Fatalf("no files: %s", body)
+	}
+}
+
+// The route is library.read's: an addon without it is refused before the
+// request is looked at, whatever else it may do.
+func TestAddonEpisodeItems_WithoutPermission403(t *testing.T) {
+	f := newProgFix(t)
+	for _, tok := range []string{"tok-hello", "tok-prog", "tok-ppl"} { // no permissions, progress only, users.read only
+		for _, p := range []string{fmt.Sprintf("/library/series/42/episode-items?userId=%d", f.masha), "/library/series/x/episode-items"} {
+			body := f.get(tok, p, 403, nil)
+			if !strings.Contains(body, msgAddonPermission) {
+				t.Errorf("%s %s: %s", tok, p, body)
+			}
+		}
+	}
+	// no token at all
+	if w := f.do("GET", "/api/addon-core/v1/library/series/42/episode-items?userId=1", "", nil); w.Code != 401 {
+		t.Errorf("no token: %d", w.Code)
 	}
 }

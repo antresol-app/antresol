@@ -6,6 +6,7 @@ import { act, render, screen } from '@testing-library/react'
 import { useCallback, useMemo, useState } from 'react'
 import type { EpisodeCtx, EpisodePlay } from '../../components/episodes/episodeTypes'
 import { session } from '../../state/session'
+import { bestSource } from '../../state/pickSource'
 import { registerAddon, resetAddonsForTests, setAddonUser } from '../registry'
 import { addonRest, matchAddonRoute, resolveAddonPath, useCanAdd, useEpisodeActions, useProfileMenu, useSourceKinds } from '../slots'
 
@@ -174,15 +175,15 @@ describe('useEpisodeActions', () => {
     vi.restoreAllMocks()
   })
 
-  it('an entry\'s core kinds are dropped with a warning, and each entry has a key of its own', async () => {
+  it('an entry\'s core kind (the library\'s) is dropped with a warning, and each entry has a key of its own', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await signIn(adult)
     const use = play('a')
     registerAddon('alpha', {
       episodeActions: [
-        { kinds: ['library', 'alpha', 'online'], use },
+        { kinds: ['library', 'alpha'], use },
         { kinds: ['alpha'], use },
-        { kinds: ['online'], use },
+        { kinds: ['library'], use },
       ],
     })
     let got: ReturnType<typeof useEpisodeActions> = []
@@ -195,16 +196,49 @@ describe('useEpisodeActions', () => {
     expect(new Set(got.map((a) => a.key)).size).toBe(2)
     expect(got[0]!.Host).not.toBe(got[1]!.Host)
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/addon alpha: episodeActions kind "library" dropped/))
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/addon alpha: episodeActions kind "online" dropped/))
+    expect(warn.mock.calls.filter((c) => /kind "library" dropped/.test(String(c[0])))).toHaveLength(1)
+    expect(warn.mock.calls.filter((c) => /kind "online" dropped/.test(String(c[0])))).toHaveLength(0)
     warn.mockRestore()
   })
 
-  it('kinds: the core\'s order and labels, then each addon\'s; an addon cannot move a core kind', async () => {
+  it('an addon\'s episodeActions for online is kept and sorts by its order map', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await signIn(adult)
+    registerAddon('alpha', { episodeActions: [{ kinds: ['alpha'], order: { alpha: 30 }, use: play('a') }] })
+    registerAddon('onl', {
+      episodeActions: [{ kinds: ['online'], labels: { online: 'k.online' }, order: { online: 20 }, use: play('o') }],
+      strings: { ru: { 'k.online': 'Из сети' }, en: { 'k.online': 'From the net' } },
+    })
+    let actions: ReturnType<typeof useEpisodeActions> = []
+    let got: ReturnType<typeof useSourceKinds> | null = null
+    function Read() {
+      actions = useEpisodeActions()
+      got = useSourceKinds()
+      return null
+    }
+    render(<Read />)
+    // kept: it plays the rows of its kind, with no "the core plays it" warning
+    expect(actions.map((a) => [a.addonId, a.kinds])).toEqual([
+      ['alpha', ['alpha']],
+      ['onl', ['online']],
+    ])
+    expect(warn).not.toHaveBeenCalled()
+    // its place and its name are its addon's: no core seed for them
+    expect(got!.order).toEqual({ library: 0, alpha: 30, online: 20 })
+    expect(got!.label('online')).toBe('Из сети')
+    // so it sorts ahead of alpha (30), though alpha's file is the better one
+    const src = (kind: string, quality: string) => ({ kind, ref: kind, labels: [], firstSeen: '2026-01-01T00:00:00Z', meta: {}, quality })
+    const online = src('online', '720p')
+    expect(bestSource([src('alpha', '2160p'), online], got!.order)).toBe(online)
+    warn.mockRestore()
+  })
+
+  it('kinds: the library\'s order and label, then each addon\'s; an addon cannot move the library', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await signIn(adult)
     registerAddon('alpha', {
-      episodeActions: [{ kinds: ['alpha', 'online'], labels: { alpha: 'k.alpha', online: 'k.online' }, order: { alpha: 10, online: 99 }, use: play('a') }],
-      strings: { ru: { 'k.alpha': 'Альфа', 'k.online': 'Не онлайн' }, en: { 'k.alpha': 'Alpha', 'k.online': 'Not online' } },
+      episodeActions: [{ kinds: ['alpha', 'library'], labels: { alpha: 'k.alpha', library: 'k.library' }, order: { alpha: 10, library: 99 }, use: play('a') }],
+      strings: { ru: { 'k.alpha': 'Альфа', 'k.library': 'Не диск' }, en: { 'k.alpha': 'Alpha', 'k.library': 'Not disk' } },
     })
     let got: ReturnType<typeof useSourceKinds> | null = null
     function Read() {
@@ -212,10 +246,11 @@ describe('useEpisodeActions', () => {
       return null
     }
     render(<Read />)
-    expect(got!.order).toEqual({ library: 0, online: 20, alpha: 10 })
+    expect(got!.order).toEqual({ library: 0, alpha: 10 })
     expect(got!.label('alpha')).toBe('Альфа')
-    expect(got!.label('online')).toBe('Онлайн')
     expect(got!.label('library')).toBe('Диск')
+    // no addon names online: the core gives it neither a place nor a name
+    expect(got!.label('online')).toBe('online')
     expect(got!.label('gamma')).toBe('gamma')
     vi.restoreAllMocks()
   })
@@ -223,7 +258,7 @@ describe('useEpisodeActions', () => {
   it('kinds: an order of 0 or below is dropped (the library ranks first), warned once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await signIn(adult)
-    registerAddon('alpha', { episodeActions: [{ kinds: ['alpha', 'beta', 'gamma', 'online'], order: { alpha: -1, beta: 0, gamma: 5 }, use: play('a') }] })
+    registerAddon('alpha', { episodeActions: [{ kinds: ['alpha', 'beta', 'gamma', 'library'], order: { alpha: -1, beta: 0, gamma: 5 }, use: play('a') }] })
     let got: ReturnType<typeof useSourceKinds> | null = null
     function Read() {
       got = useSourceKinds()
@@ -233,11 +268,11 @@ describe('useEpisodeActions', () => {
     const r = render(<Read />)
     r.rerender(<Read />)
     act(() => registerAddon('other', { searchBlocks: [{ element: () => null }] }))
-    expect(got!.order).toEqual({ library: 0, online: 20, gamma: 5 })
+    expect(got!.order).toEqual({ library: 0, gamma: 5 })
     const lines = warn.mock.calls.map((c) => String(c[0]))
     expect(lines.filter((l) => /order of "alpha" dropped/.test(l))).toHaveLength(1)
     expect(lines.filter((l) => /order of "beta" dropped/.test(l))).toHaveLength(1)
-    expect(lines.filter((l) => /kind "online" dropped/.test(l))).toHaveLength(1)
+    expect(lines.filter((l) => /kind "library" dropped/.test(l))).toHaveLength(1)
     warn.mockRestore()
   })
 
@@ -250,7 +285,7 @@ describe('useEpisodeActions', () => {
       return null
     }
     render(<Read />)
-    expect(got!.order).toEqual({ library: 0, online: 20 })
+    expect(got!.order).toEqual({ library: 0 })
     expect(got!.label('alpha')).toBe('alpha')
   })
 

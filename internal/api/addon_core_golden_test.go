@@ -123,12 +123,17 @@ func TestAddonCoreGoldens(t *testing.T) {
 	})
 	kit := e.fake.installed["hello"]
 	kit.ID, kit.Manifest.ID, kit.Manifest.Permissions = "kit", "kit", []string{"library.read", "library.write", "users.read", "tracking", "imports",
-		"events", "voiceover"}
+		"events", "voiceover", "progress"}
 	e.fake.mu.Lock()
 	e.fake.installed["kit"], e.fake.tokens["tok-kit"] = kit, "kit"
 	e.fake.mu.Unlock()
 
 	ctx := context.Background()
+	// the kid's own limit, in the canonical form the users golden shows
+	// (the fixture stores the older «PG» for it)
+	if _, err := e.db.Exec(`UPDATE users SET max_rating='6+' WHERE name='Вася'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := scanner.ScanAll(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +194,10 @@ func TestAddonCoreGoldens(t *testing.T) {
 		t.Fatal(err)
 	}
 	putTrackingSources(t, track, shogun, ep1File.ItemID, ep1File.ID)
+	ep2File, err := lib.FileByPath(ctx, ep2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// the imports: a downloading job (rg-one: a, b; rg-two: x), two
 	// reading jobs made ahead (one the read fails, one the addon's restart
@@ -241,6 +250,7 @@ func TestAddonCoreGoldens(t *testing.T) {
 		{"find-album", "GET", "/library/find/album", q("artist", "Кино", "album", "Группа крови"), nil},
 		{"find-book", "GET", "/library/find/book", q("kind", "book", "author", "Михаил Булгаков", "title", "Мастер и Маргарита"), nil},
 		{"series-episodes", "GET", "/library/series/126308/episodes", nil, nil},
+		{"series-episode-items", "GET", "/library/series/126308/episode-items", q("userId", fmt.Sprint(masha)), nil},
 		{"series-folder", "GET", "/library/series/126308/folder", q("root", "{root}/series"), nil},
 		{"series-audio", "GET", "/library/series/126308/audio", nil, nil},
 		{"album-dir", "GET", fmt.Sprintf("/library/albums/%d/dir", albumItem.ID), nil, nil},
@@ -251,6 +261,10 @@ func TestAddonCoreGoldens(t *testing.T) {
 		{"search", "GET", "/library/search", q("kind", "movie", "title", "матрица"), nil},
 		{"ref-files", "GET", "/library/refs/" + url.PathEscape(refA), nil, nil},
 		{"users", "GET", "/users", nil, nil},
+		// the profile's position in an episode, at a fixed time (its answer keeps it)
+		{"progress-put", "PUT", "/progress", nil, map[string]any{"userId": masha, "itemId": ep1File.ItemID, "positionMs": 600000, "durationMs": 3480000,
+			"at": stamp.Format(time.RFC3339), "played": false}},
+		{"progress", "GET", "/progress", q("userId", fmt.Sprint(masha), "items", fmt.Sprintf("%d,%d", ep1File.ItemID, ep2File.ItemID)), nil},
 		{"watched", "GET", "/watched", q("userId", fmt.Sprint(masha), "items", fmt.Sprintf("%d", movieItem.ID), "series", fmt.Sprint(showItem.ID)), nil},
 		{"studios", "GET", "/settings/studios", nil, nil},
 		{"tracking-title", "POST", "/tracking/titles", nil, map[string]any{"kind": "series", "tmdbId": 126308, "name": "Сёгун", "poster": "/shogun.jpg"}},
@@ -321,9 +335,9 @@ func TestAddonCoreGoldens(t *testing.T) {
 			reqBody = real(string(b))
 		}
 		w := e.do(c.method, reqPath, reqBody, nil, "Authorization", "Bearer tok-kit", "Content-Type", "application/json")
-		// the tracking and import rows' times are this test's own, fixed:
-		// addonkit decodes them
-		keepTimes := strings.HasPrefix(c.name, "tracking-") || strings.HasPrefix(c.name, "imports-")
+		// the tracking, import and progress rows' times are this test's own,
+		// fixed: addonkit decodes them
+		keepTimes := strings.HasPrefix(c.name, "tracking-") || strings.HasPrefix(c.name, "imports-") || strings.HasPrefix(c.name, "progress")
 		checkAddonGolden(t, c.name, c.method, reqPath, tmplPath, root, w, keepTimes)
 		names = append(names, c.name)
 	}

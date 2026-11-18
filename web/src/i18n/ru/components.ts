@@ -308,7 +308,4 @@ export default {
   'comp.screen.passwordless': 'Ребёнок может переключиться на профили без пароля: {names}. Задайте им пароль, чтобы лимиты работали.',
   'comp.screen.dayStart': 'День начинается в',
   'comp.screen.dayStartHint': 'Тогда обнуляются время и бонус. Часы могут идти за полночь (например, 20:00–02:00 в пятницу), но не за начало дня.',
-
-  // the sources build's, but named by core code (were in ./full.ts)
-  'comp.card.online': 'Онлайн',
 } as const

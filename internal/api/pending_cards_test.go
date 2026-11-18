@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,6 +39,8 @@ type pendingEnv struct {
 	mu    sync.Mutex
 	calls map[string][]pendingCall // addon id → calls
 	logs  strings.Builder          // what the hook caller logged
+	// remote: the viewer is outside the home network (ClientIsRemote)
+	remote atomic.Bool
 }
 
 func (e *pendingEnv) Write(p []byte) (int, error) {
@@ -63,7 +66,8 @@ func newPendingEnv(t *testing.T) *pendingEnv {
 		fake: &fakeAddons{installed: map[string]addons.Installed{}, status: map[string]addons.Status{},
 			sock: map[string]string{}, tokens: map[string]string{}, webRoot: t.TempDir()}}
 	e.h = NewRouter(Deps{Users: e.users, Sessions: e.ss, DB: d,
-		AddonHooks: &addons.Hooks{T: e.fake, Log: slog.New(slog.NewTextHandler(e, nil))}})
+		AddonHooks:     &addons.Hooks{T: e.fake, Log: slog.New(slog.NewTextHandler(e, nil))},
+		ClientIsRemote: func(*http.Request) bool { return e.remote.Load() }})
 	return e
 }
 
@@ -359,5 +363,20 @@ func TestPending_KindChecked(t *testing.T) {
 	want := "dl:movie,dl:series,dl:album,dl:book,dl:audiobook,dl:comic,dl:t-movie,dl:t-series"
 	if k := strings.Join(keysOf(e.get(e.user(auth.NewUser{Name: "Аня"}), "")), ","); k != want {
 		t.Fatalf("keys %q\nwant %q", k, want)
+	}
+}
+
+// Outside the home network the profile in the header also carries the
+// height «Качество вне дома» caps «Авто» at; at home it does not.
+func TestPending_RemoteCapInHeader(t *testing.T) {
+	e := newPendingEnv(t)
+	e.addon("dl", cards(pcard("k1", "active")))
+	tok := e.user(auth.NewUser{Name: "Аня"})
+	e.get(tok, "")
+	e.remote.Store(true)
+	e.get(tok, "")
+	cs := e.callsOf("dl")
+	if len(cs) != 2 || strings.Contains(cs[0].user, "maxHeight") || !strings.Contains(cs[1].user, `"maxHeight":1080`) {
+		t.Fatalf("calls %+v", cs)
 	}
 }

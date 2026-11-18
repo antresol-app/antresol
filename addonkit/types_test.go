@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func keys(t *testing.T, v any, out *[]string) {
@@ -48,8 +49,9 @@ func TestDTO_CamelCase(t *testing.T) {
 		Info{},
 		InputRequest{Title: &InputTitle{}, Slow: true, ItemID: 1, Meta: raw,
 			Sidecars: InputSidecars{Audio: []AudioSidecar{{}}, Subtitles: []SubtitleSidecar{{}}}},
-		InputCreated{}, PlayProgress{},
-		PendingCard{}, PendingQuery{}, PendingAnswer{Cards: []PendingCard{{}}},
+		InputCreated{}, PlayProgress{}, ProgressEntry{}, ProgressSave{At: time.Unix(1, 0)}, EpisodeItem{},
+		PendingCard{}, PendingQuery{}, PendingAnswer{Cards: []PendingCard{{}}}, ContinueAnswer{Cards: []ContinueCard{{}}},
+		ChannelReady{}, ChannelCandidates{}, ChannelCandidatesAnswer{Titles: []ChannelTitle{{}}}, ChannelResolve{}, ChannelStream{}, ChannelRelease{},
 		TrackingTitle{}, TrackingEpisode{}, TrackingSource{Labels: []string{"x"}},
 		ImportJob{}, ImportGroup{Aliases: []string{}}, ImportTrack{}, ImportSnapshot{Tracks: []ImportSnapTrack{{}},
 			Playlists: []ImportSnapPlaylist{{}}, Albums: []ImportSnapAlbum{{}}},
@@ -65,7 +67,7 @@ func TestDTO_CamelCase(t *testing.T) {
 			t.Errorf("key %q has an underscore", k)
 		}
 	}
-	for _, want := range []string{"tmdbId", "itemId", "durationMs", "publicUrl", "libraryRoots", "ffmpeg", "isAdmin", "endMs", "audioTitle", "userId", "expiresAt", "positionSec", "durationSec", "inputId", "ended", "sidecars", "subtitles", "audio", "season", "episode", "kind", "slow", "title", "meta", "lang", "card", "pending", "subtitle", "tmdbKind", "status", "done", "size", "scope", "cards", "imdbId", "cert", "titleId", "number", "airDate", "ref", "provider", "quality", "labels", "firstSeen", "lastSeen", "skipKey", "albumItemId", "runSec", "quietSec", "savedAlbumsMissing", "mbReleaseGroup", "groupId", "albumArtist", "entries"} {
+	for _, want := range []string{"tmdbId", "itemId", "durationMs", "publicUrl", "libraryRoots", "ffmpeg", "isAdmin", "endMs", "audioTitle", "userId", "expiresAt", "positionSec", "durationSec", "inputId", "ended", "sidecars", "subtitles", "audio", "season", "episode", "kind", "slow", "title", "meta", "lang", "card", "pending", "subtitle", "tmdbKind", "status", "done", "size", "scope", "cards", "imdbId", "cert", "titleId", "number", "airDate", "ref", "provider", "quality", "labels", "firstSeen", "lastSeen", "skipKey", "albumItemId", "runSec", "quietSec", "savedAlbumsMissing", "mbReleaseGroup", "groupId", "albumArtist", "entries", "positionMs", "watched", "updatedAt", "played", "at", "resumeSec", "rating", "href", "ready", "rules", "limit", "yearFrom", "yearTo", "countries", "languages", "keywords", "maxRating", "titles", "overview", "genres", "backdrop", "runtimeMs", "channelId", "path", "token"} {
 		if !have[want] {
 			t.Errorf("missing key %q", want)
 		}
@@ -164,6 +166,12 @@ func TestTrackingHookTypesJSON(t *testing.T) {
 		{"ScanAnswerUnchanged", &ScanAnswer{Unchanged: true}, `{"unchanged":true}`},
 		{"TitlesAnswer", &TitlesAnswer{Titles: []ExtraTitle{{Kind: "movie", TMDBID: 603, Name: "M", Poster: "/p.jpg"}}},
 			`{"titles":[{"kind":"movie","tmdbId":603,"name":"M","poster":"/p.jpg"}]}`},
+		{"ProgressEntry", &ProgressEntry{PositionMs: 600000, DurationMs: 8160000, Watched: true, UpdatedAt: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)},
+			`{"positionMs":600000,"durationMs":8160000,"watched":true,"updatedAt":"2026-11-17T10:00:00Z"}`},
+		{"ProgressSave", &ProgressSave{UserID: 2, ItemID: 7, PositionMs: 5, DurationMs: 9, At: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC), Played: true},
+			`{"userId":2,"itemId":7,"positionMs":5,"durationMs":9,"at":"2026-11-17T10:00:00Z","played":true}`},
+		{"ProgressSaveNoTime", &ProgressSave{UserID: 2, ItemID: 7}, `{"userId":2,"itemId":7,"positionMs":0,"durationMs":0,"played":false}`},
+		{"EpisodeItem", &EpisodeItem{Season: 1, Episode: 2, ItemID: 7}, `{"season":1,"episode":2,"itemId":7}`},
 		{"WatchedRequest", &WatchedRequest{UserID: 3, Kind: "series", TMDBID: 42}, `{"userId":3,"kind":"series","tmdbId":42}`},
 		{"WatchedAnswer", &WatchedAnswer{Episodes: []WatchedEpisode{{Season: 1, Number: 2, Watched: true, PositionSec: 90}}},
 			`{"episodes":[{"season":1,"number":2,"watched":true,"positionSec":90}]}`},
@@ -192,6 +200,28 @@ func TestTrackingHookTypesJSON(t *testing.T) {
 		{"TrailerFile", &TrailerFile{Path: "/media/abcdefghijk.mp4", Size: 10, DurationMs: 2000, ContentType: "video/mp4"},
 			`{"path":"/media/abcdefghijk.mp4","size":10,"durationMs":2000,"contentType":"video/mp4"}`},
 		{"TrailerPending", &TrailerPending{RetryAfterMs: 500}, `{"retryAfterMs":500}`},
+		{"ContinueAnswer", &ContinueAnswer{Cards: []ContinueCard{{Key: "s-3", Kind: "series", TMDBID: 1399, Title: "T", Subtitle: "S1 E2",
+			Year: 2011, Poster: "p.jpg", Rating: "18+", Progress: 0.25, ResumeSec: 600, Season: 1, Episode: 2, Href: "/addons/x/w?t=600",
+			UpdatedAt: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)}}},
+			`{"cards":[{"key":"s-3","kind":"series","tmdbId":1399,"title":"T","subtitle":"S1 E2","year":2011,"poster":"p.jpg",` +
+				`"rating":"18+","progress":0.25,"resumeSec":600,"season":1,"episode":2,"href":"/addons/x/w?t=600","updatedAt":"2026-11-17T10:00:00Z"}]}`},
+		{"ContinueAnswerEmpty", &ContinueAnswer{Cards: []ContinueCard{}}, `{"cards":[]}`},
+		{"ChannelReady", &ChannelReady{Ready: true}, `{"ready":true}`},
+		{"ChannelCandidates", &ChannelCandidates{Rules: ChannelRules{Genres: []string{"Драма"}, YearFrom: 1990, YearTo: 1999,
+			Countries: []string{"FR"}, Languages: []string{"fr"}, Keywords: []string{"heist"}, MaxRating: "16+"}, Limit: 12},
+			`{"rules":{"genres":["Драма"],"yearFrom":1990,"yearTo":1999,"countries":["FR"],"languages":["fr"],"keywords":["heist"],"maxRating":"16+"},"limit":12}`},
+		{"ChannelCandidatesAnswer", &ChannelCandidatesAnswer{Titles: []ChannelTitle{{Key: "m-603", Kind: "movie", TMDBID: 603, Title: "M",
+			Year: 1999, Overview: "o", Rating: "16+", Genres: []string{"Фантастика"}, Poster: "/p.jpg", Backdrop: "/b.jpg", RuntimeMs: 8160000}}},
+			`{"titles":[{"key":"m-603","kind":"movie","tmdbId":603,"title":"M","year":1999,"overview":"o","rating":"16+",` +
+				`"genres":["Фантастика"],"poster":"/p.jpg","backdrop":"/b.jpg","runtimeMs":8160000,"season":0,"episode":0}]}`},
+		{"ChannelResolve", &ChannelResolve{ChannelID: 4, Title: ChannelTitle{Key: "e", Kind: "episode", TMDBID: 1399, Title: "T", Season: 1, Episode: 2}},
+			`{"channelId":4,"title":{"key":"e","kind":"episode","tmdbId":1399,"title":"T","year":0,"overview":"","rating":"",` +
+				`"genres":null,"poster":"","backdrop":"","runtimeMs":0,"season":1,"episode":2}}`},
+		{"ChannelStream", &ChannelStream{Path: "/ch/t/index.m3u8", Headers: map[string]string{"X-Token": "a"}},
+			`{"path":"/ch/t/index.m3u8","headers":{"X-Token":"a"}}`},
+		{"ChannelStreamNoHeaders", &ChannelStream{Path: "/f.mkv"}, `{"path":"/f.mkv"}`},
+		{"ChannelRelease", &ChannelRelease{Token: "tok-1", Path: "/ch/t/index.m3u8"},
+			`{"token":"tok-1","path":"/ch/t/index.m3u8"}`},
 	}
 	for _, c := range cases {
 		b, err := json.Marshal(c.v)

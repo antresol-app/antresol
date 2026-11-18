@@ -21,6 +21,12 @@ export interface WatchButtonProps {
   current: string
   /** Called after a menu choice ran, so the caller can remember it. */
   onChoose?: (id: string) => void
+  /**
+   * Draw the ▾ even with one way and no extras: a way may still come (an
+   * addon's that is still asking), and the capsule does not change its
+   * shape when it does.
+   */
+  menu?: boolean
   /** Plain menu items under a separator. */
   extra?: { label: string; run: () => void }[]
   size?: 'large' | 'small'
@@ -30,10 +36,12 @@ export interface WatchButtonProps {
   disabled?: boolean
 }
 
-export function WatchButton({ label, ways, current, onChoose, extra = [], size = 'large', placement = 'bottom-start', loading, disabled }: WatchButtonProps) {
+export function WatchButton({ label, ways, current, onChoose, menu = false, extra = [], size = 'large', placement = 'bottom-start', loading, disabled }: WatchButtonProps) {
   const t = useT()
   const way = ways.find((w) => w.id === current) ?? ways[0]!
-  const hasMenu = ways.length > 1 || extra.length > 0
+  const hasMenu = ways.length > 1 || extra.length > 0 || menu
+  // the ways as radios: more than one, or the one of a kept ▾
+  const radios = ways.length > 1 || menu
 
   if (!hasMenu) {
     return (
@@ -64,7 +72,7 @@ export function WatchButton({ label, ways, current, onChoose, extra = [], size =
       >
         {(close) => (
           <>
-            {ways.length > 1 &&
+            {radios &&
               ways.map((w) => (
                 <MenuItem
                   key={w.id}
@@ -77,7 +85,7 @@ export function WatchButton({ label, ways, current, onChoose, extra = [], size =
                   }}
                 />
               ))}
-            {ways.length > 1 && extra.length > 0 && <MenuSeparator />}
+            {radios && extra.length > 0 && <MenuSeparator />}
             {extra.map((x) => (
               <MenuItem
                 key={x.label}

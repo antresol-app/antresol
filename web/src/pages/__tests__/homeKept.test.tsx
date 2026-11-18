@@ -1,5 +1,5 @@
 // Главная drawn from a kept answer (state/lastAnswer) never draws what
-// carries a position: «Продолжить» (an online card's link resumes at its
+// carries a position: «Продолжить» (an addon card's link may resume at its
 // second), «Смотрят дома» (another profile's progress, which they may have
 // hidden since). Those rows come only with the fresh answer.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,7 +19,9 @@ const home = (resumeSec: number) => ({
     {
       id: 'continue',
       title: 'Продолжить просмотр',
-      cards: [card(0, 'Онлайн-фильм', { online: true, tmdbKind: 'movie', tmdbId: 77, resumeSec, onServer: false })],
+      cards: [
+        card(0, 'Фильм дополнения', { addonId: 'demo', key: 'addon:demo:77', href: `/addons/demo/play/movie/77?t=${resumeSec}`, tmdbKind: 'movie', tmdbId: 77, resumeSec, onServer: false }),
+      ],
     },
     { id: 'family', title: 'Смотрят дома', cards: [card(5, 'Фильм Ани', { progress: 0.4 })] },
     { id: 'recent-movies', title: 'Недавно добавленные фильмы', cards: [card(1, 'Дюна')] },
@@ -80,10 +82,28 @@ describe('Главная from a kept answer', () => {
     expect(screen.getByText('Смотрят дома')).toBeInTheDocument()
   })
 
+  it('leaves out «Продолжить» and «Смотрят дома» until the fresh answer, which brings the new position (an addon card)', async () => {
+    const first = show()
+    answers[0]!(home(600))
+    expect(await screen.findByRole('link', { name: /Фильм дополнения/ })).toHaveAttribute('href', '/addons/demo/play/movie/77?t=600')
+    first.unmount()
+
+    // back from the player (watched to 40:00): the kept answer has no resume link to tap
+    show()
+    expect(screen.getAllByText('Дюна')[0]).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Фильм дополнения/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Смотрят дома')).not.toBeInTheDocument()
+    expect(screen.queryAllByText('Фильм Ани')).toHaveLength(0)
+    await vi.waitFor(() => expect(answers).toHaveLength(2))
+    answers[1]!(home(2400))
+    expect(await screen.findByRole('link', { name: /Фильм дополнения/ })).toHaveAttribute('href', '/addons/demo/play/movie/77?t=2400')
+    expect(screen.getByText('Смотрят дома')).toBeInTheDocument()
+  })
+
   it('a change of the profile’s «hide progress» forgets the kept answers', async () => {
     const first = show()
     answers[0]!(home(600))
-    expect(await screen.findByRole('link', { name: /Онлайн-фильм/ })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Фильм дополнения/ })).toBeInTheDocument()
     first.unmount()
     expect(lastAnswer('home all')).toBeDefined()
     session.updateUser({ id: 1, hideProgress: true })

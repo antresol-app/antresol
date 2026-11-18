@@ -177,6 +177,16 @@ type liveChan struct {
 	hasSet   bool
 }
 
+// Span is how far from the clock what a viewer of a channel is served may
+// lie: behind, the kept segments and the lag allowed (MaxLag); ahead, the
+// lead the stream bursts to (Lead) and one segment more. Now is the
+// clock it is measured against.
+func (l *Live) Span() (behind, ahead time.Duration, now time.Time) {
+	l.init()
+	seg := time.Duration(media.LiveSegmentSeconds) * time.Second
+	return time.Duration(l.Keep)*seg + l.MaxLag, l.Lead + seg, l.Now()
+}
+
 func (l *Live) init() {
 	l.once.Do(func() {
 		if l.Max == 0 {

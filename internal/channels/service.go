@@ -256,6 +256,9 @@ type Info struct {
 	// id); Poster and Backdrop are then its TMDB image paths ("/abc.jpg").
 	External         bool
 	Poster, Backdrop string
+	// ExtraKey is the Extras implementation's key of a title outside the
+	// library ("" otherwise).
+	ExtraKey string
 }
 
 // Describe returns the Info of items (movies and episodes).

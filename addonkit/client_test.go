@@ -699,6 +699,161 @@ func TestClient_Watched(t *testing.T) {
 	}
 }
 
+func TestClient_EpisodeItems(t *testing.T) {
+	c, got := fakeCore(t, 200, `{"episodes":[{"season":1,"episode":1,"itemId":4},{"season":1,"episode":2,"itemId":5},{"season":2,"episode":1,"itemId":9}]}`)
+	eps, err := c.EpisodeItems(ctx, 2, 42)
+	want := []EpisodeItem{{Season: 1, Episode: 1, ItemID: 4}, {Season: 1, Episode: 2, ItemID: 5}, {Season: 2, Episode: 1, ItemID: 9}}
+	if err != nil || !reflect.DeepEqual(eps, want) {
+		t.Fatalf("%+v %v", eps, err)
+	}
+	one(t, got, "GET", "/library/series/42/episode-items", "userId=2")
+
+	// a series the library lacks: empty (not nil), no error, as HaveEpisodes
+	c, _ = fakeCore(t, 404, `{"error":"Не найдено"}`)
+	if eps, err := c.EpisodeItems(ctx, 2, 42); err != nil || eps == nil || len(eps) != 0 {
+		t.Fatalf("404: %#v %v", eps, err)
+	}
+	// nothing the profile may see, or an answer with no list: empty, not nil
+	for _, body := range []string{`{"episodes":[]}`, `{"episodes":null}`, `{}`} {
+		c, _ = fakeCore(t, 200, body)
+		if eps, err := c.EpisodeItems(ctx, 2, 42); err != nil || eps == nil || len(eps) != 0 {
+			t.Fatalf("%s: %#v %v", body, eps, err)
+		}
+	}
+	// the refusals (a kid or unknown profile, no permission) are *APIError
+	for _, r := range []struct {
+		status int
+		body   string
+	}{{400, `{"error":"Детскому профилю это недоступно"}`}, {400, `{"error":"Нет такого профиля"}`}, {403, `{"error":"У расширения нет такого разрешения"}`}} {
+		c, _ = fakeCore(t, r.status, r.body)
+		var ae *APIError
+		if _, err := c.EpisodeItems(ctx, 3, 42); !errors.As(err, &ae) || ae.Status != r.status || !strings.Contains(r.body, ae.Message) {
+			t.Fatalf("%d: %#v", r.status, err)
+		}
+	}
+}
+
+// The recorded answer of the core: the series' two episodes, with their
+// item ids, for a profile that may see them.
+func TestClient_EpisodeItemsGolden(t *testing.T) {
+	c, check := fromGolden(t, "series-episode-items")
+	eps, err := c.EpisodeItems(ctx, 2, 126308)
+	if want := []EpisodeItem{{Season: 1, Episode: 1, ItemID: 4}, {Season: 1, Episode: 2, ItemID: 5}}; err != nil || !reflect.DeepEqual(eps, want) {
+		t.Fatalf("episode items %+v %v", eps, err)
+	}
+	check()
+}
+
+func TestClient_Progress(t *testing.T) {
+	c, got := fakeCore(t, 200, `{"progress":{"7":{"positionMs":600000,"durationMs":8160000,"watched":false,"updatedAt":"2026-11-17T10:00:00Z"},`+
+		`"9":{"positionMs":0,"durationMs":0,"watched":true,"updatedAt":"2026-11-16T09:30:00.5Z"}}}`)
+	m, err := c.Progress(ctx, 2, []int64{7, 8, 9})
+	want := map[int64]ProgressEntry{
+		7: {PositionMs: 600000, DurationMs: 8160000, UpdatedAt: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)},
+		9: {Watched: true, UpdatedAt: time.Date(2026, 11, 16, 9, 30, 0, 500_000_000, time.UTC)},
+	}
+	if err != nil || !reflect.DeepEqual(m, want) {
+		t.Fatalf("%+v %v", m, err)
+	}
+	one(t, got, "GET", "/progress", "items=7%2C8%2C9&userId=2")
+
+	// nothing asked: no call, an empty (not nil) map; more than 500: several
+	// calls, their answers joined
+	c, got = fakeCore(t, 200, `{"progress":{}}`)
+	if m, err := c.Progress(ctx, 2, nil); err != nil || m == nil || len(m) != 0 || len(*got) != 0 {
+		t.Fatalf("empty: %v %v %d calls", m, err, len(*got))
+	}
+	many := make([]int64, 1001)
+	for i := range many {
+		many[i] = int64(i + 1)
+	}
+	if m, err := c.Progress(ctx, 2, many); err != nil || len(m) != 0 || len(*got) != 3 {
+		t.Fatalf("1001 ids: %v %v, %d calls", m, err, len(*got))
+	}
+	for _, s := range *got {
+		if v, _ := url.ParseQuery(s.Query); len(strings.Split(v.Get("items"), ",")) > 500 || v.Get("userId") != "2" {
+			t.Fatalf("a call of %q", s.Query)
+		}
+	}
+
+	// a null or missing object is none
+	c, _ = fakeCore(t, 200, `{}`)
+	if m, err := c.Progress(ctx, 2, []int64{1}); err != nil || m == nil || len(m) != 0 {
+		t.Fatalf("no object: %#v %v", m, err)
+	}
+	c, _ = fakeCore(t, 200, `{"progress":{"x":{}}}`)
+	if _, err := c.Progress(ctx, 2, []int64{1}); err == nil {
+		t.Fatal("a bad id is an error")
+	}
+	// a refusal is an *APIError with the core's text
+	c, _ = fakeCore(t, 400, `{"error":"Детскому профилю это недоступно"}`)
+	var ae *APIError
+	if _, err := c.Progress(ctx, 3, []int64{1}); !errors.As(err, &ae) || ae.Status != 400 || ae.Message != "Детскому профилю это недоступно" {
+		t.Fatalf("%#v", err)
+	}
+}
+
+func TestClient_SaveProgress(t *testing.T) {
+	c, got := fakeCore(t, 204, "")
+	at := time.Date(2026, 11, 17, 10, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	err := c.SaveProgress(ctx, ProgressSave{UserID: 2, ItemID: 7, PositionMs: 600000, DurationMs: 8160000, At: at, Played: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := one(t, got, "PUT", "/progress", "")
+	if s.Body["userId"] != float64(2) || s.Body["itemId"] != float64(7) || s.Body["positionMs"] != float64(600000) ||
+		s.Body["durationMs"] != float64(8160000) || s.Body["played"] != true || s.Body["at"] != "2026-11-17T10:00:00+03:00" {
+		t.Fatalf("%v", s.Body)
+	}
+
+	// no time: none sent (the core takes now); played false is sent
+	c, got = fakeCore(t, 204, "")
+	if err := c.SaveProgress(ctx, ProgressSave{UserID: 2, ItemID: 7, PositionMs: 5}); err != nil {
+		t.Fatal(err)
+	}
+	s = one(t, got, "PUT", "/progress", "")
+	if _, ok := s.Body["at"]; ok || s.Body["played"] != false || s.Body["positionMs"] != float64(5) || s.Body["durationMs"] != float64(0) {
+		t.Fatalf("%v", s.Body)
+	}
+
+	// the refusals come back as *APIError with the core's text
+	for _, r := range []struct {
+		status int
+		body   string
+	}{{404, `{"error":"Элемент медиатеки не найден"}`}, {400, `{"error":"Детскому профилю это недоступно"}`}, {400, `{"error":"Это не фильм и не серия"}`}} {
+		c, _ = fakeCore(t, r.status, r.body)
+		var ae *APIError
+		if err := c.SaveProgress(ctx, ProgressSave{UserID: 2, ItemID: 7}); !errors.As(err, &ae) || ae.Status != r.status || !strings.Contains(r.body, ae.Message) {
+			t.Fatalf("%d: %#v", r.status, err)
+		}
+	}
+	c, _ = fakeCore(t, 404, `{"error":"Элемент медиатеки не найден"}`)
+	if err := c.SaveProgress(ctx, ProgressSave{UserID: 2, ItemID: 7}); !IsNotFound(err) {
+		t.Fatalf("IsNotFound: %v", err)
+	}
+}
+
+// The recorded answers of the core: the episode's saved position as it
+// reads back (the other id has none).
+func TestClient_ProgressGolden(t *testing.T) {
+	c, check := fromGolden(t, "progress")
+	m, err := c.Progress(ctx, 2, []int64{4, 5})
+	if want := (ProgressEntry{PositionMs: 600000, DurationMs: 3480000, UpdatedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}); err != nil || len(m) != 1 || m[4] != want {
+		t.Fatalf("progress %+v %v", m, err)
+	}
+	check()
+
+	c, check = fromGolden(t, "progress-put")
+	err = c.SaveProgress(ctx, ProgressSave{UserID: 2, ItemID: 4, PositionMs: 600000, DurationMs: 3480000, At: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := check()
+	if s.Body["at"] != "2026-11-01T12:00:00Z" || s.Body["played"] != false || s.Body["userId"] != float64(2) {
+		t.Fatalf("request %v", s.Body)
+	}
+}
+
 func TestUser_Languages(t *testing.T) {
 	c, _ := fakeCore(t, 200, `[{"id":1,"name":"Мама","lang":"ru","languages":["en","ru"]},{"id":2,"name":"Вася","languages":[]}]`)
 	us, err := c.Users(ctx)

@@ -46,6 +46,7 @@ func mountAddonCoreLibrary(r chi.Router, a *addonsAPI) {
 	r.Get("/library/find/album", a.coreFindAlbum)
 	r.Get("/library/find/book", a.coreFindBook)
 	r.Get("/library/series/{tmdbId}/episodes", a.coreSeriesEpisodes)
+	r.Get("/library/series/{tmdbId}/episode-items", a.coreSeriesEpisodeItems)
 	r.Get("/library/series/{tmdbId}/folder", a.coreSeriesFolder)
 	r.Get("/library/series/{tmdbId}/audio", a.coreSeriesAudio)
 	r.Get("/library/albums/{id}/dir", a.coreAlbumDir)
@@ -429,6 +430,56 @@ func (a *addonsAPI) coreSeriesEpisodes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// coreSeriesEpisodeItems is GET /library/series/{tmdbId}/episode-items
+// ?userId (library.read): the pairs of coreSeriesEpisodes with the library
+// item of each, {"episodes": [{"season", "episode", "itemId"}]} in season
+// and episode order, for an adult profile (userId: as GET /progress, a kid
+// or an unknown one is 400). What the profile may not see (the one rule,
+// progressAccess) is left out: a series over its rating limit answers an
+// empty list, not an error, so no hidden title leaks its episodes.
+func (a *addonsAPI) coreSeriesEpisodeItems(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.readLibrary(w, r); !ok {
+		return
+	}
+	if a.users == nil {
+		writeErr(w, r, http.StatusServiceUnavailable, "Профили недоступны")
+		return
+	}
+	uid, _ := positiveID(r.URL.Query().Get("userId"))
+	u, ok := a.progressUser(w, r, uid)
+	if !ok {
+		return
+	}
+	n, ok := a.seriesParam(w, r)
+	if !ok {
+		return
+	}
+	refs, err := a.lib.EpisodeItems(r.Context(), n)
+	if err != nil {
+		libFail(w, r, err)
+		return
+	}
+	// an episode takes its series' rating: one check per series
+	seen := map[int64]bool{}
+	out := make([]addonkit.EpisodeItem, 0, len(refs))
+	for _, ref := range refs {
+		visible, checked := seen[ref.SeriesID]
+		if !checked {
+			access, err := a.progressAccess(r, u, ref.ItemID)
+			if err != nil {
+				libFail(w, r, err)
+				return
+			}
+			visible = access == itemOpen
+			seen[ref.SeriesID] = visible
+		}
+		if visible {
+			out = append(out, addonkit.EpisodeItem{Season: ref.Season, Episode: ref.Episode, ItemID: ref.ItemID})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episodes": out})
+}
+
 // coreSeriesFolder: ?root= (exactly one of the library roots) → {path},
 // the absolute folder directly under root that holds the series.
 func (a *addonsAPI) coreSeriesFolder(w http.ResponseWriter, r *http.Request) {
@@ -740,7 +791,8 @@ func (a *addonsAPI) coreRefTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 // coreUsers: the profiles (users.read), each with the interface language
-// the apps show it in (profileLanguages).
+// the apps show it in (profileLanguages) and its rating limit, if any
+// (ratingLimit, as in the X-Antresol-User header).
 func (a *addonsAPI) coreUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.callingAddon(w, r, "users.read"); !ok {
 		return
@@ -769,7 +821,7 @@ func (a *addonsAPI) coreUsers(w http.ResponseWriter, r *http.Request) {
 			ls = householdList
 		}
 		out = append(out, addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: l,
-			Languages: append([]string{}, ls...)})
+			Languages: append([]string{}, ls...), MaxRating: ratingLimit(u)})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

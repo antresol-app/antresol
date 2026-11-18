@@ -59,7 +59,7 @@ func mountPairing(r chi.Router, deps Deps, guard *auth.Guard, requestsOpen func(
 	}
 	p := &pairingAPI{
 		pairs: auth.NewPairings(deps.DB, deps.Sessions), users: deps.Users, net: deps.Network, throttle: th, serverID: deps.ServerID,
-		me: &authAPI{users: deps.Users, sessions: deps.Sessions, net: deps.Network, caps: newMeCaps(deps),
+		me: &authAPI{users: deps.Users, sessions: deps.Sessions, net: deps.Network,
 			libraryOnly: deps.LibraryOnly || libraryEdition, requestsOpen: requestsOpen},
 	}
 	r.Post("/api/auth/pair/start", p.start)

@@ -53,7 +53,7 @@ type Episode struct {
 type Source struct {
 	TitleID             int64
 	Season, Episode     int
-	Kind                string // library, online, or an addon's tracking.scan kind (opaque to the core)
+	Kind                string // library, or an addon's tracking.scan kind (opaque to the core)
 	Ref, Provider       string
 	Quality             string
 	Labels              []string
@@ -66,8 +66,8 @@ type SourceMeta struct {
 	ItemID    int64    `json:"itemId,omitempty"`     // library: the episode (or movie) item to play
 	FileID    int64    `json:"fileId,omitempty"`     // library: the file
 	SourceID  string   `json:"sourceId,omitempty"`   // an addon's kind: the addon's own source id
-	Provider  string   `json:"providerId,omitempty"` // online: balancer id (online_progress.source)
-	Voice     string   `json:"voice,omitempty"`      // online: voice name; an addon's kind: first studio or ""
+	Provider  string   `json:"providerId,omitempty"` // an addon's kind: the provider the addon named
+	Voice     string   `json:"voice,omitempty"`      // an addon's kind: the voice-over, first studio or ""
 	Lang      string   `json:"lang,omitempty"`       // audio language: ISO 639-1 ("ru","en","ja"), "" = unknown
 	Audio     string   `json:"audio,omitempty"`      // Dub|MVO|AVO|Original|""
 	Studios   []string `json:"studios,omitempty"`

@@ -167,24 +167,30 @@ const maxHookBody = 32 << 20
 const fileOpDeadline = 30 * time.Second
 
 var hookTimeouts = map[string]time.Duration{
-	"files.plan":         10 * time.Second,
-	"play.progress":      5 * time.Second,
-	"library.pending":    2 * time.Second,
-	"disk.usage":         2 * time.Second,
-	"requests.open":      2 * time.Second,
-	"requests.title":     10 * time.Second,
-	"requests.search":    10 * time.Second,
-	"tracking.scan":      120 * time.Second,
-	"tracking.titles":    10 * time.Second,
-	"tracking.watched":   3 * time.Second,
-	"notify.interest":    5 * time.Second,
-	"voiceover.origLang": 10 * time.Second,
-	"trailers.fetch":     2 * time.Second,
-	"import.services":    2 * time.Second,
-	"import.stop":        5 * time.Second,
-	"import.resolve":     30 * time.Second,
-	"import.search":      30 * time.Second,
-	"migrate.leftovers":  10 * time.Second,
+	"files.plan":          10 * time.Second,
+	"play.progress":       5 * time.Second,
+	"library.pending":     2 * time.Second,
+	"disk.usage":          2 * time.Second,
+	"requests.open":       2 * time.Second,
+	"requests.title":      10 * time.Second,
+	"requests.search":     10 * time.Second,
+	"tracking.scan":       120 * time.Second,
+	"tracking.titles":     10 * time.Second,
+	"tracking.watched":    3 * time.Second,
+	"notify.interest":     5 * time.Second,
+	"voiceover.origLang":  10 * time.Second,
+	"trailers.fetch":      2 * time.Second,
+	"import.services":     2 * time.Second,
+	"import.stop":         5 * time.Second,
+	"import.resolve":      30 * time.Second,
+	"import.search":       30 * time.Second,
+	"migrate.leftovers":   10 * time.Second,
+	"library.afterScan":   60 * time.Second,
+	"home.continue":       500 * time.Millisecond,
+	"channels.ready":      2 * time.Second,
+	"channels.candidates": 30 * time.Second,
+	"channels.resolve":    60 * time.Second,
+	"channels.release":    5 * time.Second,
 }
 
 // HookTimeout is the hook's own timeout. files.* other than files.plan
@@ -249,7 +255,13 @@ func (h *Hooks) Call(ctx context.Context, id, name string, user *addonkit.User, 
 // period are left out quietly; those that are slow, fail, refuse or have
 // nothing to add (204/404) are left out (logged).
 func (h *Hooks) Each(ctx context.Context, name string, user *addonkit.User, in any, each func(id string, raw json.RawMessage)) {
-	res, _, _ := h.fanout(ctx, name, user, in)
+	h.EachFor(ctx, name, user, nil, in, each)
+}
+
+// EachFor is Each over the addons admit lets through (nil: all), as for
+// a profile (Manifest.OpenTo); the others are never asked.
+func (h *Hooks) EachFor(ctx context.Context, name string, user *addonkit.User, admit func(Installed) bool, in any, each func(id string, raw json.RawMessage)) {
+	res, _, _ := h.fanout(ctx, name, user, admit, in)
 	for _, r := range res {
 		switch {
 		case errors.Is(r.err, errCooling):
@@ -269,12 +281,13 @@ type hookResult struct {
 	err error
 }
 
-// fanout runs hook name on every enabled, running addon that declares it,
-// in parallel under one deadline, and gives their results in addon-id
+// fanout runs hook name on every enabled, running addon that declares it
+// (and that admit lets through, when it is not nil), in parallel under one
+// deadline, and gives their results in addon-id
 // order; declared is how many enabled addons declare the hook, running or
 // not. A list or body failure is logged and gives nothing, with ok false
 // (nobody was asked, which is not an answer).
-func (h *Hooks) fanout(ctx context.Context, name string, user *addonkit.User, in any) (res []hookResult, declared int, ok bool) {
+func (h *Hooks) fanout(ctx context.Context, name string, user *addonkit.User, admit func(Installed) bool, in any) (res []hookResult, declared int, ok bool) {
 	list, err := h.T.List(ctx)
 	if err != nil {
 		h.log().Warn("addon hook: list", "hook", name, "err", err)
@@ -282,7 +295,7 @@ func (h *Hooks) fanout(ctx context.Context, name string, user *addonkit.User, in
 	}
 	var ids []string
 	for _, a := range list {
-		if !a.Enabled || !a.Manifest.Answers(name) {
+		if !a.Enabled || !a.Manifest.Answers(name) || (admit != nil && !admit(a)) {
 			continue
 		}
 		declared++
@@ -563,7 +576,7 @@ func (h *Hooks) MigrateLeftovers() func(ctx context.Context) []runkit.Line {
 // leftovers asks every addon declaring migrate.leftovers; full is false
 // when one of them gave no answer, or the addons could not be listed.
 func (h *Hooks) leftovers(ctx context.Context, lang string) (lines []runkit.Line, full bool) {
-	res, declared, ok := h.fanout(ctx, "migrate.leftovers", nil, addonkit.LeftoversRequest{Lang: lang})
+	res, declared, ok := h.fanout(ctx, "migrate.leftovers", nil, nil, addonkit.LeftoversRequest{Lang: lang})
 	full = ok && len(res) == declared
 	for _, r := range res {
 		if r.err != nil {

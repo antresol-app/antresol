@@ -211,8 +211,9 @@ func (a *channelsAPI) display(ctx context.Context, c channels.Channel) (string, 
 }
 
 // programs merges a channel's entries into programmes (the parts of a
-// movie are one) with their descriptions.
-func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]programJSON, error) {
+// movie are one) with their descriptions, for u (a kid gets no programme
+// an addon gave: kidHides).
+func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.Entry) ([]programJSON, error) {
 	ids := make([]int64, len(es))
 	for i, e := range es {
 		ids[i] = e.ItemID
@@ -230,7 +231,7 @@ func (a *channelsAPI) programs(ctx context.Context, es []channels.Entry) ([]prog
 			end = es[i].End
 		}
 		x, ok := info[e.ItemID]
-		if !ok {
+		if !ok || kidHides(u, x) {
 			continue
 		}
 		p := programJSON{ID: strconv.FormatInt(e.Channel, 10) + "-" + strconv.FormatInt(e.Seq, 10), ItemID: e.ItemID, Kind: x.Kind,
@@ -338,17 +339,22 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 				internalErr(w, r, "channels", err)
 				return
 			}
-			ps, err := a.programs(ctx, es)
+			ps, err := a.programs(ctx, u, es)
 			if err != nil {
 				internalErr(w, r, "channels", err)
 				return
 			}
 			a.withTracks(ctx, c.ID, ps, now)
-			if len(ps) > 0 {
-				j.Now = &ps[0]
-			}
-			if len(ps) > 1 {
-				j.Next = &ps[1]
+			if u.IsKid && len(ps) > 0 && ps[0].Start.After(now) {
+				// what is on air was left out for the kid: only what is next
+				j.Next = &ps[0]
+			} else {
+				if len(ps) > 0 {
+					j.Now = &ps[0]
+				}
+				if len(ps) > 1 {
+					j.Next = &ps[1]
+				}
 			}
 		} else {
 			j = a.withPicks(ctx, j, c)
@@ -429,7 +435,7 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "guide", err)
 		return
 	}
-	ps, err := a.programs(r.Context(), es)
+	ps, err := a.programs(r.Context(), u, es)
 	if err != nil {
 		internalErr(w, r, "guide", err)
 		return
@@ -750,6 +756,16 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 		return
 	}
 	ctx := r.Context()
+	if u.IsKid {
+		// a programme an addon gave may be in the stream (from the kept
+		// segments behind the clock to the lead ahead of it): not for a
+		// kid (fail closed: a failed look is a refusal too)
+		behind, ahead, now := a.svc.Live.Span()
+		if on, err := a.addonExtraNear(ctx, c.ID, now.Add(-behind), now.Add(ahead)); err != nil || on {
+			writeErr(w, r, http.StatusForbidden, msgAddonKid)
+			return
+		}
+	}
 	name := chi.URLParam(r, "name")
 	sig := screentime.Signal{Category: screentime.Video, Key: "channel:" + strconv.FormatInt(c.ID, 10)}
 	if strings.HasSuffix(name, ".m3u8") {
@@ -964,7 +980,7 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			internalErr(w, r, "epg", err)
 			return
 		}
-		ps, err := a.programs(ctx, es)
+		ps, err := a.programs(ctx, u, es)
 		if err != nil {
 			internalErr(w, r, "epg", err)
 			return
@@ -1069,6 +1085,9 @@ func (a *channelsAPI) epg(w http.ResponseWriter, r *http.Request) {
 	if g.Info, err = a.svc.Describe(ctx, ids); err != nil {
 		internalErr(w, r, "epg", err)
 		return
+	}
+	for id, es := range g.Entries {
+		g.Entries[id] = kidHideEntries(u, es, g.Info)
 	}
 	a.localizeInfo(ctx, g.Info)
 	// external channels: what their guides have, up to a week ahead

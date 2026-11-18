@@ -166,9 +166,9 @@ it is not installed), and the app shows it as locked.
 | `contract` | `1` |
 | `platforms` | `"<GOOS>/<GOARCH>"` → asset, the keys only `linux/amd64`, `linux/arm64`, `darwin/arm64`; a server whose platform is missing refuses the install |
 | `web` | optional; no web part when absent |
-| `permissions` | any of `events`, `library.read`, `library.write`, `files.holds`, `metadata`, `images`, `play`, `notify`, `users.read`, `tracking`, `imports`, `requests`, `voiceover`, each at most once; an unknown or repeated one is refused |
+| `permissions` | any of `events`, `library.read`, `library.write`, `files.holds`, `metadata`, `images`, `play`, `notify`, `users.read`, `tracking`, `imports`, `requests`, `voiceover`, `progress`, each at most once; an unknown or repeated one is refused |
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
-| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, and so is a `kind` that is `library`, `online` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
+| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
 | `author`, `homepage` | free text, shown before install |
 
@@ -258,6 +258,28 @@ streams the answer back.
   is hidden from the profile; music and books without a rating are shown.
   An addon serving such a profile applies the same rule (the server's
   `library.RatingAllowed`).
+  A request from outside the home network also carries `"maxHeight"`, the
+  height in pixels (`1080`, `720` or `480`) the server's «Качество вне
+  дома» caps playback at; it is absent at home, when that setting is
+  «Оригинал», and on hooks not run for an app's request (`play.progress`).
+  It caps the addon's default («Авто») choice: an addon serving video
+  picks no rendition taller than `maxHeight` by default, and takes the
+  lower of it and any cap the app sent itself; a quality the viewer chose
+  (or chose last for the title) still plays, as in the server's own player.
+- **Media routes.** `/api/addons/<id>/x/media/…` is the prefix an addon
+  serves its streams under (playlists, segments, subtitles), for every
+  addon. There, and nowhere else under `/api/addons`, a **`GET` or `HEAD`**
+  request may sign in with a media key (`?mk=<key>`) instead of a session,
+  as on the server's own media routes, so that a native player (AirPlay,
+  an app's video player) fetches them without the app's headers. Any other
+  method needs a session, and so does a path that is escaped otherwise
+  than by default (an encoded `/`, `%2F`, anywhere in it). The proxy still
+  sends `X-Antresol-User` and keeps the query, `mk` included, and its refusals (kids, access, `x/admin/…`,
+  non-canonical paths) still apply; the addon still gates the profile
+  itself. The key is the profile's media key for all the server's media
+  routes: an addon must not log or store it, and only hands it back in
+  the URLs of the same answer (a playlist's segment URIs). An addon is not
+  sandboxed (see [Trust](#trust-addons-are-not-sandboxed)), so this gives it nothing it could not reach.
 - **No credentials.** The browser's `Cookie` and `Authorization`, and any
   `X-Antresol-*` header the browser sent, are dropped.
 - **Answers.** `Set-Cookie`, `Clear-Site-Data`, `Service-Worker-Allowed`
@@ -289,6 +311,19 @@ streams the answer back.
   stopped, crashed or not installed answers **503** «Расширение не запущено»
   (also when it goes away mid-request); one that is running but fails to
   answer within 60 s, 502.
+- **Media.** The answer streams as it comes (no buffering), with the
+  addon's status and body unchanged: a `410` (a stale stream link), a
+  `404` or a `416` reaches the player as the addon sent it, never as a
+  502. Range requests pass through. Proxied answers are never compressed
+  by the server (a segment or playlist keeps its bytes and
+  `Content-Length`); a non-JSON answer still carries
+  `Content-Security-Policy: sandbox`, which a player's `fetch` of a
+  segment ignores.
+- **Connections.** The server keeps up to 16 idle connections to each
+  running addon process, so the segments of a stream skip the dial. A
+  pool belongs to one addon and one process: a connection is never
+  reused for another addon, and a restart (a new process) or a stop
+  closes the old process's pool.
 
 ## The core API v1: the addon → the server
 
@@ -313,6 +348,7 @@ off or not running is refused (401). Bodies are JSON
 | `GET /library/find/album?artist&album` or `?mbid=` | `library.read` | `Item` (album; `mbid` is a MusicBrainz release group) |
 | `GET /library/find/book?kind=book\|audiobook&author&title` | `library.read` | `Item` |
 | `GET /library/series/{tmdbId}/episodes` | `library.read` | `[[season, episode]]` that have a file, in order |
+| `GET /library/series/{tmdbId}/episode-items?userId=` | `library.read` | `{"episodes": [{"season", "episode", "itemId"}]}`: the pairs of `/episodes` in the same order, each with the id of the episode item that holds its file (the id `GET /progress` and `PUT /progress` take); the later episodes of a multi-episode file (`S01E01-E02`) carry the id of the item that holds it, unless an episode item of their own has a file. For profile `userId`, an adult one: a missing or unknown id is 400 «Нет такого профиля», a kid 400 «Детскому профилю это недоступно». A series over the profile's rating limit (or one with no rating, for a limited profile) answers `{"episodes": []}`; no series with that TMDB id is 404 «Не найдено», as on `/episodes` |
 | `GET /library/series/{tmdbId}/folder?root=` | `library.read` | `{"path"}`: the absolute folder directly under `root` holding the series; `root` must be one of `libraryRoots` as given (else 400) |
 | `GET /library/series/{tmdbId}/audio` | `library.read` | `SeriesAudio`; its `profiles` only when the addon also has `users.read` (left out otherwise) |
 | `GET /library/albums/{id}/dir` | `library.read` | `{"path"}`: the album's folder |
@@ -323,7 +359,7 @@ off or not running is refused (401). Bodies are JSON
 | `GET /library/search?kind&title&limit` | `library.read` | `[Item]` of `kind` whose title, original title or alias equals `title` once normalised (case, ё, punctuation); `limit` at most 50, the default |
 | `GET /library/refs/{ref}` | `library.read` | `[RefFile]` (`{"fileId", "itemId", "path"}`) of the calling addon's files with this ref, by path |
 | `GET /library/tracks?ref=` | `library.read` | `[Track]` whose file carries the calling addon's ref |
-| `GET /users` | `users.read` | `[User]` (`{"id", "uid", "name", "isAdmin", "isKid", "lang", "languages"}`); `uid` is the stable profile key, as in `X-Antresol-User` (`id` may be reused after a profile is deleted); `lang` is the interface language the apps show the profile in: its own choice, else the first of its own audio languages the apps have (`ru`, `en`), else the first of the household's, else the server's; `languages` is the profile's «Языки», its audio languages in order (`["en", "ru"]`): its own list, else the household's «Мои языки»; `[]` only when both are empty. Only this answer fills `languages`: in the `X-Antresol-User` header it is absent or `null` |
+| `GET /users` | `users.read` | `[User]` (`{"id", "uid", "name", "isAdmin", "isKid", "lang", "languages", "maxRating"}`); `uid` is the stable profile key, as in `X-Antresol-User` (`id` may be reused after a profile is deleted); `lang` is the interface language the apps show the profile in: its own choice, else the first of its own audio languages the apps have (`ru`, `en`), else the first of the household's, else the server's; `languages` is the profile's «Языки», its audio languages in order (`["en", "ru"]`): its own list, else the household's «Мои языки»; `[]` only when both are empty. Only this answer fills `languages`: in the `X-Antresol-User` header it is absent or `null`; `maxRating` is the profile's rating limit (`0+`, `6+`, `12+`, `16+`, `18+`; a kid without one of its own: `12+`), the same as in the header, and is omitted for a profile without one |
 | `GET /settings/studios` | `library.read` | `{"studios": [name]}`: the household's favourite studios (the Settings screen's «Любимые озвучки»), best first, as saved there; `[]` when none |
 | `GET /watched?userId&items&series` | `library.read` | `{"watched": {"<id>": true}}`: of the item ids (`items`: movies and other leaves, finished) and series ids (`series`: every episode finished), comma-separated, the ones profile `userId` watched; the rest are left out. Pass the id of the request's `X-Antresol-User`. At most 500 ids per list (400 «Не больше 500 id за раз»); a missing or unknown `userId` is 400 «Нет такого профиля» |
 | `POST /library/import` `{"paths", "ref", "ownerUserId"}` | `library.write` | `ImportResult` (below): at most 10 000 paths, files or folders; `ref` and `ownerUserId` optional |
@@ -347,6 +383,8 @@ off or not running is refused (401). Bodies are JSON
 | `GET /tracking/titles/{id}/sources` | `tracking` | `[Source]`: its sources of every kind, by season, episode, kind and ref |
 | `POST /voiceover/fit` `{"path", "fileId", "origLang"}` | `voiceover` | 202: the voice-over track at `path`, beside the library file `fileId`, is queued for its fit (below); anything else is 400 «Файл не найден в медиатеке»; 503 when the server fits nothing |
 | `GET /voiceover/fit?path=` | `voiceover` | `FitState` (`{"state", "offsetMs", "tempo"}`, below), or 404 «Озвучка не найдена» when the track is not queued; 503 when the server fits nothing |
+| `GET /progress?userId&items=` | `progress` | `{"progress": {"<itemId>": ProgressEntry}}` (below): profile `userId`'s progress in the movies and episodes among `items` (comma-separated, at most 500: 400 «Не больше 500 id за раз») it may see; an id with no progress, over the profile's rating limit, or no movie or episode is left out; a missing or unknown `userId` is 400 «Нет такого профиля», a kid 400 «Детскому профилю это недоступно» |
+| `PUT /progress` `{"userId", "itemId", "positionMs", "durationMs", "at", "played"}` | `progress` | 204: the profile's position in a movie or an episode it may see, as the apps' players save it (below); body at most 64 KiB |
 | `GET /imports/active-count` | `imports` | `{"count"}`: the albums of running import jobs being searched or downloaded (below) |
 | `GET /imports/jobs?status=` | `imports` | `{"ids"}` of the import jobs in that status, oldest first |
 | `GET /imports/jobs/{id}` | `imports` | `ImportJob` (below), or 404 «Не найдено» |
@@ -392,6 +430,7 @@ GET /library/find/title
 GET /library/find/album
 GET /library/find/book
 GET /library/series/{tmdbId}/episodes
+GET /library/series/{tmdbId}/episode-items
 GET /library/series/{tmdbId}/folder
 GET /library/series/{tmdbId}/audio
 GET /library/albums/{id}/dir
@@ -429,6 +468,8 @@ GET /tracking/titles/{id}/episodes
 GET /tracking/titles/{id}/sources
 POST /voiceover/fit
 GET /voiceover/fit
+GET /progress
+PUT /progress
 GET /imports/active-count
 GET /imports/jobs
 GET /imports/jobs/{id}
@@ -722,7 +763,7 @@ topics and its lines not sent yet.
 
 The server tracks the series and movies the profiles mark: for each title
 it keeps an episode list, from TMDB, and the sources of each episode, one set per kind (`library`,
-`online`, and the kinds of the addons' scanners). An addon with
+and the kinds of the addons' scanners). An addon with
 `tracking` makes, finds and reads those titles; 503 «Отслеживание
 недоступно» when the server tracks nothing.
 
@@ -760,8 +801,8 @@ The JSON is camelCase:
   per title, kind, season and episode; `firstSeen` and `lastSeen` are when a
   refresh first and last found it. `meta` holds what applies, the rest
   left out: `itemId`, `fileId` (a `library` source: the episode's item
-  and file), `sourceId` (the id the scanner gave it), `providerId` (an
-  `online` source's provider), `voice`, `lang` (ISO 639-1), `audio`
+  and file), `sourceId` (the id the scanner gave it), `providerId` (the
+  provider of the source, as the scanner names it), `voice`, `lang` (ISO 639-1), `audio`
   (`Dub`, `MVO`, `AVO`, `Original`), `studios`, `subs`, `fileIndex` (the
   episode's file within the source).
 
@@ -803,6 +844,53 @@ an atempo factor, `1` none), `misfit` (another cut: never played) or
 `unmeasured` (its sync could not be checked: no track in the original
 language, or the fit failed for good: never played). `offsetMs` and
 `tempo` are `0` except for `ok`.
+
+### Watch progress
+
+An addon that plays titles of its own keeps a profile's place in the
+library's movies and episodes where the apps keep it: a position it saves
+is the one «Продолжить», the watched marks and the apps' players read, and
+the one it reads back is where the apps would resume. It needs `progress`.
+
+- `GET /progress?userId=2&items=7,8,9` answers `{"progress": {"7":
+  {"positionMs": 600000, "durationMs": 8160000, "watched": false,
+  "updatedAt": "2026-11-17T10:00:00Z"}}}`. `ProgressEntry`: `positionMs`
+  and `durationMs` as saved, `watched` (the player's rule: from 92% of a
+  known duration, or marked watched), `updatedAt` when the position was
+  recorded (RFC 3339). An id the profile has no progress in is left out.
+  So is one it may not see (over its rating limit) or that is no movie or
+  episode: the answer says nothing of what was watched there, and is not
+  an error. At most 500 ids per call.
+- `PUT /progress` with `{"userId": 2, "itemId": 7, "positionMs": 600000,
+  "durationMs": 8160000, "at": "2026-11-17T10:00:00Z", "played": false}`
+  answers 204. `at` is when the position was reached (RFC 3339, optional:
+  now); one more than 5 minutes ahead of the server's clock is 400 «Время
+  позиции опережает часы сервера больше чем на 5 минут», one a little ahead
+  is kept as now. A write older than the position the server keeps for the
+  item (or than the last time the item was marked unwatched) changes nothing
+  and is still 204, so a queue replayed later never overwrites fresher
+  progress from another device. A negative position or duration, or an
+  `itemId` or `at` that is not one, is 400. `played: true` says the
+  position is a player's report: the time played since the previous report
+  of the item also counts in the profile's «Статистика»; `false` is a
+  position copied from elsewhere (it adds no played time).
+- **Which profile.** `userId` is an adult profile (an admin included): a
+  missing or unknown one is 400 «Нет такого профиля», a kid 400 «Детскому
+  профилю это недоступно», on both calls.
+- **Which item.** A movie or an episode the profile may see, by the rule
+  the apps use (its rating limit, `maxRating` of `GET /users`: an episode
+  takes its series' rating, a film without a rating is hidden from a limited
+  profile). One over the limit, or that does not exist, is 404 «Элемент
+  медиатеки не найден» (a hidden item reads as a missing one); a season, a
+  series, an album, a book or anything else it may see is 400 «Это не фильм и
+  не серия».
+- **An episode's item.** `GET /library/series/{tmdbId}/episode-items?userId=2`
+  (`library.read`) answers `{"episodes": [{"season": 1, "episode": 2,
+  "itemId": 7}]}`: the id to read and save an episode's progress under, for
+  each season and episode of the series that has a file, in that order. The
+  two episodes of one file (`S01E01-E02`) have the same `itemId`. It lists
+  what the profile may see, by the same rule: a series over its rating limit
+  has none (an empty list, not an error). `userId` is as above.
 
 ### Imports
 
@@ -1257,13 +1345,16 @@ hook has nothing to send).
   `library.pending`, `disk.usage`, `requests.*`, `tracking.scan:<kind>`,
   `tracking.titles`, `tracking.watched`, `notify.interest`,
   `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`,
-  `import.resolve`, `import.search` and `migrate.leftovers`: every hook a
-  manifest may declare.
+  `import.resolve`, `import.search`, `migrate.leftovers`,
+  `library.afterScan`, `home.continue` and the four `channels.*`: every
+  hook a manifest may declare.
 - **One call per addon per operation.** Work for many keys comes in one body
   (`{"keys": [...]}`), not one call per key.
 - **Deadlines.** Each hook has its own timeout (for example `files.plan`
   10 s, `library.pending` and `disk.usage` 2 s, `tracking.scan:<kind>`
-  120 s). The `files.*` hooks of one file operation share the operation's
+  120 s, `library.afterScan` 60 s, `home.continue` 500 ms, `channels.ready`
+  2 s, `channels.candidates` 30 s, `channels.resolve` 60 s,
+  `channels.release` 5 s). The `files.*` hooks of one file operation share the operation's
   deadline. A hook called on several addons runs on all of them in parallel
   under one deadline; the 200 answers are taken in addon-id order, and
   every addon that gives no 200 (down, failed, refused, timed out, or 204
@@ -1307,6 +1398,12 @@ import.stop
 import.resolve
 import.search
 migrate.leftovers
+library.afterScan
+home.continue
+channels.ready
+channels.candidates
+channels.resolve
+channels.release
 ```
 
 ### File hooks
@@ -1420,6 +1517,154 @@ sends a body that is not `{"cards": [...]}` is left out (logged). `scope` is
   not called for them: a title has no rating until the library has it.
 - The cards come in addon-id order, each addon's in its own order.
 
+### `library.afterScan`
+
+| Hook | Body → answer | When |
+| --- | --- | --- |
+| `library.afterScan` | `{}` → 204 | a library scan finished |
+
+Called after each library scan and its fast metadata enrichers (a title the
+scan found has its TMDB id by then), on every addon declaring it that is on
+and running, in parallel, within 60 s. It is called in the
+background: the scan's result never waits for an addon. There is no profile
+(`X-Antresol-User` is absent), and the answer is 204, or any JSON, which the
+server ignores. An addon that is not running is skipped quietly, one that is
+slow, fails or refuses is logged and skipped, and nothing is repeated: the
+next scan calls again. So what an addon does here must be safe to run
+twice, and to miss once. A call may still be running when the next scan's
+arrives, so an addon must not assume one at a time.
+
+### `home.continue`
+
+| Hook | Body → answer | When |
+| --- | --- | --- |
+| `home.continue` | `{}` → `{"cards": [ContinueCard]}` | Home of a profile that is not a kid, asked by a client that shows addon cards (`GET /api/home?addons=1`) |
+
+The titles the profile was watching through the addon, for «Продолжить»
+on Home. The body is `{}`: the profile is the `X-Antresol-User` header's
+(its `maxRating` the limit the server applies). Called on every addon
+declaring it that is on and running **and that the profile has access to**
+(the same rule as the bundles, see [Who gets an addon](#who-gets-an-addon):
+an addon with access `admins` is never asked for a non-admin), in parallel,
+under a hard **500 ms**: an addon that is down, late, fails or sends a body
+that is not `{"cards": [...]}` is left out (logged), and Home is drawn
+without its cards. Never called for a kid. Answer from what the addon keeps
+itself: no outside call fits in the deadline.
+
+```json
+{"cards": [{"key": "s-1399", "kind": "series", "tmdbId": 1399, "title": "…",
+            "subtitle": "…", "year": 2011, "poster": "<name from POST /images>",
+            "rating": "18+", "progress": 0.25, "resumeSec": 600, "season": 1,
+            "episode": 2, "href": "/addons/<id>/…", "updatedAt": "2026-11-17T10:00:00Z"}]}
+```
+
+- `key` is the addon's own; the app gets it as `addon:<id>:<key>`, and the
+  card's `addonId` as `<id>`. A card without a key is dropped.
+- `kind` is `movie` or `series`, `tmdbId` the title's TMDB id; a card of
+  another kind is dropped.
+- **The server applies the rating itself.** For each card it takes its own
+  item's rating when the library has the title (`kind` and `tmdbId`),
+  else the card's `rating`; it drops a card above the profile's limit, and
+  an unrated one (`""`) for a rating-limited profile. An addon still
+  gates its own cards by `maxRating`.
+- `poster` is an image name `POST /images` gave; the app gets it as
+  `/api/images/<name>`. Any other value (an outside URL included) becomes
+  `""`.
+- `href` (optional) is the page of the app the card opens, as a
+  notification's `link`: it starts with `/` but not `//`, and holds no
+  backslash, space or control character; another value is dropped (the
+  card stays).
+- `progress` is 0..1, `resumeSec` where to resume, `season` and `episode`
+  the episode of a series.
+- `updatedAt` is when the profile last watched it: the server merges the
+  cards with its own «Продолжить» by it, newest first, and cuts the shelf
+  to its size. Of one addon's cards it looks at its 40 newest.
+
+### «ТВ»: titles outside the library: `channels.*`
+
+| Hook | Body → answer | When |
+| --- | --- | --- |
+| `channels.ready` | `{}` → `{"ready"}` (`ChannelReady`) | the channel editor asks whether to offer «titles outside the library» (`extrasAvailable` of `GET /api/channels/options`), and before candidates are asked for |
+| `channels.candidates` | `{"rules": ChannelRules, "limit"}` (`ChannelCandidates`) → `{"titles": [ChannelTitle]}` (`ChannelCandidatesAnswer`) | a channel whose rule «titles outside the library» is on is scheduled (once a day; an hour after a failed ask) |
+| `channels.resolve` | `{"channelId", "title": ChannelTitle}` (`ChannelResolve`) → `{"path", "headers"?}` (`ChannelStream`) | one of the addon's titles is about to air (about 2 minutes ahead) |
+| `channels.release` | `{"token", "path"}` (`ChannelRelease`) → nothing (204) | the programme is over, or was resolved and not played |
+
+A «ТВ» channel made of the library may also play titles of its genres
+the library does not have, from an addon. An addon declares **all four
+hooks or none** (the manifest is refused otherwise). The first addon in
+id order that is on, running, declares them and is open to the channel's
+profile answers for a channel; the others are not asked. The hooks run
+for no profile (no `X-Antresol-User`); the bodies are JSON.
+
+- **Who.** A shared channel is every profile's: only an addon with access
+  `adults` answers for it. A profile's own channel is answered by an
+  addon that profile gets by [Who gets an addon](#who-gets-an-addon) (an
+  addon with access `admins` only for an admin's). A kid never gets an
+  addon's title, on any channel, a shared one included: a kid's channel
+  list, guide and IPTV guide leave those programmes out, a kid's live
+  stream of the channel is refused (403 «Недоступно в детском профиле»)
+  while the stream may hold one (from shortly before it starts, as the
+  stream runs ahead of the clock, until its last kept segments are
+  gone), a kid's own channel gets none, and the editor
+  offers the rule to no kid.
+- **`channels.ready`** says whether the addon can find and play titles
+  now. Its answer is kept **60 s**; any status change of the addon (a
+  restart, a crash, a stop or start) forgets it. A down, slow or failing
+  addon is not ready.
+- **`channels.candidates`.** The server asks only for rules with the
+  rule on (not a hand-picked or ordered channel, and one that shows
+  movies). `rules` is `{"genres", "yearFrom", "yearTo", "countries",
+  "languages", "keywords", "maxRating"}`: titles of any of the genres
+  (display names, either language; none: any), from `yearFrom` to `yearTo`
+  (0: open), of any of the countries (ISO 3166-1), original languages (ISO
+  639-1) and keywords (TMDB's, English, lower case), within `maxRating` (the
+  channel's age limit, `""` none). Answer up to `limit` titles the library
+  does not have, within 30 s; titles past `limit` are dropped.
+- A `ChannelTitle` is `{"key", "kind", "tmdbId", "title", "year",
+  "overview", "rating", "genres", "poster", "backdrop", "runtimeMs",
+  "season", "episode"}`. `key` is the addon's stable identity of the title
+  (at most 200 characters, no control character); the server keeps it as
+  `addon:<id>:<key>` and sends it back bare in `channels.resolve`. `kind`
+  is `movie` (the default) or `episode` (`tmdbId` then the series', with
+  `season` and `episode`). `overview`, `rating` (the age rating, `""`
+  unknown) and `genres` are in the server's metadata language; `poster`
+  and `backdrop` are TMDB image paths (`/abc.jpg`; any other value shows no
+  picture). `runtimeMs` is how long it lasts in the schedule. A title
+  without a key, a title or a runtime, or of another kind, is dropped.
+- **The server applies the rating itself.** It rates each title with its
+  own item's rating when the library has it (`tmdbId`; an episode by its
+  series), else with the title's `rating`, and drops a title above the
+  channel's `maxRating`, and an unrated one (`""`) while a limit is set.
+  If it cannot read the library's ratings it takes none of the answer and
+  asks again in an hour. A profile's own limit still applies when it
+  watches. An addon still keeps to `maxRating` itself.
+- **`channels.resolve`** (60 s, within the server's own wait for the
+  programme) gives a stream of the title for the channel: `path` is a
+  route on the addon's socket, an HLS playlist (whose relative URIs stay
+  under its folder) or a file, in the form of an input's path (see
+  [Playing an input](#playing-an-input): starts with `/`, no `..`, not
+  `/health` or `/hooks/…`). `headers` (optional, at most 16, no `Host`,
+  `Range`, `If-Range`, hop-by-hop or `X-Antresol-*` name, no line break in
+  a value) are sent with every request the server makes for this stream.
+  A failure, a refusal, a bad path or bad headers: the title is left out
+  of that channel for a day and the schedule made again without it.
+- **The relay.** The server's own ffmpeg reads the stream through the
+  core's loopback relay, never the addon's socket: `GET`/`HEAD` of
+  `path`, and of the playlist's relative URIs under its folder, reach the
+  addon with `Range` and `If-Range` passed on, the stream's `headers`, and
+  `X-Antresol-Relay: <token>` (32 hex characters, one per resolved
+  stream). The addon answers 200, 206 or 416; 404 and 410 end the stream,
+  any other status is a failure. Only `Content-Length`, `Content-Range`,
+  `Accept-Ranges` and a video, audio or HLS `Content-Type` of the answer
+  pass on. The relay's URL is the server's alone: no answer to an app or
+  a player holds it.
+- **`channels.release`** (async, 5 s) tells the addon a stream it
+  resolved is over (`token` as in `X-Antresol-Relay`, `path` as
+  resolved); the relay forgets it at once. A stream is also forgotten
+  after 6 h unused, and when the addon's process goes (its stream URLs
+  then answer 404): resolve again rather than keeping state across a
+  restart.
+
 ### `disk.usage`
 
 | Hook | Body → answer | When |
@@ -1491,14 +1736,14 @@ All three are called for the household, **without** `X-Antresol-User`.
 | `tracking.scan:<kind>` | `{"title": Title, "episodes": [Episode]}` (`ScanRequest`) → `{"sources": [Source]}` or `{"unchanged": true}` (`ScanAnswer`) | a tracked title is refreshed (see [Tracked titles](#tracked-titles)): when it is due (every 2 to 6 hours while it airs, less often otherwise) and after a kick |
 
 Each kind an addon declares is a kind of sources of its own beside the
-server's `library` and `online`: the refresh asks the addon for the
+server's `library`: the refresh asks the addon for the
 title's sources of that kind, and its answer replaces what is stored of
 that kind only. Called for the household (no `X-Antresol-User`), within
 120 s, on the addons that are on and running, after the server's own
 scanners.
 
-- **Kinds are the addon's alone.** A `kind` that is `library`, `online`
-  or declared by another installed addon (on or off) is refused at
+- **Kinds are the addon's alone.** A `kind` that is `library` or
+  declared by another installed addon (on or off) is refused at
   install and at update (400 «Вид источника «{kind}» уже занят»); the
   refused version is not installed, a running one stays as it was.
 - **`{"sources": [...]}`** replaces the kind's rows of the title: new
@@ -1520,12 +1765,10 @@ scanners.
 - **Who sees the rows.** The episode guide and a profile's source choice
   (`PUT /api/tracking/{kind}/{tmdbId}/choice`) take the kinds of the
   installed addons the profile has access to (`access`), on or off, on
-  every server (a library-only one too, which leaves out only `online`);
-  kids get the library's alone.
-- **Kinds are opaque to the server.** It knows only `library` and
-  `online` (the latter where the server has «Смотреть онлайн»); every
-  other kind is the name an installed addon declared, and the server
-  gives it no meaning. A kind no installed addon declares (one of an
+  every server (a library-only one too); kids get the library's alone.
+- **Kinds are opaque to the server.** It knows only `library`; every
+  other kind, `online` included, is the name an installed addon declared,
+  and the server gives it no meaning. A kind no installed addon declares (one of an
   addon since removed included) is not listed, and a choice of it is 400.
 
 ### More tracked titles and watch states: `tracking.titles`, `tracking.watched`
@@ -1547,10 +1790,10 @@ names the profile in `userId`), on every addon that declares them.
   back with its next answer. Titles the addon stops listing are no longer
   refreshed for it (the server keeps what it stored).
 - **`tracking.watched`** (3 s): a movie is `season` 0, `number` 0. The
-  answers are merged with the server's own progress (the library's and
-  «Смотреть онлайн»): an episode is watched when any says so, and its
-  position is the furthest one. An addon that is down, slow or fails is
-  left out. Answer 204 when the addon knows nothing of that profile.
+  answers are merged with the server's own progress (the library's): an
+  episode is watched when any says so, and its position is the furthest
+  one. An addon that is down, slow or fails is left out. Answer 204 when
+  the addon knows nothing of that profile.
 
 ### `notify.interest`
 
@@ -1761,6 +2004,10 @@ Events follow the same table: an adult profile gets the events of an
 addon with access `adults` but never its `addon.<id>.admin.*`, and none of
 an addon with access `admins` (see Events).
 
+So does `home.continue`: it is asked only of the addons the profile gets
+by this table, and never for a kid. And so do the `channels.*` hooks, by
+the channel's profile (see [«ТВ»](#тв-titles-outside-the-library-channels)).
+
 ### Shared modules
 
 An addon does not bundle React, the router or the SDK: it imports the app's
@@ -1775,7 +2022,7 @@ shared:
 | `react/jsx-runtime` | `jsx`, `jsxs`, `Fragment` (production builds only: no `jsxDEV`) |
 | `react-dom` | `createPortal` |
 | `react-router` | `Link`, `NavLink`, `Navigate`, `Outlet`, `useLocation`, `useNavigate`, `useNavigationType`, `useParams`, `useSearchParams` |
-| `@antresol/addon-sdk` | `registerAddon`, `addonApi`, `ApiError`, `useAddonT`, `useUser`, `useEvents`, `ui`, `Icon`, `core`, `formatSize`, `formatRate`, `formatPercent`, `locale`, `useIsCompact`, `ViewMenu`, `ViewToolbar`, `useUrlView`, `useMediaSegments`, `MEDIA_SEGMENTS`, `mediaSegmentIcon`, `mediaSegmentOf`, `mediaKindIcon`, `DownloadButton`, `WatchButton`, `cardHref`, `titlePath`, `KIND_ICON`, `kindLabel`, `useDebounced`, `PendingOverlay`, `useWatchWay`, `MigratePage` |
+| `@antresol/addon-sdk` | `registerAddon`, `addonApi`, `ApiError`, `useAddonT`, `useUser`, `useEvents`, `ui`, `Icon`, `core`, `formatSize`, `formatRate`, `formatPercent`, `locale`, `useIsCompact`, `ViewMenu`, `ViewToolbar`, `useUrlView`, `useMediaSegments`, `MEDIA_SEGMENTS`, `mediaSegmentIcon`, `mediaSegmentOf`, `mediaKindIcon`, `DownloadButton`, `WatchButton`, `cardHref`, `titlePath`, `KIND_ICON`, `kindLabel`, `useDebounced`, `PendingOverlay`, `useWatchWay`, `useWatchWays`, `MigratePage`, `yieldSession`, `Chip`, `Chips`, `clock`, `langBadge`, `langCode`, `languageName` |
 
 The same names, one module per line (`<module>: <names>`, a module may
 take several lines), as the SDK's Vite plugin lists them (`SHARED`); the
@@ -1790,11 +2037,12 @@ react: useReducer, useRef, useState, useSyncExternalStore, useTransition, versio
 react/jsx-runtime: Fragment, jsx, jsxs
 react-dom: createPortal
 react-router: Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType, useParams, useSearchParams
-@antresol/addon-sdk: ApiError, DownloadButton, Icon, KIND_ICON, MEDIA_SEGMENTS, MigratePage, PendingOverlay
-@antresol/addon-sdk: ViewMenu, ViewToolbar, WatchButton, addonApi, cardHref, core, formatPercent, formatRate
-@antresol/addon-sdk: formatSize, kindLabel, locale, mediaKindIcon, mediaSegmentIcon, mediaSegmentOf, registerAddon
-@antresol/addon-sdk: titlePath, ui, useAddonT, useDebounced, useEvents, useIsCompact, useMediaSegments, useUrlView
-@antresol/addon-sdk: useUser, useWatchWay
+@antresol/addon-sdk: ApiError, Chip, Chips, DownloadButton, Icon, KIND_ICON, MEDIA_SEGMENTS, MigratePage
+@antresol/addon-sdk: PendingOverlay, ViewMenu, ViewToolbar, WatchButton, addonApi, cardHref, clock, core
+@antresol/addon-sdk: formatPercent, formatRate, formatSize, kindLabel, langBadge, langCode, languageName, locale
+@antresol/addon-sdk: mediaKindIcon, mediaSegmentIcon, mediaSegmentOf, registerAddon, titlePath, ui, useAddonT
+@antresol/addon-sdk: useDebounced, useEvents, useIsCompact, useMediaSegments, useUrlView, useUser, useWatchWay
+@antresol/addon-sdk: useWatchWays, yieldSession
 ```
 
 The SDK (`@antresol/addon-sdk`):
@@ -1819,18 +2067,70 @@ The SDK (`@antresol/addon-sdk`):
 - `useAddonT(id)`: `t(key, vars?)` over the addon's `strings`, in the
   interface language; `{name}` in a string takes `vars.name`; a missing key
   shows itself.
-- `useUser()`: who is signed in, `{ id, name, isAdmin, isKid, lang }`
+- `useUser()`: who is signed in, `{ id, name, isAdmin, isKid, lang, remote }`
   (`name`: the profile's name, as the addon's own answers name their
-  authors; `lang`: the interface language), or `null` before a sign-in.
+  authors; `lang`: the interface language; `remote`: this device is
+  outside the home network, as `GET /api/me` says), or `null` before a
+  sign-in.
 - `useWatchWay()`: the «Смотреть ▾» way the signed-in profile chose last
-  (`online`, or an addon way's id `<addonId>:<label>`), read only and live:
+  (an addon way's id `<addonId>:<label>`), read only and live:
   the component re-renders when the profile chooses another way, on this
   page or in another tab. `null` when none was chosen, before a sign-in, or
   for a kid. The core keeps the choice; an addon never stores it itself.
+- `useWatchWays({ kind, tmdbId, title, poster? })`: the «Смотреть ▾» ways
+  of **every** addon the profile has for that title (`kind` `movie` or
+  `series`), as `WatchWay`s (`{ id, label, run }`, ids `<addonId>:<label>`,
+  in addon id order), for an addon's own rows of titles (its search
+  results' «Смотреть ▾», say). They are the `itemActions` entries with
+  `watchWay: true`, with `visible` and `useAvailable` applied as on a
+  title's page (the `item` they get is the title outside the library,
+  `item.id` `0`); a way whose `useAvailable` still asks is not in the list
+  yet and joins it when it answers `true`. The calling addon's own entries
+  are among them: leave out those it draws itself. An element a way's `run`
+  returns is drawn by the app until `close()`; text it says shows in the
+  app's notice. `[]` for a kid and before a sign-in. A way's `useAvailable`
+  runs in a component the app draws in its own shell, not inside the
+  caller's component tree: it sees none of the caller's own React context
+  (a provider of the addon, say), only the app's and what the addon's
+  module reaches itself (its own stores, `addonApi`).
 - `useEvents(handler, types?)`: the app's events, e.g.
   `['addon.<id>.ping']`.
 - `ui`: the app's components (`ui.Button`, `ui.Notice`, `ui.Card`, …),
   **best effort** (see Versioning); `Icon` and its names.
+  `ui.Badges({ items, className?, inline? })` draws badges as a list, or
+  with `inline` as spans (inside a button or a label).
+- `ui.Player`: the core's full-window video player, behind `React.lazy`:
+  its code (and hls.js) loads on its first render, never with the app or
+  with the addon's bundle, so render it inside a `Suspense` (a
+  `fullWindow` route already is one). It plays one or more parts
+  (`parts: MediaFile[]`, `startSec`, `title`, `subtitle?`, `artwork?`,
+  `onClose`, `next?: UpNext`, `topActions?`, `overlay?`, `overlayOpen?`,
+  `suspendKeys?`; `type PlayerProps`). For a source of the addon's own,
+  pass `start(part, request)` and `stream` (`StreamPlayback`):
+  - `start` gets a `PlayRequest` (`caps`, `startSec`, `quality`: the
+    source quality, `replaceSession?`, `refresh?`: a re-play after a stale
+    link, to resolve fresh) and answers a `PlayResponse` with `mode:
+    'stream'`, `kind` (`hls` or `mp4`), `url` (the addon's proxy path,
+    `/api/addons/<id>/x/…`), `session` (handed to `stop`), `startSec`,
+    `audio`, `audioIndex`, `subtitles` and optionally `quality`
+    (`StreamQualityInfo`: `{ options, current }`, the player's «Качество»
+    menu). Whatever mode the answer names, the player plays it as a
+    stream: the whole video from 0, every seek local, no heartbeat.
+  - `stream` = `{ stop(session, keepalive?), initialQuality?,
+    saveProgress(positionMs, durationMs, keepalive), onOtherSource(),
+    onQuality?(q) }`. A `410` on the stream (or no first frame for 90 s, a
+    stall) plays it again with `refresh` at the same place, at most twice
+    in 5 minutes; then the player says «Источник не отвечает» and offers
+    «Другой источник» (`onOtherSource`) and another quality.
+  - The player does not stop the music: call `yieldSession()` when the
+    page opens.
+- `yieldSession()`: pauses the music and hands the system media controls
+  back (a page that plays its own video).
+- `Chip` and `Chips` (and `type ChipProps`): the app's pill choices, a
+  radio group or toggles (**best effort**, like `ui`).
+- The player's helpers: `clock(sec)` («1:02:03»), `langBadge(lang)` (a
+  track's short badge, «RU»), `langCode(lang)` (`ru`; '' when unknown),
+  `languageName(lang)` (in the interface language).
 - `core`: read helpers of the core's own API — `core.getItem(id, signal?)`
   (a library item, as the app's item page reads it), `core.getTitle(kind,
   tmdbId, signal?)` (a movie's or series' page outside the library, as
@@ -1890,7 +2190,8 @@ The SDK (`@antresol/addon-sdk`):
   `TitleEpisode`, `EpisodeSource`, `EpisodeCtx`, `EpisodePlay`,
   `MediaSegment`, `ViewSpec`, `MigrateApi`, `MigrateFullApi`,
   `MigrateCtx`, `MigrateProps`, `MigrateReport`, `MigrateText`, `SourceMeta`,
-  `ImportJob`, `ImportService`.
+  `ImportJob`, `ImportService`, `PlayerProps`, `StreamPlayback`, `UpNext`,
+  `MediaFile`, `PlayRequest`, `PlayResponse`, `StreamQualityInfo`.
 
 ### Slots
 
@@ -1921,9 +2222,9 @@ registerAddon('hello', {
 
 | Slot | What the app does with it |
 | --- | --- |
-| `routes` | a page inside the app's shell at `/addons/<id>/<path>`; `title` is the window's title. A path may hold `:name` segments (`sources/:sourceId/edit`): each takes one segment of the address, percent-decoded (an encoded `/` reads as `/` in the value), and the page gets the values as `useParams()` (the shared `react-router`; the app's own `addonId` and `*` are there too) and as the `params` prop of its element (`element({ params })`, `AddonRouteProps`, a plain object of strings), so a page written against react-router's `useParams()` needs no change. A path with no `:name` matches as it is, any number of slashes at either end of the path or the address aside; letter case counts (in the addon's id and its paths; only the app's own `/addons/` before them is case-insensitive); of several routes that fit an address the first registered wins. A route path is read as react-router's `matchPath` pattern: `*` at the end takes the rest of the address and `:name?` makes a segment optional (its value is then absent); an addon's own `*` is what its `useParams()` gives, over the app route's. An address that fits none shows the plain «not here» screen. A path must not be `ui` or start with `ui/` (that is where the bundle is served): such a route is dropped with a console warning. |
+| `routes` | a page inside the app's shell at `/addons/<id>/<path>`; `title` is the window's title. A path may hold `:name` segments (`sources/:sourceId/edit`): each takes one segment of the address, percent-decoded (an encoded `/` reads as `/` in the value), and the page gets the values as `useParams()` (the shared `react-router`; the app's own `addonId` and `*` are there too) and as the `params` prop of its element (`element({ params })`, `AddonRouteProps`, a plain object of strings), so a page written against react-router's `useParams()` needs no change. A path with no `:name` matches as it is, any number of slashes at either end of the path or the address aside; letter case counts (in the addon's id and its paths; only the app's own `/addons/` before them is case-insensitive); of several routes that fit an address the first registered wins. A route path is read as react-router's `matchPath` pattern: `*` at the end takes the rest of the address and `:name?` makes a segment optional (its value is then absent); an addon's own `*` is what its `useParams()` gives, over the app route's. An address that fits none shows the plain «not here» screen. With **`fullWindow: true`** the route covers the whole window like the app's own players, outside the shell (no navigation, no mini player): for a player page, rendering `ui.Player`. The app remembers on the device which paths of an addon are `fullWindow`, so a cold load of one (a reload mid-play) draws the player's black screen, not the shell, until the bundle registers. Kids get no route of any kind (they are sent to the home page). A path must not be `ui` or start with `ui/` (that is where the bundle is served): such a route is dropped with a console warning. |
 | `manageTiles` | a tile in «Управление»; `to` is a route path of the addon (relative) or an app path starting with `/` |
-| `itemActions` | a round button among the actions of an item's page (a film, a series). `visible(item)` hides it; `run(item, close)` runs on a press. A string `run` returns (or resolves to) shows in a notice under the actions; a throw shows as a failure there. An element `run` returns (not a promise of one) is drawn by the app — make it a sheet, `ui.Sheet` with `onCancel: close` — until the addon calls `close()`, or the page moves to another item; one at a time (a new one takes the last one's place, and an old `close` then closes nothing); an element that throws is removed and the failure shows under the actions. With **`watchWay: true`** the entry is no button: it is a way of the page's «Смотреть ▾» (beside the online ways; its way id, which the app remembers per profile as the chosen way, is `<id>:<label>`), and its `run` works the same. |
+| `itemActions` | a round button among the actions of an item's page (a film, a series). `visible(item)` hides it; `run(item, close)` runs on a press. A string `run` returns (or resolves to) shows in a notice under the actions; a throw shows as a failure there. An element `run` returns (not a promise of one) is drawn by the app — make it a sheet, `ui.Sheet` with `onCancel: close` — until the addon calls `close()`, or the page moves to another item; one at a time (a new one takes the last one's place, and an old `close` then closes nothing); an element that throws is removed and the failure shows under the actions. With **`watchWay: true`** the entry is no button: it is a way of the page's «Смотреть ▾» (beside the online ways; its way id, which the app remembers per profile as the chosen way, is `<id>:<label>`), and its `run` works the same. **`useAvailable(t)`** (optional, a watch way's) is a hook: whether the way is offered for the title `t` = `{ kind, tmdbId, itemId }` (`kind` `movie` or `series`; `itemId` `0` for a title outside the library): `true` offered, `false` not, `null` still asking, so not offered yet. The app calls it in a component of its own per entry, so it may use hooks (keep their order); while it asks, the page is drawn without the way and the «Смотреть ▾» menu gains it when it answers `true` (nothing else on the page moves). One that throws hides only its way. On another kind of item a way with `useAvailable` is not offered. A page opened with **`?way=<addonId>:<label>`** (a title's or an item's) runs that way once, as soon as it is offered (it waits for a `useAvailable` that still asks), and the parameter then leaves the URL; it does not change the remembered way. |
 | `playerNotes` | a note under the player's spinner while one of **this addon's** inputs (`/play/input/<id>`) loads or rebuffers, in place of «Загружается…». `element({ input })` gets the input as `GET /api/play/input/{id}` answers it (`PlayerInput`: `id`, `addonId`, `name`, `itemId`, `title?`, `slow`, `meta?`, `startSec`); other addons' notes are not shown there. Several notes show one after another. A note that throws is replaced by nothing, except the addon's first note, whose place shows the plain «Загружается…»; the other notes still show. Two optional fields: `actions({ input })`, buttons the player shows at its top while the input plays; `useProgress(input)`, a hook the app calls (in a component of its own per note) that answers how far the source has got: the player keeps waiting while it grows. |
 | `navBadges` | a count beside the app's navigation (the top bar's trailing group, the compact bar on phones): `{ to, icon, label, useCount }`. `useCount()` is a hook; at 0 the badge is hidden, above 99 it reads `99+`. `label` is a key whose string takes `{count}` (one wording for every count: «Ждут: {count}»). |
 | `searchBlocks` | a block «Поиск» shows under the library's results: `element({ q, scope, text, nothing })` — the query as searched, the page's filter (`all`, `movies`, `series`, `music`, `books`, `audiobooks`, `comics`), the field's text as typed, and whether the library found nothing. A profile with at least one search block **can add** titles from outside the library: «Поиск» and the empty library pages then say so. |
@@ -1931,8 +2232,8 @@ registerAddon('hello', {
 | `requestActions` | what «Одобрить» opens for a kid's request in «Управление → Просьбы»: `{ visible?(request), element({ request, onClose, onApproved }) }`, for a request of any kind (a movie, a series, an album, a book…). The first entry whose `visible` says yes (or that has none) is drawn as the sheet; `onApproved()` once it approved the request (the server took what the admin picked), `onClose()` to close it with nothing approved. With none, «Одобрить» approves at once; when the sheet throws, the request stays waiting and the page shows an error (nothing is approved). |
 | `statsBlocks` | a block of «Управление → Статистика»: `element()` |
 | `itemPanels` | a panel under the action row of an item's page and of a title's page (a movie or series outside the library): `element({ item, title? })`. On a title's page `item.id` is `0`, `item.tmdbId` is the title's and `title` is the page's `TitleInfo` (an `itemActions` entry gets the same `item` there). A panel that throws is drawn as nothing. |
-| `episodeActions` | how the episode guide plays sources of the addon's own kinds: `{ kinds, labels?, order?, use(ctx) }`. `use` is a **hook**: the app calls it in a component of its own for each entry, once per guide, with `ctx` = `EpisodeCtx` (`kind`, `tmdbId`, `title`, `poster?`, `episodes`, `choice?`), and draws the answer's `node` (its sheets). The answer, an `EpisodePlay` (`play(episode, source)`, `other(episode)` for «Другие источники…», `download?(episode, source)`, `prefer?`, `node`) or `null` (nothing to offer now), serves the rows whose source `kind` is one of `kinds`. An entry registered after the guide is drawn joins it; one that throws drops out (its kinds play nothing), the guide stays. A title's page whose «Смотреть» plays the guide's next episode calls the same entries (its own `use` call) for a source of those kinds. The core's own kinds `library` and `online` are never an entry's: the app drops them from `kinds` (with a console warning), and an entry left with none is dropped. Optional, per kind: `labels` (`{ [kind]: key }`, a key of the addon's `strings`: the kind's name in the guide's badges and the source sheet; without one the kind shows as itself) and `order` (`{ [kind]: number }`, a number **> 0**: where its sources sort, on the core's scale `library` 0, `online` 20, so the library's own file always ranks first; an order of 0 or below is dropped with a console warning, and without one the kind sorts last). The first entry that names a kind's label or order wins; a kid's guide has no entries, so it shows the raw kind (it plays the library only). |
-| `playerTrackActions` | a row of the player's track menu while a library movie or episode plays (never during online playback): `{ label, icon?, visible?(item), run(item, close) }`, `item` = `TrackActionItem` (`id`, `title`, `kind`: the movie, or the series of an episode). An element `run` returns is drawn over the player until `close()`, as an item action's; a `ui.Sheet` in it mounts inside the player, so it shows in full screen too. |
+| `episodeActions` | how the episode guide plays sources of the addon's own kinds: `{ kinds, labels?, order?, use(ctx) }`. `use` is a **hook**: the app calls it in a component of its own for each entry, once per guide, with `ctx` = `EpisodeCtx` (`kind`, `tmdbId`, `title`, `poster?`, `episodes`, `choice?`), and draws the answer's `node` (its sheets). The answer, an `EpisodePlay` (`play(episode, source)`, `other(episode)` for «Другие источники…», `download?(episode, source)`, `prefer?`, `node`) or `null` (nothing to offer now), serves the rows whose source `kind` is one of `kinds`. An entry registered after the guide is drawn joins it; one that throws drops out (its kinds play nothing), the guide stays. A title's page whose «Смотреть» plays the guide's next episode calls the same entries (its own `use` call) for a source of those kinds. The core's own kind `library` is never an entry's: the app drops it from `kinds` (with a console warning), and an entry left with none is dropped. Optional, per kind: `labels` (`{ [kind]: key }`, a key of the addon's `strings`: the kind's name in the guide's badges and the source sheet; without one the kind shows as itself) and `order` (`{ [kind]: number }`, a number **> 0**: where its sources sort, on a scale where the core's `library` is 0, so the library's own file always ranks first; an order of 0 or below is dropped with a console warning, and without one the kind sorts last: kinds without an `order` rank alike: the better quality first, then the order the server listed the sources in). The first entry that names a kind's label or order wins; a kid's guide has no entries, so it shows the raw kind (it plays the library only). |
+| `playerTrackActions` | a row of the player's track menu while a library movie or episode plays (never while a stream plays): `{ label, icon?, visible?(item), run(item, close) }`, `item` = `TrackActionItem` (`id`, `title`, `kind`: the movie, or the series of an episode). An element `run` returns is drawn over the player until `close()`, as an item action's; a `ui.Sheet` in it mounts inside the player, so it shows in full screen too. |
 | `profileMenu` | an entry of the profile menu: `{ label, icon, to, visible?(user) }`, `to` as `manageTiles`' (relative to `/addons/<id>/`, or an app path); `visible(user)` (the signed-in profile, as `GET /api/me` answers it) hides it; one that throws hides only its own entry. |
 | `migrateSources` | a card of «Управление → Переезд» that opens the addon's own migration page: `{ id, name, icon, to, summary? }`; `to` is an app path starting with `/`, else relative to `/addons/<id>/`; `summary()` is drawn under the name inside the card's link, so it is **text only** (what waits there, say: no buttons or links), and one that throws is drawn as nothing. The cards stand after the core's own services. |
 | `importSources` | the way in of «Управление → Импорт» while the server lists import services (`GET /api/import/services`, from `import.services`): `{ element(props) }`, props `ImportSourcesProps` = `{ services, onFiles(files), uploading, onJob(job), onStart(), onProblem(text) }`: `onFiles` uploads files as the file import does, `onJob` shows a job the element started (a sign-in's reading job), `onStart` clears the page's problem and notice, `onProblem` says one over the page. The first entry is drawn in place of the file import; while the app is still loading the profile's addons, the page waits for it. With no service listed, none registered, or when it throws, the file import stays. |
@@ -1991,15 +2292,6 @@ Planned for later releases, none served by this server yet; an addon
 must not rely on any of them until this document describes it in place,
 and Versioning's rules hold for each when it lands:
 
-- **Watch progress for addons**: a core API read and a write of a profile's
-  progress (with a `progress` permission) and a `library.afterScan` hook after a
-  library scan.
-- **Addon cards on the home screen**: a `home.continue` hook whose cards
-  join «Продолжить».
-- **The app's player for addons**: `ui.Player` and full-window addon
-  routes.
-- **Ways across addons**: `useAvailable` on an item action and the
-  «Смотреть ▾» ways of every addon.
 - **File roots declared by addons**: a core API route `/files/roots`, the
   roots also in `/info`.
 
@@ -2032,7 +2324,10 @@ contract yourself; it adds nothing the contract does not say.
   `ImportServicesAnswer`, `ImportStopRequest`, `ImportResolveRequest`,
   `ImportResolveAnswer`, `ImportSearchRequest`, `ImportCandidate`,
   `ImportSearchAnswer`, `LeftoversRequest`, `LeftoverLine`,
-  `LeftoversAnswer`, …), camelCase.
+  `LeftoversAnswer`, `ProgressEntry`, `ProgressSave`, `EpisodeItem`,
+  `ContinueAnswer`, `ContinueCard`, `ChannelReady`, `ChannelRules`,
+  `ChannelCandidates`, `ChannelCandidatesAnswer`, `ChannelTitle`,
+  `ChannelResolve`, `ChannelStream`, `ChannelRelease`, …), camelCase.
 - **Environment.** `FromEnv()` reads the variables of [The
   process](#the-process) into `Env` (`ID`, `DataDir`, `Socket`, `CoreURL`,
   `Token`, `Locale`, `Contract`); it fails without `ANTRESOL_ADDON_SOCKET`
@@ -2041,10 +2336,10 @@ contract yourself; it adds nothing the contract does not say.
 - **Core API.** `NewClient(env)` calls the core API v1 with the token: one
   method per call of the table (`Info`, `Event`, `Item`, `ItemFiles`,
   `ItemByTMDB`, `ItemIDsByTMDB`, `FindTitle`, `FindAlbum`,
-  `FindAlbumByMBID`, `FindBook`, `HaveEpisodes`, `SeriesFolder`,
+  `FindAlbumByMBID`, `FindBook`, `HaveEpisodes`, `EpisodeItems`, `SeriesFolder`,
   `SeriesAudio`, `AlbumDir`, `AlbumTracks`, `FilesUnder`, `FileByPath`,
   `FileByID`, `FilePaths`, `SearchTitles`, `RefFiles`, `TracksOfRef`,
-  `Users`, `Watched`, `Studios`, `Import`,
+  `Users`, `Watched`, `Progress`, `SaveProgress`, `Studios`, `Import`,
   `BindRef`, `UnbindRef`, `BindRefs`, `ClaimOwner`, `CacheImage`,
   `PutHolds`, `Holds`, `RegisterInput`, `DropInput`, `Notify`, `ApproveRequests`,
   `EnsureTitle`, `TitleByTMDB`, `TitleByID`, `KickTitle`, `TitleEpisodes`,
@@ -2060,9 +2355,9 @@ contract yourself; it adds nothing the contract does not say.
   `Message` from `{"error"}`); the lookups that return `ok` (`ItemByTMDB`,
   the `Find…`, `FileByPath`, `FileByID`, `TitleByTMDB`, `TitleByID`, `FitState`, `ImportJob`) take a 404 as `ok == false`,
   the import claims (`MoveImportGroup`, `StartImportGroup`, `FailImportJob`) a 409 as `ok == false`
-  (`IsConflict` tells one), and `HaveEpisodes`
-  of a series the library lacks is empty. `ItemIDsByTMDB` takes any number
-  of ids (500 per call), `Watched` too (500 per list per call). A call times out after 30 s, `FilePaths` after
+  (`IsConflict` tells one), and `HaveEpisodes` and `EpisodeItems`
+  of a series the library lacks are empty. `ItemIDsByTMDB` takes any number
+  of ids (500 per call), `Watched` and `Progress` too (500 per list per call). A call times out after 30 s, `FilePaths` after
   5 minutes, `Import` after 30 (a scan takes minutes); a context with an
   earlier deadline wins. Redirects are not followed. For the metadata
   pass-through, `MetadataBase(source)` is the source's root and

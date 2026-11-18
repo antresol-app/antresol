@@ -70,10 +70,16 @@ type User struct {
 	// it ([] when there are none; nil in the X-Antresol-User header).
 	Languages []string `json:"languages"`
 	// MaxRating is the profile's rating limit ("0+" … "18+"; "" = none)
-	// as the server's own gate applies it: only the X-Antresol-User header
-	// carries it. A video title or item whose rating is unknown or above
-	// it is hidden from the profile.
+	// as the server's own gate applies it: the X-Antresol-User header and
+	// GET /users carry it. A video title or item whose rating is unknown
+	// or above it is hidden from the profile.
 	MaxRating string `json:"maxRating,omitempty"`
+	// MaxHeight is the height in pixels «Качество вне дома» caps playback
+	// at (1080, 720, 480) for a request from outside the home network;
+	// 0 (absent) at home, when that setting is «Оригинал», and on calls
+	// not made for an app's request. Only the X-Antresol-User header
+	// carries it. An addon serving video plays no rendition taller.
+	MaxHeight int `json:"maxHeight,omitempty"`
 }
 
 // Text is a user-facing string in both interface languages.
@@ -155,6 +161,43 @@ type ProfileVoice struct {
 	UserID     int64     `json:"userId"`
 	AudioTitle string    `json:"audioTitle"`
 	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// EpisodeItem is the library item of one episode of a series (EpisodeItems,
+// GET /library/series/{tmdbId}/episode-items, permission library.read): the
+// episode item that holds the file of season Season, episode Episode. Two
+// episodes of one multi-episode file share its ItemID.
+type EpisodeItem struct {
+	Season  int   `json:"season"`
+	Episode int   `json:"episode"`
+	ItemID  int64 `json:"itemId"`
+}
+
+// ProgressEntry is a profile's watch progress of one movie or episode
+// (Progress, GET /progress, permission progress): where it stopped, the
+// duration known when it did, whether it counts as watched (from 92% of a
+// known duration, or marked so), and when the position was recorded.
+type ProgressEntry struct {
+	PositionMs int64     `json:"positionMs"`
+	DurationMs int64     `json:"durationMs"`
+	Watched    bool      `json:"watched"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// ProgressSave is a profile's position in one movie or episode
+// (SaveProgress, PUT /progress, permission progress). At is when the
+// position was reached (zero: now); the core ignores a position older than
+// the one it keeps, and refuses one more than 5 minutes ahead of its clock.
+// Played says the position is a player's report, so the time played since
+// the last one counts in the profile's watch time; false for a position
+// copied from elsewhere.
+type ProgressSave struct {
+	UserID     int64     `json:"userId"`
+	ItemID     int64     `json:"itemId"`
+	PositionMs int64     `json:"positionMs"`
+	DurationMs int64     `json:"durationMs"`
+	At         time.Time `json:"at,omitzero"`
+	Played     bool      `json:"played"`
 }
 
 // Info describes the core to an addon.
@@ -322,6 +365,125 @@ type PendingState struct {
 	Href   string `json:"href,omitempty"`
 }
 
+// ContinueAnswer is the home.continue hook's answer (its body is {}: the
+// profile is the X-Antresol-User header's).
+type ContinueAnswer struct {
+	Cards []ContinueCard `json:"cards"`
+}
+
+// ContinueCard is a title the profile was watching through the addon, for
+// «Продолжить» on Home. Key is the addon's own (the core namespaces it
+// "addon:<id>:<key>"); a card without one is dropped. Kind is "movie" or
+// "series" (another kind is dropped) and TMDBID its TMDB id. Rating is the
+// title's age rating ("" = unknown): the core uses its own item's when the
+// library has the title (Kind and TMDBID), else this one, and drops a card
+// above the profile's limit, or an unrated one for a limited profile.
+// Poster is an image name POST /images gave (any other value becomes "").
+// Progress is 0..1, ResumeSec where to resume; Season and Episode the
+// episode of a series. Href is the app page the card opens ("/…", never
+// another site; another value is dropped). UpdatedAt is when the profile
+// last watched it: the core merges the cards with its own by it.
+type ContinueCard struct {
+	Key       string    `json:"key"`
+	Kind      string    `json:"kind"`
+	TMDBID    int64     `json:"tmdbId"`
+	Title     string    `json:"title"`
+	Subtitle  string    `json:"subtitle"`
+	Year      int       `json:"year"`
+	Poster    string    `json:"poster"`
+	Rating    string    `json:"rating"`
+	Progress  float64   `json:"progress"`
+	ResumeSec float64   `json:"resumeSec"`
+	Season    int       `json:"season"`
+	Episode   int       `json:"episode"`
+	Href      string    `json:"href"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ChannelReady answers channels.ready (its body is {}): whether the addon
+// can find and play titles outside the library for «ТВ» channels now.
+type ChannelReady struct {
+	Ready bool `json:"ready"`
+}
+
+// ChannelRules are the rules of a channel whose «titles outside the
+// library» are on, as the core sends them in channels.candidates: titles
+// of any of Genres (display names, either language; none: any), made
+// from YearFrom to YearTo (0: open), in any of Countries (ISO 3166-1),
+// Languages (ISO 639-1, the original language) and Keywords (TMDB's,
+// English, lower case), within MaxRating (the channel's age limit, ""
+// none).
+type ChannelRules struct {
+	Genres    []string `json:"genres"`
+	YearFrom  int      `json:"yearFrom"`
+	YearTo    int      `json:"yearTo"`
+	Countries []string `json:"countries"`
+	Languages []string `json:"languages"`
+	Keywords  []string `json:"keywords"`
+	MaxRating string   `json:"maxRating"`
+}
+
+// ChannelCandidates is the body of channels.candidates: up to Limit
+// titles for Rules that the library does not have.
+type ChannelCandidates struct {
+	Rules ChannelRules `json:"rules"`
+	Limit int          `json:"limit"`
+}
+
+// ChannelCandidatesAnswer answers channels.candidates.
+type ChannelCandidatesAnswer struct {
+	Titles []ChannelTitle `json:"titles"`
+}
+
+// ChannelTitle is a title from outside the library a channel may play.
+// Key is the addon's own stable identity of it (the core namespaces it
+// "addon:<id>:<key>" and sends it back bare in channels.resolve). Kind is
+// "movie" (the default) or "episode"; TMDBID the movie's, or the series'
+// for an episode (Season, Episode). Overview, Rating (the age rating, ""
+// unknown) and Genres (display names) are in the server's metadata
+// language; Poster and Backdrop TMDB image paths ("/abc.jpg"). RuntimeMs
+// is how long it lasts in the schedule (a title without one is dropped).
+// The core rates it with its own item's rating when the library has it.
+type ChannelTitle struct {
+	Key       string   `json:"key"`
+	Kind      string   `json:"kind"`
+	TMDBID    int64    `json:"tmdbId"`
+	Title     string   `json:"title"`
+	Year      int      `json:"year"`
+	Overview  string   `json:"overview"`
+	Rating    string   `json:"rating"`
+	Genres    []string `json:"genres"`
+	Poster    string   `json:"poster"`
+	Backdrop  string   `json:"backdrop"`
+	RuntimeMs int64    `json:"runtimeMs"`
+	Season    int      `json:"season"`
+	Episode   int      `json:"episode"`
+}
+
+// ChannelResolve is the body of channels.resolve: a stream of Title for
+// channel ChannelID, shortly before it airs.
+type ChannelResolve struct {
+	ChannelID int64        `json:"channelId"`
+	Title     ChannelTitle `json:"title"`
+}
+
+// ChannelStream answers channels.resolve: Path is a route on the addon's
+// socket (an HLS playlist, whose relative URIs stay under its folder, or
+// a file) the core reads through its loopback relay, sending Headers with
+// every request to the addon.
+type ChannelStream struct {
+	Path    string            `json:"path"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// ChannelRelease is the body of channels.release: the stream the relay
+// read as Token (the X-Antresol-Relay header of its requests) and opened
+// for Path is over, or was never played.
+type ChannelRelease struct {
+	Token string `json:"token"`
+	Path  string `json:"path"`
+}
+
 // DiskUsage answers the disk.usage hook: the addon's segments of the disk
 // meter.
 type DiskUsage struct {
@@ -431,8 +593,8 @@ type TrackingEpisode struct {
 }
 
 // TrackingSource is a place where an episode of a tracked title can be
-// watched or got. Kind is library, online, or a scanner kind an addon
-// declares; Ref is unique per title, kind, season and episode.
+// watched or got. Kind is library, or a scanner kind an addon declares
+// (online's is one); Ref is unique per title, kind, season and episode.
 type TrackingSource struct {
 	TitleID   int64              `json:"titleId"`
 	Season    int                `json:"season"`
@@ -449,8 +611,8 @@ type TrackingSource struct {
 
 // TrackingSourceMeta is what a source offers beyond provider and quality.
 // ItemID and FileID name the library item and file of a library source;
-// SourceID is the id an addon's scanner gave it; Provider the online
-// balancer; Voice the voice-over or first studio; Lang the audio language
+// SourceID is the id an addon's scanner gave it; Provider the provider
+// the addon named; Voice the voice-over or first studio; Lang the audio language
 // (ISO 639-1, "" when unknown); Audio Dub, MVO, AVO, Original or "";
 // FileIndex the index of the episode's file within an addon's source.
 type TrackingSourceMeta struct {

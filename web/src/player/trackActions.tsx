@@ -1,5 +1,5 @@
 // The addons' rows of the player's track menu (`playerTrackActions`): for
-// a library movie, or the series of an episode — never during online
+// a library movie, or the series of an episode — never during a stream's
 // playback (the player passes no item then) and never for a kid
 // (useAddonSlot). A row whose visible() throws is left out; an element a
 // run returns is drawn over the player until it closes (one that throws on

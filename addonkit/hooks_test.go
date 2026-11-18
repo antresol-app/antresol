@@ -177,6 +177,39 @@ func TestUserFrom(t *testing.T) {
 
 // The rating limit: read from the header, absent or null = none, and
 // left out of the JSON when there is none (round trip).
+// The remote quality cap: read from the header, absent = none, and left
+// out of the JSON when there is none (round trip).
+func TestUserFrom_MaxHeight(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/x", nil)
+	for h, want := range map[string]int{
+		`{"id":3,"name":"G","maxHeight":720}`:  720,
+		`{"id":3,"name":"G","maxHeight":null}`: 0,
+		`{"id":3,"name":"G"}`:                  0,
+	} {
+		r.Header.Set("X-Antresol-User", h)
+		if u, ok := UserFrom(r); !ok || u.MaxHeight != want {
+			t.Errorf("%s: %+v %v", h, u, ok)
+		}
+	}
+	for _, c := range []struct {
+		u    User
+		want string
+	}{{User{ID: 3, MaxHeight: 480}, `"maxHeight":480`}, {User{ID: 4}, ""}} {
+		u, want := c.u, c.want
+		b, err := json.Marshal(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back User
+		if err := json.Unmarshal(b, &back); err != nil || back.MaxHeight != u.MaxHeight {
+			t.Errorf("round trip %s: %+v %v", b, back, err)
+		}
+		if want == "" && strings.Contains(string(b), "maxHeight") || want != "" && !strings.Contains(string(b), want) {
+			t.Errorf("json %s", b)
+		}
+	}
+}
+
 func TestUserFrom_MaxRating(t *testing.T) {
 	r := httptest.NewRequest("GET", "/api/x", nil)
 	for h, want := range map[string]string{
@@ -304,5 +337,72 @@ func TestHookMuxAnswer(t *testing.T) {
 		if rec := ask(); rec.Code != 500 || errorOf(t, rec) == "" {
 			t.Fatalf("%d without a body: %d %q", st, rec.Code, rec.Body)
 		}
+	}
+}
+
+// library.afterScan: no profile, body {}, and nothing to answer (204).
+func TestHookMux_AfterScan(t *testing.T) {
+	m := &HookMux{}
+	var calls int
+	var gotUser *User
+	var gotIn string
+	m.Handle("library.afterScan", func(_ context.Context, u *User, in json.RawMessage) (any, error) {
+		calls++
+		gotUser, gotIn = u, string(in)
+		return nil, nil
+	})
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, hookReq("library.afterScan", `{}`, ""))
+	if rec.Code != 204 || calls != 1 || gotUser != nil || gotIn != `{}` {
+		t.Fatalf("%d, %d calls, user %v, body %q", rec.Code, calls, gotUser, gotIn)
+	}
+}
+
+// home.continue: the profile in the header, body {}, the cards back as 200.
+func TestHookMux_HomeContinue(t *testing.T) {
+	m := &HookMux{}
+	var gotUser *User
+	var gotIn string
+	m.Handle("home.continue", func(_ context.Context, u *User, in json.RawMessage) (any, error) {
+		gotUser, gotIn = u, string(in)
+		return ContinueAnswer{Cards: []ContinueCard{{Key: "k", Kind: "movie", TMDBID: 603, Title: "M"}}}, nil
+	})
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, hookReq("home.continue", `{}`, `{"id":2,"uid":"u2","name":"N","isAdmin":false,"isKid":false,"lang":"ru","maxRating":"12+"}`))
+	var a ContinueAnswer
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &a) != nil || len(a.Cards) != 1 || a.Cards[0].TMDBID != 603 {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if gotUser == nil || gotUser.ID != 2 || gotUser.MaxRating != "12+" || gotIn != `{}` {
+		t.Fatalf("user %+v, body %q", gotUser, gotIn)
+	}
+}
+
+// channels.*: hooks run for no profile (nil user), the bodies as JSON.
+func TestHookMux_Channels(t *testing.T) {
+	m := &HookMux{}
+	var gotUser *User = &User{}
+	var got ChannelCandidates
+	m.Handle("channels.candidates", func(_ context.Context, u *User, in json.RawMessage) (any, error) {
+		gotUser = u
+		if err := json.Unmarshal(in, &got); err != nil {
+			return nil, err
+		}
+		return ChannelCandidatesAnswer{Titles: []ChannelTitle{{Key: "k", Kind: "movie", TMDBID: 603, Title: "M", RuntimeMs: 1}}}, nil
+	})
+	m.Handle("channels.release", func(context.Context, *User, json.RawMessage) (any, error) { return nil, nil })
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, hookReq("channels.candidates", `{"rules":{"genres":["Драма"],"maxRating":"12+"},"limit":5}`, ""))
+	var a ChannelCandidatesAnswer
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &a) != nil || len(a.Titles) != 1 || a.Titles[0].Key != "k" {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if gotUser != nil || got.Limit != 5 || got.Rules.MaxRating != "12+" || len(got.Rules.Genres) != 1 {
+		t.Fatalf("user %+v, body %+v", gotUser, got)
+	}
+	rec = httptest.NewRecorder()
+	m.ServeHTTP(rec, hookReq("channels.release", `{"token":"t","path":"/x"}`, ""))
+	if rec.Code != 204 {
+		t.Fatalf("release %d", rec.Code)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -26,9 +27,10 @@ import (
 // failed). A reverse proxy on this host makes every request loopback, so
 // the token is what keeps the relay closed.
 
-// inputRelayHeaders are the addon's answer headers the relay passes on;
-// Content-Type comes from the part's name (inputType).
-var inputRelayHeaders = []string{"Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"}
+// inputRelayHeaders are the addon's answer headers the relay passes on:
+// the relays' own (addons.RelayHeaders) and the validators If-Range
+// needs; Content-Type comes from the part's name (inputType).
+var inputRelayHeaders = append(slices.Clone(addons.RelayHeaders), "Last-Modified", "ETag")
 
 // internalRequest: the token (both non-empty, compared in constant time)
 // from a loopback address (RemoteAddr only, never X-Forwarded-For).
@@ -86,8 +88,8 @@ func (p *inputPlay) relay(w http.ResponseWriter, r *http.Request, in addons.Inpu
 		writeErr(w, r, http.StatusNotFound, msgAddonNoInput)
 		return
 	}
-	rng := r.Header.Get("Range")
-	if strings.Contains(rng, ",") {
+	hdr, ok := addons.RelayRequestHeaders(r)
+	if !ok {
 		// a multipart answer would pass as the part's own type
 		if size > 0 {
 			w.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))
@@ -98,13 +100,6 @@ func (p *inputPlay) relay(w http.ResponseWriter, r *http.Request, in addons.Inpu
 	method := http.MethodGet
 	if r.Method == http.MethodHead {
 		method = http.MethodHead
-	}
-	hdr := http.Header{}
-	if rng != "" {
-		hdr.Set("Range", rng)
-	}
-	if ir := r.Header.Get("If-Range"); ir != "" {
-		hdr.Set("If-Range", ir)
 	}
 	resp, err := p.askPart(r.Context(), in, target, method, hdr)
 	if errors.Is(err, errInputNoProfile) {

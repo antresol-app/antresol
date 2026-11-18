@@ -26,7 +26,6 @@ func (*extras) close()                                 {}
 func (*extras) settingsDefaults() api.AppSettings      { return api.AppSettings{} }
 func (*extras) applySettings(api.AppSettings)          {}
 func (*extras) fileHooks(*files.ServiceConfig)         {}
-func (*extras) afterScan(context.Context)              {}
 func (*extras) notifyHooks(*notify.Service)            {}
 func (*extras) trackingHooks(*tracking.Service)        {}
 func (*extras) apiDeps(*api.Deps, *auth.Store) error   { return nil }

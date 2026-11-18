@@ -21,10 +21,8 @@ export interface CardProps {
 }
 
 export function cardHref(c: CardData) {
-  // «Продолжить просмотр» of an online title: id is 0, the TMDB id says what it is
-  if (!__LIBRARY_EDITION__ && c.online && c.tmdbId && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')) {
-    return onlineCardHref(c.tmdbKind, c.tmdbId, c.season ?? 0, c.episode ?? 0, c.resumeSec ?? 0)
-  }
+  // «Продолжить» from an addon: the page it names (the core checked it is the app's)
+  if (c.addonId && c.href) return c.href
   if (isTitleCard(c)) return titleCardHref(c)
   return itemHref(c.kind, c.id)
 }
@@ -40,7 +38,7 @@ function titleCardHref(c: CardData): string {
  * collection, «Вышло новое»): id 0, its core title page by tmdbKind and tmdbId.
  */
 export function isTitleCard(c: CardData): boolean {
-  return !(c.id > 0) && !c.online && !c.pending && !c.onServer && Boolean(c.tmdbId) && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')
+  return !(c.id > 0) && !c.pending && !c.onServer && Boolean(c.tmdbId) && (c.tmdbKind === 'movie' || c.tmdbKind === 'series')
 }
 
 /** Where a card of a title on its way leads: the page its addon names (D3); null: nowhere (not a link). */
@@ -48,26 +46,15 @@ export function pendingHref(c: CardData): string | null {
   return c.pending?.href ?? null
 }
 
-/** A stable key of a card in a row (online and pending cards all have id 0). */
+/** A stable key of a card in a row (the cards of titles outside the library all have id 0). */
 export const cardKey = (c: CardData) =>
-  !__LIBRARY_EDITION__ && c.online
-    ? `online-${c.tmdbKind}-${c.tmdbId}`
+  c.addonId && c.key
+    ? c.key
     : c.pending && !(c.id > 0)
       ? `pending-${c.pending.key}`
       : isTitleCard(c)
         ? `title-${c.tmdbKind}-${c.tmdbId}`
         : `${c.kind}-${c.id}`
-
-/** The online player's resume URL; kept here so the shelf does not load the player. */
-function onlineCardHref(kind: 'movie' | 'series', tmdbId: number, season: number, episode: number, resumeSec: number): string {
-  const q = new URLSearchParams()
-  if (kind === 'series') {
-    q.set('s', String(season))
-    q.set('e', String(episode))
-  }
-  if (resumeSec > 0) q.set('t', String(Math.floor(resumeSec)))
-  return `/online/${kind}/${tmdbId}${q.size ? `?${q}` : ''}`
-}
 
 /** The page of a library item of any kind (a film's detail, an album, a book…). */
 export function itemHref(kind: string, id: number) {
@@ -163,13 +150,12 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
         )}
         {pending ? (
           <PendingOverlay pending={pending} corner={!own} />
-        ) : !__LIBRARY_EDITION__ && card.online ? (
-          <span className={styles.chip}>{t('comp.card.online')}</span>
         ) : (
-          (!card.onServer || card.watched) && (
+          // an addon's card is no library title: no «Ещё не на сервере»
+          ((!card.onServer && !card.addonId) || card.watched) && (
             // the corner's badges side by side
             <span className={styles.corner} data-testid="card-corner">
-              {!card.onServer && (
+              {!card.onServer && !card.addonId && (
                 <span className={styles.badge} title={t('comp.card.notOnServer')}>
                   <Icon name="cloud" size={14} strokeWidth={2} />
                 </span>
@@ -212,7 +198,7 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
     )
   }
   return (
-    <Link to={href} state={!__LIBRARY_EDITION__ && card.online ? { title: card.title, poster: card.poster } : undefined} className={className}>
+    <Link to={href} className={className}>
       {body}
     </Link>
   )

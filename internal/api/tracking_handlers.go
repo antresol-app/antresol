@@ -447,7 +447,9 @@ func (h *lib) listMarks(w http.ResponseWriter, r *http.Request) {
 }
 
 // visibleFeed is the feed of the profile in the last days, behind its
-// rating gate, newest first, at most max items.
+// rating gate, newest first, at most max items. An item keeps only the
+// source kinds the profile may open (sourceKindsFor); one left with none
+// is not news for it.
 func (h *lib) visibleFeed(ctx context.Context, u auth.User, days, max int) ([]tracking.FeedItem, *trackGate, error) {
 	since := time.Now().AddDate(0, 0, -days)
 	items, err := h.Tracking.Store.Feed(ctx, u.ID, since, h.Tracking.WatchedBy())
@@ -455,10 +457,14 @@ func (h *lib) visibleFeed(ctx context.Context, u auth.User, days, max int) ([]tr
 		return nil, nil, err
 	}
 	g := h.gate(u)
+	kinds := h.sourceKindsFor(u)
 	out := []tracking.FeedItem{}
 	for _, it := range items {
 		if len(out) == max {
 			break
+		}
+		if it.Kinds = mayOpenKinds(it.Kinds, kinds); len(it.Kinds) == 0 {
+			continue
 		}
 		res, err := g.check(ctx, it.Title)
 		if err != nil {
@@ -525,10 +531,16 @@ func (h *lib) trackingCalendar(w http.ResponseWriter, r *http.Request) {
 		Items []feedItemOut `json:"items"`
 	}
 	g := h.gate(u)
+	kinds := h.sourceKindsFor(u)
 	out := []dayOut{}
 	for _, d := range days {
 		var items []feedItemOut
 		for _, it := range d.Items {
+			// only the kinds the profile may open; none: not available
+			// to it yet
+			if it.Kinds = mayOpenKinds(it.Kinds, kinds); len(it.Kinds) == 0 {
+				it.FirstSeen = time.Time{}
+			}
 			res, err := g.check(ctx, it.Title)
 			if err != nil {
 				internalErr(w, r, "tracking calendar gate", err)
@@ -547,36 +559,42 @@ func (h *lib) trackingCalendar(w http.ResponseWriter, r *http.Request) {
 
 // sourceKindsFor is the source kinds the caller may be shown: a kid has the
 // library's alone (a kid's every other play and download route is nonKid);
-// «Смотреть онлайн» rows need the profile's canWatchOnline and a server that
-// is not library-only; the scan kinds of the installed addons the profile
-// has access to, on or off, are shown on every server (E2: a disabled
-// addon's rows stay listed; R9: library-only gates online only).
-func (h *lib) sourceKindsFor(ctx context.Context, u auth.User) map[string]bool {
-	if u.IsKid {
-		return map[string]bool{"library": true}
-	}
+// an adult has the library's and the scan kinds of the installed addons the
+// profile has access to, on or off, on every server (E2: a disabled addon's
+// rows stay listed). The core names no other kind: `online` rows are listed
+// when an addon declares tracking.scan:online (D12).
+func (h *lib) sourceKindsFor(u auth.User) map[string]bool {
 	k := map[string]bool{"library": true}
+	if u.IsKid {
+		return k
+	}
 	for _, a := range h.AddonHooks.ScanKinds(u) {
 		k[a] = true
-	}
-	if !h.LibraryOnly && newMeCaps(h.Deps).of(ctx, u).onlineAllowed() {
-		k["online"] = true
 	}
 	return k
 }
 
-// choiceKindOK: a source choice's kind is empty, library, or for an adult
-// online (not on a library-only server) or an installed addon's scan kind
-// the profile has access to (E2, on every server); a kid's is the
-// library's alone.
+// mayOpenKinds are the kinds of ks the profile may open (allowed:
+// sourceKindsFor), in their order.
+func mayOpenKinds(ks []string, allowed map[string]bool) []string {
+	out := []string{}
+	for _, k := range ks {
+		if allowed[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// choiceKindOK: a source choice's kind is empty, library, or an installed
+// addon's scan kind the profile has access to (E2, on every server); a
+// kid's is the library's alone.
 func (h *lib) choiceKindOK(u auth.User, kind string) bool {
 	switch {
 	case kind == "" || kind == "library":
 		return true
 	case u.IsKid:
 		return false
-	case kind == "online":
-		return !h.LibraryOnly
 	}
 	return slices.Contains(h.AddonHooks.ScanKinds(u), kind)
 }
@@ -623,7 +641,7 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "tracking watch state", err)
 		return
 	}
-	kinds := h.sourceKindsFor(ctx, u)
+	kinds := h.sourceKindsFor(u)
 	since := time.Now().AddDate(0, 0, -feedDays)
 	first := map[[2]int]time.Time{} // every kind's, as the feed counts
 	for _, s := range srcs {
@@ -726,7 +744,7 @@ func (h *lib) trackedShelf(ctx context.Context, u auth.User) ([]Card, error) {
 		if li := g.seen[it.Title.ID].item; li != nil {
 			c = h.card(ctx, u.ID, *li)
 		} else {
-			// off the library (ID 0, not Online): the TMDB title and the episode
+			// off the library (ID 0): the TMDB title and the episode
 			c = Card{Kind: it.Title.Kind, Title: it.Title.Name, Poster: tracking.PosterURL(it.Title.Poster),
 				TmdbKind: it.Title.Kind, TmdbID: int(it.Title.TMDBID)}
 			if it.Title.Kind == "series" {
@@ -842,8 +860,8 @@ func (h *lib) getChoice(w http.ResponseWriter, r *http.Request) {
 
 // putChoice serves PUT /api/tracking/{kind}/{tmdbId}/choice. The body is a
 // Choice {kind, provider, voice, lang, quality}, every field optional; kind
-// is empty, library, online or an addon's scan kind (choiceKindOK; a kid's
-// only library), else 400. 204 on success, 404 when the rating gate hides
+// is empty, library or an addon's scan kind (choiceKindOK; a kid's only
+// library), else 400. 204 on success, 404 when the rating gate hides
 // the title.
 func (h *lib) putChoice(w http.ResponseWriter, r *http.Request) {
 	kind, tmdbID, ok := titleParams(w, r)
