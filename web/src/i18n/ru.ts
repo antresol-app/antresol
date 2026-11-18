@@ -23,6 +23,7 @@ import tracking from './ru/tracking'
 import episodes from './ru/episodes'
 import addons from './ru/addons'
 import pairing from './ru/pairing'
+import setupWizard from './ru/setupWizard'
 import full from './ru/full'
 
 export const ru = {
@@ -45,5 +46,6 @@ export const ru = {
   ...episodes,
   ...addons,
   ...pairing,
+  ...setupWizard,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

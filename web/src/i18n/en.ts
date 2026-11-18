@@ -21,6 +21,7 @@ import tracking from './en/tracking'
 import episodes from './en/episodes'
 import addons from './en/addons'
 import pairing from './en/pairing'
+import setupWizard from './en/setupWizard'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -43,5 +44,6 @@ export const en: EnOf<typeof ru> = {
   ...episodes,
   ...addons,
   ...pairing,
+  ...setupWizard,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

@@ -64,7 +64,16 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	err := run()
+	if errors.Is(err, errRestart) {
+		// everything is shut down and the database closed: start again in
+		// place (the same pid), now with the folders that were picked
+		err = restartSelf()
+		if err != nil {
+			err = fmt.Errorf("restart: %w", err) // exit: the container's restart policy starts it
+		}
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }
@@ -98,9 +107,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	for _, h := range cfg.PathHints(nil) {
-		log.Print(h)
-	}
 	pins, err := addonPins(cfg) // a bad VAULT_ADDONS_PIN stops the start (exit 1)
 	if err != nil {
 		return err
@@ -114,8 +120,18 @@ func run() error {
 	}
 	defer database.Close()
 
+	// the library folders picked in the first-run wizard or the settings win
+	// over VAULT_*_DIR; envFolders are what a reset goes back to
+	envFolders := cfg.Folders()
+	cfg = applyFolderSettings(context.Background(), cfg, database)
+	for _, h := range cfg.PathHints(nil) {
+		log.Print(h)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// «Настройки сервера → Медиатека» restarts the server to use other folders
+	restart := &restarter{stop: stop, ctx: ctx, grace: restartGrace}
 
 	repo := library.NewRepo(database)
 	jobs := &library.Jobs{
@@ -498,6 +514,8 @@ func run() error {
 		IPTV:         cfg.IPTV,
 		Accounts:     accts.routes,
 		Voclean:      vocWorker,
+		Storage: &api.StorageInfo{Env: envFolders, TranscodeDir: cfg.TranscodeDir, ConfigDir: cfg.DataDir,
+			Offline: storageOffline(cfg), Restart: restartFunc(restart)},
 	}
 	// «Обновления»: the latest public release of the server (its own
 	// resolver: works with addons off too)
@@ -810,6 +828,9 @@ func run() error {
 	playlists.WaitReads()
 	if errors.Is(err, http.ErrServerClosed) {
 		err = nil
+	}
+	if err == nil && restart.requested() {
+		return errRestart
 	}
 	return err
 }

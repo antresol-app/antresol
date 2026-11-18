@@ -192,6 +192,9 @@ export const routes: RouteObject[] = [
     children: [
       { path: '/welcome', element: page(auth, (m) => m.Setup) },
       { path: '/profiles', element: page(auth, (m) => m.ProfilePicker) },
+      // The steps after the first administrator: only while the server says
+      // they are pending (the page asks), only for an administrator.
+      { element: <AdminOnly />, children: [{ path: '/setup/wizard', element: page(auth, (m) => m.SetupWizard) }] },
       // The player covers the whole window: no navigation around it.
       { path: '/watch/:id', element: <PlayerRoute /> },
       // An addon's video too.

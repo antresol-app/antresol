@@ -1,0 +1,2 @@
+# group "storage": Russian kept on purpose
+internal/mediacheck/mediacheck.go  # the names people give each library folder, matched against what is on the disk (matching data, never shown)

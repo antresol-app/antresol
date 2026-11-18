@@ -116,6 +116,9 @@ type Config struct {
 	// Default: /books/ebooks, /books/manga, /audiobooks, /ebooks → the
 	// book folders.
 	ImportPaths mediaimport.PathMap
+	// importPathsSet: ImportPaths came from VAULT_IMPORT_PATHS, not from the
+	// book folders (WithFolders leaves it alone then).
+	importPathsSet bool
 
 	// LibraryOnly: the server serves its library alone. Always true in the
 	// core build (built without -tags sources); in the sources build it is
@@ -332,14 +335,9 @@ func Load() (Config, error) {
 		if c.ImportPaths, err = mediaimport.ParsePathMap(v); err != nil {
 			return c, fmt.Errorf("VAULT_IMPORT_PATHS: %w", err)
 		}
+		c.importPathsSet = true
 	} else {
-		// Kavita and Audiobookshelf mount the book folders here (map-context §3)
-		c.ImportPaths = mediaimport.PathMap{
-			{From: "/books/ebooks", To: c.Abs(c.EbooksDir)},
-			{From: "/books/manga", To: c.Abs(c.ComicsDir)},
-			{From: "/audiobooks", To: c.Abs(c.AudiobooksDir)},
-			{From: "/ebooks", To: c.Abs(c.EbooksDir)},
-		}
+		c.ImportPaths = c.defaultImportPaths()
 	}
 	if err := c.loadAcquisition(); err != nil {
 		return c, err
@@ -397,6 +395,17 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("VAULT_HWACCEL: unknown value %q", c.HWAccel)
 	}
 	return c, nil
+}
+
+// defaultImportPaths: where Kavita and Audiobookshelf keep the books, mapped
+// to the book folders.
+func (c Config) defaultImportPaths() mediaimport.PathMap {
+	return mediaimport.PathMap{
+		{From: "/books/ebooks", To: c.Abs(c.EbooksDir)},
+		{From: "/books/manga", To: c.Abs(c.ComicsDir)},
+		{From: "/audiobooks", To: c.Abs(c.AudiobooksDir)},
+		{From: "/ebooks", To: c.Abs(c.EbooksDir)},
+	}
 }
 
 // Abs resolves a path relative to MediaRoot (absolute paths are returned as is).

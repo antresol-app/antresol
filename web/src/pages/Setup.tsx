@@ -31,7 +31,8 @@ export function Setup() {
     setBusy(true)
     try {
       await session.setup(name.trim(), password)
-      navigate('/', { replace: true })
+      // the steps after the administrator (the page sends a server without them on to Главная)
+      navigate('/setup/wizard', { replace: true })
     } catch (err) {
       setErrors({ form: errorText(err, t('app.failedTryAgain')) })
     } finally {

@@ -1,0 +1,71 @@
+/* The first-run wizard: a calm column over the same ground as the sign-in
+   screens; the lists inside are the System Settings ones. Tokens only. */
+.screen {
+  min-height: 100dvh;
+  padding: var(--s-12) var(--gutter) var(--s-16);
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+}
+.column {
+  width: min(var(--column-narrow), 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.mark {
+  margin-bottom: var(--s-3);
+}
+.step {
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.title {
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
+  text-wrap: balance;
+}
+.lead {
+  font: var(--t-body);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+.spacer {
+  flex: 1;
+}
+.hint {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  text-align: right;
+}
+.error {
+  color: var(--destructive-text);
+  font: var(--t-callout);
+}
+.skipAll {
+  align-self: center;
+}
+.busy {
+  display: flex;
+  justify-content: center;
+  padding: var(--s-8) 0;
+}

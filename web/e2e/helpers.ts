@@ -38,6 +38,9 @@ export async function signIn(page: Page) {
     await page.getByLabel('Ваше имя').fill(ADMIN.name)
     await page.getByLabel('Пароль', { exact: true }).fill(ADMIN.password)
     await page.getByRole('button', { name: 'Продолжить' }).click()
+    // the first-run wizard follows the administrator: skip it
+    await page.waitForURL(/\/(setup\/wizard)?$/)
+    if (page.url().endsWith('/setup/wizard')) await page.getByRole('button', { name: 'Пропустить настройку' }).click()
   } else if (page.url().endsWith('/profiles')) {
     await page.getByRole('button', { name: new RegExp(ADMIN.name) }).click()
     await page.getByLabel('Пароль', { exact: true }).fill(ADMIN.password)

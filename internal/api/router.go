@@ -115,6 +115,11 @@ type Deps struct {
 	Accel               *media.Accel
 	TranscodingDefaults media.AccelConfig
 
+	// Storage enables the folder checks of «Настройки сервера → Медиатека»
+	// and the first-run wizard (/api/settings/storage*, /api/setup/wizard*);
+	// needs DB and MediaRoot. nil: none.
+	Storage *StorageInfo
+
 	// DB enables /api/stats* and /api/settings (admin).
 	DB *sql.DB
 	// SettingsDefaults are the settings before anything was saved;
@@ -334,7 +339,9 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	serverID := deps.ServerID
 	r.Get("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "version": version.Version, "serverId": serverID})
+		// bootId changes with every start: a page that restarted the server
+		// waits for another one, not for the old process still shutting down
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "version": version.Version, "serverId": serverID, "bootId": bootID})
 	})
 	// the source offer and the licences (AGPL §13): public
 	mountAbout(r)
@@ -350,7 +357,12 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	// the one session check of every authenticated route
 	guard := &auth.Guard{Sessions: deps.Sessions, Network: deps.Network, Keys: deps.MediaKeys}
 	if deps.Users != nil && deps.Sessions != nil {
-		mountAuth(r, deps.Users, guard, deps.Throttle, deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen)
+		mountAuth(r, deps.Users, guard, deps.Throttle, deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen,
+			func(ctx context.Context) {
+				if deps.Storage != nil {
+					markWizardPending(ctx, deps.DB) // the steps after the administrator
+				}
+			})
 	}
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
@@ -458,6 +470,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			mountSettings(r, newSettingsAPI(deps))
 			mountUpdates(r, deps.CoreRelease)
 			mountTranscoding(r, deps)
+			mountStorage(r, deps)
 			mountVoclean(r, deps)
 		})
 	}

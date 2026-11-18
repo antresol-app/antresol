@@ -223,7 +223,7 @@ func (a *authAPI) checkLogin(w http.ResponseWriter, r *http.Request, userID int6
 // mountAuth mounts setup, login, device sign-in and profiles. guard is the
 // router's one session check. throttle counts failed password checks; it is
 // shared with Subsonic and OPDS (nil: a new one).
-func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *auth.Throttle, libraryOnly, addons bool, requestsOpen func(context.Context) bool) {
+func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *auth.Throttle, libraryOnly, addons bool, requestsOpen func(context.Context) bool, afterSetup func(context.Context)) {
 	if throttle == nil {
 		throttle = auth.NewThrottle()
 	}
@@ -257,6 +257,7 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			storeErr(w, r, err)
 			return
 		}
+		afterSetup(r.Context())
 		a.startSession(w, r, u)
 	})
 	r.Get("/api/profiles", func(w http.ResponseWriter, r *http.Request) {

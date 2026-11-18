@@ -21,6 +21,11 @@ test('first run → profile picker → Главная with the scanned library',
   await page.getByLabel('Ваше имя').fill(ADMIN.name)
   await page.getByLabel('Пароль', { exact: true }).fill(ADMIN.password)
   await page.getByRole('button', { name: 'Продолжить' }).click()
+
+  // The steps after the administrator: the folders the server sees; skipped here.
+  await expect(page).toHaveURL(/\/setup\/wizard$/)
+  await expect(page.getByRole('heading', { name: 'Медиа-папки' })).toBeVisible()
+  await page.getByRole('button', { name: 'Пропустить настройку' }).click()
   await expect(page).toHaveURL(/\/$/)
 
   // Index the test library through the real API.

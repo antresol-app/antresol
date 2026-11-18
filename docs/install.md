@@ -17,7 +17,37 @@ You need a Linux host with Docker and Compose, and your media in one folder:
     manga/       Series/Volume 01.cbz
 ```
 
-Your folders may have other names: set them in `.env` ([configuration.md](configuration.md#media-folders)).
+Your folders may have other names: pick them in the first-run wizard (below)
+or set them in `.env` ([configuration.md](configuration.md#media-folders)).
+
+## First setup
+
+After you create the administrator, a short wizard walks through what the
+server needs. Every step can be skipped, and the same checks stay in
+Manage → Settings (Library → Server folders, Transcoding), so nothing has to
+be done in one sitting:
+
+1. **Media folders.** What the server sees under `/media`, with the number of
+   entries in each folder, and the status of each library folder: found,
+   missing («Create» makes it) or not writable. When your folders are named
+   differently from the defaults, say which one is which: an empty default
+   folder beside a folder with files in it is shown as empty, with the folder
+   that has the files offered. A pick is stored in the server's settings and
+   used instead of the `*_DIR` variables (a reset goes back to them); the
+   server restarts for a few seconds to apply it. A folder must be inside the
+   media folder (a link that leads out of it is refused) and not inside
+   another library's folder. While the library has files but the media disk
+   looks unmounted, «Create» is not offered: a folder made on the empty mount
+   point would make it look like the real disk, and the next scan would hide
+   the library.
+2. **Write access.** The server makes and removes a test file in the media
+   folder, each library folder and the transcoding folder. When it cannot,
+   the page says which user the server runs as and gives the fix to copy: a
+   `chown` command, or `user: "<uid>:<gid>"` for the compose file.
+3. **Graphics card.** The hardware status line, with what to uncomment in
+   `compose.yml` when no GPU was passed to the container.
+
+«Done» starts the first library scan.
 
 ## Notes
 
@@ -31,8 +61,10 @@ Your folders may have other names: set them in `.env` ([configuration.md](config
 - The container runs as uid/gid 1000 and needs to write to the media folder
   (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
   If your files belong to another user, give uid 1000 write access or add
-  `user: "<uid>:<gid>"` to the service. Settings and the database live in the
-  `antresol-config` volume.
+  `user: "<uid>:<gid>"` to the service (the volume `antresol-config` then needs
+  the same owner). The first-run wizard and Manage → Settings → Library test
+  this for real and print the exact command. Settings and the database live in
+  the `antresol-config` volume.
 - **Temporary files on another disk.** Playback segments, live TV and
   offline copies go to `tmp/antresol-hls` inside the media folder. To keep
   them elsewhere, for example on a separate disk mounted at `/scratch`, put

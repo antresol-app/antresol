@@ -25,6 +25,7 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
+import { StorageSection } from './StorageSettings'
 import { TranscodingSection } from './TranscodingSettings'
 import { VocleanSection } from './VocleanSettings'
 import m from './Manage.module.css'
@@ -314,6 +315,8 @@ export function Settings() {
       {at('library') && <VocleanSection />}
 
       {at('library') && <ShikimoriAdmin />}
+
+      {at('library') && <StorageSection />}
 
       {at('library') && (
         <GroupedSection title={t('settings.rescanGroup')}>

@@ -22,6 +22,7 @@ import { Button } from "../../ui/Button";
 import { GroupedSection, ListRow } from "../../ui/List";
 import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
+import { GpuHint } from "../../components/storage/GpuHint";
 import m from "./Manage.module.css";
 
 /** «Сейчас»: whether video decodes and encodes on the GPU, and if not, why. */
@@ -117,6 +118,7 @@ export function TranscodingSection() {
   const showDevice =
     view.devices.length > 1 && (v.mode === "auto" || v.mode === "vaapi");
   return (
+    <>
     <GroupedSection footer={t("settings.tc.footer")}>
       <ListRow
         stack
@@ -200,5 +202,7 @@ export function TranscodingSection() {
         </ListRow>
       )}
     </GroupedSection>
+    <GpuHint view={view} />
+    </>
   );
 }

@@ -1,0 +1,79 @@
+/* The folder and write checks of the first-run wizard and «Настройки сервера»:
+   rows of the System Settings list, the code blocks of the fixes. Tokens only. */
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.problem {
+  color: var(--destructive-text);
+}
+.fine {
+  color: var(--success);
+}
+.neutral {
+  color: var(--label-2);
+}
+.count {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+.fixText {
+  margin: 0;
+  font: var(--t-subhead);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.fixText + .fixText,
+.copyBlock + .fixText {
+  margin-top: var(--s-3);
+}
+.fixText + .copyBlock {
+  margin-top: var(--s-2);
+}
+.copyBlock {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.copyBlock > button {
+  flex: none;
+}
+.code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: var(--s-2h) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--fill-3);
+  color: var(--label);
+  font: var(--t-footnote);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.fix {
+  margin-top: var(--s-3);
+}
+@media (max-width: 699px) {
+  .copyBlock {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .copyBlock > button {
+    align-self: flex-start;
+  }
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}

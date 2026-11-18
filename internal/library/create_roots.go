@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"os"
 	"path/filepath"
@@ -57,8 +58,18 @@ func (s *Scanner) libraryEmpty(ctx context.Context) bool {
 	if s.Repo == nil {
 		return false
 	}
+	return LibraryEmpty(ctx, s.Repo.db)
+}
+
+// LibraryEmpty is the scanner's rule for when a missing video folder may be
+// made (and when the settings may make one): no file of any kind is
+// indexed. An unreadable database counts as not empty.
+func LibraryEmpty(ctx context.Context, db *sql.DB) bool {
+	if db == nil {
+		return false
+	}
 	var any bool
-	if err := s.Repo.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM files)`).Scan(&any); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM files)`).Scan(&any); err != nil {
 		return false
 	}
 	return !any

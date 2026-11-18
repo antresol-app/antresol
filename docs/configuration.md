@@ -14,7 +14,10 @@ Most settings live in the web UI instead; set a variable only when you need it.
 
 ## Media folders
 
-Folder names inside `MEDIA_DIR`, if yours differ from the defaults.
+Folder names inside `MEDIA_DIR`, if yours differ from the defaults. The first-run
+wizard and «Manage → Settings → Library → Server folders» can pick them in the
+web UI instead; folders picked there are used in place of these variables until
+reset.
 
 | Variable | Default |
 | --- | --- |

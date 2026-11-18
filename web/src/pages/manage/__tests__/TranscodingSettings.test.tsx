@@ -103,3 +103,19 @@ describe('transcoding settings', () => {
     await waitFor(() => expect(calls.at(-1)).toMatchObject({ method: 'POST', path: '/api/settings/transcoding/probe' }))
   })
 })
+
+describe('transcoding settings: no GPU passed', () => {
+  it('says what to uncomment in compose.yml, only when the container sees no GPU at all', async () => {
+    const none = { ...view().status, mode: 'none' as const, name: 'software', hevc: false, tonemapGpu: false, probes: [] }
+    stub(view({ devices: [], status: none }), () => view())
+    const { unmount } = render(<TranscodingSection />)
+    expect(await screen.findByText(/Видеокарту в контейнер не передали/)).toBeInTheDocument()
+    expect(screen.getByText('getent group render | cut -d: -f3')).toBeInTheDocument()
+    unmount()
+    // a GPU is there but failed its test encode: another cause, no compose hint
+    stub(view({ devices: ['/dev/dri/renderD128'], status: { ...none, probes: [{ mode: 'vaapi', ok: false, error: 'no device' }] } }), () => view())
+    render(<TranscodingSection />)
+    expect(await screen.findByText('Процессор: видеокарта не прошла пробу')).toBeInTheDocument()
+    expect(screen.queryByText(/Видеокарту в контейнер не передали/)).toBeNull()
+  })
+})
