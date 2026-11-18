@@ -1,5 +1,8 @@
 .root {
   display: inline-flex;
+  /* a trigger that may shrink (a pop-up in a ListRow shrink) cuts its text */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* In a portal, fixed: floating.ts writes top, left and max-height */

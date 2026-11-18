@@ -326,15 +326,21 @@ func (a *iptvAdmin) apply(ctx context.Context, b sourceBody, src *iptv.Source, c
 	if b.Name != nil {
 		src.Name = strings.TrimSpace(*b.Name)
 	}
-	if src.Name == "" {
-		return msgSourceName, nil
-	}
 	if create {
 		src.Kind = b.Kind
 		if src.Kind == "" {
 			src.Kind = iptv.KindM3U
 		}
 		src.PresetAdult, src.PresetTimeshift, src.RefreshHours = true, true, 24
+		// no name, or the address pasted as one: the host («akciatv.org»);
+		// the first good refresh puts the playlist's own title there
+		if src.Name == "" || httpURL(src.Name) {
+			if src.Kind == iptv.KindXtream && b.Xtream != nil {
+				src.Name = iptv.DefaultSourceName(b.Xtream.Server)
+			} else {
+				src.Name = iptv.DefaultSourceName(b.URL)
+			}
+		}
 	}
 	switch src.Kind {
 	case iptv.KindM3U:
@@ -367,6 +373,9 @@ func (a *iptvAdmin) apply(ctx context.Context, b sourceBody, src *iptv.Source, c
 		}
 	default:
 		return msgBadSourceURL, nil
+	}
+	if src.Name == "" {
+		return msgSourceName, nil
 	}
 	if b.DefaultShown.Set {
 		src.DefaultShown = b.DefaultShown.Value

@@ -64,6 +64,7 @@ export default {
   'iptv.editor.invalid': 'Проверьте поля источника',
   'iptv.editor.name': 'Название',
   'iptv.editor.namePlaceholder': 'Например, «Мой провайдер»',
+  'iptv.editor.nameAuto': 'Можно не заполнять: назовём по плейлисту или по адресу.',
   'iptv.editor.kind': 'Вид источника',
   'iptv.editor.url': 'Ссылка на плейлист',
   'iptv.editor.urlHint': 'M3U или M3U8 по http(s). Ссылка хранится зашифрованной и больше не показывается целиком.',

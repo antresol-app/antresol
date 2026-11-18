@@ -63,6 +63,7 @@ export default {
   'iptv.editor.invalid': 'Check the source’s fields',
   'iptv.editor.name': 'Name',
   'iptv.editor.namePlaceholder': 'For example, “My Provider”',
+  'iptv.editor.nameAuto': 'Optional: we take the playlist’s own name or its address.',
   'iptv.editor.kind': 'Source kind',
   'iptv.editor.url': 'Playlist link',
   'iptv.editor.urlHint': 'M3U or M3U8 over http(s). The link is stored encrypted and never shown whole again.',

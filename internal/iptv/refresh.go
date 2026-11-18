@@ -236,6 +236,11 @@ func (s *Service) RefreshSource(ctx context.Context, id int64, force bool) (Resu
 		}
 		return res, nil
 	}
+	if src.LastOK.IsZero() && pl.Title != "" && src.Name == sourceDefaultName(src, raw) {
+		// a source added without a name is named by its host until the
+		// first good refresh, then by the playlist's own title
+		src.Name = cutRunes(pl.Title, 80)
+	}
 	if src.DefaultShown == nil {
 		// fixed at the first good refresh: a playlist growing past
 		// BigPlaylist later does not hide what was shown
@@ -979,4 +984,20 @@ func (s *Service) SearchGuide(ctx context.Context, q string, limit int) ([]Guide
 		}
 	}
 	return out, rows.Err()
+}
+
+// sourceDefaultName: the name a source got for having none (its host).
+func sourceDefaultName(src Source, playlistURL string) string {
+	if src.Kind == KindXtream {
+		return DefaultSourceName(src.XtreamServer)
+	}
+	return DefaultSourceName(playlistURL)
+}
+
+func cutRunes(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > n {
+		return strings.TrimSpace(string(r[:n]))
+	}
+	return s
 }

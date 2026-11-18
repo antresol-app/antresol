@@ -166,10 +166,16 @@ func TestSourcesAPIXtreamOffByDefault(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"xtream":{"server":"http://x.example.test:8080","user":"u1"}`) {
 		t.Fatal(w.Body)
 	}
-	for _, bad := range []string{`{"name":"Y","url":"ftp://x.example.test/a"}`, `{"name":"","url":"http://x.example.test/a"}`, `{"name":"Z","url":"http://x.example.test/a","refreshHours":5}`} {
+	for _, bad := range []string{`{"name":"Y","url":"ftp://x.example.test/a"}`, `{"name":"","url":"ftp://x.example.test/a"}`, `{"name":"Z","url":"http://x.example.test/a","refreshHours":5}`} {
 		if w := e.do("POST", "/api/tv/sources", bad, e.admin); w.Code != 400 {
 			t.Fatalf("%s: %d", bad, w.Code)
 		}
+	}
+	// a name is optional when adding (the host), not when renaming
+	var made sourceJSON
+	json.Unmarshal(w.Body.Bytes(), &made)
+	if w := e.do("PUT", "/api/tv/sources/"+itoa(made.ID), `{"name":""}`, e.admin); w.Code != 400 {
+		t.Fatalf("empty rename: %d", w.Code)
 	}
 }
 
@@ -414,5 +420,49 @@ func TestDeleteIPTVLink(t *testing.T) {
 	}
 	if w := e.do("DELETE", "/api/tv/links/"+l.LinkID, "", e.admin); w.Code != 404 {
 		t.Fatalf("second delete %d", w.Code)
+	}
+}
+
+func TestSourceDefaultName(t *testing.T) {
+	e := newTVEnv(t)
+	e.p.put("/plain.m3u", tvPlaylist)
+	e.p.put("/titled.m3u", strings.Replace(tvPlaylist, "#EXTM3U\n", "#EXTM3U\n#PLAYLIST:Акция ТВ\n", 1))
+	create := func(name, path string) sourceJSON {
+		t.Helper()
+		w := e.do("POST", "/api/tv/sources", `{"name":"`+name+`","url":"`+e.p.srv.URL+path+`"}`, e.admin)
+		if w.Code != 201 {
+			t.Fatalf("create %d %s", w.Code, w.Body)
+		}
+		var s sourceJSON
+		json.Unmarshal(w.Body.Bytes(), &s)
+		return s
+	}
+	name := func(id int64) string {
+		src, err := e.tv.Store.Source(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return src.Name
+	}
+	// no name: the host; a playlist without a title keeps it
+	a := create("", "/plain.m3u")
+	if a.Name != "127.0.0.1" {
+		t.Fatalf("default name %q", a.Name)
+	}
+	if _, err := e.tv.RefreshSource(context.Background(), a.ID, false); err != nil || name(a.ID) != "127.0.0.1" {
+		t.Fatalf("after refresh %q %v", name(a.ID), err)
+	}
+	// the address pasted as the name: the host, then the playlist's title
+	b := create(e.p.srv.URL+"/titled.m3u", "/titled.m3u")
+	if b.Name != "127.0.0.1" {
+		t.Fatalf("url as name %q", b.Name)
+	}
+	if _, err := e.tv.RefreshSource(context.Background(), b.ID, false); err != nil || name(b.ID) != "Акция ТВ" {
+		t.Fatalf("titled %q %v", name(b.ID), err)
+	}
+	// a name of one's own is kept
+	c := create("Мой", "/titled.m3u")
+	if _, err := e.tv.RefreshSource(context.Background(), c.ID, false); err != nil || name(c.ID) != "Мой" {
+		t.Fatalf("own name %q %v", name(c.ID), err)
 	}
 }

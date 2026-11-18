@@ -73,7 +73,19 @@ export function SourceEditor({
   const [error, setError] = useState('')
 
   const isNew = !s
-  const missing = !name.trim() || (isNew && (kind === 'm3u' ? !url.trim() : !server.trim() || !user.trim() || !password))
+  // a new source may go without a name: the server takes the address's
+  // host, then the playlist's own title
+  const autoName = isNew ? hostOf(kind === 'm3u' ? url : server) : ''
+  const nameField = (
+    <TextField
+      label={t('iptv.editor.name')}
+      value={name}
+      placeholder={autoName || t('iptv.editor.namePlaceholder')}
+      hint={isNew ? t('iptv.editor.nameAuto') : undefined}
+      onChange={(e) => setName(e.target.value)}
+    />
+  )
+  const missing = (!isNew && !name.trim()) || (isNew && (kind === 'm3u' ? !url.trim() : !server.trim() || !user.trim() || !password))
   const move = (i: number, step: number) =>
     setGuides((g) => {
       const n = [...g]
@@ -122,7 +134,7 @@ export function SourceEditor({
     >
       <div className={styles.form}>
         {drop}
-        <TextField label={t('iptv.editor.name')} value={name} placeholder={t('iptv.editor.namePlaceholder')} onChange={(e) => setName(e.target.value)} autoFocus={isNew} />
+        {!isNew && nameField}
         {(xtreamEnabled || kind === 'xtream') && (
           <SegmentedControl
             label={t('iptv.editor.kind')}
@@ -142,6 +154,7 @@ export function SourceEditor({
             autoComplete="off"
             spellCheck={false}
             value={url}
+            autoFocus={isNew}
             placeholder={s?.url || 'http://…/playlist.m3u'}
             hint={isNew ? t('iptv.editor.urlHint') : t('iptv.editor.secretKeep')}
             onChange={(e) => setUrl(e.target.value)}
@@ -162,6 +175,7 @@ export function SourceEditor({
             />
           </>
         )}
+        {isNew && nameField}
 
         <GroupedSection title={t('iptv.editor.channels')}>
           <ListRow label={t('iptv.editor.defaultShown')} hint={t('iptv.editor.defaultShownHint')} stack>
@@ -247,4 +261,17 @@ export function SourceEditor({
       </div>
     </Sheet>
   )
+}
+
+/** The host of an address without "www." (what the server names a source
+ * added without a name), "" when it is not one yet. */
+export function hostOf(raw: string): string {
+  const v = raw.trim()
+  if (!v) return ''
+  try {
+    const u = new URL(v.includes('://') ? v : `http://${v}`)
+    return u.hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return ''
+  }
 }

@@ -172,3 +172,12 @@ describe('the sources page', () => {
     )
   })
 })
+
+describe('a new source', () => {
+  it('is named by its address’s host when it has no name (hostOf)', async () => {
+    const { hostOf } = await import('../SourceEditor')
+    expect(hostOf('http://www.AkciaTV.org/list.m3u')).toBe('akciatv.org')
+    expect(hostOf('provider.example.test:8000')).toBe('provider.example.test')
+    expect(hostOf('')).toBe('')
+  })
+})

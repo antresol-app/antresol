@@ -98,3 +98,20 @@ func TestXtreamURLs(t *testing.T) {
 		t.Fatalf("no scheme: %s", m3u)
 	}
 }
+
+func TestPlaylistTitleAndDefaultName(t *testing.T) {
+	p, err := ParseM3U(strings.NewReader("#EXTM3U\n#PLAYLIST: Мой плейлист \n#EXTINF:-1,A\nhttp://x.test/a\n"), 10)
+	if err != nil || p.Title != "Мой плейлист" {
+		t.Fatalf("title %q %v", p.Title, err)
+	}
+	for in, want := range map[string]string{
+		"http://www.AkciaTV.org/list.m3u?x=1": "akciatv.org",
+		"https://iptv.example.test:8080/get":  "iptv.example.test",
+		"provider.test:8000":                  "provider.test",
+		"":                                    "",
+	} {
+		if got := DefaultSourceName(in); got != want {
+			t.Errorf("DefaultSourceName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

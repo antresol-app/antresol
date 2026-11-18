@@ -156,6 +156,7 @@ export function DevicesPanel({
           <ListRow
             key={d.kind === 'iptv' ? `l${d.linkId}` : `${d.userId}:${d.deviceId}`}
             stack
+            shrink
             leading={
               <span className={styles.glyph}>
                 <Icon name={GLYPH[d.client] ?? 'play'} size={18} />

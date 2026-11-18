@@ -36,7 +36,23 @@ type Entry struct {
 type Playlist struct {
 	// EPGURLs: url-tvg / x-tvg-url of #EXTM3U, in order, without repeats.
 	EPGURLs []string
+	// Title: the playlist's own name (#PLAYLIST:), "" when it has none.
+	Title   string
 	Entries []Entry
+}
+
+// DefaultSourceName is the name of a source added without one: the host of
+// its address without "www." («akciatv.org»); "" when there is none.
+func DefaultSourceName(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw != "" && !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
 // ParseM3U reads an extended M3U (any attribute order and quoting, CRLF,
@@ -96,6 +112,10 @@ func ParseM3U(r io.Reader, maxEntries int) (Playlist, error) {
 				case "group-title":
 					cur.Group = kv[1]
 				}
+			}
+		case hasPrefixFold(line, "#PLAYLIST:"):
+			if p.Title == "" {
+				p.Title = strings.TrimSpace(line[len("#PLAYLIST:"):])
 			}
 		case hasPrefixFold(line, "#EXTGRP:"):
 			groupHint = strings.TrimSpace(line[len("#EXTGRP:"):])

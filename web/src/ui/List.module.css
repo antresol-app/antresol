@@ -58,6 +58,8 @@
 .text {
   flex: 1 1 0;
   min-width: 0;
+  /* an address or a name without spaces breaks instead of running out of the row */
+  overflow-wrap: break-word;
 }
 .label {
   font: var(--t-callout);
@@ -75,6 +77,13 @@
   display: flex;
   align-items: center;
   gap: var(--s-2h);
+}
+/* shrink: the control gives way (a pop-up with a long choice cuts it), the
+   text keeps the rest of the row */
+.shrink .control {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
 }
 /* an ordered list or a form: always under the text, over the row's width */
 .wide {
@@ -163,5 +172,6 @@
     margin-left: 0;
     flex: 1 0 100%;
     min-width: 0;
+    max-width: none;
   }
 }
