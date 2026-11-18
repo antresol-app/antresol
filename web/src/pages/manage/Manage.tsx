@@ -2,6 +2,7 @@
 // (Просьбы,) Переезд, Импорт, Файлы, Статистика, Профили, Расширения, Настройки
 // and the tiles the addons add — with the section on the right. On phones the list is its own screen and each section has a
 // back button.
+import type { ReactNode } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router'
 import { Icon, type IconName } from '../../components/Icon'
 import { useIsCompact } from '../../state/useMediaQuery'
@@ -100,30 +101,45 @@ export function Manage() {
   // Deeper screens (e.g. «Добавить источник») bring their own back link.
   const nested = /^\/manage\/[^/]+\/./.test(pathname)
 
-  if (compact) {
+  if (compact && atRoot) {
     return (
       <div className={styles.page}>
-        {atRoot ? (
-          <>
-            <h1 className={styles.largeTitle}>{t('common.manage')}</h1>
-            <SectionList />
-          </>
-        ) : (
-          <>
-            {!nested && (
-              <NavLink to="/manage" className={styles.back}>
-                <Icon name="chevronLeft" size={18} strokeWidth={2.4} />
-                {t('common.manage')}
-              </NavLink>
-            )}
-            <Outlet />
-          </>
-        )}
+        <h1 className={styles.largeTitle}>{t('common.manage')}</h1>
+        <SectionList />
       </div>
     )
   }
   // «Переезд» and «Импорт» are one-off tools, not where «Управление» opens
   if (atRoot) return <Navigate to={`/manage/${sections.find((s) => s.to !== 'migrate' && s.to !== 'import')?.to ?? 'files'}`} replace />
+  return (
+    <ManageFrame nested={nested}>
+      <Outlet />
+    </ManageFrame>
+  )
+}
+
+/**
+ * «Управление» around one section: the section list beside it (on phones a
+ * back link to the list instead, unless the screen is `nested` and brings
+ * its own). The core's sections and the addons' pages its tiles open
+ * (pages/AddonPage.tsx) are drawn in it alike.
+ */
+export function ManageFrame({ nested, children }: { nested: boolean; children: ReactNode }) {
+  const t = useT()
+  const compact = useIsCompact()
+  if (compact) {
+    return (
+      <div className={styles.page}>
+        {!nested && (
+          <NavLink to="/manage" className={styles.back}>
+            <Icon name="chevronLeft" size={18} strokeWidth={2.4} />
+            {t('common.manage')}
+          </NavLink>
+        )}
+        {children}
+      </div>
+    )
+  }
   return (
     <div className={styles.page}>
       <div className={styles.layout}>
@@ -131,10 +147,13 @@ export function Manage() {
           <h1 className={styles.sidebarTitle}>{t('common.manage')}</h1>
           <SectionList />
         </aside>
-        <div className={styles.content}>
-          <Outlet />
-        </div>
+        <div className={styles.content}>{children}</div>
       </div>
     </div>
   )
+}
+
+/** The plain page frame: room for the floating navigation, the gutters and the page's end (an addon's page that is not «Управление»'s). */
+export function PageFrame({ children }: { children: ReactNode }) {
+  return <div className={styles.page}>{children}</div>
 }

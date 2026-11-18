@@ -97,6 +97,9 @@ export function cssProblems(css, { id } = {}) {
       errorRecovery: false,
       visitor: {
         Rule: (r) => void rule(r),
+        // the page's frame (room for the floating navigation) is the app's:
+        // a page using these tokens draws a second frame inside it
+        Variable: (v) => void (FRAME_TOKENS.has(v.name?.ident) && out.push(`var(${v.name.ident}): the page's frame is the app's (an addon page draws none)`)),
         // every URL anywhere in the sheet: url() in any value (typed or a
         // token list, custom properties too), image-set() options, @font-face src
         StyleSheet: (sheet) => void walkUrls(sheet.rules, (u) => badUrl(u.trim()) && out.push(`url(${u})`), (f) => out.push(`${f}() is not allowed`)),
@@ -107,6 +110,10 @@ export function cssProblems(css, { id } = {}) {
   }
   return [...new Set(out)]
 }
+
+// the app's page-frame tokens (web/src/design/tokens.css): an addon's page
+// sits in the app's frame (pages/AddonPage.tsx), never draws its own
+const FRAME_TOKENS = new Set(['--nav-height', '--nav-height-compact', '--page-top'])
 
 // functions whose string arguments are image URLs, and ones refused outright
 const URL_FUNCTIONS = new Set(['image-set', 'cross-fade', 'image', 'src', 'url'])

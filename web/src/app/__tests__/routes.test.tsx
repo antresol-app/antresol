@@ -190,4 +190,38 @@ describe('addon routes', () => {
     expect(await screen.findByText('Такого раздела у расширения нет')).toBeInTheDocument()
     expect(container.querySelector('.playerFallback')).toBeNull()
   })
+  // the app draws an addon page's frame: «Управление» around the pages its
+  // tiles open (and the screens under them), the plain page frame elsewhere;
+  // the addon draws none (Sources lost its frame when it left the core)
+  it('a page a tile of «Управление» opens is drawn in «Управление»; another page in the plain frame', async () => {
+    await signIn(admin)
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      registerAddon('hello', {
+        manageTiles: [{ label: 'tile', icon: 'puzzle', to: 'sources', admin: true }],
+        routes: [
+          { path: 'sources', title: 'Источники', element: () => <h1>Источники привета</h1> },
+          { path: 'sources/:id/edit', title: 'Источник', element: () => <h1>Правка источника</h1> },
+          { path: 'mine', title: 'Мои', element: () => <h1>Мои слежения</h1> },
+        ],
+      })
+      return {}
+    })
+    const router = createMemoryRouter(routes, { initialEntries: ['/addons/hello/sources'] })
+    render(<RouterProvider router={router} />)
+    const main = () => document.getElementById('main')!
+    expect(await screen.findByRole('heading', { name: 'Источники привета' })).toBeInTheDocument()
+    expect(main().textContent).toContain('Управление')
+    // the tile is in the section list, and it is the current section
+    expect(main().querySelector('a[href="/addons/hello/sources"]')).not.toBeNull()
+
+    await act(() => router.navigate('/addons/hello/sources/5/edit'))
+    expect(await screen.findByRole('heading', { name: 'Правка источника' })).toBeInTheDocument()
+    expect(main().querySelector('a[href="/addons/hello/sources"]')).not.toBeNull()
+
+    await act(() => router.navigate('/addons/hello/mine'))
+    const h = await screen.findByRole('heading', { name: 'Мои слежения' })
+    expect(main().textContent).not.toContain('Управление')
+    // still in a frame of the app's, not straight in <main>
+    expect(h.parentElement).not.toBe(main())
+  })
 })

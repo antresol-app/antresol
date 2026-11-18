@@ -200,6 +200,10 @@ describe('antresolAddon', () => {
     expect(cssProblems('html{x:1}')).toEqual(['selector "html" is not under a module class'])
     expect(cssProblems('._a{background:url(/x.png)} ._b{background:url(../x.png)} ._c{background:url(data:image/png;base64,AA)}')).toHaveLength(3)
     expect(cssProblems('._a{x:1 !important}')).toEqual(['!important'])
+    // the page's frame is the app's (AddonPage): a second one would sit inside it
+    expect(cssProblems('._a{padding:calc(var(--nav-height) + 8px) var(--gutter)}')).toEqual(["var(--nav-height): the page's frame is the app's (an addon page draws none)"])
+    expect(cssProblems('@media (max-width:699px){._a{padding-top:var(--page-top)}}')).toEqual(["var(--page-top): the page's frame is the app's (an addon page draws none)"])
+    expect(cssProblems('._a{padding:0 var(--gutter);color:var(--label)}')).toEqual([])
     expect(cssProblems('@keyframes spin{to{z:1}}')).toEqual(['@keyframes spin: not a module\'s (hashed) name, nor prefixed "<id>-"'])
     expect(cssProblems('@keyframes fixture-spin{to{z:1}}', { id: 'fixture' })).toEqual([])
     expect(cssProblems('@font-face{font-family:"fixture-a";src:local(Arial)}', { id: 'fixture' })).toEqual(['@font-face src local(): only a relative url() inside the bundle'])

@@ -1,7 +1,9 @@
 // An addon's own page: /addons/<addonId>/<path> draws the route the addon
 // registered under that path (not for kids), with the values of its
 // `:name` segments (the element's `params`, and the addon's useParams()).
-// A page is drawn inside the app's shell; a `fullWindow` route over the
+// A page is drawn inside the app's shell, in a frame the app draws
+// (useAddonPageFrame: «Управление» for the pages its tiles open, else the
+// plain page frame; the page draws none of its own); a `fullWindow` route over the
 // whole window (the shell draws none of itself around it:
 // useFullWindowAddon), in a Suspense of the player's black fallback (its
 // ui.Player loads on the first render). While the addons are still loading
@@ -13,7 +15,8 @@ import { APP_NAME } from '../brand'
 import { useT } from '../i18n'
 import { useAddonsLoading } from '../addons/registry'
 import { AddonRouteParams } from '../addons/routeParams'
-import { AddonBoundary, addonRest, useAddonLabel, useAddonRoute } from '../addons/slots'
+import { AddonBoundary, addonRest, useAddonLabel, useAddonPageFrame, useAddonRoute } from '../addons/slots'
+import { ManageFrame, PageFrame } from './manage/Manage'
 import { ComingSoon } from './ComingSoon'
 import appStyles from '../app/App.module.css'
 
@@ -24,6 +27,7 @@ export default function AddonPage() {
   const found = useAddonRoute(addonId, rest)
   const loading = useAddonsLoading()
   const label = useAddonLabel(addonId)
+  const frame = useAddonPageFrame(addonId, rest)
   // the title is a key of the addon's strings
   const title = found ? label(found.route.title) : ''
   // the values as one object that stays while they do (the addons' registry
@@ -46,6 +50,9 @@ export default function AddonPage() {
       </AddonRouteParams.Provider>
     </AddonBoundary>
   )
-  if (!found.route.fullWindow) return page
+  if (!found.route.fullWindow) {
+    if (frame.kind === 'manage') return <ManageFrame nested={frame.nested}>{page}</ManageFrame>
+    return <PageFrame>{page}</PageFrame>
+  }
   return <Suspense fallback={<div className={appStyles.playerFallback} />}>{page}</Suspense>
 }

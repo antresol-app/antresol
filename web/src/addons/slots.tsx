@@ -147,6 +147,37 @@ export function useFullWindowAddon(): 'off' | 'pending' | 'on' {
   return rememberedFullWindow(addonId).some((p) => matchPath({ path: '/' + trimSlashes(p), caseSensitive: true, end: true }, want)) ? 'pending' : 'off'
 }
 
+/**
+ * The frame the app draws around an addon's page (not a fullWindow one): the
+ * page never draws its own (no room for the floating navigation, no gutters).
+ * `manage`: an admin's page that a tile of «Управление» opens (a relative
+ * `manageTiles` or `migrateSources` `to` of the addon), or a deeper screen
+ * under one (`nested`: it brings its own back link, as the core's own deeper
+ * sections do), is drawn in «Управление» beside its section list, like the
+ * core's sections. `page`: any other page, in the plain page frame.
+ */
+export function useAddonPageFrame(addonId: string, rest: string): { kind: 'manage' | 'page'; nested: boolean } {
+  const { user } = useSession()
+  const tiles = useContributions('manageTiles')
+  const migrate = useContributions('migrateSources')
+  return useMemo(() => {
+    const here = trimSlashes(rest)
+    let nested = true
+    let found = false
+    if (user?.isAdmin) {
+      for (const e of [...tiles, ...migrate]) {
+        if (e.addonId !== addonId || e.to.startsWith('/')) continue
+        const to = trimSlashes(e.to)
+        if (here === to) {
+          found = true
+          nested = false
+        } else if (here.startsWith(to + '/')) found = true
+      }
+    }
+    return found ? { kind: 'manage', nested } : { kind: 'page', nested: false }
+  }, [user?.isAdmin, tiles, migrate, addonId, rest])
+}
+
 /** Where an addon's `to` leads: an app path (starting with `/`) as it is, else under /addons/<id>/. */
 export function resolveAddonPath(addonId: string, to: string): string {
   return to.startsWith('/') ? to : `/addons/${addonId}/${to}`
