@@ -186,6 +186,7 @@ export function asPrefs(x: unknown): PlaybackPrefs | null {
     subBackground: p.subBackground ?? 'translucent',
     custom: Boolean(p.custom),
     preferCleaned: Boolean(p.preferCleaned),
+    autoSkip: { recap: Boolean(p.autoSkip?.recap), intro: Boolean(p.autoSkip?.intro), credits: Boolean(p.autoSkip?.credits) },
   }
 }
 

@@ -1,6 +1,7 @@
 // Typed client for the Vault HTTP API. Every endpoint has one function here;
 // pages never call fetch directly.
 import type {
+  AutoSkipPrefs,
   TranscodingSettings,
   TranscodingView,
   VocleanStatus,
@@ -415,7 +416,7 @@ export const resetAppPassword = (id: number) => request<void>('DELETE', `/api/us
 
 // «Звук и субтитры»: a profile's defaults; a kid's are changed by an administrator (userId).
 const prefsPath = (userId?: number) => (userId === undefined ? '/api/me/playback-prefs' : `/api/users/${userId}/playback-prefs`)
-export type PlaybackPrefsInput = Omit<PlaybackPrefs, 'custom' | 'preferCleaned'>
+export type PlaybackPrefsInput = Omit<PlaybackPrefs, 'custom' | 'preferCleaned' | 'autoSkip'>
 /** The profile's interface language: its own choice ('' none) and what the apps show (`effective`, '' unknown). */
 export interface UILanguage {
   language: '' | 'ru' | 'en'
@@ -429,6 +430,8 @@ export const getPlaybackPrefs = (userId?: number, signal?: AbortSignal) => reque
 export const savePlaybackPrefs = (p: PlaybackPrefsInput, userId?: number) => request<PlaybackPrefs>('PUT', prefsPath(userId), p)
 /** «Выбирать очищенную озвучку»: kept apart from the defaults (the household's stay followed). */
 export const setPreferCleaned = (on: boolean, userId?: number) => request<PlaybackPrefs>('PUT', `${prefsPath(userId)}/prefer-cleaned`, { on })
+/** «Пропускать сам»: the flags named change, the others stay. */
+export const setAutoSkip = (patch: Partial<AutoSkipPrefs>, userId?: number) => request<PlaybackPrefs>('PUT', `${prefsPath(userId)}/auto-skip`, patch)
 /** Back to the household's «Языки». */
 export const resetPlaybackPrefs = (userId?: number) => request<PlaybackPrefs>('DELETE', prefsPath(userId))
 // «Уведомления на почту»: a profile's address and topics; a kid's are an administrator's (userId).

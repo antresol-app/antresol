@@ -16,6 +16,8 @@ import styles from './SkipControls.module.css'
 export interface AutoSkip {
   recap: boolean
   intro: boolean
+  /** On to the next episode at the credits (the end of the film when there is none). */
+  credits: boolean
 }
 
 export interface SkipControlsProps {
@@ -96,8 +98,12 @@ export function SkipControls({
       autoDone.current.add(key)
       setNote({ kind: active.kind, back: active.startSec })
       onSeek(active.endSec)
+    } else if (active.kind === 'credits' && autoSkip.credits && !creditsDismissed && !postCreditsScene(active, durationSec)) {
+      autoDone.current.add(key)
+      if (hasNext) goNext()
+      else onEnd()
     }
-  }, [key, playing, autoSkip.recap, autoSkip.intro])
+  }, [key, playing, autoSkip.recap, autoSkip.intro, autoSkip.credits])
   useEffect(() => {
     if (!note) return
     const id = window.setTimeout(() => setNote(null), SKIPPED_NOTE_MS)
@@ -193,16 +199,16 @@ export function SkipControls({
 
 export interface SkipMenuProps {
   /** The kinds this file has (the menu shows for those). */
-  kinds: { recap: boolean; intro: boolean }
+  kinds: { recap: boolean; intro: boolean; credits: boolean }
   value: AutoSkip
   onChange: (v: AutoSkip) => void
   onOpenChange?: (open: boolean) => void
 }
 
-/** «Пропускать сам»: пересказ / вступление, per device. */
+/** «Пропускать сам»: пересказ / вступление / титры — the profile's, on every device. */
 export function SkipMenu({ kinds, value, onChange, onOpenChange }: SkipMenuProps) {
   const t = useT()
-  if (!kinds.recap && !kinds.intro) return null
+  if (!kinds.recap && !kinds.intro && !kinds.credits) return null
   const label = t('player.skip.auto')
   return (
     <Menu
@@ -221,6 +227,7 @@ export function SkipMenu({ kinds, value, onChange, onOpenChange }: SkipMenuProps
           <MenuHeading>{label}</MenuHeading>
           <MenuItem label={t('player.skip.autoRecap')} checked={value.recap} onSelect={() => onChange({ ...value, recap: !value.recap })} />
           <MenuItem label={t('player.skip.autoIntro')} checked={value.intro} onSelect={() => onChange({ ...value, intro: !value.intro })} />
+          <MenuItem label={t('player.skip.autoCredits')} checked={value.credits} onSelect={() => onChange({ ...value, credits: !value.credits })} />
         </div>
       )}
     </Menu>

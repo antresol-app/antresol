@@ -223,6 +223,15 @@ export interface PlaybackPrefs {
   custom: boolean
   /** «Выбирать очищенную озвучку»: the cleaned version of the chosen voice-over plays when there is one (an older server: absent). */
   preferCleaned?: boolean
+  /** «Пропускать сам»: the profile's, on every device (an older server: absent). */
+  autoSkip?: AutoSkipPrefs
+}
+
+/** What a profile skips without pressing the button. */
+export interface AutoSkipPrefs {
+  recap: boolean
+  intro: boolean
+  credits: boolean
 }
 
 /** «Уведомления на почту»: the core's topics a profile may hear about (the addons' are addonTopics). */

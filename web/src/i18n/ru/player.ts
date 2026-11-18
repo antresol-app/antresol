@@ -158,6 +158,7 @@ export default {
   'player.skip.undo': 'Вернуть',
   'player.skip.auto': 'Пропускать сам',
   'player.skip.autoRecap': 'Пересказ',
+  'player.skip.autoCredits': 'Титры',
   'player.skip.autoIntro': 'Вступление',
   'player.skip.keyHint': '{label} (Enter)',
   'player.video.playFailed': 'Не удалось воспроизвести',

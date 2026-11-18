@@ -9,7 +9,7 @@
 // without dropping them. On AirPlay (Safari) they stay on the page: the
 // player says so (see airplay.ts for how the receiver gets the stream).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { getItem, getPlaybackPrefs, imageUrl, setSubtitleOffset } from '../api/client'
+import { getItem, getPlaybackPrefs, imageUrl, setAutoSkip as setAutoSkipPrefs, setSubtitleOffset } from '../api/client'
 import { queueRemember } from './rememberQueue'
 import type { TrackActionItem } from '../addons/registry'
 import type { MediaFile, PlaybackPrefs, PlayRequest, PlayResponse, Quality, SubTrack, TrackChoice, TrackPrefs } from '../api/types'
@@ -551,12 +551,21 @@ export function VideoPlayer({
   const inCredits = segmentAt(segs, p.localTime)?.kind === 'credits'
   const nextPillShown = Boolean(next) && lastPart && inCredits && !creditsDismissed
   const skipAction = useRef<(() => void) | null>(null)
-  const [autoSkip, setAutoSkip] = useState<AutoSkip>(() => ({ recap: pref(PREF.autoRecap) === '1', intro: pref(PREF.autoIntro) === '1' }))
+  // «Пропускать сам» is the profile's (the server keeps it for every device)
+  const autoSkip: AutoSkip = prefs.autoSkip ?? { recap: false, intro: false, credits: false }
   const changeAutoSkip = (v: AutoSkip) => {
-    setPref(PREF.autoRecap, v.recap ? '1' : '0')
-    setPref(PREF.autoIntro, v.intro ? '1' : '0')
-    setAutoSkip(v)
+    setPrefs((x) => ({ ...x, autoSkip: v }))
+    setAutoSkipPrefs(v).catch(() => {})
   }
+  // once: what this browser kept before the profile did goes to the profile
+  useEffect(() => {
+    const recap = pref(PREF.autoRecap) === '1'
+    const intro = pref(PREF.autoIntro) === '1'
+    if (!prefs.autoSkip || (!recap && !intro)) return
+    setPref(PREF.autoRecap, '0')
+    setPref(PREF.autoIntro, '0')
+    if (!prefs.autoSkip.recap && !prefs.autoSkip.intro) changeAutoSkip({ ...prefs.autoSkip, recap, intro })
+  }, [prefs.autoSkip])
   const playNext = () => {
     if (!next) return
     videoRef.current?.pause()
@@ -759,7 +768,7 @@ export function VideoPlayer({
               />
             )}
             <SkipMenu
-              kinds={{ recap: segs.some((s) => s.kind === 'recap'), intro: segs.some((s) => s.kind === 'intro') }}
+              kinds={{ recap: segs.some((s) => s.kind === 'recap'), intro: segs.some((s) => s.kind === 'intro'), credits: segs.some((s) => s.kind === 'credits') }}
               value={autoSkip}
               onChange={changeAutoSkip}
               onOpenChange={setMenuOpen}

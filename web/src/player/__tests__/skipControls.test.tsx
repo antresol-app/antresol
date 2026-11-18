@@ -52,6 +52,12 @@ async function player(segments: PlaySegment[], opts: { next?: UpNext; onClose?: 
   return { video, to, now: () => at }
 }
 
+/** The profile's «Пропускать сам», as GET /api/me/playback-prefs answers it. */
+function profileSkips(autoSkip: { recap?: boolean; intro?: boolean; credits?: boolean }) {
+  const prefs = { audioLangs: ['ru'], subMode: 'off', subLangs: [], subSize: 'm', subBackground: 'translucent', custom: false, autoSkip: { recap: false, intro: false, credits: false, ...autoSkip } }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (String(input).includes('/playback-prefs') ? json(prefs) : json(undefined, 204))))
+}
+
 describe('VideoPlayer: skip segments', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -93,7 +99,7 @@ describe('VideoPlayer: skip segments', () => {
   })
 
   it('«Пропускать сам» skips the intro with a note that takes it back', async () => {
-    localStorage.setItem('vault.player.autoSkipIntro', '1')
+    profileSkips({ intro: true })
     const p = await player([{ kind: 'intro', startSec: 60, endSec: 100 }])
     await p.to(60.5)
     expect(p.now()).toBe(100)
@@ -163,8 +169,16 @@ describe('VideoPlayer: skip segments', () => {
     expect(screen.getByRole('complementary', { name: 'Следующая серия' })).toBeInTheDocument()
   })
 
+  it('«Пропускать сам · Титры» goes on to the next episode as the credits start', async () => {
+    profileSkips({ credits: true })
+    const play = vi.fn()
+    const p = await player([{ kind: 'credits', startSec: 1250, endSec: DUR }], { next: { code: 'С1 Э2', title: 'Вторая', play } })
+    await p.to(1251)
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1))
+  })
+
   it('a note after an automatic skip leaves the next pill on screen', async () => {
-    localStorage.setItem('vault.player.autoSkipRecap', '1')
+    profileSkips({ recap: true })
     const p = await player([
       { kind: 'recap', startSec: 0, endSec: 40 },
       { kind: 'intro', startSec: 40, endSec: 80 },

@@ -160,6 +160,7 @@ export default {
   'player.skip.undo': 'Go Back',
   'player.skip.auto': 'Skip Automatically',
   'player.skip.autoRecap': 'Recap',
+  'player.skip.autoCredits': 'Credits',
   'player.skip.autoIntro': 'Intro',
   'player.skip.keyHint': '{label} (Enter)',
   'player.video.playFailed': 'Couldn’t play',
