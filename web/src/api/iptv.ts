@@ -184,6 +184,8 @@ export const getSourceChannels = (id: number, signal?: AbortSignal) =>
 export const patchChannels = (body: { channelIds: number[]; shown?: boolean; category?: string; name?: string; number?: number; reset?: boolean }) =>
   request<{ updated: number }>('PATCH', '/api/tv/channels', body)
 export const patchGroup = (body: { sourceId: number; group: string; shown: boolean }) => request<{ updated: number }>('PATCH', '/api/tv/groups', body)
+/** Shows every channel the source's default hid (a big playlist's); the adult and timeshift presets keep theirs. */
+export const showAllDefault = (sourceId: number) => request<{ updated: number }>('PATCH', '/api/tv/groups', { sourceId, all: true, shown: true })
 export const searchEPG = (q: string, signal?: AbortSignal) =>
   request<{ results: EPGHit[] }>('GET', `/api/tv/epg/search${qs({ q })}`, undefined, signal).then((r) => r?.results ?? [])
 export const bindEPG = (channelId: number, epgUrlId: number, xmlId: string) => request<void>('PUT', `/api/tv/channels/${channelId}/epg`, { epgUrlId, xmlId })

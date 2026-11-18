@@ -22,6 +22,7 @@ import {
   refreshEPG,
   refreshSource,
   rejectDrop,
+  showAllDefault,
   updateSource,
   type Source,
   type SourceChannel,
@@ -140,7 +141,9 @@ export function SourceChannels() {
   const counts = useMemo(() => {
     const l = (list ?? []).filter((c) => c.present)
     const shown = l.filter((c) => c.shown).length
-    return { total: l.length, shown, hidden: l.length - shown, new: l.filter((c) => c.new).length, gone: (list ?? []).length - l.length }
+    // hidden by the source's default (a big playlist starts with its channels off)
+    const byDefault = l.filter((c) => !c.shown && c.why === 'source-default').length
+    return { total: l.length, shown, hidden: l.length - shown, byDefault, new: l.filter((c) => c.new).length, gone: (list ?? []).length - l.length }
   }, [list])
 
   const update = (ids: number[], patch: Partial<SourceChannel>) => {
@@ -163,6 +166,17 @@ export function SourceChannels() {
     patchChannels({ channelIds: [c.channelId], name: n }).catch(failed)
   }
   const reset = (c: SourceChannel) => patchChannels({ channelIds: [c.channelId], reset: true }).then(loadChannels, failed)
+  const showAll = () => {
+    const ids = (list ?? []).filter((c) => c.present && !c.shown && c.why === 'source-default').map((c) => c.channelId)
+    update(ids, { shown: true, why: 'manual' })
+    run(
+      'showAll',
+      showAllDefault(id).then(() => {
+        setToast(t('iptv.bigList.done', { count: ids.length, total: num(ids.length) }))
+        loadSource()
+      }, failed),
+    )
+  }
   const showGroup = (on: boolean) => {
     const ids = (list ?? []).filter((c) => c.group === group).map((c) => c.channelId)
     update(ids, { shown: on, why: 'manual' })
@@ -279,6 +293,21 @@ export function SourceChannels() {
         {source?.lastError && (
           <Notice className={styles.notice} title={t('iptv.lastErrorTitle')}>
             {capital(source.lastError)}. {source.lastOk ? t('iptv.lastErrorSince', { ago: ago(source.lastOk) }) : ''}
+          </Notice>
+        )}
+
+        {list && counts.shown === 0 && counts.byDefault > 0 && (
+          <Notice
+            tone="accent"
+            className={styles.notice}
+            title={t('iptv.bigList.title', { count: counts.total, total: num(counts.total) })}
+            actions={
+              <Button size="small" loading={busy === 'showAll'} disabled={!!busy} onClick={showAll}>
+                {t('iptv.bigList.showAll')}
+              </Button>
+            }
+          >
+            {t('iptv.bigList.message')}
           </Notice>
         )}
 

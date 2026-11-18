@@ -466,3 +466,29 @@ func TestSourceDefaultName(t *testing.T) {
 		t.Fatalf("own name %q %v", name(c.ID), err)
 	}
 }
+
+func TestShowAllHiddenByDefault(t *testing.T) {
+	e := newTVEnv(t)
+	e.p.put("/big.m3u", tvPlaylist)
+	w := e.do("POST", "/api/tv/sources", `{"name":"Большой","url":"`+e.p.srv.URL+`/big.m3u","defaultShown":false}`, e.admin)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body)
+	}
+	var src sourceJSON
+	json.Unmarshal(w.Body.Bytes(), &src)
+	if _, err := e.tv.RefreshSource(context.Background(), src.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if c := e.channels(src.ID, "?state=shown"); c.Total != 0 {
+		t.Fatalf("shown before %+v", c)
+	}
+	w = e.do("PATCH", "/api/tv/groups", `{"sourceId":`+itoa(src.ID)+`,"all":true,"shown":true}`, e.admin)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"updated":3`) {
+		t.Fatalf("all %d %s", w.Code, w.Body)
+	}
+	// the timeshift copy keeps its preset
+	c := e.channels(src.ID, "?state=hidden")
+	if c.Total != 1 || c.Channels[0].Why != "preset-timeshift" {
+		t.Fatalf("hidden after %+v", c)
+	}
+}

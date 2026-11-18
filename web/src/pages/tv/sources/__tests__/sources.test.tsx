@@ -44,16 +44,18 @@ const SETS = [{ id: 2, name: 'Подписка А', sources: [1], hiddenGroups: 
 
 type Call = { method: string; url: string; body?: unknown }
 let calls: Call[] = []
+let channels = CHANNELS
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(body === null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
 beforeEach(() => {
   calls = []
+  channels = CHANNELS
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
     if (method === 'GET' && url === '/api/tv/sources') return json({ sources: [SOURCE], xtreamEnabled: false })
-    if (method === 'GET' && url.startsWith('/api/tv/sources/1/channels')) return json({ groups: [], channels: CHANNELS, total: CHANNELS.length })
+    if (method === 'GET' && url.startsWith('/api/tv/sources/1/channels')) return json({ groups: [], channels, total: channels.length })
     if (method === 'GET' && url === '/api/tv/sets') return json({ sets: SETS })
     if (method === 'GET' && url === '/api/tv/devices') return json({ devices: DEVICES })
     if (method === 'GET' && url === '/api/users') return json([{ id: 1, name: 'Анна', isAdmin: true, isKid: false }])
@@ -179,5 +181,22 @@ describe('a new source', () => {
     expect(hostOf('http://www.AkciaTV.org/list.m3u')).toBe('akciatv.org')
     expect(hostOf('provider.example.test:8000')).toBe('provider.example.test')
     expect(hostOf('')).toBe('')
+  })
+})
+
+describe('a big playlist that starts off', () => {
+  it('says so and turns its channels on with one call', async () => {
+    channels = CHANNELS.slice(0, 1400).map((c) => ({ ...c, shown: false, why: 'source-default' }))
+    at('/tv/manage/sources/1')
+    expect(await screen.findByText('В плейлисте 1 400 каналов — они пока выключены')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить все' }))
+    await waitFor(() => expect(writes().filter((c) => c.url === '/api/tv/groups')).toEqual([{ method: 'PATCH', url: '/api/tv/groups', body: { sourceId: 1, all: true, shown: true } }]))
+    await waitFor(() => expect(screen.queryByText(/они пока выключены/)).toBeNull())
+  })
+
+  it('stays quiet once something is shown', async () => {
+    at('/tv/manage/sources/1')
+    await screen.findByRole('table')
+    expect(screen.queryByText(/они пока выключены/)).toBeNull()
   })
 })

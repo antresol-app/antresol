@@ -859,11 +859,15 @@ func (a *iptvAdmin) patchChannels(w http.ResponseWriter, r *http.Request) {
 }
 
 // PATCH /api/tv/groups {sourceId, group, shown}: show or hide a whole
-// group of a source's playlist (a manual decision per entry).
+// group of a source's playlist (a manual decision per entry). With
+// all:true instead of a group: every present entry the source's default
+// decided (a big playlist's channels, hidden so as not to flood the
+// guide); the adult and timeshift presets keep theirs.
 func (a *iptvAdmin) patchGroup(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		SourceID int64  `json:"sourceId"`
 		Group    string `json:"group"`
+		All      bool   `json:"all"`
 		Shown    bool   `json:"shown"`
 	}
 	if !decode(w, r, &b) {
@@ -877,7 +881,11 @@ func (a *iptvAdmin) patchGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	n := 0
 	for _, m := range ms {
-		if m.Group != b.Group {
+		if b.All {
+			if !m.Present || m.Manual != nil || m.Why != iptv.WhySourceDefault {
+				continue
+			}
+		} else if m.Group != b.Group {
 			continue
 		}
 		d := iptv.Decision{}
