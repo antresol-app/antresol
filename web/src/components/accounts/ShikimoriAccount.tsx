@@ -10,8 +10,8 @@ import { loadAccounts, setAccountsState } from '../../state/accounts'
 import { ago } from '../../state/format'
 import { useSession } from '../../state/session'
 import { Button } from '../../ui/Button'
+import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
-import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
 
 export function ShikimoriAccount() {
@@ -74,17 +74,12 @@ export function ShikimoriAccount() {
     <GroupedSection title={t('acct.title')} footer={error || undefined}>
       {!s.linked ? (
         <ListRow wide label="Shikimori" hint={t('acct.hint')}>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (nick.trim()) void link()
-            }}
-          >
-            <TextField label={t('acct.nick')} value={nick} onChange={(e) => setNick(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
-            <Button type="submit" loading={busy} disabled={!nick.trim()}>
-              {t('acct.link')}
-            </Button>
-          </form>
+          <InlineForm
+            field={{ label: t('acct.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
+            submit={t('acct.link')}
+            loading={busy}
+            onSubmit={() => void link()}
+          />
         </ListRow>
       ) : (
         <>

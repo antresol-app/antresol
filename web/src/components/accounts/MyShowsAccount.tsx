@@ -10,8 +10,8 @@ import { loadMyShows, setMyShowsState } from '../../state/accounts'
 import { ago } from '../../state/format'
 import { useSession } from '../../state/session'
 import { Button } from '../../ui/Button'
+import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
-import { TextField } from '../../ui/TextField'
 
 // a first read of a long list takes minutes: ask again, ever less often
 const POLL_MS = 4000
@@ -95,17 +95,12 @@ export function MyShowsAccount() {
     <GroupedSection title={t('acct.myshows.title')} footer={error || undefined}>
       {!s.linked ? (
         <ListRow wide label="MyShows" hint={t('acct.myshows.hint')}>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (nick.trim()) void link()
-            }}
-          >
-            <TextField label={t('acct.myshows.nick')} value={nick} onChange={(e) => setNick(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
-            <Button type="submit" loading={busy} disabled={!nick.trim()}>
-              {t('acct.link')}
-            </Button>
-          </form>
+          <InlineForm
+            field={{ label: t('acct.myshows.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
+            submit={t('acct.link')}
+            loading={busy}
+            onSubmit={() => void link()}
+          />
         </ListRow>
       ) : (
         <>

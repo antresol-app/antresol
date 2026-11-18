@@ -66,6 +66,11 @@
 .hint {
   color: var(--label-2);
 }
+/* medium: a regular button's height, so a field and its button beside it
+   (InlineForm) line up */
+.medium .input {
+  height: var(--control-h-md);
+}
 /* small: the small control height (a search field at the top of a menu) */
 .small .input {
   height: var(--control-h-sm);

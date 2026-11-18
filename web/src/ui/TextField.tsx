@@ -16,8 +16,9 @@ export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElemen
   error?: string | null
   /** Adds a show/hide button to password fields. */
   revealable?: boolean
-  /** small: the small control height (a search field in a menu or a toolbar). */
-  size?: 'regular' | 'small'
+  /** small: the small control height (a search field in a menu or a toolbar);
+   * medium: a button's height (a field beside its button, InlineForm). */
+  size?: 'regular' | 'medium' | 'small'
   /** A search field's clear button (×) and Escape: empty the field. */
   onClear?: () => void
   /** The clear button's name (default «Очистить»). */
@@ -41,7 +42,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
 
   return (
     <div
-      className={[styles.field, error ? styles.invalid : '', size === 'small' ? styles.small : '', search ? styles.search : '', className]
+      className={[styles.field, error ? styles.invalid : '', size === 'small' ? styles.small : '', size === 'medium' ? styles.medium : '', search ? styles.search : '', className]
         .filter(Boolean)
         .join(' ')}
     >
