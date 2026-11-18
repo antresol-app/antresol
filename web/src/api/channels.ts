@@ -81,12 +81,15 @@ export interface ChannelProgram {
 export interface ExternalStream {
   /** The provider's URL, or /api/channels/live/ext/{id}/{n} (a redirect) when the source hides addresses. */
   url: string;
+  /** The server's same-origin relay of it (/api/channels/live/ext/{id}/{n}/relay): what the web plays when it cannot play `url`. */
+  relay?: string;
   userAgent?: string;
   referrer?: string;
   /** The platforms that cannot play it (a header a browser cannot send, http on an https page…). */
   unsupported: string[];
   fallbacks: {
     url: string;
+    relay?: string;
     userAgent?: string;
     referrer?: string;
     unsupported?: string[];

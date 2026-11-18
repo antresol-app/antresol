@@ -56,6 +56,8 @@ const CHANNELS = [
   { id: 1, number: 1, name: 'Свой 1', category: 'Кино', personal: false, auto: true, enabled: true, canEdit: false },
   ext(100, 100, { url: 'https://a.example.test/live.m3u8', fallbacks: [{ url: 'https://b.example.test/live.m3u8', unsupported: [] }], unsupported: [] }),
   ext(101, 101, { url: 'https://c.example.test/live.m3u8', userAgent: 'Box/1', fallbacks: [], unsupported: ['web'] }),
+  ext(102, 102, { url: 'http://d.example.test/live.m3u8', relay: '/api/channels/live/ext/102/0/relay', userAgent: 'Box/1', fallbacks: [], unsupported: ['web'] }),
+  ext(103, 103, { url: 'https://e.example.test/live.m3u8', relay: '/api/channels/live/ext/103/0/relay', fallbacks: [], unsupported: [] }),
 ]
 
 type Call = { method: string; url: string }
@@ -117,6 +119,21 @@ describe('an external channel in the web player', () => {
     expect(screen.getByText(/user-agent или referrer/)).toBeInTheDocument()
     expect(hlsLog.loaded).toEqual([])
     expect(screen.queryByRole('button', { name: 'Повторить' })).toBeNull()
+  })
+
+  it('plays a stream the web cannot play as given through the server’s relay', async () => {
+    open(102)
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['/api/channels/live/ext/102/0/relay']))
+    expect(screen.queryByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeNull()
+    expect(hlsLog.loaded.some((u) => u.includes('d.example.test'))).toBe(false)
+  })
+
+  it('falls back to the relay when the provider’s own stream fails (no CORS)', async () => {
+    open(103)
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8']))
+    await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8', '/api/channels/live/ext/103/0/relay'])
+    expect(screen.queryByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeNull()
   })
 
   it('keeps the track choice per channel in this browser, not on the server', async () => {

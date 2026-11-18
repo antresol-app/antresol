@@ -1,7 +1,11 @@
 // An external channel in the browser: which of its streams the web can try
-// (the primary first, then the fallbacks), and why none can when so. The
-// player tries them in order once each — no retry loop — and otherwise says
-// the channel opens in the Antresol apps or an IPTV player.
+// (the primary first, then the fallbacks), and why none can when so. A
+// stream the browser cannot play as given (a User-Agent or Referer it cannot
+// send, http on an https page) plays through the server's same-origin relay
+// in its place; the relays of the streams tried directly come last (a
+// provider without CORS). The player tries them in order once each — no
+// retry loop — and otherwise says the channel opens in the Antresol apps or
+// an IPTV player.
 // The viewer's audio and subtitle choice on a channel — an external one or
 // ours — is kept per channel in this browser (localStorage), never on the
 // server.
@@ -17,9 +21,18 @@ const insecure = (url: string, pageHttps: boolean) => pageHttps && /^http:/i.tes
 export function externalStreams(c: Channel, pageHttps = typeof location !== 'undefined' && location.protocol === 'https:'): { urls: string[]; blocked: ExtBlock | null } {
   const s = c.stream
   if (!s) return { urls: [], blocked: 'platform' }
-  const all = [{ url: s.url, unsupported: s.unsupported ?? [] }, ...(s.fallbacks ?? []).map((f) => ({ url: f.url, unsupported: f.unsupported ?? [] }))]
+  const all = [
+    { url: s.url, relay: s.relay, unsupported: s.unsupported ?? [] },
+    ...(s.fallbacks ?? []).map((f) => ({ url: f.url, relay: f.relay, unsupported: f.unsupported ?? [] })),
+  ]
   const web = all.filter((x) => x.url && !x.unsupported.includes('web'))
-  const urls = web.filter((x) => !insecure(x.url, pageHttps)).map((x) => x.url)
+  const direct = (x: (typeof all)[number]) => !!x.url && !x.unsupported.includes('web') && !insecure(x.url, pageHttps)
+  const urls: string[] = []
+  for (const x of all) {
+    if (direct(x)) urls.push(x.url)
+    else if (x.relay) urls.push(x.relay)
+  }
+  for (const x of all) if (direct(x) && x.relay) urls.push(x.relay)
   if (urls.length) return { urls, blocked: null }
   return { urls: [], blocked: web.length ? 'mixed' : 'platform' }
 }
