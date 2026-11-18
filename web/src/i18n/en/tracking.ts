@@ -25,7 +25,7 @@ export default {
   'tracking.calendar.episode': 'S{season} E{episode}',
   'tracking.calendar.movie': 'Movie',
   'acct.title': 'Accounts',
-  'acct.hint': 'Syncs both ways: your Watching and Completed lists from Shikimori show up in your marks, and after you sign in to Shikimori once, your marks go back there too. Only a nickname is needed to link; the list must be public.',
+  'acct.hint': 'Syncs both ways: your Shikimori list shows up in your marks, and after one sign-in there your marks go back to Shikimori. A nickname is enough; the list must be public.',
   'acct.nick': 'Shikimori nickname',
   'acct.link': 'Link',
   'acct.unlink': 'Unlink',
