@@ -59,8 +59,14 @@ export type ItemAction = AdminOnly & {
    */
   run: (item: ItemDetail, close: () => void) => void | string | ReactElement | Promise<void | string>
 }
-/** A panel under the action row of an item's page and of a title's page (there `item.id` is 0 and `title` the title). */
-export type ItemPanel = AdminOnly & { element: (props: { item: ItemDetail; title?: TitleInfo }) => ReactElement | null }
+/**
+ * A panel under the action row of an item's page and of a title's page
+ * (there `item.id` is 0 and `title` the title). With `inRow` the element is
+ * not drawn under the row but among its round buttons, after the addons'
+ * `itemActions` (a toggle that keeps its own state, «Следить»): it draws one
+ * `ui.IconButton` with `tile` (a phone shows it as one of the row's tiles).
+ */
+export type ItemPanel = AdminOnly & { element: (props: { item: ItemDetail; title?: TitleInfo }) => ReactElement | null; inRow?: true }
 /**
  * What the episode guide does with the episodes' sources of `kinds` (kinds
  * the addon's scanners declare; the core's own `library` is dropped). `use`

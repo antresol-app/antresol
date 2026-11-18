@@ -4,7 +4,8 @@
 // under the row; a run() that fails says so too, and the text a run()
 // returns shows there in a notice. An element a run() returns is drawn
 // (the addon's sheet) until it calls close(). `watchWay` entries are not
-// buttons here: they are ways of the page's «Смотреть ▾».
+// buttons here: they are ways of the page's «Смотреть ▾». The `inRow`
+// panels (a toggle with a state of its own) end the row.
 import { useEffect, useState } from 'react'
 import type { ItemDetail } from '../api/types'
 import { errorText } from '../api/client'
@@ -12,6 +13,7 @@ import { useT } from '../i18n'
 import { IconButton } from '../ui/IconButton'
 import type { Contribution } from '../addons/registry'
 import { AddonBoundary, useAddonLabel, useAddonSheet, useAddonSlot } from '../addons/slots'
+import { ItemPanels } from './ItemPanels'
 
 type Report = { onProblem: (text: string) => void; onNotice: (text: string) => void }
 type Run = ReturnType<typeof useAddonSheet>['run']
@@ -55,6 +57,8 @@ export function AddonItemActions({ item, onProblem, onNotice, onBroken }: { item
           </AddonBoundary>
         ),
       )}
+      {/* the addons' toggles of the row («Следить»): panels that are buttons, after the actions */}
+      <ItemPanels item={item} inRow />
       {sheet.node}
     </>
   )

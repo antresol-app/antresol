@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { registerAddon, resetAddonsForTests } from '../../addons/registry'
 import { downloadUrl } from '../../api/client'
 import type { ItemDetail as Detail, MediaFile, SubTrack, Track } from '../../api/types'
 import { ItemDetail } from '../../pages/ItemDetail'
@@ -204,5 +205,58 @@ describe('round toggles of the action row', () => {
       vi.unstubAllGlobals()
       setViewport(1440)
     }
+  })
+})
+
+// An addon's toggle with a state of its own («Следить») is a button of the
+// row among the tiles, after the addons' actions — not a panel under it.
+describe('addon buttons of the row', () => {
+  const adult = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
+  beforeEach(async () => {
+    resetAddonsForTests()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(adult), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await session.login(adult.id)
+  })
+  afterEach(() => {
+    session.reset()
+    vi.unstubAllGlobals()
+    resetAddonsForTests()
+  })
+
+  it('an inRow panel is drawn in the row after the addon actions; a plain panel is not drawn by the row', () => {
+    registerAddon('fake', {
+      itemActions: [{ label: 'Скачать', icon: 'download', run: () => undefined }],
+      itemPanels: [
+        { element: () => <button type="button">Следить</button>, inRow: true },
+        { element: () => <p>Панель под рядом</p> },
+      ],
+    })
+    render(<ActionBar item={film([file(5)])} onPlay={() => {}} />)
+    const row = document.querySelector('[data-action-tiles]') as HTMLElement
+    const names = within(row)
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+    expect(names.indexOf('Следить')).toBeGreaterThan(names.indexOf('Скачать'))
+    expect(names.indexOf('Скачать')).toBeGreaterThan(-1)
+    expect(screen.queryByText('Панель под рядом')).toBeNull()
+  })
+
+  it('one inRow panel that throws drops out, the row stays', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    registerAddon('broken', {
+      itemPanels: [
+        {
+          element: () => {
+            throw new Error('boom')
+          },
+          inRow: true,
+        },
+      ],
+    })
+    registerAddon('fine', { itemPanels: [{ element: () => <button type="button">Следить</button>, inRow: true }] })
+    render(<ActionBar item={film([file(5)])} onPlay={() => {}} />)
+    expect(within(document.querySelector('[data-action-tiles]') as HTMLElement).getByRole('button', { name: 'Следить' })).toBeInTheDocument()
+    vi.restoreAllMocks()
   })
 })
