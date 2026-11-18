@@ -1,8 +1,8 @@
 // «ТВ-каналы» (/api/channels…): live channels made of the library, their
 // guide and the editor's options.
-import { qs, request } from './client'
+import { qs, request } from "./client";
 
-export type ChannelOrder = 'shuffle' | 'ordered'
+export type ChannelOrder = "shuffle" | "ordered";
 
 /**
  * One entry of a channel's own list (rules.picks): a movie or a series
@@ -10,266 +10,331 @@ export type ChannelOrder = 'shuffle' | 'ordered'
  * (`item`), or every video under a library folder (`folder`, the path as the
  * folder browser returns it).
  */
-export type ChannelPick = { kind: 'title'; id: number } | { kind: 'item'; id: number } | { kind: 'folder'; path: string }
+export type ChannelPick =
+  | { kind: "title"; id: number }
+  | { kind: "item"; id: number }
+  | { kind: "folder"; path: string };
 
 /** What a channel plays (the server's channels.Rules). */
 export interface ChannelRules {
-  kinds?: ('movie' | 'series')[]
-  genres?: string[]
-  yearFrom?: number
-  yearTo?: number
+  kinds?: ("movie" | "series")[];
+  genres?: string[];
+  yearFrom?: number;
+  yearTo?: number;
   /** Made in any of these countries (ISO 3166-1, «SU» the Soviet Union). */
-  countries?: string[]
+  countries?: string[];
   /** The original language is any of these (ISO 639-1). */
-  languages?: string[]
+  languages?: string[];
   /** Themes: TMDB keywords (English, lower case). */
-  keywords?: string[]
+  keywords?: string[];
   /** Round 1's chosen titles (read only: the editor saves them as picks). */
-  titles?: number[]
+  titles?: number[];
   /** The channel's own ordered list; when set it is the whole pool (the filters are ignored). */
-  picks?: ChannelPick[]
-  libraryUser?: number
-  maxRating?: string
-  order?: ChannelOrder
+  picks?: ChannelPick[];
+  libraryUser?: number;
+  maxRating?: string;
+  order?: ChannelOrder;
   /** Also films of these genres the library lacks, from an addon's titles (where the server offers it). */
-  extras?: boolean
+  extras?: boolean;
+  /** Episodes play without their recap and intro and end where their credits start (movies play whole). */
+  skipSegments?: boolean;
 }
 
 /** An audio or subtitle rendition of the live stream present in a programme. */
 export interface ChannelTrack {
   /** Round 3's fixed slot (older servers; never relied on). */
-  slot?: string
+  slot?: string;
   /** The HLS rendition's NAME, unique in its group (select the rendition by it). */
-  name: string
+  name: string;
   /** What the picker shows («Русский — LostFilm»); may be longer than the name. */
-  label: string
+  label: string;
   /** BCP 47 / ISO 639 of the track ("" unknown). */
-  lang: string
+  lang: string;
   /** A cleaned voice-over: the NAME of the voice-over it is the cleaned version of (in this programme). */
-  cleanedOf?: string
+  cleanedOf?: string;
 }
 
 export interface ChannelProgram {
   /** "<channel>-<seq>" (older servers: absent). */
-  id?: string
-  itemId: number
+  id?: string;
+  itemId: number;
   /** 'external': an external playlist's programme (no item page, itemId 0). */
-  kind?: 'movie' | 'episode' | 'external'
-  title: string
-  subtitle?: string
-  overview?: string
-  year?: number
-  rating?: string
-  genres?: string[]
-  start: string
-  end: string
-  poster?: string
-  backdrop?: string
+  kind?: "movie" | "episode" | "external";
+  title: string;
+  subtitle?: string;
+  overview?: string;
+  year?: number;
+  rating?: string;
+  genres?: string[];
+  start: string;
+  end: string;
+  poster?: string;
+  backdrop?: string;
   /** From an addon, not in the library (itemId is negative). */
-  external?: boolean
+  external?: boolean;
   /** Absent: unknown; empty: none. */
-  audio?: ChannelTrack[]
-  subtitles?: ChannelTrack[]
+  audio?: ChannelTrack[];
+  subtitles?: ChannelTrack[];
 }
 
 /** Where an external channel's stream is, as the server tells this client. */
 export interface ExternalStream {
   /** The provider's URL, or /api/channels/live/ext/{id}/{n} (a redirect) when the source hides addresses. */
-  url: string
-  userAgent?: string
-  referrer?: string
+  url: string;
+  userAgent?: string;
+  referrer?: string;
   /** The platforms that cannot play it (a header a browser cannot send, http on an https page…). */
-  unsupported: string[]
-  fallbacks: { url: string; userAgent?: string; referrer?: string; unsupported?: string[] }[]
+  unsupported: string[];
+  fallbacks: {
+    url: string;
+    userAgent?: string;
+    referrer?: string;
+    unsupported?: string[];
+  }[];
 }
 
 export interface Channel {
-  id: number
-  number: number
-  name: string
-  category: string
-  personal: boolean
-  auto: boolean
-  enabled: boolean
-  canEdit: boolean
+  id: number;
+  number: number;
+  name: string;
+  category: string;
+  personal: boolean;
+  auto: boolean;
+  enabled: boolean;
+  canEdit: boolean;
   /** Starred by this profile. */
-  favorite?: boolean
+  favorite?: boolean;
   /** The uploaded logo ("/api/channels/{id}/logo.png?v=…"); absent: none (show number and name). */
-  logoUrl?: string
+  logoUrl?: string;
   /** Only for a channel the profile may edit. */
-  rules?: ChannelRules
+  rules?: ChannelRules;
   /** The editor's list: rules.picks described in order (only where the profile may edit). */
-  pickInfo?: ChannelPickInfo[]
-  now?: ChannelProgram
-  next?: ChannelProgram
+  pickInfo?: ChannelPickInfo[];
+  now?: ChannelProgram;
+  next?: ChannelProgram;
   /** From an external playlist: the client plays `stream` itself. */
-  external?: boolean
-  stream?: ExternalStream
+  external?: boolean;
+  stream?: ExternalStream;
 }
 
 export interface ChannelList {
   /** In number order: the one list. */
-  channels: Channel[]
+  channels: Channel[];
   /** The channel this profile tuned in last (a TV's «last channel»). */
-  lastChannel?: number | null
-  canManage: boolean
-  canCreate: boolean
+  lastChannel?: number | null;
+  canManage: boolean;
+  canCreate: boolean;
 }
 
 export interface ChannelGuide {
-  channel: Channel
-  programs: ChannelProgram[]
+  channel: Channel;
+  programs: ChannelProgram[];
 }
 
 /** A channel in the guide grid. */
 export interface ChannelEPG {
-  id: number
-  number: number
-  name: string
-  category: string
-  favorite?: boolean
-  logoUrl?: string
-  programs: ChannelProgram[]
+  id: number;
+  number: number;
+  name: string;
+  category: string;
+  favorite?: boolean;
+  logoUrl?: string;
+  programs: ChannelProgram[];
 }
 
 export interface ChannelEPGWindow {
-  from: string
-  to: string
-  channels: ChannelEPG[]
+  from: string;
+  to: string;
+  channels: ChannelEPG[];
 }
 
 export interface ChannelOptions {
-  genres: { key: string; name: string }[]
-  decades: number[]
-  titles: { id: number; kind: 'movie' | 'series'; title: string; year?: number; episodes?: number }[]
-  profiles: { id: number; name: string }[]
+  genres: { key: string; name: string }[];
+  decades: number[];
+  titles: {
+    id: number;
+    kind: "movie" | "series";
+    title: string;
+    year?: number;
+    episodes?: number;
+  }[];
+  profiles: { id: number; name: string }[];
   /** The server can mix in films from outside the library (rules.extras). */
-  extrasAvailable?: boolean
+  extrasAvailable?: boolean;
   /** What the library has to pick by, the most common first (older servers: none). */
-  countries?: TagCount[]
-  languages?: TagCount[]
-  keywords?: TagCount[]
-  yearMin?: number
-  yearMax?: number
+  countries?: TagCount[];
+  languages?: TagCount[];
+  keywords?: TagCount[];
+  yearMin?: number;
+  yearMax?: number;
   /** «Опишите канал» has a language model behind it (else the words alone). */
-  aiAvailable?: boolean
+  aiAvailable?: boolean;
 }
 
 export interface TagCount {
-  key: string
-  count: number
+  key: string;
+  count: number;
 }
 
 /** What a channel of some rules would play now (POST /api/channels/preview). */
 export interface ChannelPreviewResult {
-  movies: number
-  series: number
-  episodes: number
-  items: { id: number; kind: 'movie' | 'series'; title: string; year?: number; poster?: string }[]
+  movies: number;
+  series: number;
+  episodes: number;
+  items: {
+    id: number;
+    kind: "movie" | "series";
+    title: string;
+    year?: number;
+    poster?: string;
+  }[];
 }
 
 /** A channel read from a sentence (POST /api/channels/suggest). */
 export interface ChannelSuggestion {
-  name: string
-  rules: ChannelRules
-  via: 'words' | 'ai'
+  name: string;
+  rules: ChannelRules;
+  via: "words" | "ai";
 }
 
 /** A pick as the server describes it (Channel.pickInfo). */
 export type ChannelPickInfo = ChannelPick & {
-  title: string
-  subtitle?: string
-  year?: number
+  title: string;
+  subtitle?: string;
+  year?: number;
   /** Nothing of it plays now (gone, above the age limit…). */
-  missing?: boolean
-}
+  missing?: boolean;
+};
 
 /** A hit of the editor's search (movies, series, episodes). */
 export interface ChannelSearchHit {
-  kind: 'movie' | 'series' | 'episode'
-  id: number
-  title: string
+  kind: "movie" | "series" | "episode";
+  id: number;
+  title: string;
   /** An episode's «Series · S1 E2»… */
-  subtitle?: string
-  year?: number
+  subtitle?: string;
+  year?: number;
   /** What to put in rules.picks. */
-  pick?: ChannelPick
+  pick?: ChannelPick;
 }
 
 /** One level of the library's folders for the editor's browser. */
 export interface ChannelFolderLevel {
-  folders: { path: string; name: string }[]
+  folders: { path: string; name: string }[];
   /** Playable files here: their item ids. */
-  files: { id: number; name: string; kind?: 'movie' | 'episode' }[]
+  files: { id: number; name: string; kind?: "movie" | "episode" }[];
 }
 
 export interface ChannelInput {
-  name: string
-  number?: number
-  category: string
-  personal: boolean
-  enabled: boolean
-  rules: ChannelRules
+  name: string;
+  number?: number;
+  category: string;
+  personal: boolean;
+  enabled: boolean;
+  rules: ChannelRules;
 }
 
 export const getChannels = (signal?: AbortSignal, manage = false) =>
-  request<ChannelList>('GET', `/api/channels${qs({ manage: manage ? 1 : undefined })}`, undefined, signal)
+  request<ChannelList>(
+    "GET",
+    `/api/channels${qs({ manage: manage ? 1 : undefined })}`,
+    undefined,
+    signal,
+  );
 
 export const getChannelGuide = (id: number, hours = 12, signal?: AbortSignal) =>
-  request<ChannelGuide>('GET', `/api/channels/${id}/guide${qs({ hours })}`, undefined, signal)
+  request<ChannelGuide>(
+    "GET",
+    `/api/channels/${id}/guide${qs({ hours })}`,
+    undefined,
+    signal,
+  );
 
 /** The guide grid: every channel with the programmes overlapping [from, from+hours). */
 export const getChannelEPG = (from: Date, hours = 6, signal?: AbortSignal) =>
-  request<ChannelEPGWindow>('GET', `/api/channels/epg${qs({ from: from.toISOString().replace(/\.\d{3}Z$/, 'Z'), hours })}`, undefined, signal)
+  request<ChannelEPGWindow>(
+    "GET",
+    `/api/channels/epg${qs({ from: from.toISOString().replace(/\.\d{3}Z$/, "Z"), hours })}`,
+    undefined,
+    signal,
+  );
 
 /** Star or unstar a channel for this profile. */
-export const setChannelFavorite = (id: number, on: boolean) => request<void>(on ? 'PUT' : 'DELETE', `/api/channels/${id}/favorite`)
+export const setChannelFavorite = (id: number, on: boolean) =>
+  request<void>(on ? "PUT" : "DELETE", `/api/channels/${id}/favorite`);
 
 /** The channel was tuned in: the profile's «last channel» (never progress or history). */
-export const setLastChannel = (id: number) => request<void>('PUT', '/api/channels/last', { channelId: id })
+export const setLastChannel = (id: number) =>
+  request<void>("PUT", "/api/channels/last", { channelId: id });
 
 export const previewChannel = (rules: ChannelRules, signal?: AbortSignal) =>
-  request<ChannelPreviewResult>('POST', '/api/channels/preview', { rules }, signal)
-export const suggestChannel = (text: string, signal?: AbortSignal) => request<ChannelSuggestion>('POST', '/api/channels/suggest', { text }, signal)
-export const getChannelOptions = (signal?: AbortSignal) => request<ChannelOptions>('GET', '/api/channels/options', undefined, signal)
+  request<ChannelPreviewResult>(
+    "POST",
+    "/api/channels/preview",
+    { rules },
+    signal,
+  );
+export const suggestChannel = (text: string, signal?: AbortSignal) =>
+  request<ChannelSuggestion>("POST", "/api/channels/suggest", { text }, signal);
+export const getChannelOptions = (signal?: AbortSignal) =>
+  request<ChannelOptions>("GET", "/api/channels/options", undefined, signal);
 
 export const searchChannelOptions = (q: string, signal?: AbortSignal) =>
-  request<{ results?: ChannelSearchHit[] } | ChannelSearchHit[]>('GET', `/api/channels/options/search${qs({ q })}`, undefined, signal).then((r) =>
-    Array.isArray(r) ? r : (r?.results ?? []),
-  )
+  request<{ results?: ChannelSearchHit[] } | ChannelSearchHit[]>(
+    "GET",
+    `/api/channels/options/search${qs({ q })}`,
+    undefined,
+    signal,
+  ).then((r) => (Array.isArray(r) ? r : (r?.results ?? [])));
 
 /** The folders and files under `path` ("" : the library roots). */
 export const getChannelFolders = (path: string, signal?: AbortSignal) =>
-  request<ChannelFolderLevel>('GET', `/api/channels/options/folders${qs({ path: path || undefined })}`, undefined, signal).then((r) => ({
+  request<ChannelFolderLevel>(
+    "GET",
+    `/api/channels/options/folders${qs({ path: path || undefined })}`,
+    undefined,
+    signal,
+  ).then((r) => ({
     folders: r?.folders ?? [],
     files: r?.files ?? [],
-  }))
+  }));
 
 /** The largest logo the server takes. */
-export const LOGO_MAX_BYTES = 2 * 1024 * 1024
-export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 /** Upload a channel's logo (PNG, JPEG or WebP ≤ 2 MB): the channel as it is now, or nothing. */
 export function uploadChannelLogo(id: number, file: File) {
-  const body = new FormData()
-  body.append('file', file)
-  return request<Partial<Channel> | undefined>('POST', `/api/channels/${id}/logo`, body)
+  const body = new FormData();
+  body.append("file", file);
+  return request<Partial<Channel> | undefined>(
+    "POST",
+    `/api/channels/${id}/logo`,
+    body,
+  );
 }
-export const deleteChannelLogo = (id: number) => request<void>('DELETE', `/api/channels/${id}/logo`)
+export const deleteChannelLogo = (id: number) =>
+  request<void>("DELETE", `/api/channels/${id}/logo`);
 
-export const createChannel = (c: ChannelInput) => request<Channel>('POST', '/api/channels', c)
-export const updateChannel = (id: number, c: ChannelInput) => request<Channel>('PUT', `/api/channels/${id}`, c)
-export const deleteChannel = (id: number) => request<void>('DELETE', `/api/channels/${id}`)
-export const generateChannels = () => request<{ created: number; updated: number; disabled: number }>('POST', '/api/channels/generate')
-
+export const createChannel = (c: ChannelInput) =>
+  request<Channel>("POST", "/api/channels", c);
+export const updateChannel = (id: number, c: ChannelInput) =>
+  request<Channel>("PUT", `/api/channels/${id}`, c);
+export const deleteChannel = (id: number) =>
+  request<void>("DELETE", `/api/channels/${id}`);
+export const generateChannels = () =>
+  request<{ created: number; updated: number; disabled: number }>(
+    "POST",
+    "/api/channels/generate",
+  );
 
 /** The web player's live stream of a channel. */
-export const liveUrl = (id: number) => `/api/channels/live/${id}/index.m3u8`
+export const liveUrl = (id: number) => `/api/channels/live/${id}/index.m3u8`;
 
 /** How far a programme is (0…1) at `now`. */
 export function programProgress(p: ChannelProgram, now = Date.now()): number {
-  const s = Date.parse(p.start)
-  const e = Date.parse(p.end)
-  if (!(e > s)) return 0
-  return Math.min(1, Math.max(0, (now - s) / (e - s)))
+  const s = Date.parse(p.start);
+  const e = Date.parse(p.end);
+  if (!(e > s)) return 0;
+  return Math.min(1, Math.max(0, (now - s) / (e - s)));
 }

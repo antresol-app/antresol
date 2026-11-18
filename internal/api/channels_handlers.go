@@ -226,7 +226,7 @@ func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.E
 	for i := 0; i < len(es); i++ {
 		e := es[i]
 		end := e.End
-		for i+1 < len(es) && es[i+1].ItemID == e.ItemID && (e.FileID == 0 || es[i+1].FileID != e.FileID) && es[i+1].Start.Equal(end) { // its first file again: a repeat
+		for i+1 < len(es) && channels.SameProgramme(e, es[i], es[i+1]) {
 			i++
 			end = es[i].End
 		}

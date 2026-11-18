@@ -108,9 +108,9 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		add("movies", "Все фильмы", CatGeneral, 1, Rules{Kinds: []string{library.KindMovie}})
 	}
 	// animated series get their own channel and stay out of «Все сериалы»
-	toons := Rules{Kinds: []string{library.KindSeries}, Genres: []string{animationGenre}}
+	toons := Rules{Kinds: []string{library.KindSeries}, Genres: []string{animationGenre}, SkipSegments: true}
 	hasToons := enough(Match(series, toons))
-	all := Rules{Kinds: []string{library.KindSeries}}
+	all := Rules{Kinds: []string{library.KindSeries}, SkipSegments: true}
 	if hasToons {
 		all.NotGenres = []string{animationGenre}
 	}
@@ -160,7 +160,7 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		add("decade:"+strconv.Itoa(d), DecadeName(d), CatDecades, 40,
 			Rules{Kinds: []string{library.KindMovie}, YearFrom: d, YearTo: d + 9})
 	}
-	kids := Rules{Genres: kidsGenres, MaxRating: "6+"}
+	kids := Rules{Genres: kidsGenres, MaxRating: "6+", SkipSegments: true}
 	if enough(Match(append(append([]Unit{}, movies...), series...), kids)) {
 		add("kids", "Детский", CatKids, 50, kids)
 	}
@@ -180,7 +180,7 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 			continue // a short series repeats within days: no channel of its own
 		}
 		n++
-		add("series:"+strconv.FormatInt(u.ID, 10), u.Title, CatSeries, 100, Rules{Titles: []int64{u.ID}, Order: OrderOrdered})
+		add("series:"+strconv.FormatInt(u.ID, 10), u.Title, CatSeries, 100, Rules{Titles: []int64{u.ID}, Order: OrderOrdered, SkipSegments: true})
 	}
 	// each profile's own library
 	owners, err := g.owners(ctx)

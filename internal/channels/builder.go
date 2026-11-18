@@ -26,6 +26,9 @@ type Entry struct {
 	Channel int64
 	// ExtraID: a title outside the library (channel_extras); 0: a file.
 	ExtraID int64
+	// OffsetMs: where in the file the entry starts (an episode's piece
+	// after its cut intro; 0: from the start).
+	OffsetMs int64
 }
 
 // Builder makes and extends channel schedules.
@@ -138,7 +141,7 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	if start >= until || pool.Empty() {
 		return tx.Commit()
 	}
-	ins, err := tx.PrepareContext(ctx, `INSERT INTO channel_playout (channel_id, seq, start_ms, end_ms, item_id, file_id, unit_id, extra_id) VALUES (?,?,?,?,?,?,?,?)`)
+	ins, err := tx.PrepareContext(ctx, `INSERT INTO channel_playout (channel_id, seq, start_ms, end_ms, item_id, file_id, unit_id, extra_id, offset_ms) VALUES (?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
@@ -150,6 +153,11 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	seq := h.lastSeq
 	for start < until {
 		prog := p.next(seq+1, start)
+		if c.Rules.SkipSegments {
+			if prog, err = skipCut(ctx, tx, prog); err != nil {
+				return err
+			}
+		}
 		for _, part := range prog.Parts {
 			seq++
 			end := start + part.DurationMs
@@ -157,7 +165,7 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 			if prog.ExtraID != 0 {
 				extra = prog.ExtraID
 			}
-			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, extra); err != nil {
+			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, extra, part.OffsetMs); err != nil {
 				return err
 			}
 			start = end
@@ -379,12 +387,12 @@ func (s *Store) CutMissing(ctx context.Context, id int64) (bool, error) {
 // ErrNothing: the channel has nothing scheduled at that time.
 var ErrNothing = errors.New("channels: nothing scheduled")
 
-const entryCols = `seq, start_ms, end_ms, item_id, file_id, unit_id, channel_id, COALESCE(extra_id, 0)`
+const entryCols = `seq, start_ms, end_ms, item_id, file_id, unit_id, channel_id, COALESCE(extra_id, 0), offset_ms`
 
 func scanEntry(r rowScanner) (Entry, error) {
 	var e Entry
 	var st, en int64
-	err := r.Scan(&e.Seq, &st, &en, &e.ItemID, &e.FileID, &e.UnitID, &e.Channel, &e.ExtraID)
+	err := r.Scan(&e.Seq, &st, &en, &e.ItemID, &e.FileID, &e.UnitID, &e.Channel, &e.ExtraID, &e.OffsetMs)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNothing
 	}

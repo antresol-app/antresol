@@ -29,9 +29,11 @@ type Unit struct {
 	Poster string
 }
 
-// Part is one file of a programme.
+// Part is one file of a programme, or a piece of it: OffsetMs is where in
+// the file it starts (an episode with its intro cut, skip.go).
 type Part struct {
 	FileID     int64
+	OffsetMs   int64
 	DurationMs int64
 }
 

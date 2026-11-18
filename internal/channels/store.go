@@ -69,6 +69,10 @@ type Rules struct {
 	// have, from outside it (Service.Extras; off by default, and nothing
 	// without an implementation). See ExtrasOn.
 	Extras bool `json:"extras,omitempty"`
+	// SkipSegments: an episode plays without its recap and intro and ends
+	// where its credits start (skip.go); generated series channels have it
+	// on. Movies always play whole.
+	SkipSegments bool `json:"skipSegments,omitempty"`
 }
 
 // Channel is a row of channels.
@@ -513,9 +517,42 @@ func (s *Store) SetLogo(ctx context.Context, id, version int64) error {
 	return nil
 }
 
-// CutAfterCurrent drops the schedule after the programme on air.
+// CutAfterCurrent drops the schedule after the programme on air (its own
+// later parts stay: a movie's next file, an episode's piece after its
+// cut intro).
 func (s *Store) CutAfterCurrent(ctx context.Context, id int64) error {
-	now := s.now().UnixMilli()
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND start_ms > ?`, id, now)
+	now := s.now()
+	from := ms(now)
+	cur, err := s.At(ctx, id, now)
+	switch {
+	case errors.Is(err, ErrNothing):
+		return nil
+	case err != nil:
+		return err
+	}
+	if !cur.Start.After(now) {
+		rows, err := s.DB.QueryContext(ctx, `SELECT `+entryCols+` FROM channel_playout WHERE channel_id=? AND seq > ? ORDER BY seq LIMIT 16`, id, cur.Seq)
+		if err != nil {
+			return err
+		}
+		first, prev := cur, cur
+		for rows.Next() {
+			e, err := scanEntry(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			if !SameProgramme(first, prev, e) {
+				break
+			}
+			prev = e
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		from = max(from, ms(prev.End)-1) // rows starting at prev's end or later go
+	}
+	_, err = s.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND start_ms > ?`, id, from)
 	return err
 }

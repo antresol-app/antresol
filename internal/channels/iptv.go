@@ -204,9 +204,10 @@ func WriteXMLTV(w io.Writer, g Guide) error {
 		es := g.Entries[c.ID]
 		for i := 0; i < len(es); i++ {
 			e := es[i]
-			// the parts of one programme (cd1, cd2) are one guide entry
+			// the parts of one programme (cd1, cd2; an episode's pieces around its
+			// cut intro) are one guide entry
 			end := e.End
-			for i+1 < len(es) && es[i+1].ItemID == e.ItemID && (e.FileID == 0 || es[i+1].FileID != e.FileID) && es[i+1].Start.Equal(end) { // its first file again: a repeat
+			for i+1 < len(es) && SameProgramme(e, es[i], es[i+1]) {
 				i++
 				end = es[i].End
 			}

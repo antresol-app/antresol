@@ -42,6 +42,12 @@ type Program struct {
 	Skip bool
 }
 
+// fileSec is where in the file schedule time t of the programme is (its
+// entry may start inside the file: an episode with its intro cut).
+func (p Program) fileSec(t time.Time) float64 {
+	return float64(p.OffsetMs)/1000 + t.Sub(p.Start).Seconds()
+}
+
 // external: a title from outside the library.
 func (p Program) external() bool { return p.URL != "" || p.ExtraID != 0 }
 
@@ -664,7 +670,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 		c.mu.Lock()
 		c.program = p.ItemID
 		c.mu.Unlock()
-		segs, clean, err := l.encode(ctx, c, p, set, pos.Sub(p.Start).Seconds(), rem.Seconds(), seq, tsOffset, burst, !first)
+		segs, clean, err := l.encode(ctx, c, p, set, p.fileSec(pos), rem.Seconds(), seq, tsOffset, burst, !first)
 		if p.Release != nil {
 			p.Release()
 		}
@@ -685,7 +691,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 		}
 		if len(segs) == 0 {
 			fails++
-			log.Printf("channels: channel %d: %s at %.0f s gave nothing: %v", c.id, filepath.Base(p.Path), pos.Sub(p.Start).Seconds(), err)
+			log.Printf("channels: channel %d: %s at %.0f s gave nothing: %v", c.id, filepath.Base(p.Path), p.fileSec(pos), err)
 			if fails >= 5 {
 				return fmt.Errorf("channels: channel %d: %d programmes in a row failed: %w", c.id, fails, err)
 			}

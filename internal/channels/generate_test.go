@@ -175,3 +175,49 @@ func TestGeneratorNeedsTwoDays(t *testing.T) {
 		t.Fatalf("49.5 hours of comedies of the 90s: %v", have)
 	}
 }
+
+// A series channel generated before channels skipped openings gets the
+// rule on the next sync, once; an admin who turned it off (an edit) keeps
+// it off.
+func TestGeneratorSyncGivesSkipSegmentsOnce(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _ := f.series("Long", 1, 8, 20, itemOpt{})
+	t2, _ := f.series("Other", 1, 8, 20, itemOpt{})
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := f.st.All(ctx)
+	by := map[string]Channel{}
+	for _, c := range all {
+		by[c.AutoKey] = c
+	}
+	for _, key := range []string{"series:" + itoa(s), "series:" + itoa(t2)} {
+		if !by[key].Rules.SkipSegments {
+			t.Fatalf("%s without skipSegments: %+v", key, by[key])
+		}
+	}
+	// as an older build left it: no rule
+	old := by["series:"+itoa(s)]
+	f.exec(`UPDATE channels SET rules_json=json_remove(rules_json, '$.skipSegments') WHERE id=?`, old.ID)
+	// the admin turned it off on the other one
+	off := by["series:"+itoa(t2)]
+	off.Rules.SkipSegments, off.Edited = false, true
+	if _, err := f.st.Update(ctx, off); err != nil {
+		t.Fatal(err)
+	}
+	res, err := g.Sync(ctx)
+	if err != nil || res.Updated != 1 {
+		t.Fatalf("sync %+v %v", res, err)
+	}
+	if got, _ := f.st.Get(ctx, old.ID); !got.Rules.SkipSegments {
+		t.Fatalf("old channel %+v", got.Rules)
+	}
+	if got, _ := f.st.Get(ctx, off.ID); got.Rules.SkipSegments {
+		t.Fatalf("the admin's off was undone: %+v", got.Rules)
+	}
+	if res, _ := g.Sync(ctx); res != (SyncResult{}) {
+		t.Fatalf("third run: %+v", res)
+	}
+}
