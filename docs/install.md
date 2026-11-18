@@ -106,5 +106,26 @@ be done in one sitting:
   [configuration.md](configuration.md); [build-tags.md](build-tags.md)
   explains the build.
 
+## Addons that need a helper service
+
+Some addons need a program of their own next to the server (for example a
+service that gets past a site's bot check). The addon's manifest declares it,
+and its settings page says when it is missing and shows the block to add:
+
+1. Paste the block under `services:` in `compose.yml`, next to `antresol`.
+   It has no `ports:`: the helper stays on the project's own network, and
+   nothing outside the host can reach it.
+2. Run `docker compose up -d`.
+
+The addon finds the helper by its service name within half a minute; there is
+no address to enter and no restart. The server's addon list names the
+helpers each addon declares (`helpers` in `GET /api/addons`).
+
+If the same service already runs elsewhere on your network, give the addon
+its address instead (its settings page or its `ANTRESOL_<ID>_*` variable):
+an address you give always wins, and the helper is not looked for. With the
+server outside Docker, use that address too: a compose service name resolves
+only inside the compose project.
+
 Upgrade notes for each version are in its
 [release notes](https://github.com/antresol-app/antresol/releases).

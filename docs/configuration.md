@@ -80,6 +80,11 @@ their address with the test email. Everything is off until turned on.
 | `VAULT_ADDONS_DEV` | | Local addons for development, one folder per addon (relative: under the data dir). |
 | `VAULT_ADDONS_PIN` | | Addons pinned to releases in `VAULT_ADDONS_DEV` (`id@version`, comma separated), installed at boot and locked in the admin UI. |
 
+An addon's own settings are variables named `ANTRESOL_<ID>_*` (its README
+lists them). An addon may need a helper service beside the server: it then
+finds it by its compose service name, and an address set in its variable or
+its settings page wins ([install.md](install.md#addons-that-need-a-helper-service)).
+
 ## Advanced
 
 | Variable | Default | What it does |

@@ -160,3 +160,40 @@ func TestManifest_ChannelsHooksAllOrNone(t *testing.T) {
 		t.Fatalf("none of them: %v", err)
 	}
 }
+
+func TestParseManifest_Helpers(t *testing.T) {
+	with := func(helpers string) string {
+		return strings.Replace(validJSON(), `"permissions"`, `"helpers":`+helpers+`,"permissions"`, 1)
+	}
+	m, err := ParseManifest([]byte(with(`[{"name":"cache-svc","image":"ghcr.io/example/cache-svc:1.2.3","port":8191,"health":"/"}]`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Helpers) != 1 || m.Helpers[0].Name != "cache-svc" || m.Helpers[0].Port != 8191 || m.Helpers[0].Address() != "http://cache-svc:8191" {
+		t.Fatalf("helpers %+v", m.Helpers)
+	}
+	// contract 1 without the field: as before
+	if m, err := ParseManifest([]byte(validJSON())); err != nil || m.Helpers != nil {
+		t.Fatalf("no helpers: %+v %v", m.Helpers, err)
+	}
+	const bad = "неверная служба"
+	for name, in := range map[string]string{
+		"bad name":   `[{"name":"Cache","image":"img","port":1,"health":"/"}]`,
+		"no port":    `[{"name":"cache","image":"img","health":"/"}]`,
+		"bad health": `[{"name":"cache","image":"img","port":1,"health":"//x"}]`,
+		"no image":   `[{"name":"cache","image":"","port":1,"health":"/"}]`,
+		"repeated":   `[{"name":"cache","image":"img","port":1,"health":"/"},{"name":"cache","image":"img","port":2,"health":"/"}]`,
+		"too many":   `[{"name":"a1","image":"i","port":1,"health":"/"},{"name":"a2","image":"i","port":1,"health":"/"},{"name":"a3","image":"i","port":1,"health":"/"},{"name":"a4","image":"i","port":1,"health":"/"},{"name":"a5","image":"i","port":1,"health":"/"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseManifest([]byte(with(in)))
+			if err == nil || !strings.Contains(err.Error(), bad) {
+				t.Fatalf("err %v, want %q", err, bad)
+			}
+		})
+	}
+	// an unknown key inside an entry is refused, as any unknown field
+	if _, err := ParseManifest([]byte(with(`[{"name":"cache","image":"img","port":1,"health":"/","ports":["1:1"]}]`))); err == nil {
+		t.Fatal("unknown key: want an error")
+	}
+}

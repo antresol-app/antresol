@@ -37,5 +37,11 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+  # Helper services of addons go here, under services:. An addon that needs
+  # one (its manifest declares it) shows the block to paste in its settings
+  # page; add it and run `docker compose up -d`. A helper publishes no port:
+  # the server reaches it by its service name on this project's network, and
+  # the addon finds it by itself (no address to enter).
+
 volumes:
   antresol-config:

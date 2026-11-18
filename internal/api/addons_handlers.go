@@ -452,12 +452,31 @@ type addonItem struct {
 	// PinFailed: its pin could not be applied at boot (see the server log);
 	// it stays stopped and cannot be switched on
 	PinFailed bool `json:"pinFailed"`
+	// Helpers: the helper services its manifest declares ([] when none)
+	Helpers []addonHelper `json:"helpers"`
+}
+
+// addonHelper is a declared helper service as the app shows it: where the
+// addon looks for it and the block that adds it to compose.yml.
+type addonHelper struct {
+	addons.Helper
+	Address string `json:"address"`
+	Compose string `json:"compose"`
+}
+
+func helperViews(hs []addons.Helper) []addonHelper {
+	out := make([]addonHelper, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, addonHelper{Helper: h, Address: h.Address(), Compose: h.Compose()})
+	}
+	return out
 }
 
 func (a *addonsAPI) item(ctx context.Context, in addons.Installed, withUpdate bool) addonItem {
 	lang := i18n.FromContext(ctx)
 	it := addonItem{ID: in.ID, Name: localText(lang, in.Manifest.Name), Description: localText(lang, in.Manifest.Description),
-		Version: in.Version, Source: in.Source, Enabled: in.Enabled, Status: a.rt.Status(in.ID), Pinned: a.rt.Pinned(in.ID), PinFailed: a.rt.PinFailed(in.ID)}
+		Version: in.Version, Source: in.Source, Enabled: in.Enabled, Status: a.rt.Status(in.ID), Pinned: a.rt.Pinned(in.ID), PinFailed: a.rt.PinFailed(in.ID),
+		Helpers: helperViews(in.Manifest.Helpers)}
 	if withUpdate && !it.Pinned {
 		if v, ok := a.rt.UpdateAvailable(ctx, in.ID); ok {
 			it.Update = &v
@@ -486,7 +505,7 @@ func (a *addonsAPI) list(w http.ResponseWriter, r *http.Request) {
 	for _, p := range a.rt.FailedPins() {
 		if !have[p.ID] {
 			out = append(out, addonItem{ID: p.ID, Name: p.ID, Version: p.Version, Source: addons.LocalPrefix + p.ID,
-				Status: addons.StatusStopped, Pinned: true, PinFailed: true})
+				Status: addons.StatusStopped, Pinned: true, PinFailed: true, Helpers: []addonHelper{}})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -518,7 +537,7 @@ func (a *addonsAPI) preview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": m.ID, "name": localText(lang, m.Name), "description": localText(lang, m.Description),
 		"version": m.Version, "author": m.Author, "homepage": m.Homepage, "permissions": perms,
-		"hasWeb": m.Web != nil, "installed": installed,
+		"hasWeb": m.Web != nil, "installed": installed, "helpers": helperViews(m.Helpers),
 	})
 }
 

@@ -61,7 +61,14 @@ type Manifest struct {
 	Access      string              `json:"access,omitempty"` // "" (= "admins") | "admins" | "adults"
 	Hooks       []string            `json:"hooks,omitempty"`
 	Notify      []NotifyTopic       `json:"notify,omitempty"`
+	// Helpers are the helper services the addon needs beside the server
+	// (compose services without published ports, found by their service
+	// name); an addition to contract 1, absent for most addons.
+	Helpers []Helper `json:"helpers,omitempty"`
 }
+
+// Helper is a helper service of an addon (addonkit.Helper).
+type Helper = addonkit.Helper
 
 var (
 	idRe       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
@@ -167,6 +174,9 @@ func ParseManifest(data []byte) (Manifest, error) {
 		if n.Audience != "admins" && n.Audience != "adults" {
 			return Manifest{}, userError("Неверный манифест расширения: неверная аудитория уведомлений")
 		}
+	}
+	if err := addonkit.ValidHelpers(m.Helpers); err != nil {
+		return Manifest{}, userError("Неверный манифест расширения: неверная служба")
 	}
 	return m, nil
 }

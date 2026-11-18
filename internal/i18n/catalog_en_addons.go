@@ -22,6 +22,7 @@ func init() {
 		"Неверный манифест расширения: неверная тема уведомлений":         "Invalid addon manifest: invalid notification topic",
 		"Неверный манифест расширения: повторяется тема уведомлений":      "Invalid addon manifest: a notification topic is repeated",
 		"Неверный манифест расширения: неверная аудитория уведомлений":    "Invalid addon manifest: invalid notification audience",
+		"Неверный манифест расширения: неверная служба":                   "Invalid addon manifest: invalid helper service",
 		// also in the sources-only imports catalog; the core API needs it in both builds
 		"Источник не ответил": "The source didn’t respond",
 		"Расширение «%s» не ответило: файлы остались на месте": "The extension «%s» didn’t respond: the files stayed where they were",

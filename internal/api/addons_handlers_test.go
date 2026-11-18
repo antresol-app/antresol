@@ -133,7 +133,8 @@ func (f *fakeAddons) IDForToken(_ context.Context, tok string) (string, error) {
 
 func (f *fakeAddons) Preview(_ context.Context, url string) (addons.Manifest, error) {
 	f.record("preview " + url)
-	return addons.Manifest{ID: "new", Version: "1.0.0"}, nil
+	return addons.Manifest{ID: "new", Version: "1.0.0",
+		Helpers: []addons.Helper{{Name: "cache-svc", Image: "ghcr.io/example/cache-svc:1.2.3", Port: 8191, Health: "/"}}}, nil
 }
 
 func (f *fakeAddons) Install(_ context.Context, url, version string) (addons.Installed, error) {
@@ -266,6 +267,7 @@ func newAddonEnv(t *testing.T, more ...func(*Deps)) *addonEnv {
 			Contract: addons.ContractVersion, Web: &addons.Platform{}, Permissions: []string{"events"}}}
 	lib := hello
 	lib.ID, lib.Manifest.ID, lib.Manifest.Permissions = "lib", "lib", []string{"library.read"}
+	lib.Manifest.Helpers = []addons.Helper{{Name: "cache-svc", Image: "ghcr.io/example/cache-svc:1.2.3", Port: 8191, Health: "/"}}
 	off := hello
 	off.ID, off.Manifest.ID, off.Enabled = "off", "off", false
 	ea := echoAddon(t)
@@ -1195,5 +1197,44 @@ func TestAddonProxyHeaders_MaxHeight(t *testing.T) {
 	remote.Store(false)
 	if u := header(); u["maxHeight"] != nil {
 		t.Fatalf("home again: %v", u)
+	}
+}
+
+// TestAddonHelpersListed: the list and the preview name the helper
+// services an addon declares ([] when none), with their compose block.
+func TestAddonHelpersListed(t *testing.T) {
+	e := newAddonEnv(t)
+	type helper struct {
+		Name, Image, Health, Address, Compose string
+		Port                                  int
+	}
+	var list []struct {
+		ID      string
+		Helpers []helper
+	}
+	w := e.do("GET", "/api/addons", "", e.admin)
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	for _, it := range list {
+		switch it.ID {
+		case "lib":
+			if len(it.Helpers) != 1 || it.Helpers[0].Name != "cache-svc" || it.Helpers[0].Port != 8191 ||
+				it.Helpers[0].Address != "http://cache-svc:8191" || !strings.Contains(it.Helpers[0].Compose, "image: ghcr.io/example/cache-svc:1.2.3") {
+				t.Fatalf("lib helpers: %+v", it.Helpers)
+			}
+		default:
+			if it.Helpers == nil || len(it.Helpers) != 0 {
+				t.Fatalf("%s helpers: %+v (want [])", it.ID, it.Helpers)
+			}
+		}
+	}
+	if !strings.Contains(w.Body.String(), `"helpers":[]`) {
+		t.Fatalf("no empty helpers list: %s", w.Body)
+	}
+	w = e.do("POST", "/api/addons/preview", `{"url":"github.com/o/new"}`, e.admin)
+	var pv struct{ Helpers []helper }
+	if err := json.Unmarshal(w.Body.Bytes(), &pv); err != nil || len(pv.Helpers) != 1 || pv.Helpers[0].Address != "http://cache-svc:8191" {
+		t.Fatalf("preview: %d %s", w.Code, w.Body)
 	}
 }

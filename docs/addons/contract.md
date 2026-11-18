@@ -170,11 +170,56 @@ it is not installed), and the app shows it as locked.
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
 | `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
+| `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health" }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
 | `author`, `homepage` | free text, shown before install |
 
 Unknown fields, and anything after the JSON object, are refused. A platform asset name is a bare file name (no
 `/` or `\`). Build `linux/amd64`, `linux/arm64` and `darwin/arm64` so that
 the addon runs wherever the server does.
+
+### Helper services: `helpers`
+
+Some addons need a program of their own beside the server (a scraper, a
+browser that passes a bot check). Such a program is a **helper service**:
+a container in the same compose project as the server, with **no published
+port**, which the addon reaches by its compose service name on the
+project's internal network. The manifest declares it:
+
+```json
+"helpers": [
+  { "name": "cache-svc", "image": "ghcr.io/example/cache-svc:1.2.3", "port": 8191, "health": "/" }
+]
+```
+
+| Key | Rule |
+| --- | --- |
+| `name` | the compose service name, and so its DNS name: `^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$` |
+| `image` | the container image, best with a pinned tag; no spaces |
+| `port` | the port it listens on inside the network, 1-65535 |
+| `health` | the path asked to tell it is up (`/` is fine): `/` then letters, digits and `._~/-`, no `..`, no query; any answer below 400 counts, a redirect is not followed |
+
+Unknown keys are refused, as anywhere in the manifest. The field is an
+addition to contract 1: an addon without it works as before, and a server
+older than the field refuses a manifest that has it.
+
+What the addon does with it (`addonkit.HelpersFromManifest`,
+`addonkit.HelperWatch`; the addon embeds its own `antresol-addon.json`):
+
+1. **The admin's address wins.** An address the admin gave the addon
+   (its own setting or `ANTRESOL_<ID>_*` variable) is used as it is, and the
+   helper is not looked for.
+2. **Else the compose name.** The addon asks
+   `http://<name>:<port><health>` (3 s), at start and every 30 s after, so
+   a helper added later is found without a restart and one that stopped
+   is noticed.
+3. **Else nothing**, and the addon's settings page says so and shows the
+   block to add under `services:` in `compose.yml`
+   (`addonkit.Helper.Compose`), then `docker compose up -d`.
+
+The server itself never runs, pulls or asks a helper: it shows the declared
+ones in `GET /api/addons` and the install preview (`helpers`: each with its
+`address` and `compose` block; `[]` when none). A helper has no published
+port: only the server and the other services of the project reach it.
 
 ## The process
 
