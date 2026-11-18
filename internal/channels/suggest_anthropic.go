@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -60,6 +61,14 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string) (stri
 		var apiErr *anthropic.Error
 		if errors.As(err, &apiErr) {
 			detail := strings.TrimSpace(apiErr.RawJSON())
+			var body struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(detail), &body) == nil && body.Error.Message != "" {
+				detail = body.Error.Message // the provider's own words, not its JSON
+			}
 			if r := []rune(detail); len(r) > 200 {
 				detail = string(r[:200]) + "…"
 			}

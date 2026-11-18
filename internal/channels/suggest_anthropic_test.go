@@ -120,7 +120,7 @@ func TestAnthropicPingAndError(t *testing.T) {
 	}))
 	defer bad.Close()
 	l = &LLM{URL: bad.URL, Model: "claude-opus-5-5", Key: "sk-test", Anthropic: true}
-	if _, err := l.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "invalid x-api-key") {
+	if _, err := l.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "401") || err.Error() != "llm: 401 invalid x-api-key" {
 		t.Fatalf("err %v", err)
 	}
 }
