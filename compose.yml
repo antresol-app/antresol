@@ -1,36 +1,19 @@
-# Antresol Server with Docker Compose (see README.md, "Install with Docker").
-#
-# Put this file and a .env next to each other (the README has both in full),
-# set MEDIA_DIR in .env to your media folder on the host, then:
-#
-#   docker compose up -d
-#
-# and open http://<host>:8420 from your home network.
-#
-# Paths: MEDIA_DIR is a path on the HOST. Inside the container it is always
-# /media, and the *_DIR folder names below are relative to it. Do not put
-# host paths into VAULT_* variables: the server sees only the container.
-#
-# To build the image from a checkout instead of pulling it:
-#   docker build -t ghcr.io/antresol-app/antresol-server:latest .
 services:
   antresol:
     image: ghcr.io/antresol-app/antresol-server:latest
     container_name: antresol
     restart: unless-stopped
-    # stops ffmpeg, then waits for open requests
-    stop_grace_period: 30s
+    stop_grace_period: 30s           # lets ffmpeg and open requests finish
     ports:
-      - "8420:8420"
-      # discovery: the apps' probe for servers on the home network (README)
-      - "8420:8420/udp"
+      - "8420:8420"                  # web and apps
+      - "8420:8420/udp"              # apps find the server on the home network
     env_file:
       - path: .env
         required: false
     environment:
       VAULT_DATA_DIR: /config
       VAULT_MEDIA_ROOT: /media
-      # folder names inside MEDIA_DIR; change them in .env if yours differ
+      # folders inside MEDIA_DIR (container paths, relative to /media)
       VAULT_MOVIES_DIR: ${MOVIES_DIR:-movies}
       VAULT_SERIES_DIR: ${SERIES_DIR:-series}
       VAULT_MUSIC_DIR: ${MUSIC_DIR:-music}
@@ -38,22 +21,15 @@ services:
       VAULT_EBOOKS_DIR: ${EBOOKS_DIR:-books/ebooks}
       VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
       VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
-      # HLS segments of a transcode: on the media disk, not in the config volume
-      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls
+      VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls   # on the media disk, not in /config
     volumes:
       - antresol-config:/config
-      # read-write: fetched subtitles, transcode segments, offline copies
-      - ${MEDIA_DIR:-./media}:/media
-    # Hardware transcoding (README, "Hardware transcoding"). Without a GPU
-    # the CPU transcodes. Intel or AMD: uncomment devices and group_add, and
-    # put the GID of your host's render group in group_add
-    # (`getent group render | cut -d: -f3`).
+      - ${MEDIA_DIR:-./media}:/media # host media folder, read-write
     # devices:
-    #   - /dev/dri:/dev/dri
+    #   - /dev/dri:/dev/dri          # Intel/AMD GPU transcoding
     # group_add:
-    #   - "992"
-    # NVIDIA (with the NVIDIA Container Toolkit on the host): uncomment deploy.
-    # deploy:
+    #   - "992"                      # host render group: getent group render | cut -d: -f3
+    # deploy:                        # NVIDIA GPU (needs NVIDIA Container Toolkit)
     #   resources:
     #     reservations:
     #       devices:
