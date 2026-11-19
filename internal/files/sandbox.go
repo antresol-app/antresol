@@ -78,6 +78,45 @@ func DefaultRoots(cfg config.Config) []Root {
 	}
 }
 
+// MoreLibraryRoots are roots for each kind's folders after its first (the
+// first ones are DefaultRoots'): "movies-2", "series-2"…, named after the
+// folder, open to the same profiles as the default ones. A folder inside
+// another root already (the books folder holds the book kinds' first
+// folders) needs none.
+func MoreLibraryRoots(cfg config.Config) []Root {
+	icons := map[string]string{"movies": "film", "series": "tv", "music": "music", "ebooks": "book", "audiobooks": "book", "comics": "book"}
+	var out []Root
+	n := map[string]int{}
+	var shown []string
+	for _, r := range DefaultRoots(cfg)[1:5] { // movies, series, music, books
+		shown = append(shown, filepath.Clean(r.Dir))
+	}
+	inShown := func(d string) bool {
+		for _, s := range shown {
+			if rel, err := filepath.Rel(s, d); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, k := range config.FolderKinds {
+		dirs := cfg.LibraryDirs(k)
+		for _, d := range dirs[min(1, len(dirs)):] {
+			d = filepath.Clean(d)
+			if inShown(d) {
+				continue
+			}
+			id := k
+			if k == "ebooks" || k == "audiobooks" || k == "comics" {
+				id = "books"
+			}
+			n[id]++
+			out = append(out, Root{ID: fmt.Sprintf("%s-%d", id, n[id]+1), Title: filepath.Base(d), Icon: icons[k], Dir: d})
+		}
+	}
+	return out
+}
+
 // reservedRootIDs are the ids ExtraRoots never lets a spec redefine.
 var reservedRootIDs = []string{"library", "movies", "series", "music", "books", "disk", "stream-cache"}
 

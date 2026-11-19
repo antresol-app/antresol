@@ -256,7 +256,7 @@ func (r *Repo) UpsertAlbumTracks(ctx context.Context, albumArtist string, tracks
 		imageIDs := map[string]int64{}
 		starts := map[int64][]any{} // file id -> starts written in this call
 		for _, t := range tracks {
-			if err := upsertTrack(ctx, tx, albumID, albumArtist, t, uses[t.File.Path] > 1, imageIDs, starts); err != nil {
+			if err := r.upsertTrack(ctx, tx, albumID, albumArtist, t, uses[t.File.Path] > 1, imageIDs, starts); err != nil {
 				return err
 			}
 		}
@@ -283,7 +283,7 @@ func staleTracksSQL(n int) string {
 
 // upsertTrack writes one track: its item, its files row (its own, or the
 // album's for an image) and its tracks row.
-func upsertTrack(ctx context.Context, tx *sql.Tx, albumID int64, albumArtist string, t TrackInput, image bool,
+func (r *Repo) upsertTrack(ctx context.Context, tx *sql.Tx, albumID int64, albumArtist string, t TrackInput, image bool,
 	imageIDs map[string]int64, starts map[int64][]any) error {
 	title := strings.TrimSpace(t.Title)
 	if title == "" {
@@ -317,13 +317,13 @@ func upsertTrack(ctx context.Context, tx *sql.Tx, albumID int64, albumArtist str
 	if image {
 		id, ok := imageIDs[t.File.Path]
 		if !ok {
-			if id, err = upsertFileID(ctx, tx, albumID, t.File); err != nil {
+			if id, err = r.upsertFileID(ctx, tx, albumID, t.File); err != nil {
 				return err
 			}
 			imageIDs[t.File.Path] = id
 		}
 		fileID = id
-	} else if fileID, err = upsertFileID(ctx, tx, itemID, t.File); err != nil {
+	} else if fileID, err = r.upsertFileID(ctx, tx, itemID, t.File); err != nil {
 		return err
 	}
 	// the probe (ffprobe codec_name) knows the codec better than the tag
@@ -530,7 +530,7 @@ func scanTrack(s scanner) (Track, error) {
 	var lossless int
 	var gt, pt, ga, pa sql.NullFloat64
 	err := s.Scan(&tr.ID, &tr.Kind, &tr.ParentID, &tr.Title, &tr.OriginalTitle, &tr.SortTitle, &tr.Year, &tr.Overview,
-		&tr.Rating, &tr.TmdbID, &tr.SeasonNo, &tr.EpisodeNo, &tr.Poster, &tr.Backdrop, &added, &updated, &tr.MetaJSON,
+		&tr.Rating, &tr.TmdbID, &tr.SeasonNo, &tr.EpisodeNo, &tr.Poster, &tr.Backdrop, &added, &updated, &tr.MetaJSON, &tr.Adult, &tr.Unlisted,
 		&tr.AlbumID, &tr.ArtistID, &tr.FileID, &tr.Artist, &tr.Album, &tr.Disc, &tr.No, &tr.StartMs, &end, &tr.DurationMs,
 		&tr.Codec, &lossless, &tr.Lyrics, &gt, &pt, &ga, &pa)
 	if err != nil {
@@ -651,7 +651,7 @@ func scanAlbum(s scanner) (Album, error) {
 	var lossless int
 	it := &a.Item
 	err := s.Scan(&it.ID, &it.Kind, &it.ParentID, &it.Title, &it.OriginalTitle, &it.SortTitle, &it.Year, &it.Overview,
-		&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON,
+		&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON, &it.Adult, &it.Unlisted,
 		&a.ArtistID, &a.Artist, &a.TrackCount, &a.DurationMs, &lossless)
 	if err != nil {
 		return a, err
@@ -727,7 +727,7 @@ func (r *Repo) Albums(ctx context.Context, q AlbumQuery) ([]Album, int, error) {
 	}
 	if q.MaxRating != "" {
 		// the album's root (its artist) decides, as Repo.Visible does
-		c, a := MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN ar.rating ELSE i.rating END)", q.MaxRating)
+		c, a := MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN "+RatingOf("ar")+" ELSE "+RatingOf("i")+" END)", q.MaxRating)
 		where = append(where, c)
 		args = append(args, a...)
 	}

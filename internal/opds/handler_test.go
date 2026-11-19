@@ -622,3 +622,40 @@ func TestOPDSKidAudiobookScreenTime(t *testing.T) {
 		t.Fatalf("book: %d", c)
 	}
 }
+
+// a book from a folder «Только для взрослых» (unrated, so a kid would
+// otherwise see it) is out of a kid's feeds, search and downloads
+func TestOPDSKidHidesAdultsOnlyFolder(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	kid, err := e.users.CreateUser(ctx, auth.NewUser{Name: "Маша", IsKid: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := e.users.SetAppPassword(ctx, kid.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adult := e.book("Ночные истории", "Автор", "", "adult/a.epub")
+	e.book("Сказки", "Автор", "", "books/b.epub")
+	if _, err := e.db.Exec(`UPDATE items SET adult=1 WHERE id=?`, adult); err != nil {
+		t.Fatal(err)
+	}
+	files, err := e.repo.FilesOf(ctx, adult)
+	if err != nil || len(files) != 1 {
+		t.Fatal(files, err)
+	}
+	kidGet := func(p string) *httptest.ResponseRecorder { return e.get(p, "Маша", app, homeAddr) }
+	if f := parse(t, kidGet("/opds/new")); len(f.Entries) != 1 || f.Entries[0].Title != "Сказки" {
+		t.Fatalf("kid new %+v", f.Entries)
+	}
+	if f := parse(t, kidGet("/opds/search?q=ночные")); len(f.Entries) != 0 {
+		t.Fatalf("kid search %+v", f.Entries)
+	}
+	if w := kidGet(fmt.Sprintf("/opds/files/%d", files[0].ID)); w.Code != 404 {
+		t.Fatalf("kid download %d", w.Code)
+	}
+	if f := parse(t, e.adminGet("/opds/new")); len(f.Entries) != 2 {
+		t.Fatalf("admin new %+v", f.Entries)
+	}
+}

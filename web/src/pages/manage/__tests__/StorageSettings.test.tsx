@@ -5,20 +5,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { FOLDER_KINDS, restartTiming, type FolderKind, type FolderRow, type StorageView } from '../../../api/storage'
+import { FOLDER_KINDS, restartTiming, type FolderKind, type FolderPick, type FolderRow, type StorageView } from '../../../api/storage'
 import { StorageSection } from '../StorageSettings'
 import { renderSettings } from './settingsHarness'
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 const PATHS: Record<FolderKind, string> = { movies: 'movies', series: 'series', music: 'music', ebooks: 'books/ebooks', audiobooks: 'books/audiobooks', comics: 'books/manga' }
 
-function view(over: Partial<StorageView> = {}, picked: Partial<Record<FolderKind, string>> = {}): StorageView {
-  const have = ['movies', 'tv', 'music']
-  const folders: FolderRow[] = FOLDER_KINDS.map((kind) => {
-    const path = picked[kind] ?? PATHS[kind]
-    const found = have.includes(path)
-    return { kind, path, abs: `/media/${path}`, default: PATHS[kind], status: found ? 'ok' : 'missing', items: found ? 4 : 0, ...(kind === 'series' && !found ? { suggest: 'tv' } : {}) }
-  })
+/** Each kind's folders as a save names them: one plain folder each, `over` in place. */
+const picks = (over: Partial<Record<FolderKind, FolderPick[]>> = {}) =>
+  Object.fromEntries(FOLDER_KINDS.map((k) => [k, over[k] ?? [{ path: PATHS[k], adult: false, unlisted: false }]]))
+
+function view(over: Partial<StorageView> = {}, picked: Partial<Record<FolderKind, FolderPick[]>> = {}): StorageView {
+  const have = ['movies', 'tv', 'music', '/mnt/adult']
+  const folders: FolderRow[] = FOLDER_KINDS.flatMap((kind) =>
+    (picked[kind] ?? [{ path: PATHS[kind] }]).map((p, i): FolderRow => {
+      const found = have.includes(p.path)
+      return {
+        kind,
+        path: p.path,
+        abs: p.path.startsWith('/') ? p.path : `/media/${p.path}`,
+        default: PATHS[kind],
+        primary: i === 0,
+        adult: Boolean(p.adult),
+        unlisted: Boolean(p.unlisted),
+        indexed: found ? 4 : 0,
+        status: found ? 'ok' : 'missing',
+        items: found ? 4 : 0,
+        ...(kind === 'series' && !found && i === 0 ? { suggest: 'tv' } : {}),
+      }
+    }),
+  )
   return {
     root: { path: '/media', status: 'ok', items: 4 },
     entries: have.map((name) => ({ name, items: 4 })),
@@ -29,6 +46,7 @@ function view(over: Partial<StorageView> = {}, picked: Partial<Record<FolderKind
     offline: false,
     canCreate: true,
     restarts: true,
+    places: ['/media', '/mnt'],
     ...over,
   }
 }
@@ -56,6 +74,16 @@ function serve(first: StorageView, restarting = true) {
         return json({ ...current, restarting })
       }
       if (path === '/api/health') return json({ ok: true })
+      if (path === '/api/settings/storage/browse') {
+        const at = new URL(String(input), 'http://x').searchParams.get('path') ?? '/media'
+        return json({
+          places: ['/media', '/mnt'],
+          path: at,
+          parent: at === '/media' || at === '/mnt' ? '' : at.slice(0, at.lastIndexOf('/')),
+          dir: { path: at, status: 'ok', items: 2 },
+          dirs: at === '/mnt' ? [{ name: 'adult', path: '/mnt/adult', items: 7 }] : [],
+        })
+      }
       return json({})
     }),
   )
@@ -89,37 +117,82 @@ describe('«Папки на сервере» in the server settings', () => {
     render(<StorageSection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Проверить' }))
     await waitFor(() => expect(calls.some((c) => c.path === '/api/settings/storage/check')).toBe(true))
-    expect(calls.find((c) => c.path === '/api/settings/storage/check')?.body).toEqual({ folders: PATHS })
+    expect(calls.find((c) => c.path === '/api/settings/storage/check')?.body).toEqual({ folders: picks() })
   })
 
   it('a pick is applied on request: saved, the server restarts, the view is read again', async () => {
     const calls = serve(view())
     render(<StorageSection />)
     // (the write test below lists the kinds again)
-    const series = (await screen.findAllByText('Сериалы'))[0]!.closest('li')!
+    const series = (await screen.findByRole('heading', { name: 'Сериалы' })).closest('section')!
     // nothing to apply before a pick
     expect(screen.queryByRole('button', { name: 'Применить и перезапустить' })).toBeNull()
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
     const apply = await screen.findByRole('button', { name: 'Применить и перезапустить' })
     expect(calls.some((c) => c.method === 'PUT')).toBe(false)
     await userEvent.click(apply)
-    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ folders: { ...PATHS, series: 'tv' } }))
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ folders: picks({ series: [{ path: 'tv', adult: false, unlisted: false }] }), confirmRemove: false }),
+    )
     // restarted and read again: the pick is the saved one now, with a way back
     expect(await screen.findByRole('button', { name: 'Как в настройках запуска' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Применить и перезапустить' })).toBeNull()
     expect(calls.map((c) => c.path)).toContain('/api/health')
     await userEvent.click(screen.getByRole('button', { name: 'Как в настройках запуска' }))
-    await waitFor(() => expect(calls.filter((c) => c.method === 'PUT').at(-1)?.body).toEqual({ reset: true }))
+    await waitFor(() => expect(calls.filter((c) => c.method === 'PUT').at(-1)?.body).toEqual({ reset: true, confirmRemove: false }))
   })
 
   it('a server that cannot restart itself says to restart it', async () => {
     serve(view({ restarts: false }), false)
     render(<StorageSection />)
     // (the write test below lists the kinds again)
-    const series = (await screen.findAllByText('Сериалы'))[0]!.closest('li')!
+    const series = (await screen.findByRole('heading', { name: 'Сериалы' })).closest('section')!
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Сохранить' }))
     expect(await screen.findByText('Перезапустите сервер, чтобы выбранные папки вступили в силу.')).toBeInTheDocument()
+  })
+
+  it('«Добавить папку…» browses the mounted folders and adds one; its marks are in «⋯»', async () => {
+    const calls = serve(view())
+    render(<StorageSection />)
+    const movies = (await screen.findByRole('heading', { name: 'Фильмы' })).closest('section')!
+    await userEvent.click(within(movies).getByRole('button', { name: 'Добавить папку…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Папка: Фильмы' })
+    // the other mount, then a folder in it
+    await userEvent.click(within(sheet).getByRole('button', { name: /Где искать/ }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: /\/mnt/ }))
+    await userEvent.click(await within(sheet).findByRole('button', { name: /adult/ }))
+    expect(await within(sheet).findByText('Запись работает, 2 элемента')).toBeInTheDocument()
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Выбрать' }))
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === '/api/settings/storage/check').at(-1)?.body).toEqual({
+        folders: picks({ movies: [{ path: 'movies', adult: false, unlisted: false }, { path: '/mnt/adult' }] }),
+      }),
+    )
+    const row = (await screen.findByRole('heading', { name: 'Фильмы' })).closest('section')!.querySelectorAll('li')[1]!
+    await userEvent.click(within(row).getByRole('button', { name: 'Действия с папкой /mnt/adult' }))
+    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Только для взрослых/ }))
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === '/api/settings/storage/check').at(-1)?.body).toEqual({
+        folders: picks({ movies: [{ path: 'movies', adult: false, unlisted: false }, { path: '/mnt/adult', adult: true, unlisted: false }] }),
+      }),
+    )
+    expect(await within((await screen.findByRole('heading', { name: 'Фильмы' })).closest('section')!.querySelectorAll('li')[1]!).findByText('Только для взрослых')).toBeInTheDocument()
+  })
+
+  it('taking out a folder the library has titles from asks first, then saves with the confirmation', async () => {
+    const two = { movies: [{ path: 'movies' }, { path: '/mnt/adult' }] }
+    const calls = serve(view({}, two))
+    render(<StorageSection />)
+    const row = (await screen.findByRole('heading', { name: 'Фильмы' })).closest('section')!.querySelectorAll('li')[1]!
+    await userEvent.click(within(row).getByRole('button', { name: 'Действия с папкой /mnt/adult' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Убрать из медиатеки/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Применить и перезапустить' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Убрать папки из медиатеки?' })
+    expect(within(ask).getByText(/Файлы на диске останутся/)).toBeInTheDocument()
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false)
+    await userEvent.click(within(ask).getByRole('button', { name: 'Убрать' }))
+    await waitFor(() => expect((calls.find((c) => c.method === 'PUT')?.body as { confirmRemove: boolean }).confirmRemove).toBe(true))
   })
 
   it('a server without the checks shows nothing but a spinner', async () => {

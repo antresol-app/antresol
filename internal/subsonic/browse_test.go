@@ -253,3 +253,41 @@ func TestStubMethods(t *testing.T) {
 		e.mustOK(e.call(m, "id", "1", "artist", "Кино"))
 	}
 }
+
+// TestKidAdultsOnlyFolder: an unrated artist from a folder «Только для
+// взрослых» is gone for a kid — lists, search, random songs, direct ids —
+// and there for an adult.
+func TestKidAdultsOnlyFolder(t *testing.T) {
+	e := newEnv(t)
+	bad, badTracks := e.album("Взрослые", "Ночь", 2000, "", tTrack{1, "Аа 1"}, tTrack{2, "Аа 2"})
+	e.album("Кино", "Группа крови", 1988, "", tTrack{1, "Бб 1"})
+	if _, err := e.db.Exec(`UPDATE items SET adult=1 WHERE id=? OR id=(SELECT parent_id FROM items WHERE id=?)`, bad, bad); err != nil {
+		t.Fatal(err)
+	}
+	adult := e.mustOK(e.call("search3", "query", "Ночь"))["searchResult3"].(map[string]any)
+	if a, _ := adult["album"].([]any); len(a) != 1 {
+		t.Fatalf("the adult does not find it: %v", adult)
+	}
+	e.asKid()
+	s := e.mustOK(e.call("search3", "query", ""))["searchResult3"].(map[string]any)
+	for _, kind := range []string{"artist", "album"} {
+		for _, x := range s[kind].([]any) {
+			if n := x.(map[string]any)["name"]; n == "Взрослые" || n == "Ночь" {
+				t.Fatalf("%s %v", kind, x)
+			}
+		}
+	}
+	if g := e.mustOK(e.call("getRandomSongs", "size", "10"))["randomSongs"].(map[string]any)["song"].([]any); len(g) != 1 {
+		t.Fatalf("random songs %v", g)
+	}
+	l := e.mustOK(e.call("getAlbumList2", "type", "alphabeticalByName", "size", "10"))["albumList2"].(map[string]any)["album"].([]any)
+	if len(l) != 1 {
+		t.Fatalf("album list %v", l)
+	}
+	if code, _ := errCode(e.call("getAlbum", "id", itoa(bad))); code != 70 {
+		t.Fatalf("getAlbum: %d", code)
+	}
+	if code, _ := errCode(e.call("getSong", "id", itoa(badTracks[0]))); code != 70 {
+		t.Fatalf("getSong: %d", code)
+	}
+}

@@ -18,7 +18,11 @@ import (
 )
 
 // Repo stores the library in SQLite.
-type Repo struct{ db *sql.DB }
+type Repo struct {
+	db *sql.DB
+	// flags: the folders' marks, for what is stored from now on (folder_flags.go)
+	flags folderFlags
+}
 
 // NewRepo wraps an opened database (see db.Open).
 func NewRepo(d *sql.DB) *Repo { return &Repo{db: d} }
@@ -26,7 +30,7 @@ func NewRepo(d *sql.DB) *Repo { return &Repo{db: d} }
 // All item queries alias the table as "i".
 const itemCols = `i.id, i.kind, COALESCE(i.parent_id,0), i.title, i.original_title, i.sort_title, i.year, i.overview, i.rating,
   COALESCE(i.tmdb_id,0), COALESCE(i.season_no,0), COALESCE(i.episode_no,0), COALESCE(i.poster,''), COALESCE(i.backdrop,''),
-  i.added_at, i.updated_at, i.meta_json`
+  i.added_at, i.updated_at, i.meta_json, i.adult, i.unlisted`
 
 const fileCols = `id, item_id, path, size, mtime, COALESCE(duration_ms,0), COALESCE(probe_json,'')`
 
@@ -36,7 +40,7 @@ func scanItem(s scanner) (Item, error) {
 	var it Item
 	var added, updated string
 	err := s.Scan(&it.ID, &it.Kind, &it.ParentID, &it.Title, &it.OriginalTitle, &it.SortTitle, &it.Year, &it.Overview,
-		&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON)
+		&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON, &it.Adult, &it.Unlisted)
 	if err != nil {
 		return it, err
 	}
@@ -107,14 +111,15 @@ func nullStr(s string) any {
 // upsertFile adds or updates a file row. A file replaced in place (same
 // path, other size or mtime) loses its cached probe: its streams and
 // duration are probed again.
-func upsertFile(ctx context.Context, x execer, itemID int64, f FileInput) error {
-	_, err := upsertFileID(ctx, x, itemID, f)
+func (r *Repo) upsertFile(ctx context.Context, x execer, itemID int64, f FileInput) error {
+	_, err := r.upsertFileID(ctx, x, itemID, f)
 	return err
 }
 
 // upsertFileID is upsertFile returning the id of the files row (new or
-// existing), e.g. for tracks.file_id and chapters.file_id.
-func upsertFileID(ctx context.Context, x execer, itemID int64, f FileInput) (int64, error) {
+// existing), e.g. for tracks.file_id and chapters.file_id. A file in a
+// marked folder marks its item at once (markFile).
+func (r *Repo) upsertFileID(ctx context.Context, x execer, itemID int64, f FileInput) (int64, error) {
 	var id int64
 	err := x.QueryRowContext(ctx, `INSERT INTO files(item_id,path,size,mtime) VALUES(?,?,?,?)
 	  ON CONFLICT(path) DO UPDATE SET item_id=excluded.item_id, size=excluded.size, mtime=excluded.mtime, missing_since=NULL,
@@ -122,7 +127,10 @@ func upsertFileID(ctx context.Context, x execer, itemID int64, f FileInput) (int
 	  duration_ms = CASE WHEN files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime THEN NULL ELSE files.duration_ms END
 	  RETURNING id`,
 		itemID, f.Path, f.Size, f.Mtime).Scan(&id)
-	return id, err
+	if err != nil {
+		return id, err
+	}
+	return id, r.markFile(ctx, x, itemID, f.Path)
 }
 
 // fillEmpty updates only fields that are still empty on the stored item, so
@@ -261,7 +269,7 @@ func (r *Repo) UpsertMovie(ctx context.Context, m MovieInput) (int64, error) {
 			return err
 		}
 		for _, f := range files {
-			if err := upsertFile(ctx, tx, id, f); err != nil {
+			if err := r.upsertFile(ctx, tx, id, f); err != nil {
 				return err
 			}
 		}
@@ -424,7 +432,7 @@ func (r *Repo) UpsertEpisode(ctx context.Context, e EpisodeInput) (int64, error)
 				return err
 			}
 		}
-		if err := upsertFile(ctx, tx, epID, e.File); err != nil {
+		if err := r.upsertFile(ctx, tx, epID, e.File); err != nil {
 			return err
 		}
 		return found(ctx, tx, epID, seasonID, seriesID)
@@ -494,8 +502,9 @@ func allowedRatings(max string) (string, []any) {
 	in := strings.Join(ph, ",")
 	args := append(append([]any{}, allowed...), allowed...)
 	// a comic volume never passes on its own rating: only its series counts
-	return `((i.kind<>'comic_volume' AND i.rating IN (` + in + `)) OR (i.rating='' AND i.kind IN ('artist','album','track','book','audiobook','comic'))` +
-		` OR (i.kind='comic_volume' AND COALESCE((SELECT p.rating FROM items p WHERE p.id=i.parent_id),'') IN ('',` + in + `)))`, args
+	ri, rp := RatingOf("i"), RatingOf("p")
+	return `((i.kind<>'comic_volume' AND ` + ri + ` IN (` + in + `)) OR (` + ri + `='' AND i.kind IN ('artist','album','track','book','audiobook','comic'))` +
+		` OR (i.kind='comic_volume' AND i.adult=0 AND COALESCE((SELECT ` + rp + ` FROM items p WHERE p.id=i.parent_id),'') IN ('',` + in + `)))`, args
 }
 
 // List returns a page of items and the total count for the filter.
@@ -517,6 +526,9 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 		c, a := ownedBy("i.id", q.Owner)
 		where = append(where, c)
 		args = append(args, a...)
+	}
+	if q.Listed {
+		where = append(where, "i.unlisted=0")
 	}
 	w := " WHERE " + strings.Join(where, " AND ")
 	var total int
@@ -899,11 +911,13 @@ func (r *Repo) RecentSeries(ctx context.Context, limit int, maxRating string) ([
 }
 
 // RecentSeriesOf is RecentSeries of the series owner brought (item_owners;
-// 0 = every series).
+// 0 = every series). It is a shelf (home, «Latest»): the series of folders
+// «Скрыть из общих подборок» are not on it.
 func (r *Repo) RecentSeriesOf(ctx context.Context, limit int, maxRating string, owner int64) ([]Item, error) {
-	rate, args := "1", []any(nil)
+	rate, args := "i.unlisted=0", []any(nil)
 	if maxRating != "" {
-		rate, args = allowedRatings(maxRating)
+		c, a := allowedRatings(maxRating)
+		rate, args = rate+" AND "+c, a
 	}
 	if owner != 0 {
 		c, a := ownedBy("i.id", owner)

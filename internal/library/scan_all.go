@@ -20,16 +20,16 @@ func (s *Scanner) extra() []scanFunc {
 		return s.extraOverride
 	}
 	var out []scanFunc
-	out = withRoot(out, "music", s.Music, s.scanMusic)
-	out = withRoot(out, "books", s.Ebooks, s.scanBooks)
-	out = withRoot(out, "audiobooks", s.Audiobooks, s.scanAudiobooks)
-	out = withRoot(out, "comics", s.Comics, s.scanComics)
+	out = withRoot(out, "music", s.Roots(KindFolderMusic), s.scanMusic)
+	out = withRoot(out, "books", s.Roots(KindFolderEbooks), s.scanBooks)
+	out = withRoot(out, "audiobooks", s.Roots(KindFolderAudiobooks), s.scanAudiobooks)
+	out = withRoot(out, "comics", s.Roots(KindFolderComics), s.scanComics)
 	return out
 }
 
-// withRoot appends a scanner unless its root is not configured.
-func withRoot(out []scanFunc, name, root string, run func(ctx context.Context, st *ScanStats) error) []scanFunc {
-	if root == "" {
+// withRoot appends a scanner unless the kind has no folder.
+func withRoot(out []scanFunc, name string, roots []string, run func(ctx context.Context, st *ScanStats) error) []scanFunc {
+	if len(roots) == 0 {
 		return out
 	}
 	return append(out, scanFunc{Name: name, Run: run})
@@ -44,7 +44,10 @@ func (s *Scanner) ScanBooks(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var st ScanStats
-	return s.scanBooks(ctx, &st)
+	if err := s.scanBooksIn(ctx, s.Ebooks, &st); err != nil {
+		return err
+	}
+	return s.syncFlags(ctx)
 }
 
 // ErrScanBusy: a scan holds the library and did not finish in time.
@@ -94,6 +97,9 @@ func (s *Scanner) ScanAll(ctx context.Context) (ScanStats, error) {
 		if err := f.Run(ctx, &st); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", f.Name, err))
 		}
+	}
+	if err := s.syncFlags(ctx); err != nil {
+		errs = append(errs, err)
 	}
 	return st, errors.Join(errs...)
 }

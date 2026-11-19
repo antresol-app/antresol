@@ -437,7 +437,8 @@ func (h *lib) familyShelf(ctx context.Context, r *http.Request, u auth.User, ski
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
+		// a title of a folder «Скрыть из общих подборок» is nobody's shelf
+		if !ok || it.Unlisted {
 			skip[top] = true
 			continue
 		}

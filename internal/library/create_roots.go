@@ -24,8 +24,11 @@ func (s *Scanner) createMissingRoots(ctx context.Context) {
 	if s.MediaRoot == "" || !dirExists(s.MediaRoot) {
 		return
 	}
-	video := []string{s.Movies, s.Series}
-	other := []string{s.Music, s.Ebooks, s.Audiobooks, s.Comics}
+	video := append(s.Roots(KindFolderMovies), s.Roots(KindFolderSeries)...)
+	var other []string
+	for _, k := range []string{KindFolderMusic, KindFolderEbooks, KindFolderAudiobooks, KindFolderComics} {
+		other = append(other, s.Roots(k)...)
+	}
 	if s.libraryEmpty(ctx) {
 		s.mkRoots(video)
 	}

@@ -202,12 +202,12 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 	// played/reading shelves are the profile's already
 	owner := scopeOwner(r, u)
 
-	recent, _, err := h.Library.List(ctx, library.ListQuery{Sort: "added", Limit: 50, MaxRating: limit, Owner: owner, NoTotal: true})
+	recent, _, err := h.Library.List(ctx, library.ListQuery{Sort: "added", Limit: 50, MaxRating: limit, Owner: owner, NoTotal: true, Listed: true})
 	if err != nil {
 		internalErr(w, r, "home recent", err)
 		return
 	}
-	movies, _, err := h.Library.List(ctx, library.ListQuery{Kind: library.KindMovie, Sort: "added", Limit: shelfSize, MaxRating: limit, Owner: owner, NoTotal: true})
+	movies, _, err := h.Library.List(ctx, library.ListQuery{Kind: library.KindMovie, Sort: "added", Limit: shelfSize, MaxRating: limit, Owner: owner, NoTotal: true, Listed: true})
 	if err != nil {
 		internalErr(w, r, "home movies", err)
 		return

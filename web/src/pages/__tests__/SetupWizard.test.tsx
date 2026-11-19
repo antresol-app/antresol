@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { FOLDER_KINDS, restartTiming, type DirCheck, type FolderKind, type FolderRow, type StorageView } from '../../api/storage'
+import { FOLDER_KINDS, restartTiming, type DirCheck, type FolderKind, type FolderPick, type FolderPicks, type FolderRow, type StorageView } from '../../api/storage'
 import type { TranscodingView } from '../../api/types'
 import { SetupWizard } from '../SetupWizard'
 
@@ -16,20 +16,33 @@ const PATHS: Record<FolderKind, string> = { movies: 'movies', series: 'series', 
 
 const dir = (path: string, over: Partial<DirCheck> = {}): DirCheck => ({ path, status: 'ok', items: 3, ...over })
 
+/** Each kind's folders as a save names them: one plain folder each, `over` in place. */
+const picks = (over: Partial<Record<FolderKind, FolderPick[]>> = {}) =>
+  Object.fromEntries(FOLDER_KINDS.map((k) => [k, over[k] ?? [{ path: PATHS[k], adult: false, unlisted: false }]]))
+
+/** The first folder row of a kind (its group is headed by the kind's name). */
+const kindRow = (name: string) => screen.getByRole('heading', { name }).closest('section')!.querySelector('li')!
+const findKindRow = async (name: string) => (await screen.findByRole('heading', { name })).closest('section')!.querySelector('li')!
+
 /** A server whose «series» folder is called «tv». */
-function storageView(over: Partial<StorageView> = {}, picked: Partial<Record<FolderKind, string>> = {}): StorageView {
+function storageView(over: Partial<StorageView> = {}, picked: FolderPicks = {}): StorageView {
   const have = ['movies', 'tv', 'music', 'books/ebooks']
-  const folders: FolderRow[] = FOLDER_KINDS.map((kind) => {
-    const path = picked[kind] ?? PATHS[kind]
-    const found = have.includes(path)
-    return {
-      ...dir(path, found ? { items: path === 'tv' ? 12 : 3 } : { status: 'missing', items: 0 }),
-      kind,
-      abs: `/media/${path}`,
-      default: PATHS[kind],
-      ...(kind === 'series' && !found ? { suggest: 'tv' } : {}),
-    }
-  })
+  const folders: FolderRow[] = FOLDER_KINDS.flatMap((kind) =>
+    (picked[kind] ?? [{ path: PATHS[kind] }]).map((p, i): FolderRow => {
+      const found = have.includes(p.path)
+      return {
+        ...dir(p.path, found ? { items: p.path === 'tv' ? 12 : 3 } : { status: 'missing', items: 0 }),
+        kind,
+        abs: `/media/${p.path}`,
+        default: PATHS[kind],
+        primary: i === 0,
+        adult: Boolean(p.adult),
+        unlisted: Boolean(p.unlisted),
+        indexed: 0,
+        ...(kind === 'series' && !found && i === 0 ? { suggest: 'tv' } : {}),
+      }
+    }),
+  )
   return {
     root: dir('/media', { items: 5 }),
     entries: have.map((name) => ({ name, items: name === 'tv' ? 12 : 3 })),
@@ -40,6 +53,7 @@ function storageView(over: Partial<StorageView> = {}, picked: Partial<Record<Fol
     offline: false,
     canCreate: true,
     restarts: true,
+    places: ['/media'],
     ...over,
   }
 }
@@ -63,7 +77,7 @@ interface Opts {
   pending?: boolean | 403
   view?: StorageView
   /** the view a check of the picked folders answers */
-  check?: (body: { folders: Record<FolderKind, string> }) => StorageView
+  check?: (body: { folders: FolderPicks }) => StorageView
   put?: (body: unknown) => StorageView & { restarting: boolean }
   transcoding?: TranscodingView
   created?: DirCheck
@@ -160,9 +174,9 @@ describe('the first-run wizard', () => {
     expect(within(root).getByText('12 элементов')).toBeInTheDocument()
     expect(within(root).getByText('books/ebooks')).toBeInTheDocument()
     // found / missing, with a count and a way out
-    const movies = screen.getByText('Фильмы').closest('li')!
+    const movies = kindRow('Фильмы')
     expect(within(movies).getByText('Найдена, 3 элемента')).toBeInTheDocument()
-    const series = screen.getByText('Сериалы').closest('li')!
+    const series = kindRow('Сериалы')
     expect(within(series).getByText('Такой папки нет. Похожая: tv')).toBeInTheDocument()
     expect(within(series).getByRole('button', { name: 'Создать' })).toBeInTheDocument()
     expect(within(series).getByRole('button', { name: 'Использовать «tv»' })).toBeInTheDocument()
@@ -174,25 +188,25 @@ describe('the first-run wizard', () => {
     v.folders[2] = { ...v.folders[2]!, status: 'readonly', why: 'denied', error: 'permission denied' }
     serve({ view: v })
     open()
-    const music = (await screen.findByText('Музыка')).closest('li')!
+    const music = await findKindRow('Музыка')
     expect(within(music).getByText('Найдена, но сервер не может писать в неё')).toBeInTheDocument()
   })
 
   it('picking the folder that looks like it checks it at once, and «Далее» saves the picks and waits for the restart', async () => {
     const calls = serve({
       check: (b) => storageView({}, b.folders),
-      put: (b) => ({ ...storageView({ custom: true }, (b as { folders: Record<FolderKind, string> }).folders), restarting: true }),
+      put: (b) => ({ ...storageView({ custom: true }, (b as { folders: FolderPicks }).folders), restarting: true }),
     })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
     // checked, nothing saved yet
-    await waitFor(() => expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Найдена, 12 элементов')).toBeInTheDocument())
-    expect(calls.find((c) => c.path === '/api/settings/storage/check')?.body).toEqual({ folders: { ...PATHS, series: 'tv' } })
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    expect(calls.find((c) => c.path === '/api/settings/storage/check')?.body).toEqual({ folders: picks({ series: [{ path: 'tv', adult: false, unlisted: false }] }) })
     expect(calls.some((c) => c.method === 'PUT')).toBe(false)
     await userEvent.click(button('Далее'))
     expect(await screen.findByRole('heading', { name: 'Права на запись' })).toBeInTheDocument()
-    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ folders: { ...PATHS, series: 'tv' } })
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ folders: picks({ series: [{ path: 'tv', adult: false, unlisted: false }] }), confirmRemove: false })
     // it waited for the server to answer again, then read it
     const health = calls.findIndex((c) => c.path === '/api/health')
     const reread = calls.findIndex((c, i) => i > health && c.path === '/api/settings/storage' && c.method === 'GET')
@@ -213,21 +227,21 @@ describe('the first-run wizard', () => {
   it('a folder picked and then skipped stays unsaved', async () => {
     const calls = serve({ check: (b) => storageView({}, b.folders) })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Пропустить'))
     expect(await screen.findByRole('heading', { name: 'Права на запись' })).toBeInTheDocument()
     expect(calls.some((c) => c.method === 'PUT')).toBe(false)
     // the view went back to the saved folders
     const checks = calls.filter((c) => c.path === '/api/settings/storage/check')
-    expect(checks.at(-1)?.body).toEqual({ folders: PATHS })
+    expect(checks.at(-1)?.body).toEqual({ folders: picks() })
   })
 
   it('«Создать» makes the missing folder and checks again', async () => {
     const calls = serve()
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Создать' }))
     await waitFor(() => expect(calls.some((c) => c.path === '/api/settings/storage/create')).toBe(true))
     expect(calls.find((c) => c.path === '/api/settings/storage/create')?.body).toEqual({ path: 'series' })
@@ -237,7 +251,7 @@ describe('the first-run wizard', () => {
   it('a folder that could not be made says why', async () => {
     serve({ created: { path: 'series', status: 'readonly', items: 0, why: 'denied', error: 'mkdir /media/series: permission denied' } })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Создать' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось создать папку: mkdir /media/series: permission denied')
   })
@@ -371,7 +385,7 @@ describe('the first-run wizard', () => {
   it('a server that does not come back after a restart is said so, and the step stays', async () => {
     restartTiming.max = 3
     let health = 0
-    serve({ put: (b) => ({ ...storageView({}, (b as { folders: Record<FolderKind, string> }).folders), restarting: true }), check: (b) => storageView({}, b.folders) })
+    serve({ put: (b) => ({ ...storageView({}, (b as { folders: FolderPicks }).folders), restarting: true }), check: (b) => storageView({}, b.folders) })
     const f = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
     const inner = f.getMockImplementation() as (i: RequestInfo | URL, n?: RequestInit) => Promise<Response>
     f.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -382,9 +396,9 @@ describe('the first-run wizard', () => {
       return inner(input, init)
     })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByText(/Сервер отвечает дольше обычного/)).toBeInTheDocument()
     expect(health).toBeGreaterThan(1)
@@ -392,7 +406,7 @@ describe('the first-run wizard', () => {
   })
   it('waits for a NEW process after a restart: the old one may go on answering while it shuts down', async () => {
     const calls = serve({
-      put: (b) => ({ ...storageView({}, (b as { folders: Record<FolderKind, string> }).folders), restarting: true, bootId: 'old-run' }) as never,
+      put: (b) => ({ ...storageView({}, (b as { folders: FolderPicks }).folders), restarting: true, bootId: 'old-run' }) as never,
       check: (b) => storageView({}, b.folders),
     })
     const f = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
@@ -407,9 +421,9 @@ describe('the first-run wizard', () => {
       return inner(input, init)
     })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByRole('heading', { name: 'Права на запись' })).toBeInTheDocument()
     expect(health).toBe(4)
@@ -423,7 +437,7 @@ describe('the first-run wizard', () => {
   it('a server that only ever answers as the old process is said to be slow', async () => {
     restartTiming.max = 3
     serve({
-      put: (b) => ({ ...storageView({}, (b as { folders: Record<FolderKind, string> }).folders), restarting: true, bootId: 'old-run' }) as never,
+      put: (b) => ({ ...storageView({}, (b as { folders: FolderPicks }).folders), restarting: true, bootId: 'old-run' }) as never,
       check: (b) => storageView({}, b.folders),
     })
     const f = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
@@ -432,9 +446,9 @@ describe('the first-run wizard', () => {
       String(input).endsWith('/api/health') ? json({ ok: true, bootId: 'old-run' }) : inner(input, init),
     )
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByText(/Сервер отвечает дольше обычного/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Медиа-папки' })).toBeInTheDocument()
@@ -443,7 +457,7 @@ describe('the first-run wizard', () => {
   it('on a disk that looks unmounted «Создать» is not offered, and the page says the disk is not connected', async () => {
     serve({ view: storageView({ offline: true, canCreate: false }) })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     expect(screen.getByText(/Диск не подключён/)).toBeInTheDocument()
     expect(within(series).queryByRole('button', { name: 'Создать' })).toBeNull()
     // picking a folder that is there is not making one
@@ -455,7 +469,7 @@ describe('the first-run wizard', () => {
     v.root = dir('/media', { status: 'missing', items: 0 })
     serve({ view: v })
     open()
-    const series = (await screen.findByText('Сериалы')).closest('li')!
+    const series = await findKindRow('Сериалы')
     expect(within(series).queryByRole('button', { name: 'Создать' })).toBeNull()
   })
 
@@ -469,7 +483,7 @@ describe('the first-run wizard', () => {
     expect(within(movies).getByText('Найдена, пусто. Есть папка с файлами: Фильмы')).toBeInTheDocument()
     expect(within(movies).getByRole('button', { name: 'Использовать «Фильмы»' })).toBeInTheDocument()
     // a folder that has files is just found
-    expect(within(screen.getByText('Музыка').closest('li')!).getByText('Найдена, 3 элемента')).toBeInTheDocument()
+    expect(within(kindRow('Музыка')).getByText('Найдена, 3 элемента')).toBeInTheDocument()
   })
 
   it('folders whose place is missing are told to be mounted, with no chown', async () => {

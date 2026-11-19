@@ -809,7 +809,10 @@ func TestCoreInfo_Fields(t *testing.T) {
 	want := addonkit.Info{ID: "lib", Version: "1.0.0", Contract: addons.ContractVersion,
 		FFmpeg: "/usr/bin/ffmpeg", FFprobe: "/usr/bin/ffprobe", PublicURL: "https://media.example.org",
 		LibraryRoots: addonkit.LibraryRoots{Movies: "/m/movies", Series: "/m/series", Music: "/m/music",
-			Ebooks: "/m/books", Audiobooks: "/m/audio", Comics: "/m/comics"}, FileRoots: []string{}, MissingRoots: []string{}}
+			Ebooks: "/m/books", Audiobooks: "/m/audio", Comics: "/m/comics"},
+		LibraryFolders: map[string][]string{"movies": {"/m/movies"}, "series": {"/m/series"}, "music": {"/m/music"},
+			"ebooks": {"/m/books"}, "audiobooks": {"/m/audio"}, "comics": {"/m/comics"}},
+		FileRoots: []string{}, MissingRoots: []string{}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("info = %+v\nwant %+v", got, want)
 	}

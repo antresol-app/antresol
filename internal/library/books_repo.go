@@ -123,7 +123,7 @@ func (r *Repo) UpsertBook(ctx context.Context, b BookInput) (int64, error) {
 			return err
 		}
 		for _, f := range b.Files {
-			if err := upsertFile(ctx, tx, id, f); err != nil {
+			if err := r.upsertFile(ctx, tx, id, f); err != nil {
 				return err
 			}
 		}
@@ -273,7 +273,7 @@ func (r *Repo) UpsertAudiobook(ctx context.Context, a AudiobookInput) (int64, er
 		}
 		ids := make([]int64, len(a.Files))
 		for i, f := range a.Files {
-			fid, err := upsertFileID(ctx, tx, id, f)
+			fid, err := r.upsertFileID(ctx, tx, id, f)
 			if err != nil {
 				return err
 			}

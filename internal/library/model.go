@@ -98,6 +98,12 @@ type Item struct {
 	AddedAt       time.Time `json:"added_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 	MetaJSON      string    `json:"meta_json,omitempty"`
+	// Adult: from a folder marked «Только для взрослых» (items.adult): the
+	// visibility rules judge it as rated 18+ whatever Rating says
+	// (RatingOf). Unlisted: from one marked «Скрыть из общих подборок», off
+	// the home shelves and generated channels.
+	Adult    bool `json:"adult,omitempty"`
+	Unlisted bool `json:"unlisted,omitempty"`
 }
 
 // File is a row of the files table.
@@ -186,6 +192,10 @@ type ListQuery struct {
 	// NoTotal: List skips the count (its total is 0), for a shelf that
 	// shows no total.
 	NoTotal bool
+	// Listed keeps out the titles of folders «Скрыть из общих подборок»
+	// (Item.Unlisted): the home shelves and «Latest»; the library and search
+	// still list them.
+	Listed bool
 }
 
 // ScanStats summarises one ScanVideo / ScanAll run.

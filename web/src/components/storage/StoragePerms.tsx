@@ -33,8 +33,8 @@ export function permText(d: DirCheck, t: T): string {
 function checked(view: StorageView, t: T): { key: string; label: string; path: string; d: DirCheck }[] {
   const rows = [{ key: 'root', label: t('storage.perm.root'), path: view.root.path, d: view.root }]
   for (const k of FOLDER_KINDS) {
-    const f = view.folders.find((x) => x.kind === k)
-    if (f) rows.push({ key: k, label: t(`storage.kind.${k}`), path: f.abs, d: f })
+    // every folder of the kind: each is written to (a kind may have several)
+    for (const f of view.folders.filter((x) => x.kind === k)) rows.push({ key: `${k}:${f.abs}`, label: t(`storage.kind.${k}`), path: f.abs, d: f })
   }
   if (view.transcode.path) rows.push({ key: 'transcode', label: t('storage.perm.transcode'), path: view.transcode.path, d: view.transcode })
   return rows

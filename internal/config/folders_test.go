@@ -25,15 +25,15 @@ func TestFoldersOfTheEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Folders{Movies: "movies", Series: "series", Music: "music", Ebooks: "books/ebooks", Audiobooks: "books/audiobooks", Comics: "books/manga"}
-	if got := c.Folders(); got != want {
+	want := Folders{Movies: Dirs("movies"), Series: Dirs("series"), Music: Dirs("music"), Ebooks: Dirs("books/ebooks"), Audiobooks: Dirs("books/audiobooks"), Comics: Dirs("books/manga")}
+	if got := c.Folders(); !got.Equal(want) {
 		t.Fatalf("%+v", got)
 	}
 }
 
 func TestWithFoldersOverridesOnlyWhatIsSet(t *testing.T) {
 	c := loadAt(t, "/srv/media")
-	got := c.WithFolders(Folders{Movies: "Фильмы", Series: "tv"})
+	got := c.WithFolders(Folders{Movies: Dirs("Фильмы"), Series: Dirs("tv")})
 	if got.MoviesDir != "Фильмы" || got.SeriesDir != "tv" || got.MusicDir != c.MusicDir || got.EbooksDir != c.EbooksDir {
 		t.Fatalf("%+v", got.Folders())
 	}
@@ -48,7 +48,7 @@ func TestWithFoldersOverridesOnlyWhatIsSet(t *testing.T) {
 
 func TestWithFoldersMovesTheBooksRootAndImportPaths(t *testing.T) {
 	c := loadAt(t, "/srv/media")
-	got := c.WithFolders(Folders{Ebooks: "Книги/эл", Audiobooks: "Книги/аудио", Comics: "Книги/манга"})
+	got := c.WithFolders(Folders{Ebooks: Dirs("Книги/эл"), Audiobooks: Dirs("Книги/аудио"), Comics: Dirs("Книги/манга")})
 	if got.BooksDir != "/srv/media/Книги" {
 		t.Fatalf("books %q", got.BooksDir)
 	}
@@ -66,7 +66,7 @@ func TestWithFoldersMovesTheBooksRootAndImportPaths(t *testing.T) {
 		t.Fatalf("%+v", got.ImportPaths)
 	}
 	// book folders that do not share a parent leave the books root alone
-	scattered := c.WithFolders(Folders{Ebooks: "a/x", Audiobooks: "b/y", Comics: "c/z"})
+	scattered := c.WithFolders(Folders{Ebooks: Dirs("a/x"), Audiobooks: Dirs("b/y"), Comics: Dirs("c/z")})
 	if scattered.BooksDir != c.BooksDir {
 		t.Fatalf("%q", scattered.BooksDir)
 	}
@@ -79,7 +79,7 @@ func TestWithFoldersKeepsAnExplicitImportPathMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := c.WithFolders(Folders{Audiobooks: "x/y", Ebooks: "x/z", Comics: "x/w"})
+	got := c.WithFolders(Folders{Audiobooks: Dirs("x/y"), Ebooks: Dirs("x/z"), Comics: Dirs("x/w")})
 	if len(got.ImportPaths) != 1 || got.ImportPaths[0].To != "/srv/media/lib" {
 		t.Fatalf("%+v", got.ImportPaths)
 	}
@@ -91,14 +91,14 @@ func TestWithFoldersNeverMakesTheBooksRootTheMediaFolder(t *testing.T) {
 	for _, root := range []string{"/srv/media/", "/srv/media", "/srv//media/"} {
 		c := loadAt(t, root)
 		before := c.BooksDir
-		got := c.WithFolders(Folders{Ebooks: "ebooks", Audiobooks: "audiobooks", Comics: "manga"})
+		got := c.WithFolders(Folders{Ebooks: Dirs("ebooks"), Audiobooks: Dirs("audiobooks"), Comics: Dirs("manga")})
 		if got.BooksDir != before {
 			t.Errorf("root %q: books root became %q", root, got.BooksDir)
 		}
 	}
 	// the same with the folders written as absolute paths
 	c := loadAt(t, "/srv/media/")
-	got := c.WithFolders(Folders{Ebooks: "/srv/media/ebooks", Audiobooks: "/srv/media/audiobooks", Comics: "/srv/media/manga"})
+	got := c.WithFolders(Folders{Ebooks: Dirs("/srv/media/ebooks"), Audiobooks: Dirs("/srv/media/audiobooks"), Comics: Dirs("/srv/media/manga")})
 	if got.BooksDir != c.BooksDir {
 		t.Errorf("books root became %q", got.BooksDir)
 	}
@@ -108,28 +108,28 @@ func TestWithFoldersKeepsFilmsOutOfTheBooksRoot(t *testing.T) {
 	c := loadAt(t, "/srv/media")
 	// one library folder holding the films and the books: «Книги» must not
 	// become that folder, which every adult profile can read
-	got := c.WithFolders(Folders{Movies: "library/movies", Series: "library/series", Music: "library/music",
-		Ebooks: "library/ebooks", Audiobooks: "library/audiobooks", Comics: "library/comics"})
+	got := c.WithFolders(Folders{Movies: Dirs("library/movies"), Series: Dirs("library/series"), Music: Dirs("library/music"),
+		Ebooks: Dirs("library/ebooks"), Audiobooks: Dirs("library/audiobooks"), Comics: Dirs("library/comics")})
 	if got.BooksDir != c.BooksDir {
 		t.Fatalf("books root became %q", got.BooksDir)
 	}
 	// even one kind of the others inside the books' parent is enough
-	got = c.WithFolders(Folders{Music: "Книги/музыка", Ebooks: "Книги/эл", Audiobooks: "Книги/аудио", Comics: "Книги/манга"})
+	got = c.WithFolders(Folders{Music: Dirs("Книги/музыка"), Ebooks: Dirs("Книги/эл"), Audiobooks: Dirs("Книги/аудио"), Comics: Dirs("Книги/манга")})
 	if got.BooksDir != c.BooksDir {
 		t.Fatalf("books root became %q", got.BooksDir)
 	}
 	// the parent is the films' own folder
-	got = c.WithFolders(Folders{Movies: "video", Ebooks: "video/ebooks", Audiobooks: "video/audiobooks", Comics: "video/comics"})
+	got = c.WithFolders(Folders{Movies: Dirs("video"), Ebooks: Dirs("video/ebooks"), Audiobooks: Dirs("video/audiobooks"), Comics: Dirs("video/comics")})
 	if got.BooksDir != c.BooksDir {
 		t.Fatalf("books root became %q", got.BooksDir)
 	}
 	// a parent of nothing but books is still the books root
-	got = c.WithFolders(Folders{Ebooks: "Книги/эл", Audiobooks: "Книги/аудио", Comics: "Книги/манга"})
+	got = c.WithFolders(Folders{Ebooks: Dirs("Книги/эл"), Audiobooks: Dirs("Книги/аудио"), Comics: Dirs("Книги/манга")})
 	if got.BooksDir != "/srv/media/Книги" {
 		t.Fatalf("books root %q", got.BooksDir)
 	}
 	// and a parent outside the media folder is not one
-	got = c.WithFolders(Folders{Ebooks: "/data/b/e", Audiobooks: "/data/b/a", Comics: "/data/b/c"})
+	got = c.WithFolders(Folders{Ebooks: Dirs("/data/b/e"), Audiobooks: Dirs("/data/b/a"), Comics: Dirs("/data/b/c")})
 	if got.BooksDir != c.BooksDir {
 		t.Fatalf("books root became %q", got.BooksDir)
 	}

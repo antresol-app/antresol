@@ -1,8 +1,11 @@
 // «Настройки сервера → Медиатека → Папки на сервере»: the checks of the
-// first-run wizard, kept for later. What the server sees under the media
-// folder, which folder is which library (a pick is checked at once and takes
-// effect when applied: the server restarts for a few seconds), and the write
-// test with «Проверить» and the fix to copy when the server may not write.
+// first-run wizard, kept for later. Each library's folders (several per
+// kind, added from the folder browser over what is mounted into the server,
+// marked «Только для взрослых» or «Скрыть из общих подборок»; a change is
+// checked at once and takes effect when applied: the server restarts for a
+// few seconds for other folders, marks apply at once; taking out a folder
+// asks first, its titles leave the library), and the write test with
+// «Проверить» and the fix to copy when the server may not write.
 // Its own endpoint (/api/settings/storage), not the settings object: until
 // folders are picked here the server's VAULT_*_DIR apply.
 import { useState } from 'react'
@@ -10,7 +13,7 @@ import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
-import { StorageFolders } from '../../components/storage/StorageFolders'
+import { RemoveConfirm, StorageFolders } from '../../components/storage/StorageFolders'
 import { StoragePerms } from '../../components/storage/StoragePerms'
 import { useStorage } from '../../components/storage/useStorage'
 import m from './Manage.module.css'
@@ -20,6 +23,7 @@ export function StorageSection() {
   const storage = useStorage()
   const [saved, setSaved] = useState(false)
   const [manual, setManual] = useState(false)
+  const [asking, setAsking] = useState<null | { reset: boolean }>(null)
   const { view } = storage
 
   if (!view) {
@@ -40,12 +44,19 @@ export function StorageSection() {
     )
   }
 
-  const apply = async (reset: boolean) => {
+  const apply = async (reset: boolean, confirm = false) => {
+    // titles would leave the library: ask first
+    if (!confirm && !reset && storage.removals.length > 0) {
+      setAsking({ reset })
+      return
+    }
+    setAsking(null)
     setSaved(false)
-    const ok = await storage.save(reset)
+    const moves = reset || storage.moves
+    const ok = await storage.save(reset, confirm)
     if (ok) {
       setSaved(true)
-      setManual(!view.restarts)
+      setManual(!view.restarts && moves)
     }
   }
   const disabled = storage.busy || storage.restarting
@@ -58,12 +69,11 @@ export function StorageSection() {
           {storage.error}
         </div>
       )}
-      <StorageFolders storage={storage} title={t('storage.title')} entries={false} />
-      <GroupedSection footer={t('storage.settings.footer')}>
+      <GroupedSection title={t('storage.title')} footer={t('storage.settings.footer')}>
         {storage.dirty && (
-          <ListRow label={view.restarts ? t('storage.apply') : t('storage.applyManual')}>
+          <ListRow label={view.restarts && storage.moves ? t('storage.apply') : t('storage.applyManual')}>
             <Button size="small" loading={storage.busy} disabled={disabled} onClick={() => void apply(false)}>
-              {view.restarts ? t('storage.apply') : t('storage.applyManual')}
+              {view.restarts && storage.moves ? t('storage.apply') : t('storage.applyManual')}
             </Button>
           </ListRow>
         )}
@@ -82,6 +92,18 @@ export function StorageSection() {
           </Button>
         </ListRow>
       </GroupedSection>
+      <StorageFolders storage={storage} entries={false} />
+      {(asking || storage.confirmNeeded) && (
+        <RemoveConfirm
+          removals={storage.removals}
+          busy={storage.busy}
+          onCancel={() => {
+            setAsking(null)
+            storage.dismissConfirm()
+          }}
+          onConfirm={() => void apply(asking?.reset ?? false, true)}
+        />
+      )}
       <StoragePerms view={view} />
     </>
   )

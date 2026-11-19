@@ -77,3 +77,24 @@
   align-items: center;
   gap: var(--s-2);
 }
+/* a library folder's row: its path (cut anywhere: a long mount path must
+   not widen the row) and its marks under it */
+.folderLabel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.removeList {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-4);
+  font: var(--t-subhead);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}

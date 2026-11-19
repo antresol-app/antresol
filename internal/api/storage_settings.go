@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/config"
+	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/mediacheck"
 	"github.com/go-chi/chi/v5"
@@ -34,17 +34,27 @@ const foldersKey = "folders"
 // not reachable.
 const wizardKey = "setup_wizard"
 
+// forgetKey lists the folders (absolute) taken out of the library by the
+// last save: the next start forgets their files once more before its first
+// scan, in case a scan of the old folders ran between the save and the
+// restart.
+const forgetKey = "folders_forget"
+
 // Messages of refusals (catalog keys).
 const (
 	msgInside  = "Папка должна быть внутри медиа-папки"
+	msgPlace   = "Папка должна быть в медиа-папке или в другой папке, подключённой к серверу"
 	msgNotRoot = "Выберите папку внутри медиа-папки, а не её саму"
 	msgTwin    = "Две библиотеки не могут лежать в одной папке"
 	msgNested  = "Папка одной библиотеки не может лежать внутри папки другой"
 	msgOffline = "Диск не подключён. Пока он не вернётся, папки не создаются"
+	msgRemove  = "Из медиатеки уйдут файлы убранных папок. Подтвердите, что их нужно убрать"
+	msgBusy    = "Медиатека сканируется. Попробуйте через минуту"
 )
 
 // LoadFolderSettings are the folders an administrator picked, and whether
-// any were (config.Config.WithFolders applies them at start).
+// any were (config.Config.WithFolders applies them at start). A row from
+// before several folders per kind (one path each) reads as one folder each.
 func LoadFolderSettings(ctx context.Context, db *sql.DB) (f config.Folders, custom bool, err error) {
 	var raw string
 	err = db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, foldersKey).Scan(&raw)
@@ -60,6 +70,40 @@ func LoadFolderSettings(ctx context.Context, db *sql.DB) (f config.Folders, cust
 	return f, true, nil
 }
 
+// TakeForgottenFolders are the folders the last save took out of the
+// library (forgetKey), and drops the row: the start forgets them before its
+// first scan.
+func TakeForgottenFolders(ctx context.Context, db *sql.DB) ([]string, error) {
+	var raw string
+	err := db.QueryRowContext(ctx, `DELETE FROM settings WHERE key=? RETURNING value`, forgetKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	err = json.Unmarshal([]byte(raw), &out)
+	return out, err
+}
+
+// FolderFlags are the marks of folders f (MediaRoot-relative paths made
+// absolute with abs), as the scanner takes them.
+func FolderFlags(f config.Folders, abs func(string) string) library.FolderFlags {
+	var out library.FolderFlags
+	for _, k := range config.FolderKinds {
+		for _, d := range f.Of(k) {
+			if d.Adult {
+				out.Adult = append(out.Adult, abs(d.Path))
+			}
+			if d.Unlisted {
+				out.Unlisted = append(out.Unlisted, abs(d.Path))
+			}
+		}
+	}
+	return out
+}
+
 // StorageInfo is how the server's folders are set up: the first-run
 // wizard's «Папки» and «Права» steps and the same checks in «Настройки
 // сервера». The media folder is Deps.MediaRoot.
@@ -70,6 +114,12 @@ type StorageInfo struct {
 	// TranscodeDir holds the playback segments; ConfigDir the server's own
 	// settings and database.
 	TranscodeDir, ConfigDir string
+	// Private are folders the folder browser never shows, nor anything
+	// that holds them (the settings and database, the import folder).
+	Private []string
+	// Mounts are the container's mount points the browser may show beside
+	// the media folder (nil: mediacheck.SelfMounts).
+	Mounts func() []string
 	// Service is the compose service the server runs as, for the fix
 	// commands ("" is "antresol").
 	Service string
@@ -80,6 +130,9 @@ type StorageInfo struct {
 	// Restart restarts the server so that other folders take effect (nil:
 	// the administrator restarts it).
 	Restart func()
+	// SetFlags hands the scanner the folders' marks when only they changed:
+	// they apply without a restart (nil: from the next start).
+	SetFlags func(library.FolderFlags)
 }
 
 // bootID tells this run of the server from the next: a restart is over when
@@ -116,10 +169,14 @@ type storageAPI struct {
 //   - GET /api/settings/storage: storageView of the saved folders;
 //   - POST /api/settings/storage/check {folders}: the same for folders not
 //     saved yet (a missing kind keeps its saved one);
-//   - PUT /api/settings/storage {folders} | {reset}: saves them; the server
-//     restarts to use them (restarting in the answer);
+//   - PUT /api/settings/storage {folders, confirmRemove} | {reset}: saves
+//     them; the server restarts to use other folders (restarting in the
+//     answer), marks alone apply at once; taking out a folder the library
+//     has titles from is 409 {removing} until confirmRemove;
 //   - POST /api/settings/storage/create {path}: makes the folder under the
 //     media folder; answers its mediacheck.Dir;
+//   - GET /api/settings/storage/browse?path=: the folder browser (browseView),
+//     confined to the media folder and the server's other mounts;
 //   - GET /api/setup/wizard: whether the first-run wizard is pending;
 //   - POST /api/setup/wizard/finish: ends it and starts the library scan.
 func mountStorage(r chi.Router, deps Deps) {
@@ -133,6 +190,7 @@ func mountStorage(r chi.Router, deps Deps) {
 		r.Post("/api/settings/storage/check", s.check)
 		r.Put("/api/settings/storage", s.put)
 		r.Post("/api/settings/storage/create", s.create)
+		r.Get("/api/settings/storage/browse", s.browse)
 		r.Get("/api/setup/wizard", s.wizard)
 		r.Post("/api/setup/wizard/finish", s.finish)
 	})
@@ -141,12 +199,21 @@ func mountStorage(r chi.Router, deps Deps) {
 // folderRow is one library folder of storageView.
 type folderRow struct {
 	Kind string `json:"kind"`
-	// Abs is the path inside the container; Default the VAULT_*_DIR one.
+	// Abs is the path inside the container; Default the kind's VAULT_*_DIR
+	// one; Primary: the kind's first folder, where its downloads and uploads
+	// go.
 	Abs     string `json:"abs"`
 	Default string `json:"default"`
+	Primary bool   `json:"primary"`
+	// Adult and Unlisted are the folder's marks (config.Folder).
+	Adult    bool `json:"adult"`
+	Unlisted bool `json:"unlisted"`
+	// Indexed is how many titles the library has from the folder: what
+	// taking it out removes from the library.
+	Indexed int `json:"indexed"`
 	// Suggest is a folder under the media folder that looks like this kind
-	// and has files in it, offered while this one is missing or empty (the
-	// server makes empty default folders itself).
+	// and has files in it, offered while the kind's first folder is missing
+	// or empty (the server makes empty default folders itself).
 	Suggest string `json:"suggest,omitempty"`
 	mediacheck.Dir
 }
@@ -162,6 +229,9 @@ type storageView struct {
 	Custom    bool                `json:"custom"`
 	Server    mediacheck.Identity `json:"server"`
 	Fix       *mediacheck.Fix     `json:"fix,omitempty"`
+	// Places are where the folder browser starts: the media folder, then
+	// the other folders mounted into the server.
+	Places []string `json:"places"`
 	// Offline: the library has files but the media disk looks unmounted;
 	// CanCreate: «Создать» may make a folder (the media folder is there and
 	// the disk is not offline).
@@ -171,46 +241,12 @@ type storageView struct {
 	Restarts bool `json:"restarts"`
 }
 
-// get reads one kind's folder.
-func get(f config.Folders, k mediacheck.Kind) string {
-	switch k {
-	case mediacheck.Movies:
-		return f.Movies
-	case mediacheck.Series:
-		return f.Series
-	case mediacheck.Music:
-		return f.Music
-	case mediacheck.Ebooks:
-		return f.Ebooks
-	case mediacheck.Audiobooks:
-		return f.Audiobooks
-	}
-	return f.Comics
-}
-
-// setKind stores a folder into f.
-func setKind(f *config.Folders, k mediacheck.Kind, v string) {
-	switch k {
-	case mediacheck.Movies:
-		f.Movies = v
-	case mediacheck.Series:
-		f.Series = v
-	case mediacheck.Music:
-		f.Music = v
-	case mediacheck.Ebooks:
-		f.Ebooks = v
-	case mediacheck.Audiobooks:
-		f.Audiobooks = v
-	default:
-		f.Comics = v
-	}
-}
-
-// merged puts over's folders over base's (an empty one leaves the base's).
+// merged puts over's kinds over base's (a kind over has no folder for
+// keeps base's).
 func merged(base, over config.Folders) config.Folders {
-	for _, k := range mediacheck.Kinds {
-		if v := get(over, k); v != "" {
-			setKind(&base, k, v)
+	for _, k := range config.FolderKinds {
+		if l := over.Of(k); len(l) > 0 {
+			base.Set(k, l)
 		}
 	}
 	return base
@@ -225,7 +261,7 @@ func (s *storageAPI) rel(p string) string {
 	if r, err := filepath.Rel(s.root, p); err == nil && r != "." && !strings.HasPrefix(r, "..") {
 		return filepath.ToSlash(r)
 	}
-	return p
+	return filepath.Clean(p)
 }
 
 func (s *storageAPI) abs(p string) string {
@@ -235,6 +271,20 @@ func (s *storageAPI) abs(p string) string {
 	return filepath.Join(s.root, filepath.FromSlash(p))
 }
 
+// normalized is f with every path as the settings keep it.
+func (s *storageAPI) normalized(f config.Folders) config.Folders {
+	var out config.Folders
+	for _, k := range config.FolderKinds {
+		var l config.FolderList
+		for _, d := range f.Of(k) {
+			d.Path = s.rel(d.Path)
+			l = append(l, d)
+		}
+		out.Set(k, l)
+	}
+	return out
+}
+
 // effective are the folders the server uses from its next start: the
 // environment's, the administrator's over them, and over those a candidate.
 func (s *storageAPI) effective(ctx context.Context, cand config.Folders) (f config.Folders, custom bool, err error) {
@@ -242,11 +292,18 @@ func (s *storageAPI) effective(ctx context.Context, cand config.Folders) (f conf
 	if err != nil {
 		return f, false, err
 	}
-	f = merged(merged(s.info.Env, saved), cand)
-	for _, k := range mediacheck.Kinds {
-		setKind(&f, k, s.rel(get(f, k)))
+	return s.normalized(merged(merged(s.info.Env, saved), cand)), custom, nil
+}
+
+// places are where the browser may go and the library folders may be: the
+// media folder and the server's other mounts, never its own settings.
+func (s *storageAPI) places() []string {
+	mounts := s.info.Mounts
+	if mounts == nil {
+		mounts = mediacheck.SelfMounts
 	}
-	return f, custom, nil
+	private := append([]string{s.info.ConfigDir}, s.info.Private...)
+	return mediacheck.Places(s.root, mounts(), private)
 }
 
 func (s *storageAPI) view(ctx context.Context, cand config.Folders) (storageView, error) {
@@ -255,7 +312,7 @@ func (s *storageAPI) view(ctx context.Context, cand config.Folders) (storageView
 		return storageView{}, err
 	}
 	v := storageView{Custom: custom, Server: mediacheck.Self(), Restarts: s.info.Restart != nil,
-		Entries: []mediacheck.Entry{}, Folders: []folderRow{}}
+		Entries: []mediacheck.Entry{}, Folders: []folderRow{}, Places: s.places()}
 	v.Root = mediacheck.Check(s.root)
 	v.Root.Path = s.root
 	rootThere := v.Root.Status != mediacheck.StatusMissing && v.Root.Status != mediacheck.StatusNotDir && v.Root.Status != mediacheck.StatusUnreadable
@@ -293,26 +350,35 @@ func (s *storageAPI) view(ctx context.Context, cand config.Folders) (storageView
 	}
 	addBad(s.root, v.Root)
 	taken := map[string]bool{}
-	for _, k := range mediacheck.Kinds {
-		taken[get(f, k)] = true
+	for _, k := range config.FolderKinds {
+		for _, d := range f.Of(k) {
+			taken[d.Path] = true
+		}
 	}
+	repo := library.NewRepo(s.db)
 	for _, k := range mediacheck.Kinds {
-		p := get(f, k)
-		row := folderRow{Kind: string(k), Abs: s.abs(p), Default: s.rel(get(s.info.Env, k)), Dir: mediacheck.Check(s.abs(p))}
-		row.Dir.Path = p
-		if sg := suggest[k]; sg != "" && !taken[sg] {
-			// a missing folder, or an empty one (the server makes the
-			// default ones empty on a new install): offer one with files
-			empty := row.Status == mediacheck.StatusOK && row.Items == 0 && !row.More
-			if row.Status == mediacheck.StatusMissing || (empty && items[sg] > 0) {
-				row.Suggest = sg
+		for i, d := range f.Of(string(k)) {
+			abs := s.abs(d.Path)
+			row := folderRow{Kind: string(k), Abs: abs, Default: s.rel(s.info.Env.Of(string(k)).First()), Primary: i == 0,
+				Adult: d.Adult, Unlisted: d.Unlisted, Dir: mediacheck.Check(abs)}
+			row.Dir.Path = d.Path
+			if n, err := repo.FolderCount(ctx, abs); err == nil {
+				row.Indexed = n
 			}
+			if sg := suggest[k]; i == 0 && sg != "" && !taken[sg] {
+				// a missing folder, or an empty one (the server makes the
+				// default ones empty on a new install): offer one with files
+				empty := row.Status == mediacheck.StatusOK && row.Items == 0 && !row.More
+				if row.Status == mediacheck.StatusMissing || (empty && items[sg] > 0) {
+					row.Suggest = sg
+				}
+			}
+			// a folder under an unwritable media folder is covered by its fix
+			if v.Root.Status != mediacheck.StatusReadOnly || !mediacheck.Inside(s.root, abs) {
+				addBad(row.Abs, row.Dir)
+			}
+			v.Folders = append(v.Folders, row)
 		}
-		// a folder under an unwritable media folder is covered by its fix
-		if v.Root.Status != mediacheck.StatusReadOnly {
-			addBad(row.Abs, row.Dir)
-		}
-		v.Folders = append(v.Folders, row)
 	}
 	if s.info.TranscodeDir != "" {
 		within := ""
@@ -368,11 +434,13 @@ func nestedTops(folders ...config.Folders) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, f := range folders {
-		for _, p := range []string{f.Ebooks, f.Audiobooks, f.Comics} {
-			p = filepath.ToSlash(filepath.Clean(p))
-			if top, _, ok := strings.Cut(p, "/"); ok && !filepath.IsAbs(p) && !seen[top] {
-				seen[top] = true
-				out = append(out, top)
+		for _, l := range []config.FolderList{f.Ebooks, f.Audiobooks, f.Comics} {
+			for _, p := range l.Paths() {
+				p = filepath.ToSlash(filepath.Clean(p))
+				if top, _, ok := strings.Cut(p, "/"); ok && !filepath.IsAbs(p) && !seen[top] {
+					seen[top] = true
+					out = append(out, top)
+				}
 			}
 		}
 	}
@@ -388,77 +456,106 @@ func (s *storageAPI) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// storageIn is the body of check and put.
+// storageIn is the body of check and put: each kind named gets exactly the
+// folders listed (a kind not named keeps its own). ConfirmRemove: the
+// administrator agreed that the folders this takes out leave the library.
 type storageIn struct {
-	Folders config.Folders `json:"folders"`
-	Reset   bool           `json:"reset"`
+	Folders       config.Folders `json:"folders"`
+	Reset         bool           `json:"reset"`
+	ConfirmRemove bool           `json:"confirmRemove"`
 }
 
-// valid cleans the folders a request names: each inside the media folder (a
-// path under it is kept relative, and no link leads out of it), none the
-// media folder itself. The message is Russian (a catalog key).
+// valid cleans the folders a request names: each in a place (the media
+// folder or another folder mounted into the server: a path under the media
+// folder is kept relative, and no link leads out of the places), none the
+// media folder itself, no folder twice. The message is Russian (a catalog
+// key).
 func (s *storageAPI) valid(cand config.Folders) (config.Folders, string) {
 	var out config.Folders
-	for _, k := range mediacheck.Kinds {
-		p := strings.TrimSpace(get(cand, k))
-		if p == "" {
-			continue
+	places := s.places()
+	seen := map[string]bool{}
+	for _, k := range config.FolderKinds {
+		var l config.FolderList
+		for _, d := range cand.Of(k) {
+			p := strings.TrimSpace(d.Path)
+			if p == "" {
+				continue
+			}
+			if strings.ContainsRune(p, 0) {
+				return out, msgPlace
+			}
+			abs := s.abs(filepath.FromSlash(p))
+			if !filepath.IsAbs(p) {
+				// relative is to the media folder, and stays in it
+				if r, err := filepath.Rel(s.root, abs); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+					return out, msgInside
+				}
+			}
+			if abs == s.root {
+				return out, msgNotRoot
+			}
+			if msg := s.where(abs, places); msg != "" {
+				return out, msg
+			}
+			d.Path = s.rel(abs)
+			if seen[d.Path] {
+				return out, msgTwin
+			}
+			seen[d.Path] = true
+			l = append(l, d)
 		}
-		if strings.ContainsRune(p, 0) {
-			return out, msgInside
-		}
-		p = filepath.Clean(filepath.FromSlash(p))
-		abs := s.abs(p)
-		r, err := filepath.Rel(s.root, abs)
-		if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-			return out, msgInside
-		}
-		if r == "." {
-			return out, msgNotRoot
-		}
-		if msg := s.where(abs); msg != "" {
-			return out, msg
-		}
-		setKind(&out, k, filepath.ToSlash(r))
+		out.Set(k, l)
 	}
 	return out, ""
 }
 
 // where checks abs the way the file system will read it: every link
-// followed, it must lie inside the media folder (itself followed) and not be
-// that folder. A path with a link in it that leads out is how a folder made
-// or picked "inside" the media folder lands elsewhere. "" when it is fine.
-func (s *storageAPI) where(abs string) string {
-	realRoot, err := filepath.EvalSymlinks(s.root)
-	if err != nil {
-		return "" // no media folder: nothing there to lead out of
+// followed, it must lie in a place (mediacheck.Confine) and not be the
+// media folder. A path with a link in it that leads out is how a folder
+// made or picked "inside" the media folder lands elsewhere. "" when it is
+// fine.
+func (s *storageAPI) where(abs string, places []string) string {
+	if _, err := mediacheck.Confine(abs, places); err != nil {
+		if mediacheck.Inside(s.root, abs) {
+			return msgInside
+		}
+		return msgPlace
 	}
-	real, err := mediacheck.Resolve(abs)
-	switch {
-	case errors.Is(err, fs.ErrPermission):
-		return "" // cannot be told; the server cannot make anything there either
-	case err != nil || !mediacheck.Inside(realRoot, real):
-		return msgInside
-	case real == realRoot:
-		return msgNotRoot
+	if realRoot, err := filepath.EvalSymlinks(s.root); err == nil {
+		if real, err := mediacheck.Resolve(abs); err == nil && real == realRoot {
+			return msgNotRoot
+		}
 	}
 	return ""
 }
 
-// clash is why the folders cannot be saved: two kinds in one folder, or one
-// kind's folder inside another's (each scan would walk the other's files).
-// Only folders this request changed are judged: a layout that was already
-// like that in the environment is left to its owner.
+// clash is why the folders cannot be saved: one folder twice, or one
+// folder inside another (each scan would walk the other's files). Only
+// pairs with a folder this request added are judged: a layout that was
+// already like that in the environment is left to its owner.
 func (s *storageAPI) clash(before, next config.Folders) string {
-	for i, a := range mediacheck.Kinds {
-		for _, b := range mediacheck.Kinds[i+1:] {
-			if get(next, a) == get(next, b) {
+	type at struct{ kind, path string }
+	had := map[at]bool{}
+	for _, k := range config.FolderKinds {
+		for _, p := range before.Of(k).Paths() {
+			had[at{k, p}] = true
+		}
+	}
+	var all []at
+	for _, k := range config.FolderKinds {
+		for _, p := range next.Of(k).Paths() {
+			all = append(all, at{k, p})
+		}
+	}
+	for i, a := range all {
+		for _, b := range all[i+1:] {
+			if a.path == b.path {
 				return msgTwin
 			}
-			if get(next, a) == get(before, a) && get(next, b) == get(before, b) {
+			if had[a] && had[b] {
 				continue
 			}
-			pa, pb := s.abs(get(next, a)), s.abs(get(next, b))
+			pa, pb := s.abs(a.path), s.abs(b.path)
 			if mediacheck.Inside(pa, pb) || mediacheck.Inside(pb, pa) {
 				return msgNested
 			}
@@ -493,6 +590,38 @@ type storagePut struct {
 	// BootID is this run's (the one about to stop): the restart is over
 	// when /api/health answers with another.
 	BootID string `json:"bootId"`
+	// Removed is how many titles left the library with the folders taken out.
+	Removed int `json:"removed"`
+}
+
+// removal is a folder a save takes out, with what the library has from it.
+type removal struct {
+	Kind  string `json:"kind"`
+	Path  string `json:"path"`
+	Items int    `json:"items"`
+}
+
+// removed are the folders of before that next has under no kind (a folder
+// moved from one kind to another stays: its files are scanned again).
+func (s *storageAPI) removed(ctx context.Context, before, next config.Folders) []removal {
+	keep := map[string]bool{}
+	for _, k := range config.FolderKinds {
+		for _, p := range next.Of(k).Paths() {
+			keep[p] = true
+		}
+	}
+	repo := library.NewRepo(s.db)
+	var out []removal
+	for _, k := range config.FolderKinds {
+		for _, p := range before.Of(k).Paths() {
+			if keep[p] {
+				continue
+			}
+			n, _ := repo.FolderCount(ctx, s.abs(p))
+			out = append(out, removal{Kind: k, Path: p, Items: n})
+		}
+	}
+	return out
 }
 
 func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
@@ -511,9 +640,10 @@ func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "storage settings", err)
 		return
 	}
+	env := s.normalized(s.info.Env)
 	var next config.Folders
 	if in.Reset {
-		next = s.normalized(s.info.Env)
+		next = env
 	} else {
 		next, _, err = s.effective(ctx, cand)
 		if err != nil {
@@ -529,7 +659,27 @@ func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, msg)
 		return
 	}
-	if next == s.normalized(s.info.Env) {
+	// taking a folder out takes its titles out of the library (never its
+	// files): only once the administrator said so
+	gone := s.removed(ctx, before, next)
+	if !in.ConfirmRemove {
+		for _, g := range gone {
+			if g.Items > 0 {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": i18n.Localize(ctx, msgRemove), "removing": gone})
+				return
+			}
+		}
+	}
+	var release func()
+	if len(gone) > 0 && s.deps.Jobs != nil && s.deps.Jobs.Scanner != nil {
+		// no scan of the old folders runs while their files leave
+		if release, err = s.deps.Jobs.Scanner.Hold(ctx); err != nil {
+			writeErr(w, r, http.StatusConflict, msgBusy)
+			return
+		}
+		defer release()
+	}
+	if next.Equal(env) {
 		// the same as the server's own: no row, so a later change of
 		// VAULT_*_DIR is still heard
 		_, err = s.db.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, foldersKey)
@@ -542,13 +692,33 @@ func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "storage settings", err)
 		return
 	}
+	removedItems, err := s.forget(ctx, gone)
+	if err != nil {
+		internalErr(w, r, "storage settings", err)
+		return
+	}
+	flags := FolderFlags(next, s.abs)
+	moved := !next.SamePaths(before)
+	if !moved && !next.Equal(before) {
+		// only marks changed: they apply now, to what is there and to the
+		// next scans, without a restart
+		if s.info.SetFlags != nil {
+			s.info.SetFlags(flags)
+		}
+		repo := library.NewRepo(s.db)
+		repo.SetFolderFlags(flags)
+		if err := repo.SyncFolderFlags(ctx); err != nil {
+			internalErr(w, r, "storage settings", err)
+			return
+		}
+	}
 	v, err := s.view(ctx, config.Folders{})
 	if err != nil {
 		internalErr(w, r, "storage settings", err)
 		return
 	}
-	out := storagePut{storageView: v, BootID: bootID}
-	if next != before && s.info.Restart != nil {
+	out := storagePut{storageView: v, BootID: bootID, Removed: removedItems}
+	if moved && s.info.Restart != nil {
 		out.Restarting = true
 		restart := s.info.Restart
 		time.AfterFunc(restartDelay, restart)
@@ -556,11 +726,89 @@ func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *storageAPI) normalized(f config.Folders) config.Folders {
-	for _, k := range mediacheck.Kinds {
-		setKind(&f, k, s.rel(get(f, k)))
+// forget takes the files of the folders gone out of the library now, and
+// keeps the folders for the next start to do it again before its first
+// scan (TakeForgottenFolders).
+func (s *storageAPI) forget(ctx context.Context, gone []removal) (int, error) {
+	if len(gone) == 0 {
+		return 0, nil
 	}
-	return f
+	prev, _ := TakeForgottenFolders(ctx, s.db)
+	dirs := append([]string(nil), prev...)
+	n := 0
+	repo := library.NewRepo(s.db)
+	for _, g := range gone {
+		abs := s.abs(g.Path)
+		dirs = append(dirs, abs)
+		if _, err := repo.ForgetFolder(ctx, abs); err != nil {
+			return n, err
+		}
+		n += g.Items
+	}
+	raw, _ := json.Marshal(dirs)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, forgetKey, string(raw))
+	return n, err
+}
+
+// browseView is GET /api/settings/storage/browse: one folder the browser
+// shows (Dir: its check, the write test included), the folders in it, and
+// the places it may go.
+type browseView struct {
+	Places []string `json:"places"`
+	// Path is the folder shown ("" with no place to show); Parent the one
+	// above it, "" at a place.
+	Path   string           `json:"path"`
+	Parent string           `json:"parent"`
+	Dir    mediacheck.Dir   `json:"dir"`
+	Dirs   []mediacheck.Sub `json:"dirs"`
+	// Truncated: the folder has more folders than the list holds.
+	Truncated bool `json:"truncated,omitempty"`
+	// Library: the kind whose folder this is already ("" none).
+	Library string `json:"library,omitempty"`
+}
+
+// browse shows ?path= (absolute; "" the first place). Only folders in the
+// places: anything else, a ".." or a link out of them, is 400.
+func (s *storageAPI) browse(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	places := s.places()
+	v := browseView{Places: places, Dirs: []mediacheck.Sub{}}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		if len(places) == 0 {
+			writeJSON(w, http.StatusOK, v)
+			return
+		}
+		path = places[0]
+	}
+	place, err := mediacheck.Confine(path, places)
+	if err != nil {
+		writeErr(w, r, http.StatusBadRequest, msgPlace)
+		return
+	}
+	path = filepath.Clean(path)
+	v.Path, v.Dir = path, mediacheck.Check(path)
+	v.Dir.Path = path
+	if path != place {
+		v.Parent = filepath.Dir(path)
+	}
+	if v.Dir.Status == mediacheck.StatusOK || v.Dir.Status == mediacheck.StatusReadOnly {
+		subs, truncated, err := mediacheck.Browse(path, places)
+		if err == nil {
+			v.Dirs, v.Truncated = subs, truncated
+		}
+	}
+	if f, _, err := s.effective(ctx, config.Folders{}); err == nil {
+		for _, k := range config.FolderKinds {
+			for _, p := range f.Of(k).Paths() {
+				if s.abs(p) == path {
+					v.Library = k
+				}
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // create makes a folder under the media folder, as «Создать» asks. It does
@@ -574,9 +822,9 @@ func (s *storageAPI) create(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	cand, msg := s.valid(config.Folders{Movies: in.Path})
-	if msg != "" || cand.Movies == "" {
-		if msg == "" {
+	cand, msg := s.valid(config.Folders{Movies: config.Dirs(in.Path)})
+	if msg != "" || len(cand.Movies) == 0 || filepath.IsAbs(cand.Movies.First()) {
+		if msg == "" || msg == msgPlace {
 			msg = msgInside
 		}
 		writeErr(w, r, http.StatusBadRequest, msg)
@@ -586,7 +834,7 @@ func (s *storageAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusConflict, msgOffline)
 		return
 	}
-	abs := s.abs(cand.Movies)
+	abs := s.abs(cand.Movies.First())
 	var d mediacheck.Dir
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		log.Printf("api: create folder %s: %v", abs, err)
@@ -594,7 +842,7 @@ func (s *storageAPI) create(w http.ResponseWriter, r *http.Request) {
 	} else {
 		d = mediacheck.Check(abs)
 	}
-	d.Path = cand.Movies
+	d.Path = cand.Movies.First()
 	writeJSON(w, http.StatusOK, d)
 }
 

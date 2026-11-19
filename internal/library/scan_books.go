@@ -116,7 +116,12 @@ type bookGroup struct {
 // all its formats as files, metadata from the files (EPUB > FB2 > others)
 // and the names. A root that cannot be read completely is never pruned.
 func (s *Scanner) scanBooks(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Ebooks)
+	return s.eachRoot(ctx, KindFolderEbooks, st, s.scanBooksIn)
+}
+
+// scanBooksIn is scanBooks of one of the kind's folders.
+func (s *Scanner) scanBooksIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}

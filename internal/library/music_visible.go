@@ -27,7 +27,7 @@ func (r *Repo) SearchMusic(ctx context.Context, text, kind string, limit, offset
 // MusicArtists is Artists with the rating filter in SQL.
 func (r *Repo) MusicArtists(ctx context.Context, limit, offset int, maxRating string) ([]ArtistRow, error) {
 	const has = `EXISTS (SELECT 1 FROM items al WHERE al.parent_id=i.id AND al.kind='album' AND al.missing_since IS NULL)`
-	rate, args := MusicRootAllowed("i.rating", maxRating)
+	rate, args := MusicRootAllowed(RatingOf("i"), maxRating)
 	if limit <= 0 {
 		limit = -1
 	}
@@ -42,7 +42,7 @@ func (r *Repo) MusicArtists(ctx context.Context, limit, offset int, maxRating st
 
 // MusicSongs is Songs with the rating filter in SQL.
 func (r *Repo) MusicSongs(ctx context.Context, limit, offset int, maxRating string) ([]Track, error) {
-	rate, args := MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN ar.rating WHEN al.id IS NOT NULL THEN al.rating ELSE i.rating END)", maxRating)
+	rate, args := MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN "+RatingOf("ar")+" WHEN al.id IS NOT NULL THEN "+RatingOf("al")+" ELSE "+RatingOf("i")+" END)", maxRating)
 	if limit <= 0 {
 		limit = -1
 	}

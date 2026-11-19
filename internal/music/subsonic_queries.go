@@ -42,7 +42,7 @@ type Genre struct {
 
 // albumRoot is the rating of an album's root (its artist "ar", else the
 // album "i"), the rule of library.Repo.Visible.
-const albumRoot = "(CASE WHEN ar.id IS NOT NULL THEN ar.rating ELSE i.rating END)"
+var albumRoot = "(CASE WHEN ar.id IS NOT NULL THEN " + library.RatingOf("ar") + " ELSE " + library.RatingOf("i") + " END)"
 
 // genreAlbums lists the genres of the albums visible to maxRating ("" =
 // all), case-folded together, with their albums.
@@ -98,7 +98,7 @@ func (s *Store) Genres(ctx context.Context, maxRating string) ([]Genre, error) {
 // is allowed for maxRating: the one kid-visibility track query of
 // RandomTracks and ShuffleTrackIDs; callers append " AND …" filters.
 func visibleTracksQuery(maxRating string) (string, []any) {
-	rate, args := library.MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN ar.rating ELSE al.rating END)", maxRating)
+	rate, args := library.MusicRootAllowed("(CASE WHEN ar.id IS NOT NULL THEN "+library.RatingOf("ar")+" ELSE "+library.RatingOf("al")+" END)", maxRating)
 	return `SELECT i.id FROM items i JOIN tracks t ON t.item_id=i.id
 	  JOIN items al ON al.id=i.parent_id AND al.kind='album' AND al.missing_since IS NULL
 	  LEFT JOIN items ar ON ar.id=al.parent_id

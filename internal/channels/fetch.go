@@ -361,13 +361,13 @@ func onDisk(ctx context.Context, db *sql.DB, rows []fetchRow) (map[string]libPro
 		}
 		return nil
 	}
-	if err := scan(`SELECT i.tmdb_id, 0, 0, i.id, i.id, i.rating, f.id, COALESCE(f.duration_ms, 0) FROM items i
+	if err := scan(`SELECT i.tmdb_id, 0, 0, i.id, i.id, `+library.RatingOf("i")+`, f.id, COALESCE(f.duration_ms, 0) FROM items i
 	  JOIN files f ON f.item_id=i.id AND f.missing_since IS NULL
 	  WHERE i.kind='movie' AND i.parent_id IS NULL AND i.missing_since IS NULL AND i.tmdb_id IN %s ORDER BY i.id, f.path`, movies,
 		func(t int64, _, _ int) string { return fetchKey(library.KindMovie, int(t), 0, 0) }); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT s.tmdb_id, COALESCE(e.season_no, se.season_no), e.episode_no, e.id, s.id, s.rating, f.id, COALESCE(f.duration_ms, 0) FROM items s
+	if err := scan(`SELECT s.tmdb_id, COALESCE(e.season_no, se.season_no), e.episode_no, e.id, s.id, `+library.RatingOf("s")+`, f.id, COALESCE(f.duration_ms, 0) FROM items s
 	  JOIN items se ON se.parent_id=s.id AND se.kind='season' AND se.missing_since IS NULL
 	  JOIN items e ON e.parent_id=se.id AND e.kind='episode' AND e.missing_since IS NULL AND e.episode_no IS NOT NULL
 	  JOIN files f ON f.item_id=e.id AND f.missing_since IS NULL

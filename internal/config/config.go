@@ -51,6 +51,10 @@ type Config struct {
 	EbooksDir     string // VAULT_EBOOKS_DIR
 	AudiobooksDir string // VAULT_AUDIOBOOKS_DIR
 	ComicsDir     string // VAULT_COMICS_DIR (manga and comics live together)
+	// Library is every kind's folders, as the settings list them (empty
+	// kinds: the *Dir above alone, see Folders). Each kind's first folder is
+	// its *Dir: the default destination of downloads and uploads.
+	Library Folders
 
 	TMDBKey       string
 	TMDBBaseURL   string

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -142,10 +143,22 @@ func run() error {
 	restart := &restarter{stop: stop, ctx: ctx, grace: restartGrace}
 
 	repo := library.NewRepo(database)
+	// the folders' marks («Только для взрослых», «Скрыть из общих
+	// подборок»): from the settings, changed live by «Медиатека»
+	var folderFlags atomic.Pointer[library.FolderFlags]
+	initFlags := api.FolderFlags(cfg.Folders(), cfg.Abs)
+	folderFlags.Store(&initFlags)
+	repo.SetFolderFlags(initFlags)
+	// folders taken out of the library by the last save: their files go
+	// before the first scan (a scan of the old folders may have brought them
+	// back before the restart)
+	forgetFolders(context.Background(), database, repo, cfg)
 	jobs := &library.Jobs{
 		Scanner: &library.Scanner{Repo: repo, MediaRoot: cfg.MediaRoot,
 			Movies: cfg.Abs(cfg.MoviesDir), Series: cfg.Abs(cfg.SeriesDir), Music: cfg.Abs(cfg.MusicDir),
 			Ebooks: cfg.Abs(cfg.EbooksDir), Audiobooks: cfg.Abs(cfg.AudiobooksDir), Comics: cfg.Abs(cfg.ComicsDir),
+			More:   moreFolders(cfg),
+			Flags:  func() library.FolderFlags { return *folderFlags.Load() },
 			ArtDir: filepath.Join(cfg.DataDir, "images"), ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),
 			Chapters: func(ctx context.Context, path string) ([]library.ChapterInput, error) {
 				chs, err := media.Chapters(ctx, cfg.FFprobe, path)
@@ -273,7 +286,7 @@ func run() error {
 	// File browser.
 	// a library-only server: no disk fill level (the demo's disk is
 	// nobody's business)
-	fileRoots := files.DefaultRoots(cfg)
+	fileRoots := append(files.DefaultRoots(cfg), files.MoreLibraryRoots(cfg)...)
 	if cfg.LibraryOnly {
 		fileRoots = files.LibraryOnlyRoots(fileRoots)
 	}
@@ -295,8 +308,7 @@ func run() error {
 		Changed: func(...string) { jobs.Trigger() }, // the scanner covers all video roots
 		// deleting a library item: only inside the scanner's folders, never
 		// while the media disk is away (read at the call)
-		LibraryRoots: []string{jobs.Scanner.Movies, jobs.Scanner.Series, jobs.Scanner.Music,
-			jobs.Scanner.Ebooks, jobs.Scanner.Audiobooks, jobs.Scanner.Comics},
+		LibraryRoots: jobs.Scanner.AllRoots(),
 		Offline: func() string {
 			if f := jobs.Scanner.StorageOffline; f != nil {
 				return f()
@@ -439,7 +451,7 @@ func run() error {
 	chans = channels.New(database, live)
 	chans.SetLanguage(metaLang)
 	// channels of picked folders and the editor's folder browse
-	chans.SetRoots(channels.LibraryRoots(jobs.Scanner.Movies, jobs.Scanner.Series))
+	chans.SetRoots(channels.LibraryRoots(append(jobs.Scanner.Roots(library.KindFolderMovies), jobs.Scanner.Roots(library.KindFolderSeries)...)...))
 	chans.Probe = func(ctx context.Context, path string) (media.ProbeResult, error) {
 		return media.Probe(ctx, cfg.FFprobe, path)
 	}
@@ -536,7 +548,9 @@ func run() error {
 		Accounts:     accts.routes,
 		Voclean:      vocWorker,
 		Storage: &api.StorageInfo{Env: envFolders, TranscodeDir: cfg.TranscodeDir, ConfigDir: cfg.DataDir,
-			Offline: storageOffline(cfg), Restart: restartFunc(restart)},
+			Private: []string{cfg.ImportDir, cfg.AddonsDir},
+			Offline: storageOffline(cfg), Restart: restartFunc(restart),
+			SetFlags: func(f library.FolderFlags) { folderFlags.Store(&f) }},
 	}
 	// «Обновления»: the latest public release of the server (its own
 	// resolver: works with addons off too)

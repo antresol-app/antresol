@@ -264,6 +264,11 @@ type Info struct {
 	FFprobe      string       `json:"ffprobe"`
 	PublicURL    string       `json:"publicUrl"`
 	LibraryRoots LibraryRoots `json:"libraryRoots"`
+	// LibraryFolders are every library folder per kind ("movies", "series",
+	// "music", "ebooks", "audiobooks", "comics"), the kind's LibraryRoots
+	// one first: what is already in the library may lie in any of them,
+	// what an addon adds goes to LibraryRoots.
+	LibraryFolders map[string][]string `json:"libraryFolders,omitempty"`
 	// MediaRoot is the server's media folder (absolute; "" when unset):
 	// an addon's relative folders are taken against it.
 	MediaRoot string `json:"mediaRoot"`
@@ -279,7 +284,8 @@ type Info struct {
 	MissingRoots []string `json:"missingRoots"`
 }
 
-// LibraryRoots are the library folders per content kind.
+// LibraryRoots are the library folders per content kind: each kind's
+// default destination (a kind may have more folders: Info.LibraryFolders).
 type LibraryRoots struct {
 	Movies     string `json:"movies"`
 	Series     string `json:"series"`

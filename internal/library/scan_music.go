@@ -238,7 +238,12 @@ type albumFolder struct {
 // compilations, covers and lyrics. A root that cannot be read completely
 // is never pruned.
 func (s *Scanner) scanMusic(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Music)
+	return s.eachRoot(ctx, KindFolderMusic, st, s.scanMusicIn)
+}
+
+// scanMusicIn is scanMusic of one of the kind's folders.
+func (s *Scanner) scanMusicIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}

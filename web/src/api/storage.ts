@@ -23,14 +23,30 @@ export interface DirCheck {
   why?: FolderWhy
 }
 
+/** One library folder; a kind has one or more, in order. */
 export interface FolderRow extends DirCheck {
   kind: FolderKind
   /** The path inside the container. */
   abs: string
-  /** What the environment (VAULT_*_DIR) says. */
+  /** What the environment (VAULT_*_DIR) says for the kind. */
   default: string
-  /** A folder with files that looks like this kind, offered while this one is missing or empty. */
+  /** The kind's first folder: its downloads and uploads go there. */
+  primary: boolean
+  /** «Только для взрослых»: what is in it counts as 18+, kid profiles never see it. */
+  adult: boolean
+  /** «Скрыть из общих подборок»: off the home shelves and the generated channels. */
+  unlisted: boolean
+  /** How many titles the library has from it (what taking it out removes from the library). */
+  indexed: number
+  /** A folder with files that looks like this kind, offered while the first one is missing or empty. */
   suggest?: string
+}
+
+/** A folder as a save names it: the path as the server keeps it (relative to the media folder, or absolute) and its marks. */
+export interface FolderPick {
+  path: string
+  adult?: boolean
+  unlisted?: boolean
 }
 
 export interface FolderEntry {
@@ -73,16 +89,44 @@ export interface StorageView {
   canCreate: boolean
   /** Saving other folders restarts the server by itself. */
   restarts: boolean
+  /** Where the folder browser may go: the media folder, then the other folders mounted into the server. */
+  places: string[]
 }
 
-export type FolderPicks = Partial<Record<FolderKind, string>>
+/** Each kind named gets exactly these folders (a kind left out keeps its own). */
+export type FolderPicks = Partial<Record<FolderKind, FolderPick[]>>
+
+/** A folder directly in the one the browser shows. */
+export interface BrowseSub {
+  name: string
+  path: string
+  items: number
+  more?: boolean
+}
+
+/** One folder of the browser: its check (the write test included), what is in it, where else it may go. */
+export interface BrowseView {
+  places: string[]
+  path: string
+  /** The folder above, '' at a place. */
+  parent: string
+  dir: DirCheck
+  dirs: BrowseSub[]
+  truncated?: boolean
+  /** The kind whose folder this already is. */
+  library?: FolderKind
+}
 
 export const getStorage = (signal?: AbortSignal) => request<StorageView>('GET', '/api/settings/storage', undefined, signal)
 /** The same view for folders not saved yet (a kind left out keeps its saved one). */
 export const checkStorage = (folders?: FolderPicks) => request<StorageView>('POST', '/api/settings/storage/check', { folders: folders ?? {} })
 /** Saves the picks; `restarting`: the server is restarting to use them, `bootId`: the run that is about to stop. */
-export const saveStorage = (body: { folders: FolderPicks } | { reset: true }) =>
-  request<StorageView & { restarting: boolean; bootId?: string }>('PUT', '/api/settings/storage', body)
+/** `confirmRemove`: the folders the save takes out may leave the library (their files stay); without it such a save is refused (409). */
+export const saveStorage = (body: { folders: FolderPicks; confirmRemove?: boolean } | { reset: true; confirmRemove?: boolean }) =>
+  request<StorageView & { restarting: boolean; bootId?: string; removed?: number }>('PUT', '/api/settings/storage', body)
+/** The folder browser: `path` absolute, '' for the first place. Only the places and what is in them. */
+export const browseFolders = (path: string, signal?: AbortSignal) =>
+  request<BrowseView>('GET', '/api/settings/storage/browse' + (path ? '?path=' + encodeURIComponent(path) : ''), undefined, signal)
 /** «Создать»: makes the folder under the media folder; says how it went. */
 export const createFolder = (path: string) => request<DirCheck>('POST', '/api/settings/storage/create', { path })
 

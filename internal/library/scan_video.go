@@ -26,11 +26,21 @@ type Scanner struct {
 	Repo *Repo
 	// MediaRoot: missing roots under it are created empty (createMissingRoots);
 	// "" creates none.
-	MediaRoot                         string
+	MediaRoot string
+	// Movies…Comics are each kind's first folder, its default destination
+	// (uploads, downloads); More are the kinds' further folders ("movies",
+	// "series", "music", "ebooks", "audiobooks", "comics" → absolute
+	// folders), scanned the same way. Roots lists them.
 	Movies, Series                    string
 	Music, Ebooks, Audiobooks, Comics string
-	ArtDir                            string // extracted artwork (embedded covers): DataDir/images
-	ComicsCache                       string // unpacked comic pages: DataDir/comics-cache
+	More                              map[string][]string
+	// Flags are the folders marked «Только для взрослых» or «Скрыть из
+	// общих подборок» (nil: none), read at each scan: what it indexes in
+	// them is marked as it is stored, and every scan ends with the marks of
+	// the whole library brought in line (Repo.SyncFolderFlags).
+	Flags       func() FolderFlags
+	ArtDir      string // extracted artwork (embedded covers): DataDir/images
+	ComicsCache string // unpacked comic pages: DataDir/comics-cache
 
 	// Chapters reads the chapters of an audiobook file (nil: none).
 	Chapters func(ctx context.Context, path string) ([]ChapterInput, error)
@@ -152,18 +162,21 @@ func (s *Scanner) ScanVideo(ctx context.Context) (ScanStats, error) {
 	defer s.mu.Unlock()
 	var st ScanStats
 	err := s.scanVideo(ctx, &st)
+	if ferr := s.syncFlags(ctx); ferr != nil {
+		err = errors.Join(err, ferr)
+	}
 	return st, err
 }
 
 // scanVideo is ScanVideo without the lock (the caller holds s.mu).
 func (s *Scanner) scanVideo(ctx context.Context, st *ScanStats) error {
 	var errs []error
-	if s.Movies != "" {
+	if len(s.Roots(KindFolderMovies)) > 0 {
 		if err := s.scanMovies(ctx, st); err != nil {
 			errs = append(errs, fmt.Errorf("movies: %w", err))
 		}
 	}
-	if s.Series != "" {
+	if len(s.Roots(KindFolderSeries)) > 0 {
 		if err := s.scanSeries(ctx, st); err != nil {
 			errs = append(errs, fmt.Errorf("series: %w", err))
 		}
@@ -193,7 +206,12 @@ type movieGroup struct {
 }
 
 func (s *Scanner) scanMovies(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Movies)
+	return s.eachRoot(ctx, KindFolderMovies, st, s.scanMoviesIn)
+}
+
+// scanMoviesIn is scanMovies of one of the kind's folders.
+func (s *Scanner) scanMoviesIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}
@@ -332,7 +350,12 @@ type seriesMeta struct {
 }
 
 func (s *Scanner) scanSeries(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Series)
+	return s.eachRoot(ctx, KindFolderSeries, st, s.scanSeriesIn)
+}
+
+// scanSeriesIn is scanSeries of one of the kind's folders.
+func (s *Scanner) scanSeriesIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}

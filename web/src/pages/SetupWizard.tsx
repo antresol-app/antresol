@@ -11,7 +11,7 @@ import { ApiError, errorText, getTranscoding, probeTranscoding } from '../api/cl
 import { finishSetupWizard, getSetupWizard } from '../api/storage'
 import type { TranscodingView } from '../api/types'
 import { GpuHint } from '../components/storage/GpuHint'
-import { StorageFolders } from '../components/storage/StorageFolders'
+import { RemoveConfirm, StorageFolders } from '../components/storage/StorageFolders'
 import { StoragePerms } from '../components/storage/StoragePerms'
 import { useStorage } from '../components/storage/useStorage'
 import { LogoMark } from '../components/Logo'
@@ -68,6 +68,7 @@ export function SetupWizard() {
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [asking, setAsking] = useState(false)
 
   useEffect(() => {
     const ac = new AbortController()
@@ -104,8 +105,16 @@ export function SetupWizard() {
       setBusy(false)
     }
   }
-  const next = async () => {
-    if (step === 0 && storage.dirty && !(await storage.save())) return
+  const next = async (confirm = false) => {
+    if (step === 0 && storage.dirty) {
+      // titles would leave the library: ask first
+      if (!confirm && storage.removals.length > 0) {
+        setAsking(true)
+        return
+      }
+      setAsking(false)
+      if (!(await storage.save(false, confirm))) return
+    }
     if (step === STEPS - 1) await finish()
     else setStep(step + 1)
   }
@@ -142,6 +151,17 @@ export function SetupWizard() {
             </p>
           )}
           {step === 0 && <StorageFolders storage={storage} />}
+          {(asking || storage.confirmNeeded) && (
+            <RemoveConfirm
+              removals={storage.removals}
+              busy={storage.busy}
+              onCancel={() => {
+                setAsking(false)
+                storage.dismissConfirm()
+              }}
+              onConfirm={() => void next(true)}
+            />
+          )}
           {step === 1 && storage.view && (
             <>
               <StoragePerms view={storage.view} />

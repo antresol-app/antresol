@@ -157,7 +157,7 @@ func (r *Repo) upsertComicVolume(ctx context.Context, v ComicInput) (volID, seri
 		if err := setAlbumMeta(ctx, tx, volID, meta); err != nil {
 			return err
 		}
-		if _, err := upsertFileID(ctx, tx, volID, v.File); err != nil {
+		if _, err := r.upsertFileID(ctx, tx, volID, v.File); err != nil {
 			return err
 		}
 		if err := addTitles(ctx, tx, volID, title); err != nil {
@@ -208,7 +208,7 @@ func (r *Repo) comicVolumes(ctx context.Context, seriesID int64) ([]comicVol, er
 		var added, updated string
 		it := &v.item
 		if err := rows.Scan(&it.ID, &it.Kind, &it.ParentID, &it.Title, &it.OriginalTitle, &it.SortTitle, &it.Year, &it.Overview,
-			&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON, &v.path); err != nil {
+			&it.Rating, &it.TmdbID, &it.SeasonNo, &it.EpisodeNo, &it.Poster, &it.Backdrop, &added, &updated, &it.MetaJSON, &it.Adult, &it.Unlisted, &v.path); err != nil {
 			return nil, err
 		}
 		if seen[it.ID] {

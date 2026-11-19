@@ -156,6 +156,13 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 		sc := deps.Jobs.Scanner
 		a.info.LibraryRoots = addonkit.LibraryRoots{Movies: sc.Movies, Series: sc.Series, Music: sc.Music,
 			Ebooks: sc.Ebooks, Audiobooks: sc.Audiobooks, Comics: sc.Comics}
+		a.info.LibraryFolders = map[string][]string{}
+		for _, k := range []string{library.KindFolderMovies, library.KindFolderSeries, library.KindFolderMusic,
+			library.KindFolderEbooks, library.KindFolderAudiobooks, library.KindFolderComics} {
+			if dirs := sc.Roots(k); len(dirs) > 0 {
+				a.info.LibraryFolders[k] = dirs
+			}
+		}
 	}
 	a.proxy = &httputil.ReverseProxy{
 		Rewrite:        a.rewrite,

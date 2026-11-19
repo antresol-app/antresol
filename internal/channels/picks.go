@@ -162,9 +162,9 @@ type videoFile struct {
 // parent se and grand-parent sr): a movie itself, an episode's series.
 const titleOf = `CASE WHEN i.kind='episode' THEN COALESCE(sr.id, se.id) ELSE i.id END`
 
-const videoFileSQL = `SELECT f.id, COALESCE(f.duration_ms,0), f.path, i.id, i.kind, COALESCE(i.season_no, se.season_no, 0), COALESCE(i.episode_no,0),
+var videoFileSQL = `SELECT f.id, COALESCE(f.duration_ms,0), f.path, i.id, i.kind, COALESCE(i.season_no, se.season_no, 0), COALESCE(i.episode_no,0),
 	  ` + titleOf + `, CASE WHEN i.kind='episode' THEN 'series' ELSE i.kind END,
-	  CASE WHEN i.kind='episode' THEN COALESCE(sr.rating, se.rating, '') ELSE i.rating END
+	  CASE WHEN i.kind='episode' THEN COALESCE(` + library.RatingOf("sr") + `, ` + library.RatingOf("se") + `, '') ELSE ` + library.RatingOf("i") + ` END
 	FROM files f JOIN items i ON i.id=f.item_id
 	LEFT JOIN items se ON se.id=i.parent_id AND i.kind='episode'
 	LEFT JOIN items sr ON sr.id=se.parent_id AND se.kind='season'
@@ -437,7 +437,7 @@ func (c Catalog) Search(ctx context.Context, q, maxRating string) ([]SearchHit, 
 	}
 	// episodes: their own title, or their series' title
 	erows, err := c.DB.QueryContext(ctx, `SELECT e.id, e.title, COALESCE(e.season_no, se.season_no, 0), COALESCE(e.episode_no,0), e.year,
-	    s.id, s.title, s.sort_title, s.rating, s.year
+	    s.id, s.title, s.sort_title, `+library.RatingOf("s")+`, s.year
 	  FROM items e JOIN items se ON se.id=e.parent_id AND se.kind='season' JOIN items s ON s.id=se.parent_id AND s.kind='series'
 	  WHERE e.kind='episode' AND e.missing_since IS NULL AND s.missing_since IS NULL
 	    AND EXISTS (SELECT 1 FROM files f WHERE f.item_id=e.id AND f.missing_since IS NULL AND f.duration_ms > 0)`)

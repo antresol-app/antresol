@@ -1,9 +1,12 @@
 // The server's folders for the wizard and «Настройки сервера»: the view the
-// server returns, the folder picked for each kind (checked on the server as
-// soon as it is picked, nothing saved yet), «Создать», and saving, which
-// restarts the server when other folders are chosen.
+// server returns, the folders of each kind as picked (checked on the server
+// as soon as they change, nothing saved yet: added from the folder browser,
+// taken out, made the kind's first, marked «Только для взрослых» or «Скрыть
+// из общих подборок»), «Создать», and saving, which restarts the server when
+// other folders are chosen (marks alone apply at once). Taking out a folder
+// the library has titles from asks first: its titles leave the library.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { errorText } from '../../api/client'
+import { ApiError, errorText } from '../../api/client'
 import {
   FOLDER_KINDS,
   checkStorage,
@@ -12,23 +15,43 @@ import {
   saveStorage,
   waitForServer,
   type FolderKind,
+  type FolderPick,
   type FolderPicks,
+  type FolderRow,
   type StorageView,
 } from '../../api/storage'
 import { useT } from '../../i18n'
 
-const pathsOf = (v: StorageView): Record<FolderKind, string> => {
-  const out = {} as Record<FolderKind, string>
-  for (const k of FOLDER_KINDS) out[k] = v.folders.find((f) => f.kind === k)?.path ?? ''
+type Picks = Record<FolderKind, FolderPick[]>
+
+const picksOf = (v: StorageView): Picks => {
+  const out = {} as Picks
+  for (const k of FOLDER_KINDS) {
+    out[k] = v.folders.filter((f) => f.kind === k).map((f) => ({ path: f.path, adult: f.adult, unlisted: f.unlisted }))
+  }
   return out
 }
 
+const same = (a: Picks, b: Picks) =>
+  FOLDER_KINDS.every(
+    (k) =>
+      a[k].length === b[k].length &&
+      a[k].every((p, i) => p.path === b[k][i]!.path && Boolean(p.adult) === Boolean(b[k][i]!.adult) && Boolean(p.unlisted) === Boolean(b[k][i]!.unlisted)),
+  )
+
+/** A saved folder the picks take out, with what the library has from it. */
+export type Removal = Pick<FolderRow, 'kind' | 'path' | 'indexed'>
+
+export type FolderFlag = 'adult' | 'unlisted'
+
 export interface Storage {
   view: StorageView | null
-  /** The picked folder of each kind (the saved one until another is picked). */
-  paths: Record<FolderKind, string> | null
-  /** Another folder is picked than the saved one. */
+  /** Each kind's folders as picked (the saved ones until something changes), the first is the destination. */
+  picks: Picks | null
+  /** Something is picked other than what is saved. */
   dirty: boolean
+  /** Other folders than the saved ones (not only other marks): saving restarts the server. */
+  moves: boolean
   /** A check, a save or «Создать» is running. */
   busy: boolean
   /** The server is restarting to use the saved folders. */
@@ -36,24 +59,35 @@ export interface Storage {
   error: string
   /** The server did not come back after a restart. */
   slow: boolean
-  pick: (kind: FolderKind, path: string) => Promise<void>
+  /** The saved folders the picks take out that the library has titles from: a save asks first. */
+  removals: Removal[]
+  /** The server refused a save that takes titles out of the library: ask, then save again with `confirm`. */
+  confirmNeeded: boolean
+  add: (kind: FolderKind, path: string) => Promise<void>
+  remove: (kind: FolderKind, path: string) => Promise<void>
+  /** Puts another folder in place of `path` (the suggestion «Использовать …»). */
+  replace: (kind: FolderKind, path: string, next: string) => Promise<void>
+  makePrimary: (kind: FolderKind, path: string) => Promise<void>
+  setFlag: (kind: FolderKind, path: string, flag: FolderFlag, on: boolean) => Promise<void>
   create: (path: string) => Promise<void>
   /** Runs the checks again (a fresh write test) for the picked folders. */
   recheck: () => Promise<void>
-  /** Drops the picked folders: the saved ones are shown again. */
+  /** Drops the picks: the saved folders are shown again. */
   discard: () => Promise<void>
-  /** Saves the picked folders (or the environment's with `reset`); true when it went through. */
-  save: (reset?: boolean) => Promise<boolean>
+  /** Saves the picks (or the environment's folders with `reset`); `confirm`: titles may leave the library. True when it went through. */
+  save: (reset?: boolean, confirm?: boolean) => Promise<boolean>
+  dismissConfirm: () => void
 }
 
 export function useStorage(): Storage {
   const t = useT()
   const [view, setView] = useState<StorageView | null>(null)
-  const [saved, setSaved] = useState<Record<FolderKind, string> | null>(null)
+  const [saved, setSaved] = useState<StorageView | null>(null)
   const [busy, setBusy] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [slow, setSlow] = useState(false)
   const [error, setError] = useState('')
+  const [confirmNeeded, setConfirmNeeded] = useState(false)
   const alive = useRef(true)
 
   useEffect(() => {
@@ -63,7 +97,7 @@ export function useStorage(): Storage {
       (v) => {
         if (!Array.isArray(v?.folders)) return // not a server that has the checks
         setView(v)
-        setSaved(pathsOf(v))
+        setSaved(v)
       },
       (e: unknown) => !ac.signal.aborted && setError(errorText(e, t('storage.loadFailed'))),
     )
@@ -73,70 +107,105 @@ export function useStorage(): Storage {
     }
   }, [t])
 
-  const paths = view ? pathsOf(view) : null
-  const dirty = Boolean(paths && saved && FOLDER_KINDS.some((k) => paths[k] !== saved[k]))
+  const picks = view ? picksOf(view) : null
+  const savedPicks = saved ? picksOf(saved) : null
+  const dirty = Boolean(picks && savedPicks && !same(picks, savedPicks))
+  const moves = Boolean(
+    picks && savedPicks && FOLDER_KINDS.some((k) => picks[k].length !== savedPicks[k].length || picks[k].some((p, i) => p.path !== savedPicks[k][i]!.path)),
+  )
+  const removals: Removal[] =
+    picks && saved
+      ? saved.folders.filter((f) => f.indexed > 0 && !FOLDER_KINDS.some((k) => picks[k].some((p) => p.path === f.path)))
+      : []
 
   // one request at a time: the picks of a quick second change must not race the first check
-  const run = useCallback(
-    async <T,>(call: () => Promise<T>, fallback: string): Promise<T | undefined> => {
-      setBusy(true)
-      try {
-        const out = await call()
-        if (alive.current) setError('')
-        return out
-      } catch (e) {
-        if (alive.current) setError(errorText(e, fallback))
-        return undefined
-      } finally {
-        if (alive.current) setBusy(false)
-      }
-    },
-    [],
-  )
+  const run = useCallback(async <T,>(call: () => Promise<T>, fallback: string): Promise<T | undefined> => {
+    setBusy(true)
+    try {
+      const out = await call()
+      if (alive.current) setError('')
+      return out
+    } catch (e) {
+      if (alive.current) setError(errorText(e, fallback))
+      return undefined
+    } finally {
+      if (alive.current) setBusy(false)
+    }
+  }, [])
 
   const check = useCallback(
-    async (picks: FolderPicks) => {
-      const v = await run(() => checkStorage(picks), t('storage.loadFailed'))
+    async (next: FolderPicks) => {
+      const v = await run(() => checkStorage(next), t('storage.loadFailed'))
       if (v && alive.current) setView(v)
     },
     [run, t],
   )
 
-  const pick = useCallback(
-    async (kind: FolderKind, path: string) => {
-      if (!paths) return
-      await check({ ...paths, [kind]: path })
+  /** The picks with one kind's folders changed by `edit`. */
+  const change = useCallback(
+    async (kind: FolderKind, edit: (list: FolderPick[]) => FolderPick[]) => {
+      if (!picks) return
+      await check({ ...picks, [kind]: edit(picks[kind].map((p) => ({ ...p }))) })
     },
-    [check, paths],
+    [check, picks],
+  )
+
+  const add = useCallback((kind: FolderKind, path: string) => change(kind, (l) => [...l, { path }]), [change])
+  const remove = useCallback((kind: FolderKind, path: string) => change(kind, (l) => l.filter((p) => p.path !== path)), [change])
+  const replace = useCallback(
+    (kind: FolderKind, path: string, next: string) => change(kind, (l) => l.map((p) => (p.path === path ? { ...p, path: next } : p))),
+    [change],
+  )
+  const makePrimary = useCallback(
+    (kind: FolderKind, path: string) => change(kind, (l) => [...l.filter((p) => p.path === path), ...l.filter((p) => p.path !== path)]),
+    [change],
+  )
+  const setFlag = useCallback(
+    (kind: FolderKind, path: string, flag: FolderFlag, on: boolean) => change(kind, (l) => l.map((p) => (p.path === path ? { ...p, [flag]: on } : p))),
+    [change],
   )
 
   const recheck = useCallback(async () => {
-    if (paths) await check(paths)
-  }, [check, paths])
+    if (picks) await check(picks)
+  }, [check, picks])
 
   const discard = useCallback(async () => {
-    if (saved) await check(saved)
-  }, [check, saved])
+    if (savedPicks) await check(savedPicks)
+  }, [check, savedPicks])
 
   const create = useCallback(
     async (path: string) => {
       const d = await run(() => createFolder(path), t('storage.loadFailed'))
-      if (paths) await check(paths)
+      if (picks) await check(picks)
       // after the check, which clears the last error
       if (d && d.status !== 'ok' && alive.current) setError(t('storage.createFailed', { error: d.error ?? '' }))
     },
-    [check, paths, run, t],
+    [check, picks, run, t],
   )
 
   const save = useCallback(
-    async (reset = false) => {
-      if (!paths) return false
-      const out = await run(() => saveStorage(reset ? { reset: true } : { folders: paths }), t('storage.saveFailed'))
+    async (reset = false, confirm = false) => {
+      if (!picks) return false
+      setConfirmNeeded(false)
+      let refused = false
+      const out = await run(async () => {
+        try {
+          return await saveStorage(reset ? { reset: true, confirmRemove: confirm } : { folders: picks, confirmRemove: confirm })
+        } catch (e) {
+          // titles would leave the library: the page asks, then saves with confirm
+          if (e instanceof ApiError && e.status === 409 && !confirm) refused = true
+          throw e
+        }
+      }, t('storage.saveFailed'))
+      if (refused && alive.current) {
+        setError('')
+        setConfirmNeeded(true)
+      }
       if (!out) return false
-      const { restarting: r, bootId, ...v } = out
+      const { restarting: r, bootId, removed: _removed, ...v } = out
       if (!r) {
         setView(v)
-        setSaved(pathsOf(v))
+        setSaved(v)
         return true
       }
       // the server restarts to use the folders: wait for it, then read it again
@@ -155,14 +224,37 @@ export function useStorage(): Storage {
       if (alive.current) {
         if (fresh) {
           setView(fresh)
-          setSaved(pathsOf(fresh))
+          setSaved(fresh)
         }
         setRestarting(false)
       }
       return true
     },
-    [paths, run, t],
+    [picks, run, t],
   )
 
-  return { view, paths, dirty, busy, restarting, error, slow, pick, create, recheck, discard, save }
+  const dismissConfirm = useCallback(() => setConfirmNeeded(false), [])
+
+  return {
+    view,
+    picks,
+    dirty,
+    moves,
+    busy,
+    restarting,
+    error,
+    slow,
+    removals,
+    confirmNeeded,
+    add,
+    remove,
+    replace,
+    makePrimary,
+    setFlag,
+    create,
+    recheck,
+    discard,
+    save,
+    dismissConfirm,
+  }
 }

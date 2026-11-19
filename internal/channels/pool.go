@@ -27,6 +27,9 @@ type Unit struct {
 	Keywords  []string
 	// Poster: the stored poster value (library.ImageURL names it).
 	Poster string
+	// Unlisted: from a folder «Скрыть из общих подборок»: rules (genres,
+	// years…) never pick it, a channel of picked titles still may.
+	Unlisted bool
 }
 
 // Part is one file of a programme, or a piece of it: OffsetMs is where in
@@ -80,7 +83,7 @@ type Catalog struct {
 
 // Units returns every movie and series in the library (not missing), by id.
 func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
-	rows, err := c.DB.QueryContext(ctx, `SELECT id, kind, title, sort_title, year, rating, meta_json, COALESCE(poster, '') FROM items
+	rows, err := c.DB.QueryContext(ctx, `SELECT id, kind, title, sort_title, year, `+library.RatingOf("items")+`, meta_json, COALESCE(poster, ''), unlisted FROM items
 	  WHERE kind IN ('movie','series') AND missing_since IS NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -90,7 +93,7 @@ func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
 	for rows.Next() {
 		var u Unit
 		var meta string
-		if err := rows.Scan(&u.ID, &u.Kind, &u.Title, &u.Sort, &u.Year, &u.Rating, &meta, &u.Poster); err != nil {
+		if err := rows.Scan(&u.ID, &u.Kind, &u.Title, &u.Sort, &u.Year, &u.Rating, &meta, &u.Poster, &u.Unlisted); err != nil {
 			return nil, err
 		}
 		var m struct {
@@ -243,6 +246,9 @@ func Match(units []Unit, r Rules) []Unit {
 	languages := setOf(r.Languages, strings.ToLower)
 	keywords := setOf(r.Keywords, strings.ToLower)
 	for _, u := range units {
+		if u.Unlisted {
+			continue
+		}
 		if len(r.Kinds) > 0 && !contains(r.Kinds, u.Kind) {
 			continue
 		}

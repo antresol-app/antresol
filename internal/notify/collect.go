@@ -223,7 +223,7 @@ func (s *Service) collectEpisodes(ctx context.Context, items []fresh) error {
 	for _, part := range batches(items) {
 		in, args := idList(part)
 		rows, err := s.DB.QueryContext(ctx, `SELECT e.id, COALESCE(e.season_no, 0), COALESCE(e.episode_no, 0),
-			sr.id, sr.title, sr.year, COALESCE(sr.tmdb_id, 0), sr.rating, sr.meta_json, e.added_at, e.title,
+			sr.id, sr.title, sr.year, COALESCE(sr.tmdb_id, 0), `+library.RatingOf("sr")+`, sr.meta_json, e.added_at, e.title,
 			COALESCE((SELECT MIN(f.path) FROM files f WHERE f.item_id = e.id), '')
 			FROM items e
 			JOIN items p ON p.id = e.parent_id
@@ -416,7 +416,7 @@ func (s *Service) collectTitles(ctx context.Context, items []fresh) error {
 	var ts []title
 	for _, part := range batches(items) {
 		in, args := idList(part)
-		rows, err := s.DB.QueryContext(ctx, `SELECT id, kind, title, year, COALESCE(tmdb_id, 0), rating, meta_json, added_at FROM items
+		rows, err := s.DB.QueryContext(ctx, `SELECT id, kind, title, year, COALESCE(tmdb_id, 0), `+library.RatingOf("items")+`, meta_json, added_at FROM items
 			WHERE id IN (`+in+`) AND kind = 'movie' AND missing_since IS NULL AND COALESCE(tmdb_id, 0) > 0 ORDER BY added_at, id`, args...)
 		if err != nil {
 			return err
@@ -496,7 +496,7 @@ func (s *Service) collectReturned(ctx context.Context, marked bool) error {
 			}
 			var kind, title, rating, mj string
 			var year int
-			err := s.DB.QueryRowContext(ctx, `SELECT i.kind, i.title, i.year, i.rating, i.meta_json FROM items i JOIN watchlist w ON w.item_id = i.id AND w.user_id = ?
+			err := s.DB.QueryRowContext(ctx, `SELECT i.kind, i.title, i.year, `+library.RatingOf("i")+`, i.meta_json FROM items i JOIN watchlist w ON w.item_id = i.id AND w.user_id = ?
 				WHERE i.id = ? AND i.missing_since IS NULL`, p[0], p[1]).Scan(&kind, &title, &year, &rating, &mj)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue // gone for good, or off the list

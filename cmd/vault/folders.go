@@ -6,12 +6,14 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/api"
 	"github.com/antresol-app/antresol/internal/config"
+	"github.com/antresol-app/antresol/internal/library"
 )
 
 // applyFolderSettings puts the library folders an administrator picked (the
@@ -30,6 +32,45 @@ func applyFolderSettings(ctx context.Context, cfg config.Config, db *sql.DB) con
 	}
 	log.Printf("settings: library folders picked in the settings are in use: %+v", f)
 	return cfg.WithFolders(f)
+}
+
+// moreFolders are each kind's folders after its first (absolute), for the
+// scanner.
+func moreFolders(cfg config.Config) map[string][]string {
+	out := map[string][]string{}
+	for _, k := range config.FolderKinds {
+		if dirs := cfg.LibraryDirs(k); len(dirs) > 1 {
+			out[k] = dirs[1:]
+		}
+	}
+	return out
+}
+
+// forgetFolders takes out of the library the files of the folders the last
+// save took out (api.TakeForgottenFolders), unless a folder is a library
+// folder again. Its files stay on the disk.
+func forgetFolders(ctx context.Context, db *sql.DB, repo *library.Repo, cfg config.Config) {
+	dirs, err := api.TakeForgottenFolders(ctx, db)
+	if err != nil {
+		log.Printf("settings: folders taken out: %v", err)
+		return
+	}
+	current := map[string]bool{}
+	for _, k := range config.FolderKinds {
+		for _, d := range cfg.LibraryDirs(k) {
+			current[filepath.Clean(d)] = true
+		}
+	}
+	for _, d := range dirs {
+		if current[filepath.Clean(d)] {
+			continue
+		}
+		if n, err := repo.ForgetFolder(ctx, d); err != nil {
+			log.Printf("settings: forget %s: %v", d, err)
+		} else if n > 0 {
+			log.Printf("settings: %d files of %s left the library (the folder was taken out)", n, d)
+		}
+	}
 }
 
 // errRestart ends run() when the server asked to be started again.

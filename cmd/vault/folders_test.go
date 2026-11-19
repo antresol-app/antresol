@@ -29,7 +29,7 @@ func TestApplyFolderSettings(t *testing.T) {
 	defer d.Close()
 	ctx := context.Background()
 	// nothing picked: the environment decides
-	if got := applyFolderSettings(ctx, cfg, d); got.Folders() != cfg.Folders() {
+	if got := applyFolderSettings(ctx, cfg, d); !got.Folders().Equal(cfg.Folders()) {
 		t.Fatalf("%+v", got.Folders())
 	}
 	if _, err := d.Exec(`INSERT INTO settings (key, value) VALUES ('folders', ?)`,
@@ -45,7 +45,7 @@ func TestApplyFolderSettings(t *testing.T) {
 	if _, err := d.Exec(`UPDATE settings SET value='not json' WHERE key='folders'`); err != nil {
 		t.Fatal(err)
 	}
-	if got := applyFolderSettings(ctx, cfg, d); got.Folders() != cfg.Folders() {
+	if got := applyFolderSettings(ctx, cfg, d); !got.Folders().Equal(cfg.Folders()) {
 		t.Fatalf("%+v", got.Folders())
 	}
 }

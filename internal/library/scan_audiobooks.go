@@ -356,7 +356,12 @@ func readSidecar(di dirIndex, dir, name string) string {
 // the files (M4B/M4A chapter lists) or one per file. An unchanged book is
 // not read again. A root that cannot be read completely is never pruned.
 func (s *Scanner) scanAudiobooks(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Audiobooks)
+	return s.eachRoot(ctx, KindFolderAudiobooks, st, s.scanAudiobooksIn)
+}
+
+// scanAudiobooksIn is scanAudiobooks of one of the kind's folders.
+func (s *Scanner) scanAudiobooksIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}

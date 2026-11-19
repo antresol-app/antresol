@@ -889,13 +889,22 @@ func (a *addonsAPI) householdLanguages(ctx context.Context) []string {
 	return defaultLanguages
 }
 
-// libraryRoots are the library's folders that are set.
+// libraryRoots are the library's folders that are set: every kind's, its
+// default destination first.
 func (a *addonsAPI) libraryRoots() []string {
 	lr := a.info.LibraryRoots
 	var out []string
-	for _, s := range []string{lr.Movies, lr.Series, lr.Music, lr.Ebooks, lr.Audiobooks, lr.Comics} {
-		if s != "" {
+	add := func(s string) {
+		if s != "" && !slices.Contains(out, filepath.Clean(s)) {
 			out = append(out, filepath.Clean(s))
+		}
+	}
+	for _, s := range []string{lr.Movies, lr.Series, lr.Music, lr.Ebooks, lr.Audiobooks, lr.Comics} {
+		add(s)
+	}
+	for _, k := range []string{"movies", "series", "music", "ebooks", "audiobooks", "comics"} {
+		for _, s := range a.info.LibraryFolders[k] {
+			add(s)
 		}
 	}
 	return out

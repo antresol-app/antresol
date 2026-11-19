@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
 )
 
@@ -458,8 +459,8 @@ func (s *Service) Describe(ctx context.Context, ids []int64) (map[int64]Info, er
 	}
 	for part := range chunks(uniq, 500) {
 		in, args := inArgs(part)
-		rows, err := s.Store.DB.QueryContext(ctx, `SELECT i.id, i.kind, i.title, COALESCE(i.season_no,0), COALESCE(i.episode_no,0), i.overview, i.year, i.rating, i.meta_json,
-		  COALESCE(sr.id, 0), COALESCE(sr.title,''), COALESCE(sr.overview,''), COALESCE(sr.year,0), COALESCE(sr.rating,''), COALESCE(sr.meta_json,'{}'), COALESCE(sr.poster,''), COALESCE(i.poster,'')
+		rows, err := s.Store.DB.QueryContext(ctx, `SELECT i.id, i.kind, i.title, COALESCE(i.season_no,0), COALESCE(i.episode_no,0), i.overview, i.year, `+library.RatingOf("i")+`, i.meta_json,
+		  COALESCE(sr.id, 0), COALESCE(sr.title,''), COALESCE(sr.overview,''), COALESCE(sr.year,0), COALESCE(`+library.RatingOf("sr")+`,''), COALESCE(sr.meta_json,'{}'), COALESCE(sr.poster,''), COALESCE(i.poster,'')
 		  FROM items i LEFT JOIN items se ON se.id=i.parent_id AND i.kind='episode' LEFT JOIN items sr ON sr.id=se.parent_id
 		  WHERE i.id IN `+in, args...)
 		if err != nil {

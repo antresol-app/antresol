@@ -24,7 +24,7 @@ func insItem(t *testing.T, r *Repo, kind string, parent int64, title, rating str
 
 func insFile(t *testing.T, r *Repo, itemID int64, path string) int64 {
 	t.Helper()
-	id, err := upsertFileID(context.Background(), r.db, itemID, FileInput{Path: path, Size: 1, Mtime: 1})
+	id, err := r.upsertFileID(context.Background(), r.db, itemID, FileInput{Path: path, Size: 1, Mtime: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +70,11 @@ func TestUpsertFileIDReturnsID(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	it := insItem(t, r, KindBook, 0, "Война и мир", "")
-	a, err := upsertFileID(ctx, r.db, it, FileInput{Path: "/m/b/x.epub", Size: 1})
+	a, err := r.upsertFileID(ctx, r.db, it, FileInput{Path: "/m/b/x.epub", Size: 1})
 	if err != nil || a == 0 {
 		t.Fatal(a, err)
 	}
-	b, err := upsertFileID(ctx, r.db, it, FileInput{Path: "/m/b/x.epub", Size: 2})
+	b, err := r.upsertFileID(ctx, r.db, it, FileInput{Path: "/m/b/x.epub", Size: 2})
 	if err != nil || b != a {
 		t.Fatalf("second id %d (first %d) %v", b, a, err)
 	}

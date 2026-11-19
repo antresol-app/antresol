@@ -415,3 +415,41 @@ func TestUnplayedItemCount(t *testing.T) {
 		t.Fatalf("series IsPlayed %v", names(p.Items))
 	}
 }
+
+// a title from a folder «Только для взрослых» is judged 18+: Миша (6+)
+// loses the 0+ cartoon and series everywhere, Аня keeps them
+func TestItemsKidHidesAdultsOnlyFolder(t *testing.T) {
+	e := newLibEnv(t)
+	if _, err := e.db.Exec(`UPDATE items SET adult=1 WHERE id IN (?,?,?,?)`, e.cartoon, e.series, e.season1, e.eps[0]); err != nil {
+		t.Fatal(err)
+	}
+	e.prog.SaveAt(ctx(), e.misha.ID, e.cartoon, 1_000_000, 5_000_000, time.Now().Add(-time.Hour))
+	cartoon := ItemID(e.cartoon)
+	if p := e.items(e.mishaTok, "/Items?includeItemTypes=Movie,Series&recursive=true"); has(p.Items, cartoon) || has(p.Items, ItemID(e.series)) {
+		t.Fatalf("kid list %v", names(p.Items))
+	}
+	for _, path := range []string{"/Items/" + cartoon, "/Items/" + ItemID(e.series), "/Items/" + ItemID(e.eps[1])} {
+		if w := e.get(e.mishaTok, path); w.Code != 404 {
+			t.Fatalf("kid %s: %d", path, w.Code)
+		}
+	}
+	if p := e.items(e.mishaTok, "/UserItems/Resume"); has(p.Items, cartoon) {
+		t.Fatalf("kid resume %v", names(p.Items))
+	}
+	var latest []BaseItemDto
+	decode(t, e.get(e.mishaTok, "/Items/Latest?parentId="+ViewID("movies")), &latest)
+	if has(latest, cartoon) {
+		t.Fatalf("kid latest %v", names(latest))
+	}
+	var hints searchHintsResult
+	decode(t, e.get(e.mishaTok, "/Search/Hints?searchTerm="+url.QueryEscape("Мультик")), &hints)
+	if len(hints.SearchHints) != 0 {
+		t.Fatalf("kid hints %+v", hints)
+	}
+	if w := e.get(e.anyaTok, "/Items/"+cartoon); w.Code != 200 {
+		t.Fatalf("adult: %d", w.Code)
+	}
+	if p := e.items(e.anyaTok, "/Items?includeItemTypes=Movie,Series&recursive=true"); !has(p.Items, cartoon) {
+		t.Fatalf("adult list %v", names(p.Items))
+	}
+}

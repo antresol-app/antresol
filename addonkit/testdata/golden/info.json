@@ -17,6 +17,20 @@
       "audiobooks": "",
       "comics": ""
     },
+    "libraryFolders": {
+      "ebooks": [
+        "{root}/books"
+      ],
+      "movies": [
+        "{root}/movies"
+      ],
+      "music": [
+        "{root}/music"
+      ],
+      "series": [
+        "{root}/series"
+      ]
+    },
     "mediaRoot": "{root}",
     "fileRoots": [
       "{root}/movies",

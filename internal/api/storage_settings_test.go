@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ type storageEnv struct {
 	restarts chan struct{}
 	jobs     *library.Jobs
 	tr       string
+	flags    *library.FolderFlags // what SetFlags was given last
 }
 
 // storageOpts changes what newStorageEnvWith builds.
@@ -32,6 +34,7 @@ type storageOpts struct {
 	bare            bool   // nothing laid out under the media folder
 	env             *config.Folders
 	offline         func() string // StorageInfo.Offline
+	mounts          []string      // StorageInfo.Mounts (none by default)
 }
 
 func newStorageEnv(t *testing.T) *storageEnv { return newStorageEnvWith(t, storageOpts{}) }
@@ -63,8 +66,8 @@ func newStorageEnvWith(t *testing.T, o storageOpts) *storageEnv {
 	if tr == "" {
 		tr = filepath.Join(root, "tmp", "antresol-hls")
 	}
-	env := config.Folders{Movies: "movies", Series: "series", Music: "music", Ebooks: "books/ebooks",
-		Audiobooks: "books/audiobooks", Comics: "books/manga"}
+	env := config.Folders{Movies: config.Dirs("movies"), Series: config.Dirs("series"), Music: config.Dirs("music"), Ebooks: config.Dirs("books/ebooks"),
+		Audiobooks: config.Dirs("books/audiobooks"), Comics: config.Dirs("books/manga")}
 	if o.env != nil {
 		env = *o.env
 	}
@@ -78,6 +81,10 @@ func newStorageEnvWith(t *testing.T, o storageOpts) *storageEnv {
 			TranscodeDir: s.tr, ConfigDir: "/config", Service: "antresol",
 			Offline: o.offline,
 			Restart: func() { s.restarts <- struct{}{} },
+			Mounts:  func() []string { return o.mounts },
+			SetFlags: func(f library.FolderFlags) {
+				s.flags = &f
+			},
 		}
 	})
 	return s
@@ -214,7 +221,7 @@ func TestStorageSaveRestartsOnlyWhenSomethingChanged(t *testing.T) {
 		t.Fatal("the server was not asked to restart")
 	}
 	f, custom, err := LoadFolderSettings(ctx, s.db)
-	if err != nil || !custom || f.Series != "tv" || f.Movies != "movies" || f.Comics != "books/manga" {
+	if err != nil || !custom || f.Series.First() != "tv" || f.Movies.First() != "movies" || f.Comics.First() != "books/manga" {
 		t.Fatalf("%+v %v %v", f, custom, err)
 	}
 	// the same again: nothing to restart for
@@ -254,8 +261,8 @@ func TestStorageSaveWithoutARestarter(t *testing.T) {
 	// a server that cannot restart itself says so and still keeps the choice
 	r := newLibEnvWith(t, func(d *Deps, db *sql.DB) {
 		d.DB, d.MediaRoot = db, s.root
-		d.Storage = &StorageInfo{Env: config.Folders{Movies: "movies", Series: "series", Music: "music", Ebooks: "books/ebooks",
-			Audiobooks: "books/audiobooks", Comics: "books/manga"}}
+		d.Storage = &StorageInfo{Env: config.Folders{Movies: config.Dirs("movies"), Series: config.Dirs("series"), Music: config.Dirs("music"), Ebooks: config.Dirs("books/ebooks"),
+			Audiobooks: config.Dirs("books/audiobooks"), Comics: config.Dirs("books/manga")}}
 	})
 	w := r.do("PUT", "/api/settings/storage", `{"folders":{"series":"tv"}}`, r.admin)
 	var out storagePut
@@ -750,8 +757,8 @@ func TestStorageRefusesFoldersInsideEachOther(t *testing.T) {
 }
 
 func TestStorageResetToAnOverlappingEnvironmentIsTheOwnersChoice(t *testing.T) {
-	env := config.Folders{Movies: "video", Series: "video/series", Music: "music", Ebooks: "books/ebooks",
-		Audiobooks: "books/audiobooks", Comics: "books/manga"}
+	env := config.Folders{Movies: config.Dirs("video"), Series: config.Dirs("video/series"), Music: config.Dirs("music"), Ebooks: config.Dirs("books/ebooks"),
+		Audiobooks: config.Dirs("books/audiobooks"), Comics: config.Dirs("books/manga")}
 	s := newStorageEnvWith(t, storageOpts{env: &env})
 	if _, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES ('folders', ?)`,
 		`{"movies":"movies","series":"tv","music":"music","ebooks":"books/ebooks","audiobooks":"books/audiobooks","comics":"books/manga"}`); err != nil {
@@ -787,5 +794,154 @@ func TestHealthAndSaveCarryTheBootID(t *testing.T) {
 	<-s.restarts
 	if newBootID() == newBootID() {
 		t.Fatal("two runs, one boot id")
+	}
+}
+
+// several folders per kind: listed in order with their marks, the first is
+// the destination; another mount of the server may hold one
+func TestStorageSeveralFoldersPerKind(t *testing.T) {
+	ext := t.TempDir() // another folder mounted into the server
+	os.MkdirAll(filepath.Join(ext, "adult"), 0o755)
+	s := newStorageEnvWith(t, storageOpts{mounts: []string{ext}})
+	ctx := context.Background()
+	body := `{"folders":{"movies":[{"path":"movies"},{"path":"` + filepath.Join(ext, "adult") + `","adult":true,"unlisted":true}]}}`
+	w := s.do("PUT", "/api/settings/storage", body, s.admin)
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var out storagePut
+	json.Unmarshal(w.Body.Bytes(), &out)
+	var rows []folderRow
+	for _, r := range out.Folders {
+		if r.Kind == "movies" {
+			rows = append(rows, r)
+		}
+	}
+	if len(rows) != 2 || !rows[0].Primary || rows[1].Primary || rows[1].Path != filepath.Join(ext, "adult") || !rows[1].Adult ||
+		!rows[1].Unlisted || rows[0].Adult || rows[1].Status != mediacheck.StatusOK || !out.Restarting {
+		t.Fatalf("%+v", rows)
+	}
+	<-s.restarts
+	if len(out.Places) != 2 || out.Places[0] != s.root || out.Places[1] != ext {
+		t.Fatalf("places %v", out.Places)
+	}
+	f, _, _ := LoadFolderSettings(ctx, s.db)
+	if len(f.Movies) != 2 || f.Movies[1].Path != filepath.Join(ext, "adult") || !f.Movies[1].Adult {
+		t.Fatalf("%+v", f.Movies)
+	}
+	// the marks alone: no restart, applied at once
+	body = `{"folders":{"movies":[{"path":"movies"},{"path":"` + filepath.Join(ext, "adult") + `"}]}}`
+	w = s.do("PUT", "/api/settings/storage", body, s.admin)
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if w.Code != 200 || out.Restarting || s.flags == nil || len(s.flags.Adult) != 0 {
+		t.Fatalf("%d %+v %+v", w.Code, out, s.flags)
+	}
+	select {
+	case <-s.restarts:
+		t.Fatal("restarted for marks")
+	case <-time.After(50 * time.Millisecond):
+	}
+	// a folder outside every place, or in the server's own settings
+	for _, p := range []string{"/etc", filepath.Join(t.TempDir(), "x"), "/config"} {
+		w = s.do("POST", "/api/settings/storage/check", `{"folders":{"music":[{"path":"`+p+`"}]}}`, s.admin)
+		if w.Code != 400 {
+			t.Errorf("%s: %d %s", p, w.Code, w.Body)
+		}
+	}
+	// one folder twice, even under two kinds
+	w = s.do("PUT", "/api/settings/storage", `{"folders":{"movies":[{"path":"movies"},{"path":"movies"}]}}`, s.admin)
+	if w.Code != 400 {
+		t.Fatalf("twice: %d", w.Code)
+	}
+}
+
+// taking a folder out takes its titles out of the library, never its files,
+// and only once the administrator confirmed it
+func TestStorageRemovingAFolderNeedsConfirmation(t *testing.T) {
+	s := newStorageEnv(t)
+	ctx := context.Background()
+	more := filepath.Join(s.root, "more")
+	os.MkdirAll(more, 0o755)
+	p := filepath.Join(more, "C (2003).mkv")
+	os.WriteFile(p, []byte("x"), 0o644)
+	// a plain string inside a list is not a folder
+	if w := s.do("PUT", "/api/settings/storage", `{"folders":{"movies":["movies",{"path":"more"}]}}`, s.admin); w.Code != 400 {
+		t.Fatalf("mixed list: %d", w.Code)
+	}
+	if w := s.do("PUT", "/api/settings/storage", `{"folders":{"movies":[{"path":"movies"},{"path":"more"}]}}`, s.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	<-s.restarts
+	if _, err := s.repo.UpsertMovie(ctx, library.MovieInput{Title: "C", Year: 2003, File: library.FileInput{Path: p}}); err != nil {
+		t.Fatal(err)
+	}
+	w := s.do("PUT", "/api/settings/storage", `{"folders":{"movies":[{"path":"movies"}]}}`, s.admin)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), `"removing"`) || !strings.Contains(w.Body.String(), `"items":1`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if _, total, _ := s.repo.List(ctx, library.ListQuery{Kind: library.KindMovie}); total != 1 {
+		t.Fatal("removed before the confirmation")
+	}
+	w = s.do("PUT", "/api/settings/storage", `{"folders":{"movies":[{"path":"movies"}]},"confirmRemove":true}`, s.admin)
+	var out storagePut
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if w.Code != 200 || out.Removed != 1 || !out.Restarting {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	<-s.restarts
+	if _, total, _ := s.repo.List(ctx, library.ListQuery{Kind: library.KindMovie}); total != 0 {
+		t.Fatal("still in the library")
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatal("the file went")
+	}
+	// the next start forgets it once more, then the list is gone
+	if dirs, _ := TakeForgottenFolders(ctx, s.db); len(dirs) != 1 || dirs[0] != more {
+		t.Fatalf("%v", dirs)
+	}
+	if dirs, _ := TakeForgottenFolders(ctx, s.db); len(dirs) != 0 {
+		t.Fatalf("%v", dirs)
+	}
+}
+
+// the folder browser: the places and what is in them, a write test and an
+// item count, never anything outside (a "..", a link out, a path elsewhere)
+func TestStorageBrowse(t *testing.T) {
+	ext := t.TempDir()
+	secret := t.TempDir()
+	s := newStorageEnvWith(t, storageOpts{mounts: []string{ext}})
+	os.Symlink(secret, filepath.Join(s.root, "out"))
+	os.MkdirAll(filepath.Join(ext, "Взрослое"), 0o755)
+	var v browseView
+	w := s.do("GET", "/api/settings/storage/browse", "", s.admin)
+	json.Unmarshal(w.Body.Bytes(), &v)
+	if w.Code != 200 || v.Path != s.root || v.Parent != "" || v.Dir.Status != mediacheck.StatusOK || len(v.Places) != 2 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var names []string
+	for _, d := range v.Dirs {
+		names = append(names, d.Name)
+	}
+	if strings.Join(names, "|") != "books|movies|music|tv" {
+		t.Fatalf("%v", names)
+	}
+	w = s.do("GET", "/api/settings/storage/browse?path="+url.QueryEscape(filepath.Join(s.root, "movies")), "", s.admin)
+	json.Unmarshal(w.Body.Bytes(), &v)
+	if w.Code != 200 || v.Parent != s.root || v.Library != "movies" || v.Dir.Items != 2 || len(v.Dirs) != 2 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	w = s.do("GET", "/api/settings/storage/browse?path="+url.QueryEscape(ext), "", s.admin)
+	json.Unmarshal(w.Body.Bytes(), &v)
+	if w.Code != 200 || len(v.Dirs) != 1 || v.Dirs[0].Name != "Взрослое" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	for _, p := range []string{"/", "/etc", secret, filepath.Join(s.root, "out"), s.root + "/movies/../../", s.root + "/../", "relative", "/config"} {
+		if w := s.do("GET", "/api/settings/storage/browse?path="+url.QueryEscape(p), "", s.admin); w.Code != 400 {
+			t.Errorf("%q: %d %s", p, w.Code, w.Body)
+		}
+	}
+	kid := s.kid("")
+	if w := s.do("GET", "/api/settings/storage/browse", "", kid); w.Code != 403 {
+		t.Fatalf("kid: %d", w.Code)
 	}
 }

@@ -280,7 +280,12 @@ func unchangedComic(v comicFile, stored map[string]storedComicFile, seriesID int
 // are not read again. A root that cannot be read completely is never
 // pruned.
 func (s *Scanner) scanComics(ctx context.Context, st *ScanStats) error {
-	root, err := filepath.Abs(s.Comics)
+	return s.eachRoot(ctx, KindFolderComics, st, s.scanComicsIn)
+}
+
+// scanComicsIn is scanComics of one of the kind's folders.
+func (s *Scanner) scanComicsIn(ctx context.Context, dir string, st *ScanStats) error {
+	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}

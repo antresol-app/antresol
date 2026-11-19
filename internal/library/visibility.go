@@ -34,7 +34,8 @@ func (r *Repo) Visible(ctx context.Context, maxRating string, it Item) (bool, er
 }
 
 // MusicRootAllowed is the SQL form of RatingAllowed for a music root (an
-// artist, or an album without one) whose rating is the expression root.
+// artist, or an album without one) whose rating is the expression root
+// (built of RatingOf, so an adults-only folder counts as 18+).
 func MusicRootAllowed(root, maxRating string) (string, []any) {
 	if maxRating == "" {
 		return "1", nil
@@ -55,6 +56,6 @@ func MusicRootAllowed(root, maxRating string) (string, []any) {
 // track items (the walk of Root).
 const (
 	musicRootJoins = ` LEFT JOIN items p1 ON p1.id=i.parent_id LEFT JOIN items p2 ON p2.id=p1.parent_id`
-	musicRootExpr  = `(CASE WHEN i.kind='track' AND p2.id IS NOT NULL THEN p2.rating
-	  WHEN i.kind IN ('track','album') AND p1.id IS NOT NULL THEN p1.rating ELSE i.rating END)`
+	musicRootExpr  = `(CASE WHEN i.kind='track' AND p2.id IS NOT NULL THEN ` + "(CASE WHEN p2.adult=1 THEN '18+' ELSE p2.rating END)" + `
+	  WHEN i.kind IN ('track','album') AND p1.id IS NOT NULL THEN ` + "(CASE WHEN p1.adult=1 THEN '18+' ELSE p1.rating END)" + ` ELSE ` + "(CASE WHEN i.adult=1 THEN '18+' ELSE i.rating END)" + ` END)`
 )

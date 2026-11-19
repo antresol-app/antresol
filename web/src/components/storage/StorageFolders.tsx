@@ -1,56 +1,121 @@
-// What the server sees under the media folder, and which folder is which
-// library: one row per kind with its status (found with a count, missing
-// with «Создать», not writable) and a pop-up of the folders that are there.
-import type { DirCheck, FolderRow, StorageView } from '../../api/storage'
+// The library's folders as the server sees them: a group per kind with each
+// of its folders (the first is where the kind's downloads and uploads go),
+// its status (found with a count, missing with «Создать», not writable), its
+// marks («Только для взрослых», «Скрыть из общих подборок») and «⋯» to make
+// it the first, mark it or take it out; «Добавить папку…» opens the folder
+// browser over what is mounted into the server.
+import { useState } from 'react'
+import type { FolderKind, FolderRow } from '../../api/storage'
 import { FOLDER_KINDS } from '../../api/storage'
+import { Icon } from '../Icon'
 import { useT } from '../../i18n'
+import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
+import { IconButton } from '../../ui/IconButton'
 import { GroupedSection, ListRow } from '../../ui/List'
+import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
-import { Select, type SelectOption } from '../../ui/Select'
-import type { Storage } from './useStorage'
+import { Sheet } from '../../ui/Sheet'
+import { FolderBrowser } from './FolderBrowser'
+import { folderStatus, itemsText } from './format'
+import type { Removal, Storage } from './useStorage'
 import styles from './Storage.module.css'
 
-type T = ReturnType<typeof useT>
-
-/** «12 элементов», «больше 9999 элементов», «пусто». */
-export function itemsText(d: Pick<DirCheck, 'items' | 'more'>, t: T): string {
-  if (d.more) return t('storage.itemsMore', { count: d.items })
-  return d.items === 0 ? t('storage.empty') : t('storage.items', { count: d.items })
-}
-
-/** The status line of a library folder. */
-export function folderStatus(row: FolderRow, t: T): string {
-  switch (row.status) {
-    case 'ok':
-      // the server makes empty default folders itself: «пусто» beside one with files is not a finished pick
-      if (row.suggest && row.items === 0 && !row.more) return t('storage.status.emptySuggest', { name: row.suggest })
-      return t('storage.status.ok', { items: itemsText(row, t) })
-    case 'missing':
-      return row.suggest ? t('storage.status.missingSuggest', { name: row.suggest }) : t('storage.status.missing')
-    case 'notdir':
-      return t('storage.status.notdir')
-    case 'unreadable':
-      return t('storage.status.unreadable')
-    default:
-      return t('storage.status.readonly')
-  }
-}
-
-/** The folders the pop-up offers: those under the media folder, and the current one when it is not among them. */
-function optionsFor(view: StorageView, current: string, t: T): SelectOption<string>[] {
-  const opts: SelectOption<string>[] = view.entries.map((e) => ({ value: e.name, label: e.name, detail: itemsText(e, t) }))
-  if (current && !opts.some((o) => o.value === current)) opts.unshift({ value: current, label: current, detail: t('storage.status.missing') })
-  return opts
-}
-
-/** `entries`: also list what is under the media folder (the wizard does; the settings' pop-ups already say it). */
-export function StorageFolders({ storage, title, entries = true }: { storage: Storage; title?: string; entries?: boolean }) {
+/** One folder of a kind. */
+function FolderLine({ storage, row, only }: { storage: Storage; row: FolderRow; only: boolean }) {
   const t = useT()
-  const { view, paths, busy } = storage
-  if (!view || !paths) return null
+  const { view, busy } = storage
+  const name = t(`storage.kind.${row.kind}`)
+  const emptyDefault = row.status === 'ok' && row.items === 0 && !row.more && Boolean(row.suggest)
+  const tone = row.status === 'ok' && !emptyDefault ? styles.fine : row.status === 'missing' || emptyDefault ? styles.neutral : styles.problem
+  const label = (
+    <span className={styles.folderLabel}>
+      <span className={styles.mono}>{row.path}</span>
+      {(row.primary && !only) || row.adult || row.unlisted ? (
+        <span className={styles.badges}>
+          {row.primary && !only && <Badge tone="outline">{t('storage.primary')}</Badge>}
+          {row.adult && <Badge tone="warning">{t('storage.adult')}</Badge>}
+          {row.unlisted && <Badge>{t('storage.unlisted')}</Badge>}
+        </span>
+      ) : null}
+    </span>
+  )
+  const more = t('storage.folderMenu', { path: row.path })
+  return (
+    <ListRow label={label} status={<span className={tone}>{folderStatus(row, t)}</span>}>
+      <div className={styles.rowActions}>
+        {row.suggest && (
+          <Button size="small" variant="secondary" disabled={busy} onClick={() => void storage.replace(row.kind, row.path, row.suggest!)}>
+            {t('storage.useSuggest', { name: row.suggest })}
+          </Button>
+        )}
+        {row.status === 'missing' && view?.canCreate && row.abs.startsWith(view.root.path + '/') && (
+          <Button size="small" variant="secondary" disabled={busy} onClick={() => void storage.create(row.path)}>
+            {t('storage.create')}
+          </Button>
+        )}
+        <Menu label={more} placement="bottom-end" trigger={(p) => <IconButton {...p} size="sm" icon="ellipsis" label={more} disabled={busy} />}>
+          {(close) => (
+            <>
+              {!row.primary && (
+                <MenuItem
+                  label={t('storage.makePrimary')}
+                  detail={t('storage.makePrimary.hint', { kind: name })}
+                  onSelect={() => {
+                    close()
+                    void storage.makePrimary(row.kind, row.path)
+                  }}
+                />
+              )}
+              <MenuItem
+                multi
+                checked={row.adult}
+                label={t('storage.adult')}
+                detail={t('storage.adult.hint')}
+                onSelect={() => {
+                  close()
+                  void storage.setFlag(row.kind, row.path, 'adult', !row.adult)
+                }}
+              />
+              <MenuItem
+                multi
+                checked={row.unlisted}
+                label={t('storage.unlistedFull')}
+                detail={t('storage.unlisted.hint')}
+                onSelect={() => {
+                  close()
+                  void storage.setFlag(row.kind, row.path, 'unlisted', !row.unlisted)
+                }}
+              />
+              <MenuSeparator />
+              <MenuItem
+                destructive
+                icon={<Icon name="minusCircle" size={18} />}
+                label={t('storage.removeFolder')}
+                detail={only ? t('storage.removeFolder.only') : row.indexed > 0 ? t('storage.removeFolder.hint', { count: row.indexed }) : undefined}
+                disabled={only}
+                onSelect={() => {
+                  close()
+                  void storage.remove(row.kind, row.path)
+                }}
+              />
+            </>
+          )}
+        </Menu>
+      </div>
+    </ListRow>
+  )
+}
+
+/** `entries`: also list what is under the media folder (the wizard does; the settings have the folder browser). */
+export function StorageFolders({ storage, entries = true }: { storage: Storage; entries?: boolean }) {
+  const t = useT()
+  const [browsing, setBrowsing] = useState<FolderKind | null>(null)
+  const { view, busy } = storage
+  if (!view) return null
   const root = view.root.path
   const rootGone = view.root.status === 'missing' || view.root.status === 'notdir'
+  const taken = view.folders.map((f) => f.abs)
   return (
     <>
       {rootGone ? (
@@ -71,44 +136,65 @@ export function StorageFolders({ storage, title, entries = true }: { storage: St
           )}
         </GroupedSection>
       )}
-      <GroupedSection title={title ?? t('storage.libraries')}>
-        {FOLDER_KINDS.map((kind) => {
-          const row = view.folders.find((f) => f.kind === kind)
-          if (!row) return null
-          const name = t(`storage.kind.${kind}`)
-          const emptyDefault = row.status === 'ok' && row.items === 0 && !row.more && Boolean(row.suggest)
-          const tone = row.status === 'ok' && !emptyDefault ? styles.fine : row.status === 'missing' || emptyDefault ? styles.neutral : styles.problem
-          return (
-            <ListRow
-              key={kind}
-              stack
-              label={name}
-              status={<span className={tone}>{folderStatus(row, t)}</span>}
-            >
-              <div className={styles.rowActions}>
-                {row.suggest && (
-                  <Button size="small" variant="secondary" disabled={busy} onClick={() => void storage.pick(kind, row.suggest!)}>
-                    {t('storage.useSuggest', { name: row.suggest })}
-                  </Button>
-                )}
-                {row.status === 'missing' && view.canCreate && (
-                  <Button size="small" variant="secondary" disabled={busy} onClick={() => void storage.create(row.path)}>
-                    {t('storage.create')}
-                  </Button>
-                )}
-                <Select
-                  label={t('storage.pick', { kind: name })}
-                  placement="bottom-end"
-                  value={paths[kind]}
-                  options={optionsFor(view, paths[kind], t)}
-                  disabled={busy}
-                  onChange={(p) => void storage.pick(kind, p)}
-                />
-              </div>
+      {FOLDER_KINDS.map((kind) => {
+        const rows = view.folders.filter((f) => f.kind === kind)
+        const name = t(`storage.kind.${kind}`)
+        return (
+          <GroupedSection key={kind} title={name} footer={rows.length > 1 ? t('storage.kindFooter', { path: rows[0]!.path }) : undefined}>
+            {rows.map((row) => (
+              <FolderLine key={row.path} storage={storage} row={row} only={rows.length === 1} />
+            ))}
+            <ListRow label={t('storage.addFolder.label', { kind: name })}>
+              <Button size="small" variant="plain" icon="plus" disabled={busy} onClick={() => setBrowsing(kind)}>
+                {t('storage.addFolder')}
+              </Button>
             </ListRow>
-          )
-        })}
-      </GroupedSection>
+          </GroupedSection>
+        )
+      })}
+      {browsing && (
+        <FolderBrowser
+          kind={browsing}
+          taken={taken}
+          onCancel={() => setBrowsing(null)}
+          onPick={(p) => {
+            const kind = browsing
+            setBrowsing(null)
+            void storage.add(kind, p)
+          }}
+        />
+      )}
     </>
+  )
+}
+
+/** Asks before a save takes folders out whose titles leave the library (their files stay on the disk). */
+export function RemoveConfirm({ removals, busy, onConfirm, onCancel }: { removals: Removal[]; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const t = useT()
+  const total = removals.reduce((n, r) => n + r.indexed, 0)
+  return (
+    <Sheet
+      title={t('storage.removeConfirm.title')}
+      message={
+        <>
+          <p>{total > 0 ? t('storage.removeConfirm.message', { count: total }) : t('storage.removeConfirm.messageAny')}</p>
+          {removals.length > 0 && (
+            <ul className={styles.removeList}>
+              {removals.map((r) => (
+                <li key={r.path}>
+                  <span className={styles.mono}>{r.path}</span> · {t('storage.removeConfirm.titles', { count: r.indexed })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      }
+      busy={busy}
+      onCancel={onCancel}
+      actions={[
+        { label: t('common.cancel'), kind: 'cancel', run: onCancel },
+        { label: t('storage.removeConfirm.ok'), kind: 'destructive', run: onConfirm },
+      ]}
+    />
   )
 }
