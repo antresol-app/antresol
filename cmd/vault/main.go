@@ -66,6 +66,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == announceCommand {
+		if err := runAnnounce(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	err := run()
 	if errors.Is(err, errRestart) {
 		// everything is shut down and the database closed: start again in

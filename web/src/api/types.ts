@@ -84,8 +84,9 @@ export interface CoreUpdate {
 /** GET /api/about/local: the server's name on the home network (mDNS). */
 export interface LocalName {
   /** off: mDNS off; probing: checking the name is free; ready: url works at home;
-   * bridge: a Docker bridge network, multicast does not leave the container; failed: no socket or no free name. */
-  state: 'off' | 'probing' | 'ready' | 'bridge' | 'failed'
+   * bridge: a Docker bridge network, multicast does not leave the container, and no mDNS announcer beside it;
+   * vm: the host network is a VM's (Docker Desktop); failed: no socket or no free name. */
+  state: 'off' | 'probing' | 'ready' | 'bridge' | 'vm' | 'failed'
   /** antresol.local (antresol-2.local when another server holds it); only when ready. */
   name?: string
   /** http://antresol.local:8420; only when ready. */
@@ -810,6 +811,24 @@ export interface TranscodingSettings {
   hevc: boolean
 }
 
+/**
+ * Why a GPU failed its test encode (media.HWProblem): the kind decides the
+ * advice — noDevice: the node is not in the container; permission: the
+ * server's user is not in the node's group (gid); driver: no VA-API driver
+ * takes it (driver: the one the vendor needs); nvidia: no NVIDIA driver in
+ * the container; encoder: the driver refuses the encoder; detail: ffmpeg's
+ * own words.
+ */
+export interface HWProblem {
+  kind: 'noDevice' | 'permission' | 'driver' | 'nvidia' | 'encoder' | 'timeout' | 'unknown'
+  mode: string
+  device?: string
+  gid?: number
+  driver?: string
+  encoder?: string
+  detail?: string
+}
+
 export interface TranscodingView {
   settings: TranscodingSettings
   /** the server's own (VAULT_HWACCEL*) */
@@ -828,6 +847,8 @@ export interface TranscodingView {
     tonemapGpu: boolean
     tonemapCpu: boolean
     probes: { mode: string; ok: boolean; error?: string }[]
+    /** why the GPU failed its test encode (absent: it passed, or there was none) */
+    problem?: HWProblem
     probedAt: string
   }
   /** ffmpeg has chromaprint: the intros and credits of episodes are analysed (absent: no segments worker) */

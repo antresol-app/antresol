@@ -95,25 +95,54 @@ be done in one sitting:
   by themselves: by mDNS / Bonjour (`_antresol._tcp`)
   and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). A browser at
   home opens it as **http://antresol.local:8420**, no IP address needed: the
-  server claims that name by mDNS, and a second server on the same network
-  takes `antresol-2.local` (and so on). «About This Server» in the profile
-  menu shows the name this server got. `VAULT_SERVER_NAME` is the name the
+  server claims that name by mDNS, and a server on another computer of the
+  same network takes `antresol-2.local` (and so on) when this one already
+  holds it. «About This Server» in the profile menu shows the name this
+  server got. `VAULT_SERVER_NAME` is the name the
   apps list (default `Antresol`); `VAULT_DISCOVERY=off` turns both off,
   `VAULT_MDNS=off` mDNS (and the name) alone. On a TV, sign in by scanning
   its QR code with the phone app or the phone's camera (the page `/pair`).
-- **mDNS and Docker networks.** With Docker's default bridge network
-  multicast and broadcast stay inside the container: the published
-  `8420/udp` answers apps that ask the host's address, but `antresol.local`
-  and the apps' automatic search do not work (the server notices it, says so
-  in its log and in «About This Server»). For them, run the container with
-  `network_mode: host` and drop `ports:` (or run the binary on the host). The
-  cost: the server's ports are the host's own (8420 must be free there), and
-  a helper service of an addon is no longer reachable by its service name:
-  give the addon the helper's address, with the helper publishing its port
-  on `127.0.0.1`. To keep the bridge network instead, let the host's own
-  Avahi publish the name: a line `<host LAN IP> antresol.local` in
-  `/etc/avahi/hosts`. Windows 10+, macOS, iOS and Linux with Avahi resolve
-  `.local` names; Android only from version 12, and not in every browser.
+- **mDNS and Docker networks.** The server runs on the compose project's
+  own (bridge) network, where an addon's helper service is found by its
+  service name. Multicast does not leave that network, so `compose.yml` has
+  a second, tiny service for the home network: `antresol-mdns`, the same
+  image started as `mdns-announce`. It runs on the host's network, opens
+  only UDP 5353 (beside the host's own Avahi or mDNSResponder), reads no
+  settings and no secrets, and announces `antresol.local` and
+  `_antresol._tcp` with the host's addresses and the port published for the
+  server. The two share the small volume `antresol-announce`: the server
+  writes who it is there, the announcer writes back the name it holds, and
+  «About This Server» shows it. When the announcer is stopped, its name and
+  records go within a minute and «About This Server» says so; when the
+  server is stopped, the announcer withdraws them. Keep the announcer's port
+  right: publish another host port only through `HTTP_PORT` in `.env`,
+  which sets both (the announcer warns in its log when the server does not
+  answer on the port it announces) and moves the UDP port of the apps'
+  probe with them. Two servers on different computers of one network: the
+  second announcer takes `antresol-2.local`, as a second server on the host
+  network would. Two stacks on one computer (each in its own folder, with
+  its own `container_name`s and `HTTP_PORT=8421` in the second `.env`)
+  share `antresol.local`: it is one address for both, and each is opened by
+  its own port, `http://antresol.local:8421`; «About This Server» shows
+  each its own. The apps' UDP probe asks port 8420 only, so the second one
+  is found by mDNS, not by the probe. Podman (rootful or rootless) works
+  the same way.
+- **Docker Desktop (macOS, Windows), WSL 2, Podman machine.** Containers run
+  in a virtual machine there, and even the host network is the machine's,
+  not your home network: `antresol.local` and the apps' automatic search do
+  not work. The server and the announcer notice it, say so in the log and in
+  «About This Server», and claim nothing. Open the server by the computer's
+  IP address (`http://<IP>:8420`), or run the server binary on the computer
+  itself.
+- **Without the announcer.** Running the server with `network_mode: host`
+  (and no `ports:`) makes it claim the name itself; the announcer then stays
+  quiet. The cost: the server's ports are the host's own (8420 must be free
+  there), and a helper service of an addon is no longer reachable by its
+  service name: give the addon the helper's address, with the helper
+  publishing its port on `127.0.0.1`. Or let the host's own Avahi publish
+  the name: a line `<host LAN IP> antresol.local` in `/etc/avahi/hosts`.
+  Windows 10+, macOS, iOS and Linux with Avahi resolve `.local` names;
+  Android only from version 12, and not in every browser.
 - Every setting is an environment variable and can go in `.env`: see
   [configuration.md](configuration.md); [build-tags.md](build-tags.md)
   explains the build.

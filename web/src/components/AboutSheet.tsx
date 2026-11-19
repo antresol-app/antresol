@@ -50,9 +50,11 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
       ? t('comp.about.localProbing')
       : local?.state === 'bridge'
         ? t('comp.about.localBridge')
-        : local?.state === 'failed'
-          ? t('comp.about.localFailed')
-          : ''
+        : local?.state === 'vm'
+          ? t('comp.about.localVM')
+          : local?.state === 'failed'
+            ? t('comp.about.localFailed')
+            : ''
   const source = sourceLink(about)
   const link = (href: string, label: string) => (
     <ButtonAnchor variant="plain" size="small" className={styles.rowLink} href={href} target="_blank" rel="noopener noreferrer">

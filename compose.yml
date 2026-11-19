@@ -4,10 +4,9 @@ services:
     container_name: antresol
     restart: unless-stopped
     stop_grace_period: 30s           # lets ffmpeg and open requests finish
-    # network_mode: host             # for antresol.local and the apps' own search; then drop ports: (docs/install.md)
     ports:
-      - "8420:8420"                  # web and apps
-      - "8420:8420/udp"              # apps find the server on the home network
+      - "${HTTP_PORT:-8420}:8420"      # web and apps; another host port: HTTP_PORT in .env
+      - "${HTTP_PORT:-8420}:8420/udp"  # apps find the server on the home network (same port number)
     env_file:
       - path: .env
         required: false
@@ -23,13 +22,15 @@ services:
       VAULT_AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-books/audiobooks}
       VAULT_COMICS_DIR: ${COMICS_DIR:-books/manga}
       VAULT_TRANSCODE_DIR: /media/tmp/antresol-hls   # on the media disk, not in /config
+      VAULT_ANNOUNCE_DIR: /announce  # shared with antresol-mdns
     volumes:
       - antresol-config:/config
       - ${MEDIA_DIR:-./media}:/media # host media folder, read-write
+      - antresol-announce:/announce
     # devices:
-    #   - /dev/dri:/dev/dri          # Intel/AMD GPU transcoding
-    # group_add:
-    #   - "992"                      # host render group: getent group render | cut -d: -f3
+    #   - /dev/dri:/dev/dri          # Intel/AMD GPU transcoding (the image joins its group itself)
+    # group_add:                     # only with user: set: the host's render group
+    #   - "992"                      # getent group render | cut -d: -f3 (the number differs per host)
     # deploy:                        # NVIDIA GPU (needs NVIDIA Container Toolkit)
     #   resources:
     #     reservations:
@@ -38,7 +39,24 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+  # antresol.local and the apps' search on the home network: mDNS only,
+  # UDP 5353 on the host, no secrets (docs/install.md)
+  antresol-mdns:
+    image: ghcr.io/antresol-app/antresol-server:latest
+    container_name: antresol-mdns
+    restart: unless-stopped
+    network_mode: host
+    command: ["mdns-announce"]
+    environment:
+      VAULT_ANNOUNCE_DIR: /announce
+      VAULT_ANNOUNCE_PORT: ${HTTP_PORT:-8420}  # the port published above
+    volumes:
+      - antresol-announce:/announce
+    healthcheck:
+      disable: true
+
   # An addon's helper service (see docs/install.md) goes here, under services:.
 
 volumes:
   antresol-config:
+  antresol-announce:

@@ -20,6 +20,9 @@ type fakeHW struct {
 	works  []string // probeName()s that work: h264_qsv, h264_vaapi, h264_vaapi-lp (low power only), hevc_qsv-lp, tonemap-vaapi…
 	ran    []string // the H.264 test encodes, in order
 	all    []string
+	gid    int               // the render node's group
+	denied bool              // the server's user may not open the render node
+	errs   map[string]string // ffmpeg's error of a failing test encode
 }
 
 func (f *fakeHW) opts(mode string) HWOptions {
@@ -41,6 +44,12 @@ func (f *fakeHW) opts(mode string) HWOptions {
 			}
 			return ""
 		},
+		access: func(string) (int, error) {
+			if f.denied {
+				return f.gid, os.ErrPermission
+			}
+			return f.gid, nil
+		},
 		run: func(_ context.Context, _ string, args []string) error {
 			name := probeName(args)
 			if strings.HasPrefix(name, "h264") {
@@ -49,6 +58,9 @@ func (f *fakeHW) opts(mode string) HWOptions {
 			f.all = append(f.all, name)
 			if slices.Contains(f.works, name) {
 				return nil
+			}
+			if e, ok := f.errs[strings.TrimSuffix(name, "-lp")]; ok {
+				return errors.New(e)
 			}
 			return errors.New(name + ": no device")
 		},
@@ -293,5 +305,67 @@ func TestHLSSoftwareFallbackGPUModes(t *testing.T) {
 			t.Fatalf("%s: hw=%s, want none after fallback", hw, got)
 		}
 		m.Close()
+	}
+}
+
+// A GPU that fails its test encode says why: the kind decides the advice
+// («О сервере», the settings page, the log).
+func TestResolveHWProblem(t *testing.T) {
+	defer setHWOpts("", nil)
+	noDisplay := "[AVHWDeviceContext @ 0x1] No VA display found for device /dev/dri/renderD128.\nDevice creation failed: -22."
+	node := []string{"/dev/dri/renderD128"}
+	cases := []struct {
+		name string
+		f    fakeHW
+		mode string
+		want HWProblem
+	}{
+		// the public image without group_add: the node is there, vault may not open it
+		{"permission", fakeHW{goos: "linux", files: node, vendor: "0x8086", denied: true, gid: 992,
+			errs: map[string]string{"h264_vaapi": noDisplay}}, "auto",
+			HWProblem{Kind: ProblemPermission, Mode: HWVAAPI, Device: node[0], GID: 992, Encoder: "h264_vaapi", Detail: noDisplay}},
+		{"intel without a driver", fakeHW{goos: "linux", files: node, vendor: "0x8086",
+			errs: map[string]string{"h264_vaapi": noDisplay}}, "auto",
+			HWProblem{Kind: ProblemDriver, Mode: HWVAAPI, Device: node[0], Driver: vaDriverFor("0x8086"), Encoder: "h264_vaapi", Detail: noDisplay}},
+		{"amd without a driver", fakeHW{goos: "linux", files: node, vendor: "0x1002",
+			errs: map[string]string{"h264_vaapi": "libva error: vaGetDriverNameByIndex() failed with unknown libva error"}}, "auto",
+			HWProblem{Kind: ProblemDriver, Mode: HWVAAPI, Device: node[0], Driver: "radeonsi (mesa-va-drivers)", Encoder: "h264_vaapi",
+				Detail: "libva error: vaGetDriverNameByIndex() failed with unknown libva error"}},
+		{"encoder refused", fakeHW{goos: "linux", files: node, vendor: "0x1002",
+			errs: map[string]string{"h264_vaapi": "[h264_vaapi @ 0x1] No usable encoding entrypoint found for profile VAProfileH264High (7)."}}, "auto",
+			HWProblem{Kind: ProblemEncoder, Mode: HWVAAPI, Device: node[0], Encoder: "h264_vaapi",
+				Detail: "[h264_vaapi @ 0x1] No usable encoding entrypoint found for profile VAProfileH264High (7)."}},
+		{"nvidia without the toolkit", fakeHW{goos: "linux", files: []string{"/dev/nvidia0"},
+			errs: map[string]string{"h264_nvenc": "[h264_nvenc @ 0x1] Cannot load libcuda.so.1"}}, "auto",
+			HWProblem{Kind: ProblemNVIDIA, Mode: HWNVENC, Encoder: "h264_nvenc", Detail: "[h264_nvenc @ 0x1] Cannot load libcuda.so.1"}},
+		{"explicit vaapi, no node", fakeHW{goos: "linux"}, HWVAAPI,
+			HWProblem{Kind: ProblemNoDevice, Mode: HWVAAPI, Device: DefaultRenderNode, Encoder: "h264_vaapi", Detail: "h264_vaapi-lp: no device"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st := ResolveHW(context.Background(), c.f.opts(c.mode))
+			if st.Problem == nil || *st.Problem != c.want {
+				t.Fatalf("problem %+v, want %+v", st.Problem, c.want)
+			}
+		})
+	}
+	// a GPU that works, and no GPU at all, have no problem
+	for _, f := range []fakeHW{{goos: "linux", files: node, vendor: "0x1002", works: []string{"h264_vaapi"}}, {goos: "linux"}} {
+		if st := ResolveHW(context.Background(), f.opts("auto")); st.Problem != nil {
+			t.Fatalf("%+v", st.Problem)
+		}
+	}
+}
+
+// The reason of a failed test encode is ffmpeg's first error lines, not
+// libva's chatter or the consequences after them.
+func TestProbeError(t *testing.T) {
+	out := "libva info: VA-API version 1.22.0\nlibva info: Trying to open /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so\n" +
+		"[h264_qsv @ 0x1] Error creating a MFX session: -9.\n" +
+		"[vost#0:0/h264_qsv @ 0x2] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.\n" +
+		strings.Repeat("[vf#0:0 @ 0x3] Error sending frames to consumers: Unknown error occurred\n", 10)
+	got := probeError(out)
+	if !strings.HasPrefix(got, "[h264_qsv @ 0x1] Error creating a MFX session: -9.") || strings.Contains(got, "libva info") || len(got) > 400 {
+		t.Fatalf("%q", got)
 	}
 }

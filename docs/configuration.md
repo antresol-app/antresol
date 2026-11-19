@@ -47,8 +47,11 @@ reset.
 | `VAULT_TRUSTED_NETS` | | Extra home networks, comma separated, e.g. Tailscale `100.64.0.0/10`. |
 | `VAULT_SERVER_NAME` | `Antresol` | Name the apps show when they find the server. |
 | `VAULT_DISCOVERY` | on | `off` turns off both mDNS and the UDP probe the apps use to find the server. |
-| `VAULT_MDNS` | on | `off` turns off mDNS only, and with it the name `antresol.local` (`antresol-2.local`, … when another server holds it) a browser at home opens. |
-| `VAULT_DISCOVERY_PORT` | `8420` | UDP probe port; publish it as `8420:8420/udp`. Broadcast and mDNS (and so `antresol.local`) need host networking: see [install.md](install.md). |
+| `VAULT_MDNS` | on | `off` turns off mDNS only, and with it the name `antresol.local` (`antresol-2.local`, … when a server on another computer holds it) a browser at home opens. |
+| `VAULT_DISCOVERY_PORT` | `8420` | UDP probe port in the container; publish it as `8420:8420/udp` (`compose.yml` does, on the host port `HTTP_PORT`). |
+| `VAULT_ANNOUNCE_DIR` | | Folder shared with the mDNS announcer (`antresol-mdns` in `compose.yml`, which sets it to `/announce` in both services): on a bridge network the server leaves `antresol.local` and the apps' search to it. See [install.md](install.md). |
+| `VAULT_ANNOUNCE_PORT` | the server's | Announcer only: the HTTP port published for the server on the host. `compose.yml` sets it from `HTTP_PORT`. |
+| `HTTP_PORT` | `8420` | `compose.yml` only: the host port of the web UI and the apps (TCP) and of the apps' UDP probe, for the server and the announcer together. A second stack on the same computer needs another one. |
 
 ## Subtitles
 

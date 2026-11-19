@@ -4,15 +4,15 @@ import "testing"
 
 func TestDiscoveryDefaults(t *testing.T) {
 	t.Setenv("VAULT_MEDIA_ROOT", "/srv/media")
-	for _, k := range []string{"VAULT_DISCOVERY", "VAULT_MDNS", "VAULT_DISCOVERY_PORT", "VAULT_SERVER_NAME"} {
+	for _, k := range []string{"VAULT_DISCOVERY", "VAULT_MDNS", "VAULT_DISCOVERY_PORT", "VAULT_SERVER_NAME", "VAULT_ANNOUNCE_DIR"} {
 		t.Setenv(k, "")
 	}
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.MDNS || c.DiscoveryPort != 8420 || c.ServerName != "Antresol" {
-		t.Fatalf("%v %d %q", c.MDNS, c.DiscoveryPort, c.ServerName)
+	if !c.MDNS || c.DiscoveryPort != 8420 || c.ServerName != "Antresol" || c.AnnounceDir != "" {
+		t.Fatalf("%v %d %q %q", c.MDNS, c.DiscoveryPort, c.ServerName, c.AnnounceDir)
 	}
 }
 
@@ -21,8 +21,9 @@ func TestDiscoverySwitches(t *testing.T) {
 	t.Setenv("VAULT_MDNS", "off")
 	t.Setenv("VAULT_DISCOVERY_PORT", "7400")
 	t.Setenv("VAULT_SERVER_NAME", " Дача ")
+	t.Setenv("VAULT_ANNOUNCE_DIR", "/announce")
 	c, err := Load()
-	if err != nil || c.MDNS || c.DiscoveryPort != 7400 || c.ServerName != "Дача" {
+	if err != nil || c.MDNS || c.DiscoveryPort != 7400 || c.ServerName != "Дача" || c.AnnounceDir != "/announce" {
 		t.Fatalf("%+v %v", c, err)
 	}
 	t.Setenv("VAULT_DISCOVERY", "off")

@@ -31,8 +31,9 @@ type Answer struct {
 const maxAnswer = 1200
 
 func (c *Config) answer(peer netip.Addr) []byte {
+	urls, port := c.urls(peer)
 	a := Answer{Service: "antresol", Protocol: Protocol, ID: c.Info.ID, Name: c.Info.Name, Version: c.Info.Version,
-		Scheme: c.Info.Scheme, Port: c.Info.Port, URLs: c.urls(peer)}
+		Scheme: c.Info.Scheme, Port: port, URLs: urls}
 	for {
 		b, _ := json.Marshal(a)
 		if len(b) <= maxAnswer || len(a.URLs) == 0 {

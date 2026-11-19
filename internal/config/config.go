@@ -167,6 +167,11 @@ type Config struct {
 	MDNS          bool
 	DiscoveryPort int
 	ServerName    string
+	// AnnounceDir (VAULT_ANNOUNCE_DIR, "": none) is the folder shared with
+	// the mDNS announcer service (`vault mdns-announce`, compose.yml): on a
+	// bridge network the server tells it who it is there, and reads back
+	// the home-network name it holds (internal/discovery/share.go).
+	AnnounceDir string
 }
 
 // DefaultIMDbRatingsURL is IMDb's own copy of the ratings dataset.

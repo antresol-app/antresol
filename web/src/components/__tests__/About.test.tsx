@@ -91,8 +91,14 @@ describe('the source offer (AGPL §13)', () => {
   it('«О сервере» says why there is no address in a Docker bridge network', async () => {
     serve(official, admin, { state: 'bridge' })
     render(<AboutSheet onClose={() => {}} />)
-    expect(await screen.findByText(/network_mode: host/)).toBeInTheDocument()
+    expect(await screen.findByText(/antresol-mdns/)).toBeInTheDocument()
     expect(screen.queryByText(/IP знать не нужно/)).toBeNull()
+  })
+
+  it('«О сервере» says why there is no address under Docker Desktop', async () => {
+    serve(official, admin, { state: 'vm' })
+    render(<AboutSheet onClose={() => {}} />)
+    expect(await screen.findByText(/Docker Desktop/)).toBeInTheDocument()
   })
 
   it('«О сервере» has no address row when mDNS is off or the server is older', async () => {

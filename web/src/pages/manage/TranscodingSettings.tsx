@@ -15,6 +15,7 @@ import {
   errorText,
 } from "../../api/client";
 import type {
+  HWProblem,
   TranscodingMode,
   TranscodingSettings as Values,
   TranscodingView,
@@ -24,8 +25,31 @@ import { Button } from "../../ui/Button";
 import { GroupedSection, ListRow } from "../../ui/List";
 import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
-import { GpuHint } from "../../components/storage/GpuHint";
+import { GpuHint, gpuProbeFailed } from "../../components/storage/GpuHint";
 import m from "./Manage.module.css";
+
+/** The one-line reason of a failed test encode («О сервере», «Сейчас»). */
+export function problemLine(p: HWProblem, t: ReturnType<typeof useT>): string {
+  switch (p.kind) {
+    case "permission":
+      return p.gid && p.gid > 0
+        ? t("settings.tc.problem.permission", { device: p.device ?? "", gid: p.gid })
+        : t("settings.tc.problem.permissionNoGid", { device: p.device ?? "" });
+    case "noDevice":
+      return t("settings.tc.problem.noDevice", { device: p.device ?? "" });
+    case "driver":
+      return p.driver
+        ? t("settings.tc.problem.driverNamed", { driver: p.driver })
+        : t("settings.tc.problem.driver");
+    case "nvidia":
+      return t("settings.tc.problem.nvidia");
+    case "encoder":
+      return t("settings.tc.problem.encoder", { encoder: p.encoder ?? "" });
+    case "timeout":
+      return t("settings.tc.problem.timeout");
+  }
+  return t("settings.tc.problem.unknown");
+}
 
 /** «Сейчас»: whether video decodes and encodes on the GPU, and if not, why. */
 export function statusLine(
@@ -35,12 +59,17 @@ export function statusLine(
   const s = v.status;
   if (s.mode === "none") {
     if (s.requested === "none") return t("settings.tc.status.cpuChosen");
-    if (s.probes.some((p) => !p.ok)) return t("settings.tc.status.cpuFailed");
+    if (s.problem)
+      return t("settings.tc.status.cpuWhy", { why: problemLine(s.problem, t) });
+    if (gpuProbeFailed(s)) return t("settings.tc.status.cpuFailed");
     if (v.devices.length === 0) return t("settings.tc.status.cpuNoDevice");
     return t("settings.tc.status.cpu");
   }
   const own = s.probes.find((p) => p.mode === s.mode);
-  if (own && !own.ok) return t("settings.tc.status.gpuFailed", { name: s.name });
+  if (own && !own.ok)
+    return s.problem
+      ? t("settings.tc.status.gpuFailedWhy", { name: s.name, why: problemLine(s.problem, t) })
+      : t("settings.tc.status.gpuFailed", { name: s.name });
   const parts = [t("settings.tc.status.gpu", { name: s.name })];
   if (s.hevc) parts.push(t("settings.tc.status.hevc"));
   if (s.tonemapGpu) parts.push(t("settings.tc.status.tonemapGpu"));

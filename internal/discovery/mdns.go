@@ -23,8 +23,8 @@ import (
 // and they are not probed. The apps use these. Beside them the responder
 // claims the friendly host name antresol.local (A records only) for
 // browsers, probed and defended because every server wants it (claim.go).
-// It announces itself at start and says goodbye (TTL 0) at the end. IPv4
-// only.
+// It announces itself at start and says goodbye (TTL 0) at the end, three
+// times (sayGoodbye). IPv4 only.
 
 var mdnsGroup = netip.MustParseAddrPort("224.0.0.251:5353")
 
@@ -36,6 +36,17 @@ const (
 	ttlHost      = 120  // SRV and A (RFC 6762 §10)
 	ttlOther     = 4500 // PTR and TXT
 	ttlLegacy    = 10   // answers to legacy unicast queries
+)
+
+// The goodbye goes out goodbyeCopies times, goodbyeGap apart. A multicast
+// datagram has no acknowledgement, and one lost goodbye leaves the records
+// in every cache for their whole TTL (75 minutes for the PTR): on a real
+// LAN 3 of 17 single goodbyes never arrived. RFC 6762 §10.1 reads a TTL 0
+// as "delete in one second", so the copies cost a listener nothing, and
+// §8.3 sends an announcement more than once for the same reason.
+const (
+	goodbyeCopies = 3
+	goodbyeGap    = 250 * time.Millisecond
 )
 
 type mdnsNames struct {
@@ -204,6 +215,18 @@ func (c *Config) announcement(goodbye bool) []byte {
 	return buildResponse(false, 0, nil, rs, nil)
 }
 
+// sayGoodbye withdraws everything announced, goodbyeCopies times (send
+// puts one datagram on the network, wait sleeps; not after the last copy).
+func (c *Config) sayGoodbye(send func([]byte), wait func(time.Duration)) {
+	b := c.announcement(true)
+	for i := range goodbyeCopies {
+		if i > 0 {
+			wait(goodbyeGap)
+		}
+		send(b)
+	}
+}
+
 func (c *Config) lanAddrs() []netip.Addr { return c.addrsFor(netip.Addr{}) }
 
 // runMDNS advertises the service, and claims the friendly name, until
@@ -228,13 +251,24 @@ func runMDNS(ctx context.Context, c *Config) {
 	// In a Docker bridge network nobody on the home network hears this
 	// responder, and its addresses are the container's: a probe would
 	// "win" antresol.local for nobody, and the UI would show a name that
-	// does not work. The apps still find the server by the UDP probe.
-	bridge := bridgeNetwork()
-	if bridge {
-		c.Status.set(StateBridge, "")
-		c.log().Warn("discovery: the container is on a Docker bridge network: multicast does not reach the home network, " +
-			"so " + FriendlyBase + ".local is not claimed; run it with network_mode: host for that")
-	} else {
+	// does not work. The apps still find the server by the UDP probe, and
+	// with the mDNS announcer beside it (ShareDir, share.go) the name and
+	// the apps' search work as well. A VM's network (Docker Desktop) is the
+	// same story, announcer or not.
+	switch c.network {
+	case netBridge:
+		if c.ShareDir == "" {
+			c.Status.set(StateBridge, "")
+			c.log().Warn("discovery: the container is on a Docker bridge network: multicast does not reach the home network, " +
+				"so " + FriendlyBase + ".local is not claimed; add the antresol-mdns service of compose.yml, or run it with network_mode: host")
+		} else {
+			c.log().Info("discovery: on a bridge network: " + FriendlyBase + ".local and the apps' search are left to the mDNS announcer")
+		}
+	case netVM:
+		c.Status.set(StateVM, "")
+		c.log().Warn("discovery: the host network is a virtual machine's (Docker Desktop, WSL 2, Podman machine), not the home network: " +
+			FriendlyBase + ".local is not claimed; open the server by the computer's IP address")
+	default:
 		c.claim = newHostClaim(c.lanAddrs)
 	}
 	done := make(chan struct{})
@@ -254,7 +288,7 @@ func runMDNS(ctx context.Context, c *Config) {
 		c.claim.run(ctx, realClaimEnv(multicast, c.Status, func(msg string, args ...any) { c.log().Info(msg, args...) }))
 	}
 	<-ctx.Done()
-	multicast(c.announcement(true))
+	c.sayGoodbye(multicast, time.Sleep) // serveMDNS is quiet by now: nothing answers over the goodbye
 	conn.Close()
 	<-done
 }
@@ -274,6 +308,11 @@ func serveMDNS(ctx context.Context, conn *net.UDPConn, c *Config, multicast func
 		}
 		if !lanClient(from.Addr()) {
 			continue
+		}
+		if ctx.Err() != nil {
+			// leaving: runMDNS is saying goodbye, and an answer now would
+			// put the records back in the asker's cache
+			return
 		}
 		if c.claim != nil {
 			if m, err := parseMessage(buf[:n]); err == nil {

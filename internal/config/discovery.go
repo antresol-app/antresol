@@ -12,9 +12,10 @@ import (
 const defaultDiscoveryPort = 8420
 
 // loadDiscovery reads VAULT_DISCOVERY, VAULT_MDNS, VAULT_DISCOVERY_PORT and
-// VAULT_SERVER_NAME (see Config.MDNS).
+// VAULT_SERVER_NAME (see Config.MDNS), and VAULT_ANNOUNCE_DIR.
 func (c *Config) loadDiscovery() error {
 	c.MDNS, c.DiscoveryPort = true, defaultDiscoveryPort
+	c.AnnounceDir = strings.TrimSpace(os.Getenv("VAULT_ANNOUNCE_DIR"))
 	c.ServerName = strings.TrimSpace(os.Getenv("VAULT_SERVER_NAME"))
 	if c.ServerName == "" {
 		c.ServerName = "Antresol"

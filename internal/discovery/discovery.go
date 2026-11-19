@@ -52,8 +52,32 @@ type Config struct {
 	Addrs func() []netip.Prefix
 	// Status (optional) gets the state of the friendly name antresol.local.
 	Status *Status
+	// ShareDir (optional) is the folder shared with the mDNS announcer
+	// (share.go): a server on a bridge network leaves mDNS on the home
+	// network to it.
+	ShareDir string
 
-	claim *hostClaim // the friendly name, while mDNS runs
+	network string     // where the process runs: netHost, netBridge, netVM (Run)
+	claim   *hostClaim // the friendly name, while mDNS runs
+	host    *hostView  // what the announcer says about the host (share.go; nil: nothing)
+}
+
+// The network the process runs on, as Run judges it.
+const (
+	netHost   = "host"   // the home network: claim antresol.local
+	netBridge = "bridge" // a container network multicast does not leave
+	netVM     = "vm"     // a VM's NAT'd network (Docker Desktop, WSL 2, Podman machine)
+)
+
+// whereRun judges the network once: it does not change while the process runs.
+func (c *Config) whereRun() string {
+	switch {
+	case bridgeNetwork():
+		return netBridge
+	case vmNetwork(c.prefixes()):
+		return netVM
+	}
+	return netHost
 }
 
 func (c *Config) log() *slog.Logger {
@@ -70,6 +94,12 @@ func Run(ctx context.Context, c Config) {
 		c.Info.Scheme = "http"
 	}
 	var wg sync.WaitGroup
+	if c.MDNS && c.network == "" {
+		c.network = c.whereRun()
+	}
+	if c.ShareDir != "" && c.host == nil {
+		c.host = &hostView{}
+	}
 	if c.UDPPort > 0 {
 		conn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: c.UDPPort})
 		if err != nil {
@@ -86,6 +116,10 @@ func Run(ctx context.Context, c Config) {
 		c.Status.set(StateProbing, "")
 		wg.Add(1)
 		go func() { defer wg.Done(); runMDNS(ctx, &c) }()
+		if c.ShareDir != "" {
+			wg.Add(1)
+			go func() { defer wg.Done(); c.share(ctx) }()
+		}
 	}
 	wg.Wait()
 }
@@ -146,11 +180,19 @@ func virtual(name string) bool {
 // the peer's subnet when there are any, else all of them (peer invalid:
 // all of them).
 func (c *Config) addrsFor(peer netip.Addr) []netip.Addr {
-	list := c.Addrs
-	if list == nil {
-		list = ifaceAddrs
+	return pickAddrs(c.prefixes(), peer)
+}
+
+// prefixes are the server's own interface prefixes.
+func (c *Config) prefixes() []netip.Prefix {
+	if c.Addrs != nil {
+		return c.Addrs()
 	}
-	all := list()
+	return ifaceAddrs()
+}
+
+// pickAddrs are the addresses of all for a client at peer (addrsFor).
+func pickAddrs(all []netip.Prefix, peer netip.Addr) []netip.Addr {
 	var same, rest []netip.Addr
 	for _, p := range all {
 		if peer.IsValid() && p.Contains(peer.Unmap()) {
@@ -165,13 +207,25 @@ func (c *Config) addrsFor(peer netip.Addr) []netip.Addr {
 	return rest
 }
 
-// urls are the base URLs of the server for a client at peer.
-func (c *Config) urls(peer netip.Addr) []string {
-	var out []string
-	for _, a := range c.addrsFor(peer) {
-		out = append(out, c.Info.Scheme+"://"+net.JoinHostPort(a.String(), strconv.Itoa(c.Info.Port)))
+// lan are the addresses and the HTTP port a client on the home network
+// reaches the server at: the host's, as the announcer tells them, for a
+// server on a bridge network (its own there are the container's, which no
+// app can reach), else its own.
+func (c *Config) lan() ([]netip.Prefix, int) {
+	if addrs, port := c.host.get(); len(addrs) > 0 && port > 0 {
+		return addrs, port
 	}
-	return append(out, c.Info.Extra...)
+	return c.prefixes(), c.Info.Port
+}
+
+// urls are the base URLs of the server for a client at peer, and the port.
+func (c *Config) urls(peer netip.Addr) ([]string, int) {
+	all, port := c.lan()
+	var out []string
+	for _, a := range pickAddrs(all, peer) {
+		out = append(out, c.Info.Scheme+"://"+net.JoinHostPort(a.String(), strconv.Itoa(port)))
+	}
+	return append(out, c.Info.Extra...), port
 }
 
 // limiter allows n events per second (a token bucket).

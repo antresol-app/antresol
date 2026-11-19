@@ -73,21 +73,23 @@
   text-wrap: pretty;
 }
 .control {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--s-2h);
 }
-/* shrink: the control gives way (a pop-up with a long choice cuts it), the
-   text keeps the rest of the row. The text never gets narrower than its
-   longest word: with a basis of 0 and no floor it would, and break-word would
-   then split «интерфейса» in two on a 320 pt phone. */
-.shrink .text {
+/* Beside a control the text never gets narrower than its label's longest
+   word: with a basis of 0 and no floor a control with a long value (a status
+   sentence) took the row and break-word split the label one letter per line
+   («Вид/ео» in a 445 pt sheet). The control gives way instead: its text wraps
+   (a value) or is cut (a pop-up's choice, a button's label). A hint wraps
+   anywhere, so a long path in it does not widen that floor. */
+.text:has(+ .control) {
   min-width: min-content;
 }
-.shrink .control {
-  flex: 0 1 auto;
-  min-width: 0;
+.text:has(+ .control) .hint {
+  overflow-wrap: anywhere;
 }
 /* on a wide row a long choice stops at 40%; a phone's row has no room to
    spare for a cap, the text's longest word is the only limit there */

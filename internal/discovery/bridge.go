@@ -1,6 +1,10 @@
 package discovery
 
-import "os"
+import (
+	"net/netip"
+	"os"
+	"strings"
+)
 
 // link is a network interface as bridgeNetwork judges it.
 type link struct {
@@ -57,4 +61,38 @@ func natOnly(links []link) bool {
 		seen = true
 	}
 	return seen
+}
+
+// vmNetwork: the network this process sees as the host's is that of a
+// virtual machine behind NAT, not the home network: Docker Desktop (on
+// macOS, Windows, and Linux too) runs containers in a LinuxKit VM, WSL 2
+// sits behind the NAT of Windows, Podman machine behind gvproxy. Even
+// network_mode: host is the VM's network there; multicast from it never
+// reaches the home network, so a claimed antresol.local would be a name
+// that works for nobody.
+func vmNetwork(addrs []netip.Prefix) bool {
+	rel, _ := os.ReadFile("/proc/sys/kernel/osrelease")
+	_, err := os.Stat("/run/.containerenv")
+	return vmHost(string(rel), err == nil, addrs)
+}
+
+// gvproxyNet is the subnet Podman machine's gvproxy gives the VM.
+var gvproxyNet = netip.MustParsePrefix("192.168.127.0/24")
+
+// vmHost is vmNetwork on what it read: the kernel release (LinuxKit's and
+// WSL's say so), whether this is a Podman container, and the addresses.
+func vmHost(release string, podman bool, addrs []netip.Prefix) bool {
+	r := strings.ToLower(release)
+	if strings.Contains(r, "linuxkit") || strings.Contains(r, "microsoft") {
+		return true
+	}
+	if !podman || len(addrs) == 0 {
+		return false
+	}
+	for _, p := range addrs {
+		if !gvproxyNet.Contains(p.Addr()) {
+			return false
+		}
+	}
+	return true
 }

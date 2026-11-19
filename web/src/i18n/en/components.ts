@@ -264,7 +264,8 @@ export default {
   'comp.about.local': 'On Your Home Network',
   'comp.about.localHint': 'Open this address in a browser on any device at home; no IP address needed.',
   'comp.about.localProbing': 'Checking that the name is free…',
-  'comp.about.localBridge': 'The name antresol.local does not work: the container is on a Docker bridge network, which multicast does not leave. Run it with network_mode: host, or open the server by its IP address.',
+  'comp.about.localBridge': 'The name antresol.local does not work: the container is on a Docker bridge network, which multicast does not leave, and the antresol-mdns service of compose.yml is not running beside it. Add it, or open the server by its IP address.',
+  'comp.about.localVM': 'The name antresol.local does not work here: the server runs in Docker Desktop (or another virtual machine), whose network is not your home network. Open the server by the computer\'s IP address.',
   'comp.about.localFailed': 'The server could not get a name on the home network: mDNS is unavailable or every name is taken. Open the server by its IP address.',
   // Sheet, TabBar, TopNav, TextField, SourceCard
   'comp.sheet.wait': 'Please wait',

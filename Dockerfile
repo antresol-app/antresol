@@ -62,7 +62,10 @@ RUN set -eu; intel=; \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -g 1000 vault \
  && useradd -u 1000 -g vault -G video -m -d /home/vault -s /usr/sbin/nologin vault \
- && mkdir -p /config && chown vault:vault /config
+ && mkdir -p /config /announce && chown vault:vault /config /announce
+# /announce: the folder the server shares with its mDNS announcer
+# (`vault mdns-announce`, compose.yml); a new volume mounted there takes
+# this owner, so both run as vault and can write it.
 # NVIDIA Container Toolkit: the driver libraries NVENC/NVDEC need
 ENV VAULT_DATA_DIR=/config \
     NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
@@ -70,6 +73,28 @@ VOLUME /config
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8420/api/health || exit 1
 COPY --from=build-library /out/vault /usr/local/bin/vault
-USER vault
+# The render node's group is the host's (render: a number that differs per
+# distribution; video, which vault is in, only on some), so a fixed group in
+# the image or a number copied into compose.yml misses on most hosts and the
+# GPU fails its test encode ("No VA display found"). Started as root (the
+# default), the entrypoint adds the group of each /dev/dri node (and any
+# group_add) to vault's and runs the server as vault; group 0 is never added.
+# Started as another user (compose user:), it runs the server as that user,
+# and group_add is how that user gets the node.
+COPY --chmod=0755 <<'EOF' /usr/local/bin/antresol-entrypoint
+#!/bin/sh
+set -eu
+[ "$(id -u)" = 0 ] || exec /usr/local/bin/vault "$@"
+groups=$(id -G vault | tr ' ' ',')
+for g in $(id -G) $(stat -c %g /dev/dri/* 2>/dev/null); do
+	case ",$groups," in *",$g,"*) ;; *) [ "$g" = 0 ] || groups="$groups,$g" ;; esac
+done
+export HOME=/home/vault USER=vault
+setpriv --reuid=vault --regid=vault --groups="$groups" true 2>/dev/null || {
+	echo "antresol: started as root but cannot switch to the vault user (CAP_SETUID/CAP_SETGID dropped?); run it as user: 1000:1000 with group_add for the GPU" >&2
+	exit 1
+}
+exec setpriv --reuid=vault --regid=vault --groups="$groups" --inh-caps=-all /usr/local/bin/vault "$@"
+EOF
 EXPOSE 8420
-ENTRYPOINT ["/usr/local/bin/vault"]
+ENTRYPOINT ["/usr/local/bin/antresol-entrypoint"]

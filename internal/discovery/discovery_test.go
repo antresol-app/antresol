@@ -66,7 +66,7 @@ func TestUDPProbeLoopback(t *testing.T) {
 
 func TestURLsPreferPeerSubnet(t *testing.T) {
 	c := testConfig()
-	got := c.urls(netip.MustParseAddr("192.168.50.77"))
+	got, _ := c.urls(netip.MustParseAddr("192.168.50.77"))
 	if strings.Join(got, " ") != "http://192.168.50.10:8420 https://media.example.org" {
 		t.Fatalf("%v", got)
 	}
@@ -312,5 +312,77 @@ func TestInstanceNameFitsALabel(t *testing.T) {
 	label := strings.TrimSuffix(n.instance, "."+serviceName)
 	if len(label) > 63 || strings.Contains(label, ".") || !strings.HasSuffix(label, " 012345") {
 		t.Fatalf("%q (%d)", label, len(label))
+	}
+}
+
+// A lost goodbye leaves the records in the caches for their whole TTL, so
+// the goodbye goes out three times, 250 ms apart, and every copy withdraws
+// the whole service: the server's names and the claimed friendly name.
+func TestGoodbyeIsSentSeveralTimes(t *testing.T) {
+	c := testConfig()
+	c.claim = newHostClaim(c.lanAddrs)
+	c.claim.setState(false, true)
+	var sent [][]byte
+	var waits []time.Duration
+	c.sayGoodbye(func(b []byte) { sent = append(sent, b) }, func(d time.Duration) {
+		if len(sent) == 0 {
+			t.Error("waited before the first copy")
+		}
+		waits = append(waits, d)
+	})
+	if len(sent) != 3 {
+		t.Fatalf("%d copies", len(sent))
+	}
+	if len(waits) != 2 || waits[0] != 250*time.Millisecond || waits[1] != 250*time.Millisecond {
+		t.Fatalf("waits %v", waits) // between the copies, none after the last
+	}
+	for i, b := range sent {
+		p := parseResponse(t, b)
+		names := map[string]bool{}
+		for _, r := range p.answers {
+			if r.ttl != 0 {
+				t.Errorf("copy %d: %s %d has ttl %d", i, r.name, r.rtype, r.ttl)
+			}
+			names[r.name] = true
+		}
+		// (names come back lower-cased)
+		for _, n := range []string{"_antresol._tcp.local.", c.names().instance, c.names().host, "antresol.local."} {
+			if !names[strings.ToLower(n)] {
+				t.Errorf("copy %d does not withdraw %s", i, n)
+			}
+		}
+	}
+}
+
+// While the goodbye goes out, nothing is answered: a reply would put the
+// records back in the asker's cache.
+func TestServeMDNSSilentWhileLeaving(t *testing.T) {
+	c := testConfig()
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the goodbye's time: runMDNS has seen ctx end, the socket is still open
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		serveMDNS(ctx, conn, c, func([]byte) { t.Error("multicast while leaving") })
+	}()
+	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	cl.Write(mdnsQuery(7, question{name: "_antresol._tcp.local.", qtype: typePTR}))
+	cl.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	if n, err := cl.Read(make([]byte, 2048)); err == nil {
+		t.Fatalf("answered while leaving: %d bytes", n)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("serveMDNS goes on after ctx ended")
 	}
 }

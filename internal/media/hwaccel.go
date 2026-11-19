@@ -101,8 +101,11 @@ type HWStatus struct {
 	TonemapGPU bool      `json:"tonemapGpu"`
 	TonemapCPU bool      `json:"tonemapCpu"`
 	Probes     []HWProbe `json:"probes,omitempty"`
-	ProbedAt   time.Time `json:"probedAt"`
-	lowPower   map[string]bool
+	// Problem: why the GPU's test encode failed (absent: it passed, or
+	// there was none to try)
+	Problem  *HWProblem `json:"problem,omitempty"`
+	ProbedAt time.Time  `json:"probedAt"`
+	lowPower map[string]bool
 }
 
 // HWOptions configure ResolveHW.
@@ -120,6 +123,9 @@ type HWOptions struct {
 	exist func(path string) bool
 	glob  func(pattern string) []string
 	read  func(path string) string
+	// access opens a render node the way libva does (nil: it opens) and
+	// says which group owns it
+	access func(path string) (gid int, err error)
 }
 
 var hwCache sync.Map // key → HWStatus
@@ -169,6 +175,9 @@ func (o *HWOptions) defaults() {
 	if o.read == nil {
 		o.read = func(p string) string { b, _ := os.ReadFile(p); return strings.TrimSpace(string(b)) }
 	}
+	if o.access == nil {
+		o.access = openDevice
+	}
 	if !ValidHW(o.Mode) {
 		if o.Mode != "" {
 			log.Printf("media: VAULT_HWACCEL=%q is not a mode, using auto", o.Mode)
@@ -204,11 +213,17 @@ func (o *HWOptions) resolve(ctx context.Context) HWStatus {
 	if o.Mode == "auto" {
 		cands = o.candidates(dev)
 	}
+	tried := ""
 	for _, c := range cands {
+		tried = c
 		if o.tryEncoder(ctx, &st, c, h264Encoder[c], dev) {
 			st.Mode = c
 			break
 		}
+	}
+	if tried != "" && st.Mode == HWNone {
+		st.Problem = o.diagnose(tried, lastError(st.Probes), dev)
+		log.Printf("media: the GPU failed its test encode: %s", st.Problem)
 	}
 	if o.Mode != "auto" && st.Mode != o.Mode {
 		// asked for explicitly: used anyway, sessions fall back one by one
@@ -405,12 +420,9 @@ func runFFmpegProbe(ctx context.Context, ffmpeg string, args []string) error {
 	cmd.WaitDelay = time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
+		msg := probeError(string(out))
 		if strings.Contains(msg, noMastering) {
 			return errors.New(noMastering)
-		}
-		if len(msg) > 300 {
-			msg = msg[len(msg)-300:]
 		}
 		if msg == "" {
 			return err
@@ -418,6 +430,26 @@ func runFFmpegProbe(ctx context.Context, ffmpeg string, args []string) error {
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// probeError is the part of a failed test encode's output that says why:
+// its first error lines (ffmpeg names the cause first, then what failed
+// because of it), without libva's chatter.
+func probeError(out string) string {
+	var keep []string
+	n := 0
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "libva info:") {
+			continue
+		}
+		if n+len(l) > 400 && len(keep) > 0 {
+			break
+		}
+		keep = append(keep, l)
+		n += len(l) + 1
+	}
+	return strings.Join(keep, "\n")
 }
 
 // HWName is a mode's name for people.

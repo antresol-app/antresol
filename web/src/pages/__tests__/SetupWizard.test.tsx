@@ -314,7 +314,7 @@ describe('the first-run wizard', () => {
     expect(await screen.findByText('Процессор: контейнер не видит видеокарту — откройте /dev/dri в compose.yml')).toBeInTheDocument()
     expect(screen.getByText(/Видеокарту в контейнер не передали/)).toBeInTheDocument()
     expect(screen.getByText(/devices:\s+- \/dev\/dri:\/dev\/dri/)).toBeInTheDocument()
-    expect(screen.getByText('getent group render | cut -d: -f3')).toBeInTheDocument()
+    expect(screen.getByText((_, el) => el?.tagName === 'PRE' && el.textContent === 'devices:\n  - /dev/dri:/dev/dri')).toBeInTheDocument()
     expect(finished(calls)).toBe(false)
     // «Проверить заново» asks the server to test again
     await userEvent.click(button('Проверить заново'))

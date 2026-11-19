@@ -39,7 +39,8 @@ const (
 	StateOff     = "off"     // mDNS is turned off
 	StateProbing = "probing" // checking that the name is free
 	StateReady   = "ready"   // the name is ours and answered
-	StateBridge  = "bridge"  // a container network multicast does not leave (Docker bridge)
+	StateBridge  = "bridge"  // a container network multicast does not leave (Docker bridge), and no announcer
+	StateVM      = "vm"      // the host network is a VM's, not the home network (Docker Desktop)
 	StateFailed  = "failed"  // no mDNS socket, or no free name
 )
 
