@@ -22,9 +22,9 @@ const kid: User = { ...adult, id: 3, name: 'Вася', isKid: true, maxRating: '
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
 const full: AccountsState = {
-  shikimori: { linked: true, nickname: 'tester', status: 'ok', lastError: '', lastSync: ago(5), writeState: 'enabled', canWrite: true, unmapped: 0 },
-  myshows: { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, unmapped: 0 },
-  goodreads: { linked: true, nickname: 'reader', status: 'error', lastError: 'Goodreads не отвечает', lastSync: ago(60), total: 4, read: 2, reading: 1, toRead: 1, inLibrary: 2 },
+  shikimori: { linked: true, nickname: 'tester', status: 'ok', lastError: '', lastSync: ago(5), syncing: false, writeState: 'enabled', canWrite: true, unmapped: 0 },
+  myshows: { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, unmapped: 0 },
+  goodreads: { linked: true, nickname: 'reader', status: 'error', lastError: 'Goodreads не отвечает', lastSync: ago(60), syncing: false, total: 4, read: 2, reading: 1, toRead: 1, inLibrary: 2 },
 }
 
 /** What `/api/accounts` answers: a state, or null for a server that has none (404). */
@@ -84,12 +84,14 @@ describe('AccountsSettings', () => {
     expect(shiki.getByText(/В обе стороны: список с Shikimori попадает в отметки, а твои отметки уходят на Shikimori/)).toBeInTheDocument()
     expect(shiki.getByText('Синхронизировано 5 мин назад')).toBeInTheDocument()
     expect(shiki.getByRole('button', { name: 'Отвязать' })).toBeInTheDocument()
+    expect(shiki.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
 
     const myshows = await card('MyShows')
     expect(await myshows.findByText('Не связан')).toBeInTheDocument()
     expect(myshows.getByText('Только чтение: список с MyShows попадает в отметки; отправка обратно появится позже.')).toBeInTheDocument()
     expect(myshows.getByRole('button', { name: 'Связать' })).toBeInTheDocument()
     expect(myshows.queryByRole('button', { name: 'Отвязать' })).toBeNull()
+    expect(myshows.queryByRole('button', { name: 'Синхронизировать' })).toBeNull() // nothing to sync before linking
 
     const goodreads = await card('Goodreads')
     expect(await goodreads.findByText('Связан как reader')).toBeInTheDocument()
@@ -97,6 +99,7 @@ describe('AccountsSettings', () => {
     // the last result is on the card, an error as an error
     expect(goodreads.getByText('Не удалось синхронизировать: Goodreads не отвечает')).toBeInTheDocument()
     expect(goodreads.getByRole('button', { name: 'Выбрать файл' })).toBeInTheDocument()
+    expect(goodreads.getByRole('button', { name: 'Синхронизировать' })).toBeInTheDocument()
   })
 
   it('leaves out a service the server does not offer', async () => {

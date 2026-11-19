@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	antresol "github.com/antresol-app/antresol"
+	"github.com/antresol-app/antresol/internal/discovery"
 	"github.com/antresol-app/antresol/internal/version"
 	"github.com/go-chi/chi/v5"
 )
@@ -35,4 +36,15 @@ func mountAbout(r chi.Router) {
 	}
 	r.Get("/api/about/license", text(antresol.License))
 	r.Get("/api/about/third-party", text(antresol.ThirdPartyLicenses))
+}
+
+// mountLocalName is GET /api/about/local: the server's name on the home
+// network and the URL a browser there opens (http://antresol.local:8420),
+// or why there is none (state: off, probing, bridge, failed). Behind a
+// session: the state tells how the server is run.
+func mountLocalName(r chi.Router, st *discovery.Status) {
+	r.Get("/api/about/local", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		writeJSON(w, http.StatusOK, st.Get())
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/antresol-app/antresol/internal/config"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata"
+	"github.com/antresol-app/antresol/internal/metadata/booknames"
 	"github.com/antresol-app/antresol/internal/metadata/musicbrainz"
 	"github.com/antresol-app/antresol/internal/metadata/openlibrary"
 	"github.com/antresol-app/antresol/internal/metadata/ratings"
@@ -90,6 +91,23 @@ func buildEnrichers(cfg config.Config, repo *library.Repo, images *metadata.Imag
 		log.Info("VAULT_OPENSUBTITLES_KEY is not set: no automatic subtitles")
 	}
 	return out
+}
+
+// bookNames finds the names books have in other languages (booknames):
+// Wikidata and Open Library unless off, then ai (the AI helper's model of
+// the moment, nil: none); nil when both sources are off.
+func bookNames(database *sql.DB, m metaSources, ai func(context.Context) booknames.Asker, log *slog.Logger) *booknames.Resolver {
+	r := &booknames.Resolver{DB: database, AI: ai, Log: log.With("service", "booknames")}
+	if m.Wikidata != nil { // never a typed nil in the interface
+		r.Wikidata = m.Wikidata
+	}
+	if m.OpenLibrary != nil {
+		r.OpenLibrary = m.OpenLibrary
+	}
+	if r.Wikidata == nil && r.OpenLibrary == nil {
+		return nil
+	}
+	return r
 }
 
 // buildRatings is the IMDb ratings dataset (VAULT_IMDB_RATINGS_URL, kept in

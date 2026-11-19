@@ -53,6 +53,11 @@ type Service struct {
 	kick  chan struct{}
 	once  sync.Once
 
+	// files whose segments changed, for the schedules (SegmentsChanged)
+	segMu    sync.Mutex
+	segFiles map[int64]bool
+	segKick  chan struct{}
+
 	warm     WarmFunc // SetWarm (nil: none)
 	warmKick chan struct{}
 
@@ -93,7 +98,9 @@ func (s *Service) ModelFor(ctx context.Context, t Tier) *LLM {
 }
 
 func (s *Service) init() {
-	s.once.Do(func() { s.kick, s.warmKick = make(chan struct{}, 1), make(chan struct{}, 1) })
+	s.once.Do(func() {
+		s.kick, s.warmKick, s.segKick = make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1)
+	})
 }
 
 // SetFranchiseSources gives the franchise pass TMDB's collections (nil: no
@@ -133,6 +140,11 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	if s.Franchises != nil && s.Franchises.TMDB != nil {
 		done := make(chan struct{})
 		go func() { defer close(done); s.Franchises.Run(ctx) }()
+		defer func() { <-done }()
+	}
+	{
+		done := make(chan struct{})
+		go func() { defer close(done); s.segmentsLoop(ctx) }()
 		defer func() { <-done }()
 	}
 	t := time.NewTicker(interval)
@@ -193,6 +205,110 @@ func (s *Service) BuildChannel(ctx context.Context, c Channel) error {
 	}
 	s.askWarm()
 	return nil
+}
+
+// Segments come a season at a time while the segments worker passes over
+// the library: the schedules are redone once they stopped coming for
+// segmentsQuiet, and at the latest segmentsMaxWait after the first.
+var (
+	segmentsQuiet   = time.Minute
+	segmentsMaxWait = 10 * time.Minute
+)
+
+// SegmentsChanged tells the channels that these files' segments were
+// found, changed or dropped (the segments worker's Changed): schedules
+// built before keep the episodes as they were cut then, so the part not
+// on air yet is made again (RecutSegments). Never blocks.
+func (s *Service) SegmentsChanged(files []int64) {
+	if s == nil || len(files) == 0 {
+		return
+	}
+	s.init()
+	s.segMu.Lock()
+	if s.segFiles == nil {
+		s.segFiles = map[int64]bool{}
+	}
+	for _, f := range files {
+		s.segFiles[f] = true
+	}
+	s.segMu.Unlock()
+	select {
+	case s.segKick <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Service) segmentsLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.segKick:
+		}
+		limit := time.NewTimer(segmentsMaxWait)
+	quiet:
+		for {
+			t := time.NewTimer(segmentsQuiet)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				limit.Stop()
+				return
+			case <-s.segKick:
+				t.Stop()
+			case <-t.C:
+				break quiet
+			case <-limit.C:
+				t.Stop()
+				break quiet
+			}
+		}
+		limit.Stop()
+		s.segMu.Lock()
+		files := make([]int64, 0, len(s.segFiles))
+		for f := range s.segFiles {
+			files = append(files, f)
+		}
+		s.segFiles = nil
+		s.segMu.Unlock()
+		if err := s.RecutSegments(ctx, files); err != nil && ctx.Err() == nil {
+			log.Printf("channels: segments: %v", err)
+		}
+	}
+}
+
+// RecutSegments redoes the not yet aired part of every channel that skips
+// segments and airs one of files from a programme they cut otherwise
+// (Builder.Recut).
+func (s *Service) RecutSegments(ctx context.Context, files []int64) error {
+	if len(files) == 0 {
+		return nil
+	}
+	all, err := s.Store.All(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	cut := 0
+	for _, c := range all {
+		if !c.Enabled || c.External() || !c.Rules.SkipSegments {
+			continue
+		}
+		s.build.Lock()
+		ok, err := s.Builder.Recut(ctx, c, files)
+		s.build.Unlock()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("channel %d: %w", c.ID, err))
+		}
+		if ok {
+			cut++
+		}
+	}
+	if cut > 0 {
+		log.Printf("channels: segments of %d files changed: %d schedules made again from their first programme cut otherwise", len(files), cut)
+		s.askWarm()
+	}
+	return errors.Join(errs...)
 }
 
 // Program is the Source of Live: the schedule entry at t and its file.

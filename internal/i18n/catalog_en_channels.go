@@ -101,7 +101,7 @@ func init() {
 		"Новости":           "News",
 		"Спорт":             "Sports",
 		"Кино":              "Movies",
-		"Сериалы":           "TV Shows",
+		"Сериалы":           "Shows",
 		"Детские":           "Kids",
 		"Музыка":            "Music",
 		"Познавательные":    "Educational",

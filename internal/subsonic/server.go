@@ -102,6 +102,12 @@ type call struct {
 	err error
 }
 
+// historyID is whose history the call's plays go to and are read from
+// (auth.HistoryID): the managed account whose app password the client
+// signed in with, else the person. Everything else (stars, playlists,
+// limits, screen time) is c.u's.
+func (c *call) historyID() int64 { return auth.HistoryID(c.ctx) }
+
 // keep records the first rendering error of the call.
 func (c *call) keep(err error) {
 	if c.err == nil {

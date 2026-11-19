@@ -4,7 +4,9 @@
 // says what the server picked and whether its test encode passed, and
 // «Проверить заново» runs the test encodes again. Its own endpoint
 // (/api/settings/transcoding), not the settings object: until changed here
-// the server's VAULT_HWACCEL* apply.
+// the server's VAULT_HWACCEL* apply. «Поиск заставок» says whether ffmpeg
+// can analyse episodes (chromaprint): without it intros and credits come
+// only from chapters and the online databases, and that is said here.
 import { useEffect, useState } from "react";
 import {
   getTranscoding,
@@ -186,6 +188,16 @@ export function TranscodingSection() {
           {t("settings.tc.probe")}
         </Button>
       </ListRow>
+      {view.fingerprint !== undefined && (
+        <ListRow
+          label={t("settings.tc.fingerprint")}
+          status={t(
+            view.fingerprint
+              ? "settings.tc.fingerprint.ok"
+              : "settings.tc.fingerprint.missing",
+          )}
+        />
+      )}
       {view.custom && (
         <ListRow
           label={t("settings.tc.defaults")}

@@ -34,6 +34,7 @@ import (
 	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/config"
 	"github.com/antresol-app/antresol/internal/db"
+	"github.com/antresol-app/antresol/internal/discovery"
 	"github.com/antresol-app/antresol/internal/disk"
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/files"
@@ -46,6 +47,7 @@ import (
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/mediaimport"
 	"github.com/antresol-app/antresol/internal/metadata"
+	"github.com/antresol-app/antresol/internal/metadata/booknames"
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/music"
 	"github.com/antresol-app/antresol/internal/notify"
@@ -435,6 +437,9 @@ func run() error {
 	chans.Probe = func(ctx context.Context, path string) (media.ProbeResult, error) {
 		return media.Probe(ctx, cfg.FFprobe, path)
 	}
+	// intros and credits found after a schedule was built: the part of it
+	// not on air yet is cut again
+	segWorker.Changed = chans.SegmentsChanged
 	// generated channels follow the library (new files need their
 	// durations), vanished files leave the schedules
 	jobs.AfterProbe = func(context.Context) { chans.Kick() }
@@ -445,7 +450,15 @@ func run() error {
 	ext.trackingHooks(trackSvc)
 	// external accounts (Shikimori lists into marks, local changes and
 	// watched episodes pushed back) and the anime map they need
-	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, cfg.PublicURL)
+	// the other-language names of books (a Goodreads shelf in English, the
+	// library's Russian editions), the AI helper's light model the last resort
+	names := bookNames(database, metaSrc, func(ctx context.Context) booknames.Asker {
+		if l := chans.ModelFor(ctx, channels.TierLight); l != nil {
+			return l
+		}
+		return nil
+	}, slog.Default())
+	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, names, cfg.PublicURL)
 	if err != nil {
 		return err
 	}
@@ -489,8 +502,10 @@ func run() error {
 	// «Экранное время» of kid profiles: one counter for the web, Subsonic
 	// and Jellyfin (the day is the server's, TZ)
 	screenTime := screentime.New(database)
+	// the server's name on the home network, filled in by discovery (below)
+	localName := &discovery.Status{}
 	deps := api.Deps{
-		Accel: accel, TranscodingDefaults: hwDefaults,
+		Accel: accel, TranscodingDefaults: hwDefaults, LocalName: localName,
 		ScreenTime: screenTime,
 		Users:      users, Sessions: sessions, Network: network, Throttle: throttle,
 		MediaKeys: auth.NewMediaKeys(mkSecret, sessions),
@@ -779,7 +794,7 @@ func run() error {
 	ext.start(ctx, &wg)
 	// the apps find this server on the home network (VAULT_DISCOVERY, VAULT_MDNS, VAULT_DISCOVERY_PORT)
 	wg.Add(1)
-	go func() { defer wg.Done(); runDiscovery(ctx, cfg, serverID) }()
+	go func() { defer wg.Done(); runDiscovery(ctx, cfg, serverID, localName) }()
 
 	errc := make(chan error, len(servers))
 	stopAddons := func() {
@@ -939,7 +954,7 @@ func skipManaged(users *auth.Store, f func(ctx context.Context, uid, itemID int6
 // public shelf widget and the profile's export), and subscribes the sync to the
 // tracking store's mark changes and the progress store's watched changes.
 func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, trackSvc *tracking.Service, tm *tmdb.Client,
-	repo *library.Repo, prog *progress.Store, publicURL string) (*accountsWiring, error) {
+	repo *library.Repo, prog *progress.Store, names *booknames.Resolver, publicURL string) (*accountsWiring, error) {
 	keyHex, err := auth.LoadOrCreateSetting(ctx, database, "accounts_token_key", 32)
 	if err != nil {
 		return nil, err
@@ -997,12 +1012,16 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 		msc := myshows.New(cmp.Or(os.Getenv("VAULT_MYSHOWS_URL"), myshows.DefaultBase), nil)
 		mshows = &myshows.Puller{Accounts: store, Tracker: accountTracker{trackStore}, Remote: msc,
 			Map: &myshows.Mapper{DB: database, Client: msc, Find: tmdbIMDbFind(tm)}, Kick: trackSvc.Kick,
-			EpisodesChanged: syncer.EpisodesChanged, Lock: syncer.UserLock, Log: log.With("provider", myshows.Provider)}
+			EpisodesChanged: syncer.EpisodesChanged, Lock: syncer.UserLock, Runs: syncer.Runs(), Log: log.With("provider", myshows.Provider)}
 		acctAPI.MyShows = myShowsAccount{p: mshows, c: msc}
 	}
-	// Goodreads needs nothing outside the library and the progress store
+	// Goodreads needs the library and the progress store, and the books'
+	// other names (nil: titles as Goodreads writes them only)
 	reads := &goodreads.Service{Accounts: store, Library: repo, Progress: prog,
-		Remote: goodreads.NewWidget(os.Getenv("VAULT_GOODREADS_URL"), nil), Log: log.With("provider", goodreads.Provider)}
+		Remote: goodreads.NewWidget(os.Getenv("VAULT_GOODREADS_URL"), nil), Runs: syncer.Runs(), Log: log.With("provider", goodreads.Provider)}
+	if names != nil {
+		reads.Names = names
+	}
 	acctAPI.Goodreads = goodreads.Account{S: reads}
 	return &accountsWiring{routes: api.AccountRoutes{API: acctAPI.Routes, Browser: acctAPI.BrowserRoutes}, start: func(ctx context.Context, wg *sync.WaitGroup) {
 		wg.Add(3)

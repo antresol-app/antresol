@@ -81,6 +81,17 @@ export interface CoreUpdate {
   docker: boolean
 }
 
+/** GET /api/about/local: the server's name on the home network (mDNS). */
+export interface LocalName {
+  /** off: mDNS off; probing: checking the name is free; ready: url works at home;
+   * bridge: a Docker bridge network, multicast does not leave the container; failed: no socket or no free name. */
+  state: 'off' | 'probing' | 'ready' | 'bridge' | 'failed'
+  /** antresol.local (antresol-2.local when another server holds it); only when ready. */
+  name?: string
+  /** http://antresol.local:8420; only when ready. */
+  url?: string
+}
+
 export interface About {
   version: string
   commit: string
@@ -819,6 +830,8 @@ export interface TranscodingView {
     probes: { mode: string; ok: boolean; error?: string }[]
     probedAt: string
   }
+  /** ffmpeg has chromaprint: the intros and credits of episodes are analysed (absent: no segments worker) */
+  fingerprint?: boolean
 }
 
 /** One of GET /api/items/{id}/trailers: a YouTube trailer or teaser of the title (TMDB). */
@@ -1818,6 +1831,8 @@ export interface ShikimoriState {
   /** The last sync error, in the viewer's language. */
   lastError: string
   lastSync: string | null
+  /** A sync of the link runs on the server now (the periodic one, the pull after linking, «Синхронизировать»). */
+  syncing: boolean
   writeState: ShikimoriWriteState
   /** An OAuth client is configured and the public URL is https. */
   canWrite: boolean
@@ -1832,6 +1847,7 @@ export interface MyShowsState {
   status: Exclude<ShikimoriStatus, 'relogin'>
   lastError: string
   lastSync: string | null
+  syncing: boolean
   unmapped: number
 }
 /** GET /api/accounts → goodreads (read only; absent on a server without it). Goodreads has no open API: a linked profile's public shelves are read, and a library export (CSV) is imported. */
@@ -1843,6 +1859,7 @@ export interface GoodreadsState {
   status: Exclude<ShikimoriStatus, 'relogin' | 'private'>
   lastError: string
   lastSync: string | null
+  syncing: boolean
   /** The profile's Goodreads books and, by shelf, how many; `inLibrary` of them are in the library. */
   total: number
   read: number

@@ -1,11 +1,14 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/antresol-app/antresol/internal/discovery"
 	"github.com/antresol-app/antresol/internal/version"
 )
 
@@ -76,5 +79,31 @@ func TestAboutLicenceTexts(t *testing.T) {
 		if w.Code != 200 || !strings.Contains(w.Body.String(), want) || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
 			t.Errorf("%s: %d %q %.80s", path, w.Code, w.Header().Get("Content-Type"), w.Body)
 		}
+	}
+}
+
+// GET /api/about/local tells a signed-in user the address to open on the
+// home network, once the name is claimed; without a session it is refused.
+func TestAboutLocalName(t *testing.T) {
+	st := &discovery.Status{}
+	e := newLibEnvWith(t, func(d *Deps, _ *sql.DB) { d.LocalName = st })
+	if w := e.do("GET", "/api/about/local", "", nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	get := func() map[string]any {
+		w := e.do("GET", "/api/about/local", "", e.admin)
+		var m map[string]any
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &m) != nil {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		return m
+	}
+	if m := get(); m["state"] != "off" || m["url"] != nil {
+		t.Fatalf("%v", m)
+	}
+	// the discovery package fills it in; here through its own test seam
+	discovery.SetStatusForTest(st, discovery.StateReady, "antresol-2.local", 8420)
+	if m := get(); m["state"] != "ready" || m["name"] != "antresol-2.local" || m["url"] != "http://antresol-2.local:8420" {
+		t.Fatalf("%v", m)
 	}
 }

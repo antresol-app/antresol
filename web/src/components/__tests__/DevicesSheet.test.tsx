@@ -43,6 +43,10 @@ beforeEach(() => {
         managed = on ? [{ id: 50, name: 'Гостиная', avatar: 'grad-1', devices: [{ id, name: 'MacBook', model: '' }] }] : []
         return new Response(JSON.stringify({ id, history }), { status: 200 })
       }
+      if (url.startsWith('/api/me/managed') && url.endsWith('/app-password')) {
+        if (method === 'POST') return new Response(JSON.stringify({ password: 'abcd-efgh-ijkl-mnop' }), { status: 200 })
+        return new Response(JSON.stringify({ exists: false, createdAt: null }), { status: 200 })
+      }
       if (url.startsWith('/api/me/managed')) {
         if (method === 'POST' && url === '/api/me/managed') {
           const a = { id: 60, name: (bodies[`POST ${url}`] as { name: string }).name, avatar: 'grad-1', devices: [] }
@@ -165,11 +169,27 @@ describe('DevicesSheet', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Создать' }))
     expect(await within(sheet).findByText('Кухня')).toBeInTheDocument()
     expect(bodies['POST /api/me/managed']).toEqual({ name: 'Кухня' })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить историю: Кухня' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Действия: Кухня' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Удалить историю: Кухня' }))
     const ask = await screen.findByRole('alertdialog', { name: 'Удалить «Кухня»?' })
     fireEvent.click(within(ask).getByRole('button', { name: 'Удалить' }))
     await waitFor(() => expect(within(sheet).queryByText('Кухня')).not.toBeInTheDocument())
     expect(calls).toContain('DELETE /api/me/managed/60')
+  })
+
+  it('makes an app password for a separate history', async () => {
+    managed = [{ id: 50, name: 'Гостиная', avatar: 'grad-1', devices: [] }]
+    render(<DevicesSheet onClose={() => {}} />)
+    const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'Действия: Гостиная' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Пароль для приложений' }))
+    const pw = await screen.findByRole('dialog', { name: 'Пароль для приложений: Гостиная' })
+    expect(within(pw).getByText(/запишется в «Гостиная»/)).toBeInTheDocument()
+    fireEvent.click(await within(pw).findByRole('button', { name: 'Создать пароль' }))
+    expect(await within(pw).findByDisplayValue('abcd-efgh-ijkl-mnop')).toBeInTheDocument()
+    expect(calls).toContain('GET /api/me/managed/50/app-password')
+    expect(calls).toContain('POST /api/me/managed/50/app-password')
+    expect(calls).not.toContain('POST /api/me/app-password')
   })
 
   it('leaves the switch and the accounts to an administrator for a kid', async () => {

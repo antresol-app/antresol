@@ -10,7 +10,7 @@ import (
 
 // MsgRemotePasswordless: a profile without a password used from outside
 // the home network.
-const MsgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в Управлении → Профили."
+const MsgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили»."
 
 // Guard is the one session check of the web API: the vault_session cookie
 // (browsers) or Authorization: Bearer (the native app). A native token of a

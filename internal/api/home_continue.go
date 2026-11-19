@@ -47,7 +47,7 @@ func (h *lib) wantsAddonContinue(r *http.Request, u auth.User) bool {
 // image-cache poster and an app-path href.
 func (h *lib) addonContinue(ctx context.Context, u auth.User, maxHeight int) []datedCard {
 	who := &addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(ctx),
-		MaxRating: ratingLimit(u), MaxHeight: maxHeight}
+		MaxRating: ratingLimit(u), MaxHeight: maxHeight, History: addonHistory(ctx)}
 	type sent struct {
 		id string
 		c  addonkit.ContinueCard

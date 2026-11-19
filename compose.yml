@@ -4,6 +4,7 @@ services:
     container_name: antresol
     restart: unless-stopped
     stop_grace_period: 30s           # lets ffmpeg and open requests finish
+    # network_mode: host             # for antresol.local and the apps' own search; then drop ports: (docs/install.md)
     ports:
       - "8420:8420"                  # web and apps
       - "8420:8420/udp"              # apps find the server on the home network
@@ -37,11 +38,7 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
-  # Helper services of addons go here, under services:. An addon that needs
-  # one (its manifest declares it) shows the block to paste in its settings
-  # page; add it and run `docker compose up -d`. A helper publishes no port:
-  # the server reaches it by its service name on this project's network, and
-  # the addon finds it by itself (no address to enter).
+  # An addon's helper service (see docs/install.md) goes here, under services:.
 
 volumes:
   antresol-config:

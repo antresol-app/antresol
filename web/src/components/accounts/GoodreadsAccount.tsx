@@ -5,7 +5,7 @@
 // link needed). The books go onto «Читаю сейчас», «Хочу прочитать» and
 // «Прочитано». Not for a kid; absent when the server does not offer Goodreads.
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, errorText, getAccounts, importGoodreads, linkGoodreads, unlinkGoodreads } from '../../api/client'
+import { ApiError, errorText, importGoodreads, linkGoodreads, syncAccount, unlinkGoodreads } from '../../api/client'
 import type { GoodreadsState } from '../../api/types'
 import { useT } from '../../i18n'
 import { loadGoodreads, setGoodreadsState } from '../../state/accounts'
@@ -15,6 +15,7 @@ import { Button } from '../../ui/Button'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { AccountRow } from './AccountRow'
+import { useSyncPolling } from './useSyncPolling'
 
 // the first read of the shelves takes seconds: ask again, ever less often
 const POLL_MS = 2000
@@ -42,41 +43,15 @@ export function GoodreadsAccount() {
     }
   }, [kid, user?.id])
 
-  // after a link the first pull runs on the server: ask again, with
-  // growing pauses, until it has stored a sync time
-  const polling = !!s?.linked && !s.lastSync && s.status === 'ok'
-  useEffect(() => {
-    if (!polling) return
-    let live = true
-    let timer: ReturnType<typeof setTimeout>
-    const next = (delay: number) => {
-      timer = setTimeout(() => {
-        getAccounts()
-          .then(
-            (a) => {
-              if (!live || !a.goodreads) return
-              setGoodreadsState(a.goodreads)
-              setS(a.goodreads)
-            },
-            () => {},
-          )
-          .finally(() => {
-            if (live) next(Math.min(delay * 1.5, POLL_MAX_MS))
-          })
-      }, delay)
-    }
-    next(POLL_MS)
-    return () => {
-      live = false
-      clearTimeout(timer)
-    }
-  }, [polling])
-
-  if (kid || !s) return null
   const apply = (n: GoodreadsState) => {
     setGoodreadsState(n)
     setS(n)
   }
+  // a sync runs on the server (the first read after linking, «Синхронизировать», the
+  // periodic one): ask, with growing pauses, until it ends
+  useSyncPolling(!!s?.syncing, (a) => a.goodreads, apply, POLL_MS, POLL_MAX_MS)
+
+  if (kid || !s) return null
   const run = async (f: () => Promise<void>) => {
     setBusy(true)
     setError('')
@@ -95,11 +70,12 @@ export function GoodreadsAccount() {
       apply(await linkGoodreads(profile.trim()))
       setProfile('')
     })
+  const sync = () => run(async () => apply((await syncAccount('goodreads')).goodreads as GoodreadsState))
   const forget = () =>
     run(async () => {
       await unlinkGoodreads()
       setImported('')
-      apply({ ...s, linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 })
+      apply({ ...s, linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 })
     })
   const pick = (file: File | undefined) => {
     if (!file) return
@@ -117,7 +93,7 @@ export function GoodreadsAccount() {
 
   return (
     <GroupedSection title={t('acct.goodreads.title')} footer={error || undefined}>
-      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.goodreads')} status={statusLine(s, t)} busy={busy} onUnlink={() => void forget()} />
+      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.goodreads')} status={statusLine(s, t)} syncing={s.syncing} busy={busy} onSync={() => void sync()} onUnlink={() => void forget()} />
       {!s.linked ? (
         <ListRow wide label={t('acct.linkTitle')} hint={t('acct.goodreads.hint')}>
           <InlineForm
@@ -128,7 +104,7 @@ export function GoodreadsAccount() {
           />
         </ListRow>
       ) : (
-        polling && <ListRow label={t('acct.goodreads.firstRead')} />
+        s.syncing && !s.lastSync && <ListRow label={t('acct.goodreads.firstRead')} />
       )}
       <ListRow label={t('acct.goodreads.file')} hint={t('acct.goodreads.file.hint')} status={imported || undefined}>
         {/* no accept: a spreadsheet app may have renamed the file, the server checks the content */}

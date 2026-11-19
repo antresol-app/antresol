@@ -50,6 +50,18 @@ describe('catalogs', () => {
     expect(bad).toEqual([])
   })
 
+  // The names settle once and every text follows: «Управление» left the menu
+  // (the server's part is «Настройки → Сервер»; only «Управление каналами» is
+  // a real label), and English says «Shows», not «TV Shows».
+  it('no text sends people to the retired «Управление» menu or says «TV Shows»', () => {
+    const text = (v: Entry) => (typeof v === 'string' ? v : Object.values(v).join(' '))
+    const stale: string[] = []
+    for (const [k, v] of Object.entries(ruCat)) if (/Управлени[еяию]/.test(text(v).replaceAll('Управление каналами', ''))) stale.push(k)
+    // 'pair.lead': «The TV shows a code» is a verb
+    for (const [k, v] of Object.entries(enCat)) if (k !== 'pair.lead' && /Manage\s*→|→\s*Manage\b|\bTV [Ss]hows?\b/.test(text(v))) stale.push(k)
+    expect(stale).toEqual([])
+  })
+
   it('English text has no Cyrillic except the language names', () => {
     const allowed = new Set(['common.uiLanguage.ru'])
     const cyr = Object.entries(enCat)

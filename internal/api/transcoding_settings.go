@@ -50,13 +50,15 @@ type transcodingAPI struct {
 	db       *sql.DB
 	accel    *media.Accel
 	defaults media.AccelConfig
+	// segs says whether ffmpeg can analyse episodes (nil: no analysis)
+	segs Segmenter
 }
 
 func mountTranscoding(r chi.Router, deps Deps) {
 	if deps.Accel == nil || deps.DB == nil {
 		return
 	}
-	t := &transcodingAPI{db: deps.DB, accel: deps.Accel, defaults: deps.TranscodingDefaults}
+	t := &transcodingAPI{db: deps.DB, accel: deps.Accel, defaults: deps.TranscodingDefaults, segs: deps.Segments}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
 		r.Get("/api/settings/transcoding", t.get)
@@ -74,6 +76,11 @@ type transcodingView struct {
 	Custom   bool              `json:"custom"`
 	Devices  []string          `json:"devices"`
 	Status   transcodingStatus `json:"status"`
+	// Fingerprint: ffmpeg has chromaprint, the analysis that finds the
+	// intros and credits of episodes (skipping them in the players and on
+	// the channels); false: only chapters and the online databases give
+	// them. Absent without the segments worker.
+	Fingerprint *bool `json:"fingerprint,omitempty"`
 }
 
 type transcodingStatus struct {
@@ -94,8 +101,13 @@ func (t *transcodingAPI) view(ctx context.Context) (transcodingView, error) {
 	if st.Probes == nil {
 		st.Probes = []media.HWProbe{}
 	}
-	return transcodingView{Settings: cfg, Defaults: t.defaults, Custom: custom, Devices: devs,
-		Status: transcodingStatus{HWStatus: st, Name: media.HWName(st.Mode)}}, nil
+	v := transcodingView{Settings: cfg, Defaults: t.defaults, Custom: custom, Devices: devs,
+		Status: transcodingStatus{HWStatus: st, Name: media.HWName(st.Mode)}}
+	if t.segs != nil {
+		ok := t.segs.CanFingerprint()
+		v.Fingerprint = &ok
+	}
+	return v, nil
 }
 
 func (t *transcodingAPI) get(w http.ResponseWriter, r *http.Request) {

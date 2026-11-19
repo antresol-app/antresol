@@ -7,6 +7,8 @@
 //   shrink — the control gives way: a pop-up in it cuts its choice with an
 //            ellipsis (at most 40% of a wide row) before the label would
 //            break inside a word
+// On a phone a plain row (none of these) keeps its text at least
+// --row-text-min wide: a control that would squeeze it goes under it.
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button.
 import type { ReactNode } from 'react'

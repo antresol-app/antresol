@@ -21,9 +21,11 @@ func init() {
 		"Goodreads изменил список книг профиля: пока подойдёт только импорт файла CSV":     "Goodreads changed how it lists a profile's books: only importing the CSV file works for now",
 		"Файл больше 24 МБ":                                                                "The file is larger than 24 MB",
 		"Это не экспорт библиотеки Goodreads: нужен файл из «Мои книги → Импорт и экспорт → Экспортировать библиотеку»": "This is not a Goodreads library export: use the file from My Books → Import and export → Export Library",
-		"Не удалось прочитать данные":      "Could not read the data",
-		"TMDB недоступен, попробуем позже": "TMDB is unavailable, will try again later",
-		"Не удалось сохранить":             "Could not save",
-		"Неверный запрос":                  "Bad request",
+		"Сначала свяжите аккаунт":                             "Link the account first",
+		"Только что синхронизировано, повторите через минуту": "Synced just now, try again in a minute",
+		"Не удалось прочитать данные":                         "Could not read the data",
+		"TMDB недоступен, попробуем позже":                    "TMDB is unavailable, will try again later",
+		"Не удалось сохранить":                                "Could not save",
+		"Неверный запрос":                                     "Bad request",
 	})
 }

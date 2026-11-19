@@ -126,6 +126,6 @@ test.describe('empty library', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Медиатека пока пуста' })).toBeVisible()
     // the core build leads to the rescan, the other build to Search (emptyLibrary*.test.tsx)
-    await expect(page.getByRole('link', { name: /Пересканировать в настройках|Найти фильм/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Сканировать в настройках|Найти фильм/ })).toBeVisible()
   })
 })

@@ -147,6 +147,45 @@ func (c *Client) SearchQ(ctx context.Context, q string) ([]Doc, error) {
 	return c.search(ctx, url.Values{"q": {q}, "limit": {"10"}})
 }
 
+// workFields are what a work lookup (Works) reads: no subjects and no
+// covers, which are long for a well-known work.
+const workFields = "key,title,author_name,isbn"
+
+// Works finds the works of an edition's ISBN (isbn:…), else of a title and
+// an author, with the ISBNs of all their editions (translations included:
+// the work of a Penguin «The Master and Margarita» lists the Russian
+// editions too). At most three.
+func (c *Client) Works(ctx context.Context, title, author, isbn string) ([]Doc, error) {
+	q := url.Values{"fields": {workFields}, "limit": {"3"}}
+	switch {
+	case isbn != "":
+		q.Set("q", "isbn:"+isbn)
+	case strings.TrimSpace(title) != "":
+		q.Set("title", strings.TrimSpace(title))
+		if author = strings.TrimSpace(author); author != "" {
+			q.Set("author", author)
+		}
+	default:
+		return []Doc{}, nil
+	}
+	var raw struct {
+		Docs []struct {
+			Key     string   `json:"key"`
+			Title   string   `json:"title"`
+			Authors []string `json:"author_name"`
+			ISBN    []string `json:"isbn"`
+		} `json:"docs"`
+	}
+	if err := c.get(ctx, "/search.json", q, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]Doc, 0, len(raw.Docs))
+	for _, d := range raw.Docs {
+		out = append(out, Doc{Key: d.Key, Title: d.Title, Authors: d.Authors, ISBN: d.ISBN})
+	}
+	return out, nil
+}
+
 var workKey = regexp.MustCompile(`^(?:/works/)?(OL\d+W)$`)
 
 // Work fetches a work record by its key ("/works/OL1W" or "OL1W").

@@ -3,12 +3,17 @@
 // «Отдельная история на этом устройстве» in «Устройства»; renamed, moved
 // into the profile («Перенести») or deleted with their history. An admin
 // sees every profile's (with its owner) and may delete any; renaming and
-// moving are the owner's.
+// moving are the owner's, and so is an account's own app password: a TV's
+// Infuse or music app signs in with the profile's name and it, and writes
+// that history.
 import { useState } from 'react'
 import { createManagedAccount, deleteAnyManagedAccount, deleteManagedAccount, errorText, mergeManagedAccount, renameManagedAccount } from '../api/client'
 import type { ManagedAccount } from '../api/types'
 import { t as tr, useT } from '../i18n'
-import { Button } from '../ui/Button'
+import { session } from '../state/session'
+import { AppPasswordSheet } from './AppPasswordSheet'
+import { IconButton } from '../ui/IconButton'
+import { Menu, MenuItem } from '../ui/Menu'
 import { InlineForm } from '../ui/InlineForm'
 import { GroupedSection, ListRow } from '../ui/List'
 import { Sheet } from '../ui/Sheet'
@@ -37,6 +42,8 @@ export function ManagedAccountsSection({ items, me, onChanged }: ManagedAccounts
   const [ask, setAsk] = useState<Ask>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [password, setPassword] = useState<ManagedAccount | null>(null)
+  const user = session.get().user
 
   const run = (p: Promise<unknown>, after?: () => void) => {
     setBusy(true)
@@ -77,39 +84,54 @@ export function ManagedAccountsSection({ items, me, onChanged }: ManagedAccounts
       <GroupedSection id="managed-accounts" title={t('comp.managed.title')} footer={t('comp.managed.footer')}>
         {items.map((a) => (
           <ListRow key={a.id} label={a.name} hint={mine(a) ? devicesOf(a) : `${a.owner?.name ?? ''} · ${devicesOf(a)}`}>
-            {mine(a) && (
-              <>
-                <Button
-                  size="small"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    setRename(a.name)
-                    setAsk({ kind: 'rename', account: a })
-                  }}
-                >
-                  {t('comp.managed.rename')}
-                </Button>
-                <Button
-                  size="small"
-                  variant="secondary"
-                  disabled={busy}
-                  aria-label={t('comp.managed.mergeAria', { name: a.name })}
-                  onClick={() => setAsk({ kind: 'merge', account: a })}
-                >
-                  {t('comp.managed.merge')}
-                </Button>
-              </>
-            )}
-            <Button
-              size="small"
-              variant="destructive"
-              disabled={busy}
-              aria-label={t('comp.managed.deleteAria', { name: a.name })}
-              onClick={() => setAsk({ kind: 'delete', account: a })}
+            {/* one «⋯» per row, destructive last (DESIGN.md: a list of items
+                with actions): four buttons do not fit a phone's row */}
+            <Menu
+              label={t('comp.managed.actionsAria', { name: a.name })}
+              placement="bottom-end"
+              trigger={(p) => <IconButton {...p} size="xs" icon="ellipsis" disabled={busy} label={t('comp.managed.actionsAria', { name: a.name })} />}
             >
-              {t('comp.managed.delete')}
-            </Button>
+              {(close) => (
+                <>
+                  {mine(a) && (
+                    <>
+                      <MenuItem
+                        label={t('comp.managed.rename')}
+                        onSelect={() => {
+                          close(false)
+                          setRename(a.name)
+                          setAsk({ kind: 'rename', account: a })
+                        }}
+                      />
+                      <MenuItem
+                        label={t('comp.managed.appPassword')}
+                        onSelect={() => {
+                          close(false)
+                          setPassword(a)
+                        }}
+                      />
+                      <MenuItem
+                        label={t('comp.managed.merge')}
+                        ariaLabel={t('comp.managed.mergeAria', { name: a.name })}
+                        onSelect={() => {
+                          close(false)
+                          setAsk({ kind: 'merge', account: a })
+                        }}
+                      />
+                    </>
+                  )}
+                  <MenuItem
+                    label={t('comp.managed.delete')}
+                    ariaLabel={t('comp.managed.deleteAria', { name: a.name })}
+                    destructive
+                    onSelect={() => {
+                      close(false)
+                      setAsk({ kind: 'delete', account: a })
+                    }}
+                  />
+                </>
+              )}
+            </Menu>
           </ListRow>
         ))}
         <ListRow wide label={t('comp.managed.create')}>
@@ -134,6 +156,14 @@ export function ManagedAccountsSection({ items, me, onChanged }: ManagedAccounts
         </p>
       )}
 
+      {password && (
+        <AppPasswordSheet
+          userName={user?.name ?? ''}
+          passwordless={user ? !user.hasPassword : false}
+          managed={{ id: password.id, name: password.name }}
+          onClose={() => setPassword(null)}
+        />
+      )}
       {ask?.kind === 'merge' && (
         <Sheet
           title={t('comp.managed.mergeTitle', { name: ask.account.name })}

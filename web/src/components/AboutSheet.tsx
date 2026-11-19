@@ -1,10 +1,12 @@
 // «О сервере» (profile menu): the server's version, its licence and texts,
-// the source offer (AGPL §13; no link when the server gives none) and the
-// TMDB notice its terms ask for.
+// the source offer (AGPL §13; no link when the server gives none), the
+// address to open on the home network (antresol.local, when the server
+// holds that name; why not, when it cannot) and the TMDB notice its terms
+// ask for.
 import { APP_NAME } from '../brand'
 import { useEffect, useState } from 'react'
-import { getTranscoding } from '../api/client'
-import type { About, TranscodingView } from '../api/types'
+import { getLocalName, getTranscoding } from '../api/client'
+import type { About, LocalName, TranscodingView } from '../api/types'
 import { useT } from '../i18n'
 import { loadAbout, sourceLink } from '../state/about'
 import { ButtonAnchor } from '../ui/Button'
@@ -34,6 +36,23 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
     getTranscoding(ac.signal).then((v) => setTc(v?.status?.mode ? v : null), () => {})
     return () => ac.abort()
   }, [])
+  // the home-network name: shown when there is one, or a reason worth acting on
+  const [local, setLocal] = useState<LocalName | null>(null)
+  useEffect(() => {
+    const ac = new AbortController()
+    getLocalName(ac.signal).then((v) => setLocal(v && typeof v.state === 'string' ? v : null), () => {})
+    return () => ac.abort()
+  }, [])
+  // the address itself is the row's value; a reason is a sentence under the label
+  const localURL = local?.state === 'ready' ? (local.url ?? '') : ''
+  const localWhy =
+    local?.state === 'probing'
+      ? t('comp.about.localProbing')
+      : local?.state === 'bridge'
+        ? t('comp.about.localBridge')
+        : local?.state === 'failed'
+          ? t('comp.about.localFailed')
+          : ''
   const source = sourceLink(about)
   const link = (href: string, label: string) => (
     <ButtonAnchor variant="plain" size="small" className={styles.rowLink} href={href} target="_blank" rel="noopener noreferrer">
@@ -59,10 +78,15 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
               <span className={styles.value}>{about.license}</span>
             </ListRow>
             {tc && (
-              <ListRow stack label={t('comp.about.video')}>
-                <span className={styles.value}>{statusLine(tc, t)}</span>
-              </ListRow>
+              <ListRow label={t('comp.about.video')} hint={statusLine(tc, t)} />
             )}
+          </GroupedSection>
+        )}
+        {(localURL || localWhy) && (
+          <GroupedSection footer={localURL ? t('comp.about.localHint') : undefined}>
+            <ListRow stack label={t('comp.about.local')} hint={localWhy || undefined}>
+              {localURL && <span className={styles.address}>{localURL}</span>}
+            </ListRow>
           </GroupedSection>
         )}
         <GroupedSection footer={t('comp.about.tmdb')}>

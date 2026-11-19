@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/accounts"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/metadata/booknames"
 	"github.com/antresol-app/antresol/internal/progress"
 )
 
@@ -23,8 +25,11 @@ const (
 // Pull cadence: the widget is a public page, so a linked profile is read
 // gently; the books a shelf gains between two reads wait for the next one.
 const (
-	pullEvery      = 6 * time.Hour
-	retryEvery     = 30 * time.Minute // after a failed read
+	pullEvery  = 6 * time.Hour
+	retryEvery = 30 * time.Minute // after a failed read
+	// lookupsPerTick: books asked about (Names.Lookup, a few requests each)
+	// per minute, so a large import is translated gently, in the background
+	lookupsPerTick = 10
 	reconcileEvery = time.Hour
 	runTick        = time.Minute
 	shelfGap       = time.Second
@@ -34,6 +39,16 @@ const (
 type Library interface {
 	BooksByISBN(ctx context.Context) (map[string][]library.BookRef, error)
 	FindBooks(ctx context.Context, author, title string) ([]library.BookRef, error)
+	BooksTitled(ctx context.Context, title string) ([]library.TitledBook, error)
+	BooksByWork(ctx context.Context) (map[string][]library.BookRef, error)
+}
+
+// Names finds the other names of a book's work (*booknames.Resolver):
+// Goodreads lists a book under its original title, the library has its
+// translation. Cached answers only during a match; Lookup asks the sources.
+type Names interface {
+	Cached(ctx context.Context, b booknames.Book) (booknames.Names, bool, error)
+	Lookup(ctx context.Context, b booknames.Book) (booknames.Names, error)
 }
 
 // Progress is the part of *progress.Store the marks are written through.
@@ -58,13 +73,22 @@ type Service struct {
 	Library  Library
 	Progress Progress
 	Remote   Remote
-	Now      func() time.Time
+	// Names (nil: none) finds the books whose title is in another language
+	// than the library's edition: looked up in the background (Run), the
+	// answers used by every match after.
+	Names Names
+	Now   func() time.Time
 	// Gap is the pause between the reads of one pull's shelves (default 1 s).
 	Gap time.Duration
-	Log *slog.Logger
+	// Runs is the registry of syncs in flight (accounts.Syncer.Runs): a
+	// profile whose sync is running is left to it (nil = no registry).
+	Runs *accounts.Runs
+	Log  *slog.Logger
 
 	mu    sync.Mutex
 	locks map[int64]*sync.Mutex
+	// lookupPause: a source failed; lookups wait until then
+	lookupPause time.Time
 }
 
 func (s *Service) lock(uid int64) *sync.Mutex {
@@ -311,15 +335,20 @@ func (s *Service) apply(ctx context.Context, uid int64) error {
 	if err := rows.Err(); err != nil || len(todo) == 0 {
 		return err
 	}
-	byISBN, err := s.Library.BooksByISBN(ctx)
-	if err != nil {
+	var idx index
+	if idx.isbn, err = s.Library.BooksByISBN(ctx); err != nil {
 		return err
+	}
+	if s.Names != nil {
+		if idx.work, err = s.Library.BooksByWork(ctx); err != nil {
+			return err
+		}
 	}
 	for _, r := range todo {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		refs, err := s.match(ctx, byISBN, r)
+		refs, err := s.match(ctx, idx, r)
 		if err != nil {
 			return err
 		}
@@ -339,11 +368,24 @@ func (s *Service) apply(ctx context.Context, uid int64) error {
 	return nil
 }
 
+// index: the library's books by ISBN-13 and by Open Library work.
+type index struct {
+	isbn, work map[string][]library.BookRef
+}
+
+// book is how a stored book is looked up elsewhere.
+func (r row) book() booknames.Book {
+	return booknames.Book{Title: baseTitle(r.title), Author: r.author, ISBN13: r.isbn13}
+}
+
 // match finds the library books of a Goodreads book: by ISBN when the
-// export gave one, else by title and author.
-func (s *Service) match(ctx context.Context, byISBN map[string][]library.BookRef, r row) ([]library.BookRef, error) {
+// export gave one, else by title and author; failing both, by its work
+// (Names, as looked up before): an ISBN or an Open Library work of another
+// edition, or a title the work has in another language by an author whose
+// name, in any script, is one of the work's or Goodreads'.
+func (s *Service) match(ctx context.Context, idx index, r row) ([]library.BookRef, error) {
 	if r.isbn13 != "" {
-		if refs := byISBN[r.isbn13]; len(refs) > 0 {
+		if refs := idx.isbn[r.isbn13]; len(refs) > 0 {
 			return refs, nil
 		}
 	}
@@ -353,7 +395,86 @@ func (s *Service) match(ctx context.Context, byISBN map[string][]library.BookRef
 			return refs, err
 		}
 	}
-	return nil, nil
+	if s.Names == nil {
+		return nil, nil
+	}
+	n, _, err := s.Names.Cached(ctx, r.book()) // an old answer still matches
+	if err != nil || n.Empty() {
+		return nil, err
+	}
+	var out []library.BookRef
+	add := func(refs []library.BookRef) {
+		for _, ref := range refs {
+			if !slices.Contains(out, ref) {
+				out = append(out, ref)
+			}
+		}
+	}
+	for _, i := range n.ISBNs {
+		add(idx.isbn[i])
+	}
+	for _, w := range n.Works {
+		add(idx.work[w])
+	}
+	authors := append([]string{r.author}, n.Authors...)
+	for _, t := range n.Titles {
+		books, err := s.Library.BooksTitled(ctx, t)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range books {
+			if library.SameAuthor(authors, b.Authors) {
+				add([]library.BookRef{b.BookRef})
+			}
+		}
+	}
+	return out, nil
+}
+
+// lookupPending looks up (Names.Lookup) the profiles' books that found no
+// library book and have no answer yet, at most lookupsPerTick; true when an
+// answer named something (a match may find the book now). A failed source
+// pauses the lookups for retryEvery.
+func (s *Service) lookupPending(ctx context.Context) bool {
+	if s.Names == nil || s.now().Before(s.lookupPause) {
+		return false
+	}
+	rows, err := s.Accounts.DB.QueryContext(ctx, `SELECT DISTINCT title, author, isbn13 FROM goodreads_entries WHERE matched=0 ORDER BY title`)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.log().Warn("goodreads: unmatched", "err", err)
+		}
+		return false
+	}
+	var todo []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.title, &r.author, &r.isbn13); err == nil {
+			todo = append(todo, r)
+		}
+	}
+	rows.Close()
+	found, asked := false, 0
+	for _, r := range todo {
+		if ctx.Err() != nil || asked >= lookupsPerTick {
+			break
+		}
+		b := r.book()
+		if _, ok, err := s.Names.Cached(ctx, b); err != nil || ok {
+			continue
+		}
+		asked++
+		n, err := s.Names.Lookup(ctx, b)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.log().Info("goodreads: names lookup", "title", b.Title, "err", err)
+				s.lookupPause = s.now().Add(retryEvery)
+			}
+			break
+		}
+		found = found || !n.Empty()
+	}
+	return found
 }
 
 // applyShelf puts a Goodreads shelf on one library book:
@@ -450,15 +571,22 @@ func (s *Service) summary(ctx context.Context, uid int64) (accounts.ShelfSummary
 	return out, rows.Err()
 }
 
-// Run pulls every linked profile every few hours and matches the books of
-// every profile that still has some the library lacks (a book added to the
-// library later is found within the hour), until ctx ends.
+// Run pulls every linked profile every few hours, looks up the other names
+// of the books that found no library book (a few a minute, with Names),
+// and matches the books of every profile that still has some the library
+// lacks (a book added to the library later is found within the hour, one
+// just named at once), until ctx ends. Books imported before Names existed
+// are looked up alike: every unmatched book is.
 func (s *Service) Run(ctx context.Context) {
 	t := time.NewTicker(runTick)
 	defer t.Stop()
 	var reconciled time.Time
 	for {
 		pulled := s.pullDue(ctx)
+		if s.lookupPending(ctx) {
+			// the books just named are matched now, not within the hour
+			s.reconcileAll(ctx, nil)
+		}
 		if s.now().Sub(reconciled) >= reconcileEvery {
 			reconciled = s.now()
 			s.reconcileAll(ctx, pulled)
@@ -493,8 +621,14 @@ func (s *Service) pullDue(ctx context.Context) map[int64]bool {
 		if l.ExternalID == 0 || !l.LastSync.IsZero() && s.now().Before(l.LastSync.Add(wait)) {
 			continue
 		}
+		end, ok := s.Runs.Start(l.UserID, Provider)
+		if !ok {
+			continue // its sync is running (or was just asked for): it stamps the link when it ends
+		}
 		pulled[l.UserID] = true
-		if err := s.PullOne(ctx, l.UserID); err != nil && ctx.Err() == nil {
+		err := s.PullOne(ctx, l.UserID)
+		end()
+		if err != nil && ctx.Err() == nil {
 			s.log().Info("goodreads: pull", "user", l.UserID, "err", err)
 		}
 	}

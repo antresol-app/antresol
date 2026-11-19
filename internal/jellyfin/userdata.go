@@ -30,7 +30,7 @@ func (c *conv) episodeCounts(it library.Item) (epCounts, error) {
 	var finished int
 	if err := c.s.DB.QueryRowContext(c.ctx, `SELECT COUNT(*), COALESCE(SUM(COALESCE(p.finished,0)),0) FROM items e
 	  LEFT JOIN progress p ON p.item_id=e.id AND p.user_id=?
-	  WHERE e.kind='episode' AND e.missing_since IS NULL AND `+under, c.u.ID, it.ID).Scan(&n.episodes, &finished); err != nil {
+	  WHERE e.kind='episode' AND e.missing_since IS NULL AND `+under, c.hid, it.ID).Scan(&n.episodes, &finished); err != nil {
 		return n, err
 	}
 	n.unplayed = n.episodes - finished
@@ -46,7 +46,7 @@ func (c *conv) entry(id int64) (*progress.Entry, error) {
 	if e, ok := c.prog[id]; ok {
 		return e, nil
 	}
-	e, err := c.s.Progress.Get(c.ctx, c.u.ID, id)
+	e, err := c.s.Progress.Get(c.ctx, c.hid, id)
 	if errors.Is(err, progress.ErrNotFound) {
 		c.prog[id] = nil
 		return nil, nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -106,7 +107,7 @@ func (s *Server) nextUp(w http.ResponseWriter, r *http.Request) {
 			series = append(series, id)
 		}
 	} else {
-		entries, err := s.Progress.ContinueWatching(r.Context(), u.ID, 0)
+		entries, err := s.Progress.ContinueWatching(r.Context(), auth.HistoryID(r.Context()), 0)
 		if err != nil {
 			s.internal(w, r, "next up", err)
 			return
@@ -129,7 +130,7 @@ func (s *Server) nextUp(w http.ResponseWriter, r *http.Request) {
 		if !ok || sr.Kind != library.KindSeries {
 			continue
 		}
-		next, ok, err := s.Progress.NextEpisode(r.Context(), u.ID, id)
+		next, ok, err := s.Progress.NextEpisode(r.Context(), auth.HistoryID(r.Context()), id)
 		if err != nil {
 			s.internal(w, r, "next up", err)
 			return

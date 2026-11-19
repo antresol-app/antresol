@@ -10,7 +10,7 @@ import { WritePrompt } from '../WritePrompt'
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 const adult: User = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
-const base: ShikimoriState = { linked: true, nickname: 'tester', status: 'ok', lastError: '', lastSync: null, writeState: 'unasked', canWrite: true, unmapped: 0 }
+const base: ShikimoriState = { linked: true, nickname: 'tester', status: 'ok', lastError: '', lastSync: null, syncing: false, writeState: 'unasked', canWrite: true, unmapped: 0 }
 
 let state: ShikimoriState
 let calls: string[]

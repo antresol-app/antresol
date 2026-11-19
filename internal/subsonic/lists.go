@@ -13,7 +13,7 @@ import (
 // non-nil response is the error to send.
 func (c *call) albumListQuery() (library.AlbumQuery, *response) {
 	size, offset := c.pageParams("size", "offset", 10)
-	q := library.AlbumQuery{UserID: c.u.ID, Limit: size, Offset: offset, MaxRating: c.limit()}
+	q := library.AlbumQuery{UserID: c.u.ID, PlaysUserID: c.historyID(), Limit: size, Offset: offset, MaxRating: c.limit()}
 	switch t := c.p.Get("type"); t {
 	case "":
 		return q, c.missing("type")

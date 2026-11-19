@@ -723,6 +723,8 @@ type addonUser struct {
 	Lang      string `json:"lang"`
 	MaxRating string `json:"maxRating,omitempty"`
 	MaxHeight int    `json:"maxHeight,omitempty"`
+	// History: the separate history the request writes (addonHistory)
+	History *addonkit.History `json:"history,omitempty"`
 }
 
 // rewrite: /api/addons/{id}/x/<rest> → /api/<rest> on the addon's socket.
@@ -747,8 +749,21 @@ func (a *addonsAPI) rewrite(pr *httputil.ProxyRequest) {
 	h.Del("Authorization")
 	u := userOf(in)
 	b, _ := json.Marshal(addonUser{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(in.Context()),
-		MaxRating: ratingLimit(u), MaxHeight: a.maxHeight(in)})
+		MaxRating: ratingLimit(u), MaxHeight: a.maxHeight(in), History: addonHistory(in.Context())})
 	h.Set("X-Antresol-User", addons.ASCIIJSON(b))
+}
+
+// addonHistory is the separate history of the request for an addon
+// (addonkit.User.History): the managed account auth.HistoryOf names, nil
+// for the profile's own. The addon records what this request watches
+// there, as the core does (auth.HistoryID), and the profile's limits stay
+// the header's.
+func addonHistory(ctx context.Context) *addonkit.History {
+	h := auth.HistoryOf(ctx)
+	if h.ID == 0 {
+		return nil
+	}
+	return &addonkit.History{ID: h.ID, UID: h.UID, Name: h.Name}
 }
 
 // addonResponse: an addon sets no cookies on the server's origin, cannot

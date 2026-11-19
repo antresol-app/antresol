@@ -1,6 +1,6 @@
 // English strings (setupWizard group).
 export default {
-  'wizard.lead': 'A couple of minutes now, and nothing needs setting up later. Any step can be skipped: the same checks are in Manage → Server settings.',
+  'wizard.lead': 'A couple of minutes now, and nothing needs setting up later. Any step can be skipped: the same checks are in Settings → Server.',
   'wizard.step': 'Step {n} of {total}',
   'wizard.skipAll': 'Skip Setup',
   'wizard.skip': 'Skip',
@@ -25,7 +25,7 @@ export default {
   'storage.diskOffline': 'The disk is not connected: the library already has files, but the folders are not on {root}. Connect the disk and restart the server. No folders are made now: the server would take an empty folder for the real disk and hide the whole library.',
   'storage.libraries': 'Libraries',
   'storage.kind.movies': 'Movies',
-  'storage.kind.series': 'TV shows',
+  'storage.kind.series': 'Shows',
   'storage.kind.music': 'Music',
   'storage.kind.ebooks': 'E-books',
   'storage.kind.audiobooks': 'Audiobooks',

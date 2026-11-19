@@ -236,3 +236,197 @@ func (s oneProg) Program(_ context.Context, ch int64, t time.Time) (Program, err
 	p.Channel = ch
 	return p, nil
 }
+
+// An episode in two files plays each file cut by its own segments: the
+// first without its intro, the second without its credits, one programme.
+func TestBuildSkipsMultiFileEpisode(t *testing.T) {
+	f, s, eps, files := segFixture(t)
+	ctx := context.Background()
+	f.exec(`DELETE FROM file_segments`)
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, files[0], "intro", "chapters", 60_000, 90_000)
+	second := f.file(eps[0], 10) // after files[0] by path
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, second, "credits", "chapters", 575_000, 598_000)
+	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
+	b := f.builder()
+	b.Horizon = 40 * time.Minute
+	if err := b.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	es := f.entries(c.ID)
+	type row struct {
+		file, off int64
+		dur       time.Duration
+	}
+	want := []row{{files[0], 0, time.Minute}, {files[0], 90_000, 1230 * time.Second}, {second, 0, 575 * time.Second}}
+	if len(es) < len(want)+1 {
+		t.Fatalf("entries %+v", es)
+	}
+	for i, w := range want {
+		e := es[i]
+		if e.ItemID != eps[0] || e.FileID != w.file || e.OffsetMs != w.off || e.End.Sub(e.Start) != w.dur {
+			t.Fatalf("piece %d %+v, want %+v", i, e, w)
+		}
+	}
+	if !SameProgramme(es[0], es[0], es[1]) || !SameProgramme(es[0], es[1], es[2]) || SameProgramme(es[0], es[2], es[3]) {
+		t.Fatalf("one programme of three pieces: %+v", es[:4])
+	}
+	if es[3].ItemID != eps[1] || es[3].OffsetMs != 0 {
+		t.Fatalf("next episode %+v", es[3])
+	}
+}
+
+// Segments found after the schedule was built: the programmes not on air
+// yet are made again cut; the one on air and the rows before stay, the
+// new rows are numbered on from the last kept.
+func TestRecutAfterSegmentsFound(t *testing.T) {
+	f, s, eps, files := segFixture(t)
+	ctx := context.Background()
+	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
+	b := f.builder()
+	b.Horizon = 3 * time.Hour
+	if err := b.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	before := f.entries(c.ID)
+	// ep1 cut, ep2 whole, ep1 cut, ep2 whole, …
+	if before[1].ItemID != eps[1] || before[1].End.Sub(before[1].Start) != 22*time.Minute {
+		t.Fatalf("built %+v", before)
+	}
+	// nothing new: nothing to redo
+	if cut, err := b.Recut(ctx, c, []int64{files[1]}); err != nil || cut {
+		t.Fatalf("unchanged: %v %v", cut, err)
+	}
+	// ep2's intro found while ep2 is on air
+	f.now = before[1].Start.Add(5 * time.Minute)
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, files[1], "intro", "analysis", 0, 45_000)
+	cut, err := b.Recut(ctx, c, []int64{files[1]})
+	if err != nil || !cut {
+		t.Fatalf("recut: %v %v", cut, err)
+	}
+	after := f.entries(c.ID)
+	// kept: up to and with the airing on air, whole as it began
+	for i := 0; i <= 2; i++ {
+		if after[i] != before[i] {
+			t.Fatalf("row %d changed: %+v → %+v", i, before[i], after[i])
+		}
+	}
+	// the next airing of ep2 is cut; numbering goes on from the last kept
+	var seen bool
+	for i, e := range after[3:] {
+		if e.Seq != after[2].Seq+int64(i)+1 {
+			t.Fatalf("seq %+v", after)
+		}
+		if e.ItemID == eps[1] {
+			if e.OffsetMs != 45_000 || e.End.Sub(e.Start) != 22*time.Minute-45*time.Second {
+				t.Fatalf("ep2 again %+v", e)
+			}
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("no ep2 after the recut: %+v", after)
+	}
+	if last := after[len(after)-1]; last.End.Before(f.now.Add(b.Horizon)) {
+		t.Fatalf("not built to the horizon: %+v", last)
+	}
+	// once done, the same news change nothing
+	if cut, err := b.Recut(ctx, c, []int64{files[1]}); err != nil || cut {
+		t.Fatalf("again: %v %v", cut, err)
+	}
+	// a channel without the rule keeps its schedule
+	off := f.create(Channel{Name: "Off", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
+	if err := b.Build(ctx, off); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(`DELETE FROM file_segments WHERE file_id=?`, files[0])
+	if cut, err := b.Recut(ctx, off, []int64{files[0]}); err != nil || cut {
+		t.Fatalf("rule off: %v %v", cut, err)
+	}
+}
+
+// A programme starting within recutLead is not touched (the encoder may be
+// into it); the next one of the files is.
+func TestRecutKeepsTheNextProgrammeStartingSoon(t *testing.T) {
+	f, s, eps, files := segFixture(t)
+	ctx := context.Background()
+	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
+	b := f.builder()
+	b.Horizon = 3 * time.Hour
+	if err := b.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	before := f.entries(c.ID)
+	f.now = before[1].Start.Add(-20 * time.Second) // ep2 starts in 20 s
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, files[1], "intro", "analysis", 0, 45_000)
+	if cut, err := b.Recut(ctx, c, []int64{files[1]}); err != nil || !cut {
+		t.Fatalf("recut: %v %v", cut, err)
+	}
+	after := f.entries(c.ID)
+	if after[1] != before[1] || after[1].ItemID != eps[1] || after[1].OffsetMs != 0 {
+		t.Fatalf("the programme starting soon changed: %+v", after[1])
+	}
+	if after[3].ItemID != eps[1] || after[3].OffsetMs != 45_000 {
+		t.Fatalf("the later one not cut: %+v", after[3])
+	}
+}
+
+// The service redoes every enabled channel with the rule and leaves the
+// others (SegmentsChanged's debounced work).
+func TestServiceRecutSegments(t *testing.T) {
+	f, s, eps, files := segFixture(t)
+	ctx := context.Background()
+	svc := New(f.db, nil)
+	svc.Store.Now = f.st.Now
+	svc.Builder.Horizon = 3 * time.Hour
+	on := f.create(Channel{Name: "On", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
+	off := f.create(Channel{Name: "Off", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
+	for _, c := range []Channel{on, off} {
+		if err := svc.Builder.Build(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	offBefore := f.entries(off.ID)
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, files[1], "intro", "analysis", 0, 45_000)
+	if err := svc.RecutSegments(ctx, []int64{files[1]}); err != nil {
+		t.Fatal(err)
+	}
+	if e := f.entries(on.ID)[1]; e.ItemID != eps[1] || e.OffsetMs != 45_000 {
+		t.Fatalf("on: %+v", e)
+	}
+	if got := f.entries(off.ID); len(got) != len(offBefore) || got[1] != offBefore[1] {
+		t.Fatalf("off changed: %+v", got)
+	}
+}
+
+// SegmentsChanged gathers the files and redoes the schedules once they
+// stopped coming.
+func TestSegmentsChangedDebounced(t *testing.T) {
+	f, s, eps, files := segFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	q, mw := segmentsQuiet, segmentsMaxWait
+	segmentsQuiet, segmentsMaxWait = 50*time.Millisecond, time.Second
+	t.Cleanup(func() { segmentsQuiet, segmentsMaxWait = q, mw })
+	svc := New(f.db, nil)
+	svc.Store.Now = f.st.Now
+	svc.Builder.Horizon = 3 * time.Hour
+	c := f.create(Channel{Name: "On", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
+	if err := svc.Builder.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	svc.init()
+	done := make(chan struct{})
+	go func() { defer close(done); svc.segmentsLoop(ctx) }()
+	f.exec(`INSERT INTO file_segments(file_id, kind, source, start_ms, end_ms) VALUES(?,?,?,?,?)`, files[1], "intro", "analysis", 0, 45_000)
+	svc.SegmentsChanged([]int64{files[1]})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if e := f.entries(c.ID); len(e) > 1 && e[1].ItemID == eps[1] && e[1].OffsetMs == 45_000 {
+			cancel()
+			<-done
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("not recut")
+}

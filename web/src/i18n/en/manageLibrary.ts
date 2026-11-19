@@ -41,7 +41,7 @@ export default {
   // «Управление → Файлы»
   'mfiles.watchedAgo': 'watched {ago}',
   'mfiles.neverWatched': 'never watched',
-  'mfiles.seriesFiles': { one: 'TV Show · {count} file', other: 'TV Show · {count} files' },
+  'mfiles.seriesFiles': { one: 'Show · {count} file', other: 'Show · {count} files' },
   'mfiles.addedAgo': 'added {ago}, {watched}',
   'mfiles.deleteTitle': 'Delete “{title}”',
   'mfiles.inTrash': '“{title}” is in the Trash. You can restore it in Files → Trash.',
@@ -113,7 +113,7 @@ export default {
   'profiles.saveFailed': 'Couldn’t save',
   'profiles.editTitle': 'Edit Profile',
   'profiles.avatarColor': 'Avatar color',
-  'profiles.kidHint': 'No Manage.',
+  'profiles.kidHint': 'No access to the server settings.',
   'profiles.color': 'Color {n}',
   'profiles.maxAge': 'Age rating up to',
   'profiles.ageLimit': 'Age rating limit',

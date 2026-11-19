@@ -40,7 +40,7 @@ func (c *call) scrobble() *response {
 				}
 			}
 		}
-		if err := c.s.Music.Played(c.ctx, c.u.ID, tr.ID, at); err != nil {
+		if err := c.s.Music.Played(c.ctx, c.historyID(), tr.ID, at); err != nil {
 			return c.internal("scrobble", err)
 		}
 	}

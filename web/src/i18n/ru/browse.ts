@@ -1,6 +1,6 @@
-// Russian source strings (browse group: Search, title page, Movies/TV Shows, Home). Keys are namespaced; see the prefix list in core.ts.
+// Russian source strings (browse group: Search, title page, Movies/Shows, Home). Keys are namespaced; see the prefix list in core.ts.
 export default {
-  // Movies / TV Shows grid (Browse), Home, placeholder
+  // Movies / Shows grid (Browse), Home, placeholder
   'browse.sort.recent': 'Недавно добавленные',
   'browse.sort.recentShort': 'Новые',
   'browse.sort.title': 'По названию',
@@ -8,7 +8,7 @@ export default {
   'browse.sort.year': 'По году',
   'browse.loadMoreFailed': 'Не удалось загрузить остальное',
   'browse.emptyAdmin': 'Положите файлы в папку медиатеки на сервере — они появятся здесь.',
-  'browse.rescanInSettings': 'Пересканировать в настройках',
+  'browse.rescanInSettings': 'Сканировать в настройках',
   'browse.emptyOthers': 'Здесь появится то, что добавят на сервер.',
   'browse.moviesEmpty': 'Фильмов пока нет',
   'browse.seriesEmpty': 'Сериалов пока нет',

@@ -14,6 +14,10 @@ import (
 // Jellyfin MediaBrowser header). ID is the app's own device id.
 type Device struct {
 	ID, Name, Client, Version string
+	// History: the managed account whose app password the token was got
+	// with (AppLoginOutcome.History; ID 0: the profile's own). The token's
+	// requests are the profile's, their history goes there (WithHistory).
+	History History
 }
 
 // AppTokens are the access tokens of third-party protocols that log in
@@ -56,14 +60,26 @@ func (t *AppTokens) Issue(ctx context.Context, userID int64, proto string, d Dev
 	if err := requirePerson(ctx, tx, userID); err != nil {
 		return "", err
 	}
+	var history any
+	if d.History.ID != 0 {
+		// only a managed account of this profile
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE id=? AND owner_id=?`, d.History.ID, userID).Scan(&n); err != nil {
+			return "", err
+		}
+		if n == 0 {
+			return "", ErrNotFound
+		}
+		history = d.History.ID
+	}
 	if d.ID != "" {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM app_tokens WHERE proto=? AND user_id=? AND device_id=?`, proto, userID, d.ID); err != nil {
 			return "", err
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO app_tokens(token, user_id, proto, device_id, device, client, version, created_at, last_seen) VALUES(?,?,?,?,?,?,?,?,?)`,
-		tok, userID, proto, d.ID, d.Name, d.Client, d.Version, now, now); err != nil {
+		`INSERT INTO app_tokens(token, user_id, proto, device_id, device, client, version, created_at, last_seen, history_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		tok, userID, proto, d.ID, d.Name, d.Client, d.Version, now, now, history); err != nil {
 		return "", err
 	}
 	return tok, tx.Commit()
@@ -79,8 +95,10 @@ func (t *AppTokens) Lookup(ctx context.Context, token string) (User, Device, err
 	var uid int64
 	var seen string
 	var d Device
-	err := t.db.QueryRowContext(ctx, `SELECT user_id, device_id, device, client, version, last_seen FROM app_tokens WHERE token=?`, token).
-		Scan(&uid, &d.ID, &d.Name, &d.Client, &d.Version, &seen)
+	err := t.db.QueryRowContext(ctx, `SELECT t.user_id, t.device_id, t.device, t.client, t.version, t.last_seen,
+		COALESCE(t.history_id, 0), COALESCE(h.managed_name, ''), COALESCE(h.uid, '')
+		FROM app_tokens t LEFT JOIN users h ON h.id = t.history_id WHERE t.token=?`, token).
+		Scan(&uid, &d.ID, &d.Name, &d.Client, &d.Version, &seen, &d.History.ID, &d.History.Name, &d.History.UID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, Device{}, ErrNotFound
 	}
@@ -129,6 +147,13 @@ type execer interface {
 // transaction).
 func revokeAppTokens(ctx context.Context, ex execer, userID int64) error {
 	_, err := ex.ExecContext(ctx, `DELETE FROM app_tokens WHERE user_id=?`, userID)
+	return err
+}
+
+// revokeOwnAppTokens ends the profile's app tokens got with its own app
+// password, not those got with one of its managed accounts' (history_id).
+func revokeOwnAppTokens(ctx context.Context, ex execer, userID int64) error {
+	_, err := ex.ExecContext(ctx, `DELETE FROM app_tokens WHERE user_id=? AND history_id IS NULL`, userID)
 	return err
 }
 

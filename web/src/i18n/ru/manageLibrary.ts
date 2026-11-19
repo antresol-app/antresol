@@ -111,7 +111,7 @@ export default {
   'profiles.saveFailed': 'Не удалось сохранить',
   'profiles.editTitle': 'Изменить профиль',
   'profiles.avatarColor': 'Цвет аватара',
-  'profiles.kidHint': 'Без «Управления».',
+  'profiles.kidHint': 'Без доступа к настройкам сервера.',
   'profiles.color': 'Цвет {n}',
   'profiles.maxAge': 'Возраст не старше',
   'profiles.ageLimit': 'Возрастное ограничение',

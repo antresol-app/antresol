@@ -19,6 +19,14 @@
   color: var(--label-2);
   overflow-wrap: anywhere;
 }
+/* the home-network address: the one thing in the sheet to copy */
+.address {
+  font: var(--t-callout);
+  color: var(--label);
+  overflow-wrap: anywhere;
+  user-select: all;
+  -webkit-user-select: all;
+}
 /* a plain button as a whole row: its text lines up with the labels above,
    its hover fill reaches into the row's padding */
 .rowLink {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/antresol-app/antresol/internal/discovery"
 	"io/fs"
 	"log"
 	"net/http"
@@ -63,6 +64,9 @@ type Deps struct {
 	DataDir  string        // images/ (TMDB cache) and subs/ (WebVTT cache) live here
 	FFmpeg   string
 	FFprobe  string
+	// LocalName is the state of the server's name on the home network
+	// (antresol.local, discovery), shown in «О сервере»; nil: "off".
+	LocalName *discovery.Status
 	// PublicURL is the server's public address (VAULT_PUBLIC_URL; "" when
 	// unset), told to addons by /api/addon-core/v1/info.
 	PublicURL string
@@ -307,6 +311,9 @@ type Deps struct {
 type Segmenter interface {
 	// ForPlay is what is stored for a file, never waiting for a lookup.
 	ForPlay(ctx context.Context, fileID, durationMs int64, movie bool) []segments.Play
+	// CanFingerprint: ffmpeg can analyse episodes (chromaprint), shown on
+	// «Перекодирование».
+	CanFingerprint() bool
 }
 
 // LoadServerID returns the server's id (16 random bytes, hex), made once
@@ -381,6 +388,13 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
 		mountPairing(r, deps, guard, requestsOpen)
+	}
+	// the address to open on the home network («О сервере»): for the signed in
+	if deps.Sessions != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountLocalName(r, deps.LocalName)
+		})
 	}
 	var h *lib
 	if deps.Sessions != nil && deps.Library != nil && deps.Progress != nil {

@@ -12,7 +12,7 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 const adult: User = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
 const kid: User = { ...adult, id: 3, name: 'Вася', isKid: true, maxRating: '12+' }
 
-const unlinked: ShikimoriState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, writeState: 'unasked', canWrite: true, unmapped: 0 }
+const unlinked: ShikimoriState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, writeState: 'unasked', canWrite: true, unmapped: 0 }
 const linked = (p: Partial<ShikimoriState> = {}): ShikimoriState => ({ ...unlinked, linked: true, nickname: 'tester', lastSync: new Date(Date.now() - 5 * 60000).toISOString(), ...p })
 
 let state: ShikimoriState
@@ -38,6 +38,10 @@ function serve(user: User) {
         return new Response(null, { status: 204 })
       }
       if (url === '/api/accounts/shikimori' && method === 'DELETE') return new Response(null, { status: 204 })
+      if (url === '/api/accounts/shikimori/sync' && method === 'POST') {
+        state = { ...state, syncing: true }
+        return json({ shikimori: state }, 202)
+      }
       return json({})
     }),
   )
@@ -74,6 +78,7 @@ describe('ShikimoriAccount', () => {
     expect(screen.getByText(/В обе стороны: список с Shikimori попадает в отметки, а после одного входа туда/)).toBeInTheDocument()
     // no unlink, no last sync for a card that has no link
     expect(screen.queryByRole('button', { name: 'Отвязать' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Синхронизировать' })).toBeNull()
     expect(screen.queryByText(/Синхронизировано|Ещё не синхронизировано/)).toBeNull()
   })
 
@@ -95,6 +100,40 @@ describe('ShikimoriAccount', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Отвязать' }))
     expect(await screen.findByText('Не связан')).toBeInTheDocument()
     expect(calls).toContain('DELETE /api/accounts/shikimori')
+  })
+
+  it('syncs now: says it runs, then shows how it went', async () => {
+    state = linked({ unmapped: 2 })
+    await open()
+    expect(await screen.findByText('Синхронизировано 5 мин назад · не найдено в TMDB: 2')).toBeInTheDocument()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await userEvent.click(screen.getByRole('button', { name: 'Синхронизировать' }))
+      expect(calls).toContain('POST /api/accounts/shikimori/sync')
+      expect(await screen.findByText('Синхронизация…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeDisabled()
+      state = linked({ lastSync: new Date().toISOString(), unmapped: 0 }) // it ended on the server
+      await vi.advanceTimersByTimeAsync(2100)
+      expect(await screen.findByText('Синхронизировано только что')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a sync that failed in the card', async () => {
+    state = linked()
+    await open()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await userEvent.click(await screen.findByRole('button', { name: 'Синхронизировать' }))
+      expect(await screen.findByText('Синхронизация…')).toBeInTheDocument()
+      state = linked({ status: 'relogin', lastSync: new Date().toISOString() })
+      await vi.advanceTimersByTimeAsync(2100)
+      expect(await screen.findByText(/Нужно заново войти на Shikimori/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('puts a failed sync in the card', async () => {

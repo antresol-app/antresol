@@ -1,9 +1,9 @@
 // MyShows' card on «Аккаунты и синхронизация» (pages/AccountsSettings.tsx):
-// link by login (the list is read from the public profile), the sync status
-// and «Отвязать». Read only: nothing is sent back to MyShows. Not for a kid;
-// absent when the server does not offer MyShows.
+// link by login (the list is read from the public profile), the sync status,
+// «Синхронизировать» and «Отвязать». Read only: nothing is sent back to
+// MyShows. Not for a kid; absent when the server does not offer MyShows.
 import { useEffect, useState } from 'react'
-import { errorText, getAccounts, linkMyShows, unlinkMyShows } from '../../api/client'
+import { errorText, linkMyShows, syncAccount, unlinkMyShows } from '../../api/client'
 import type { MyShowsState } from '../../api/types'
 import { useT } from '../../i18n'
 import { loadMyShows, setMyShowsState } from '../../state/accounts'
@@ -12,8 +12,9 @@ import { useSession } from '../../state/session'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { AccountRow } from './AccountRow'
+import { useSyncPolling } from './useSyncPolling'
 
-// a first read of a long list takes minutes: ask again, ever less often
+// a read of a long list takes minutes: ask again, ever less often
 const POLL_MS = 4000
 const POLL_MAX_MS = 30000
 
@@ -35,39 +36,15 @@ export function MyShowsAccount() {
     }
   }, [kid, user?.id])
 
-  // after a link the first pull runs on the server (minutes for a long
-  // list): ask again, with growing pauses, until it has stored a sync time
-  const polling = !!s?.linked && !s.lastSync && s.status === 'ok'
-  useEffect(() => {
-    if (!polling) return
-    let live = true
-    let timer: ReturnType<typeof setTimeout>
-    const next = (delay: number) => {
-      timer = setTimeout(() => {
-        getAccounts().then(
-          (a) => {
-            if (!live || !a.myshows) return
-            setMyShowsState(a.myshows)
-            setS(a.myshows)
-          },
-          () => {},
-        ).finally(() => {
-          if (live) next(Math.min(delay * 1.5, POLL_MAX_MS))
-        })
-      }, delay)
-    }
-    next(POLL_MS)
-    return () => {
-      live = false
-      clearTimeout(timer)
-    }
-  }, [polling])
-
-  if (kid || !s) return null
   const apply = (n: MyShowsState) => {
     setMyShowsState(n)
     setS(n)
   }
+  // a sync runs on the server (the first read after linking takes minutes for a long list,
+  // «Синхронизировать», the hourly one): ask, with growing pauses, until it ends
+  useSyncPolling(!!s?.syncing, (a) => a.myshows, apply, POLL_MS, POLL_MAX_MS)
+
+  if (kid || !s) return null
   const run = async (f: () => Promise<void>) => {
     setBusy(true)
     setError('')
@@ -85,15 +62,16 @@ export function MyShowsAccount() {
       apply(await linkMyShows(nick.trim()))
       setNick('')
     })
+  const sync = () => run(async () => apply((await syncAccount('myshows')).myshows as MyShowsState))
   const unlink = () =>
     run(async () => {
       await unlinkMyShows()
-      apply({ ...s, linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, unmapped: 0 })
+      apply({ ...s, linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, unmapped: 0 })
     })
 
   return (
     <GroupedSection title={t('acct.myshows.title')} footer={error || undefined}>
-      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.myshows')} status={statusLine(s, t)} busy={busy} onUnlink={() => void unlink()} />
+      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.myshows')} status={statusLine(s, t)} syncing={s.syncing} busy={busy} onSync={() => void sync()} onUnlink={() => void unlink()} />
       {!s.linked ? (
         <ListRow wide label={t('acct.linkTitle')} hint={t('acct.myshows.hint')}>
           <InlineForm
@@ -104,7 +82,7 @@ export function MyShowsAccount() {
           />
         </ListRow>
       ) : (
-        polling && <ListRow label={t('acct.myshows.firstRead')} />
+        s.syncing && !s.lastSync && <ListRow label={t('acct.myshows.firstRead')} />
       )}
     </GroupedSection>
   )

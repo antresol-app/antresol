@@ -52,7 +52,6 @@ export default {
   'common.songs': 'Песни',
   'common.playlists': 'Плейлисты',
   'common.files': 'Файлы',
-  'common.manage': 'Управление',
   'common.settings': 'Настройки',
   // kinds
   'common.kind.movie': 'Фильм',

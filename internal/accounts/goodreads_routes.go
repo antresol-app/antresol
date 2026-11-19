@@ -52,6 +52,7 @@ type goodreadsJSON struct {
 	Status    string  `json:"status"`
 	LastError string  `json:"lastError"`
 	LastSync  *string `json:"lastSync"`
+	Syncing   bool    `json:"syncing"`
 	Total     int     `json:"total"`
 	Read      int     `json:"read"`
 	Reading   int     `json:"reading"`
@@ -60,7 +61,7 @@ type goodreadsJSON struct {
 }
 
 func (a *API) goodreadsState(ctx context.Context, uid int64) (goodreadsJSON, error) {
-	out := goodreadsJSON{Status: StatusOK}
+	out := goodreadsJSON{Status: StatusOK, Syncing: a.Sync.Runs().Active(uid, goodreadsProvider)}
 	sum, err := a.Goodreads.Summary(ctx, uid)
 	if err != nil {
 		return out, err
@@ -113,10 +114,10 @@ func (a *API) putGoodreads(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, http.StatusInternalServerError, "Не удалось сохранить", err)
 		return
 	}
-	a.background(func() {
-		pctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		if err := a.Goodreads.Pull(pctx, v.ID); err != nil {
+	// with a sync running already none starts: the periodic pull reads a link
+	// with no last sync at once
+	a.startRun(v.ID, goodreadsProvider, 5*time.Minute, func(ctx context.Context) {
+		if err := a.Goodreads.Pull(ctx, v.ID); err != nil {
 			a.log().Info("accounts: goodreads pull after link", "user", v.ID, "err", err)
 		}
 	})

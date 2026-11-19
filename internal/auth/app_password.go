@@ -55,8 +55,9 @@ func (s *Store) SetAppPassword(ctx context.Context, id int64) (string, error) {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return "", ErrNotFound
 	}
-	// tokens got with the old app password (Jellyfin) end with it
-	if err := revokeAppTokens(ctx, tx, id); err != nil {
+	// tokens got with the old app password (Jellyfin) end with it; those got
+	// with a managed account's own password do not
+	if err := revokeOwnAppTokens(ctx, tx, id); err != nil {
 		return "", err
 	}
 	return p, tx.Commit()
@@ -112,7 +113,7 @@ func (s *Store) ClearAppPassword(ctx context.Context, id int64) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	if err := revokeAppTokens(ctx, tx, id); err != nil {
+	if err := revokeOwnAppTokens(ctx, tx, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -141,4 +142,30 @@ func (s *Store) ByName(ctx context.Context, name string) (User, error) {
 		return User{}, ErrNotFound
 	}
 	return found[0], nil
+}
+
+// ResetAppPasswords is the administrator's «Сбросить пароль для приложений»:
+// the profile's app password and its managed accounts' end, with every app
+// token got with any of them (they may have been made from a session that
+// is no longer the person's).
+func (s *Store) ResetAppPasswords(ctx context.Context, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := requirePerson(ctx, tx, id); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE users SET app_password=NULL, app_password_created_at=NULL WHERE id=? OR owner_id=?`, id, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if err := revokeAppTokens(ctx, tx, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

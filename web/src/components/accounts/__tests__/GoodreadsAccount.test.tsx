@@ -10,8 +10,8 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 const adult: User = { id: 2, name: 'Мама', avatar: 'grad-3', hasPassword: false, isAdmin: false, isKid: false, maxRating: null }
 const kid: User = { ...adult, id: 3, name: 'Вася', isKid: true, maxRating: '12+' }
 
-const shiki: ShikimoriState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, writeState: 'unasked', canWrite: true, unmapped: 0 }
-const none: GoodreadsState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 }
+const shiki: ShikimoriState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, writeState: 'unasked', canWrite: true, unmapped: 0 }
+const none: GoodreadsState = { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 }
 const books = { total: 12, read: 8, reading: 1, toRead: 3, inLibrary: 5 }
 const linked = (p: Partial<GoodreadsState> = {}): GoodreadsState => ({
   ...none,
@@ -26,6 +26,7 @@ let state: GoodreadsState
 let offered: boolean
 let calls: string[]
 let importStatus = 200
+let syncRefusal = ''
 function serve(user: User) {
   calls = []
   vi.stubGlobal(
@@ -37,7 +38,7 @@ function serve(user: User) {
       if (url.endsWith('/api/login')) return json(user)
       if (url === '/api/accounts' && method === 'GET') return json((offered ? { shikimori: shiki, goodreads: state } : { shikimori: shiki }) satisfies AccountsState)
       if (url === '/api/accounts/goodreads' && method === 'PUT') {
-        state = linked({ lastSync: null, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 })
+        state = linked({ lastSync: null, syncing: true, total: 0, read: 0, reading: 0, toRead: 0, inLibrary: 0 })
         return json({ shikimori: shiki, goodreads: state })
       }
       if (url === '/api/accounts/goodreads/import' && method === 'POST') {
@@ -47,6 +48,11 @@ function serve(user: User) {
         return json({ shikimori: shiki, goodreads: state })
       }
       if (url === '/api/accounts/goodreads' && method === 'DELETE') return new Response(null, { status: 204 })
+      if (url === '/api/accounts/goodreads/sync' && method === 'POST') {
+        if (syncRefusal) return json({ error: syncRefusal }, 429)
+        state = { ...state, syncing: true }
+        return json({ shikimori: shiki, goodreads: state }, 202)
+      }
       return json({})
     }),
   )
@@ -64,6 +70,7 @@ beforeEach(() => {
   state = none
   offered = true
   importStatus = 200
+  syncRefusal = ''
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -78,6 +85,41 @@ describe('GoodreadsAccount', () => {
     expect(screen.getByText('Читаем полки с Goodreads, это займёт несколько секунд')).toBeInTheDocument()
   })
 
+  it('syncs now: says it runs, then shows how it went and the new books', async () => {
+    state = linked({ total: 3, read: 1, reading: 1, toRead: 1, inLibrary: 1 })
+    await open()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await userEvent.click(await screen.findByRole('button', { name: 'Синхронизировать' }))
+      expect(calls).toContain('POST /api/accounts/goodreads/sync')
+      expect(await screen.findByText('Синхронизация…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeDisabled()
+      // not the first read: no «займёт несколько секунд» line
+      expect(screen.queryByText('Читаем полки с Goodreads, это займёт несколько секунд')).toBeNull()
+      state = linked({ lastSync: new Date().toISOString(), syncing: false }) // it ended on the server
+      await vi.advanceTimersByTimeAsync(2100)
+      expect(await screen.findByText('Синхронизировано только что')).toBeInTheDocument()
+      expect(screen.getByText(/Книг с Goodreads: 12 /)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
+      const gets = () => calls.filter((c) => c === 'GET /api/accounts').length
+      const n = gets()
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(gets()).toBe(n) // stopped once it ended
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says why a sync was not started', async () => {
+    state = linked()
+    syncRefusal = 'Только что синхронизировано, повторите через минуту'
+    await open()
+    await userEvent.click(await screen.findByRole('button', { name: 'Синхронизировать' }))
+    expect(await screen.findByText('Только что синхронизировано, повторите через минуту')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
+    expect(screen.queryByText('Синхронизация…')).toBeNull()
+  })
+
   it('shows the books, the read-only line and the status line of a linked profile', async () => {
     state = linked()
     await open()
@@ -87,6 +129,7 @@ describe('GoodreadsAccount', () => {
     // a linked profile has no «Забыть список»: «Отвязать» does it
     expect(screen.queryByRole('button', { name: 'Забыть список' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Отвязать' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
   })
 
   it('says why a profile gives nothing', async () => {

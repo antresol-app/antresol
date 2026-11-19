@@ -24,11 +24,12 @@ type myShowsJSON struct {
 	Status    string  `json:"status"`
 	LastError string  `json:"lastError"`
 	LastSync  *string `json:"lastSync"`
+	Syncing   bool    `json:"syncing"`
 	Unmapped  int     `json:"unmapped"`
 }
 
 func (a *API) myShowsState(ctx context.Context, uid int64) (myShowsJSON, error) {
-	out := myShowsJSON{Status: StatusOK}
+	out := myShowsJSON{Status: StatusOK, Syncing: a.Sync.Runs().Active(uid, myShowsProvider)}
 	l, ok, err := a.Sync.Accounts.Link(ctx, uid, myShowsProvider)
 	if err != nil || !ok {
 		return out, err
@@ -84,11 +85,11 @@ func (a *API) putMyShows(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, http.StatusInternalServerError, "Не удалось сохранить", err)
 		return
 	}
-	a.background(func() {
-		// a first read of a long list takes minutes (a request a second)
-		pctx, cancel := context.WithTimeout(context.Background(), linkPullTimeout)
-		defer cancel()
-		if err := a.MyShows.Pull(pctx, v.ID); err != nil {
+	// a first read of a long list takes minutes (a request a second); with a
+	// sync running already none starts, and the periodic pull reads the new
+	// login at once (SetNickname cleared the last sync)
+	a.startRun(v.ID, myShowsProvider, linkPullTimeout, func(ctx context.Context) {
+		if err := a.MyShows.Pull(ctx, v.ID); err != nil {
 			a.log().Info("accounts: myshows pull after link", "user", v.ID, "err", err)
 		}
 	})

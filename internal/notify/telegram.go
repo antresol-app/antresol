@@ -673,10 +673,10 @@ func (s *Service) handleUpdate(ctx context.Context, b botRow, up telegram.Update
 	sayStranger := func(text string) { s.answerStranger(ctx, b.Token, m.Chat.ID, text) }
 	lang := chatLang(m.From.LanguageCode)
 	expired := func() {
-		sayStranger(i18n.TL(lang, "Ссылка устарела. Откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram» ещё раз."))
+		sayStranger(i18n.TL(lang, "Ссылка устарела. Откройте «Настройки → Уведомления» и нажмите «Подключить Telegram» ещё раз."))
 	}
 	if arg == "" {
-		sayStranger(i18n.TL(lang, "Это бот уведомлений %s. Чтобы получать их здесь, откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram».", product))
+		sayStranger(i18n.TL(lang, "Это бот уведомлений %s. Чтобы получать их здесь, откройте «Настройки → Уведомления» и нажмите «Подключить Telegram».", product))
 		return
 	}
 	uid, codeLang, ok, err := s.redeemCode(ctx, arg)

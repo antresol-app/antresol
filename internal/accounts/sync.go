@@ -132,7 +132,12 @@ type Syncer struct {
 
 	mu    sync.Mutex
 	locks map[int64]*sync.Mutex
+	runs  Runs
 }
+
+// Runs is the registry of syncs in flight, shared with the other
+// providers' loops and the API (runs.go).
+func (s *Syncer) Runs() *Runs { return &s.runs }
 
 // originMyShows is the origin of marks read from a MyShows list
 // (internal/accounts/myshows.Provider). MyShows is read only here, but what
@@ -774,10 +779,19 @@ func (s *Syncer) tick(ctx context.Context) {
 		if !pullDue(l.LastSync, watching, s.now()) {
 			continue
 		}
+		// a sync of this profile is in flight (its «sync now», the pull after
+		// linking): it reads the list, and stamps last_sync_at when it ends
+		end, ok := s.runs.Start(l.UserID, Shikimori)
+		if !ok {
+			continue
+		}
 		if s.sleep(ctx, jitter(l.UserID)) != nil {
+			end()
 			return
 		}
-		if r, err := s.PullOne(ctx, l.UserID); err != nil {
+		r, err := s.PullOne(ctx, l.UserID)
+		end()
+		if err != nil {
 			if ctx.Err() == nil {
 				s.log().Info("accounts: pull", "user", l.UserID, "err", err)
 			}

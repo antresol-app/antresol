@@ -402,6 +402,14 @@ func (s *Store) Failed(ctx context.Context, id int64, errMsg string, retryAt tim
 	return err
 }
 
+// RetryOutbox lets every pending push of the profile at provider go out at
+// the next push, not after its backoff (a profile's «sync now»). The attempts
+// count stays, so a push that fails again waits the longer one.
+func (s *Store) RetryOutbox(ctx context.Context, uid int64, provider string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE account_outbox SET next_at=0 WHERE user_id=? AND provider=?`, uid, provider)
+	return err
+}
+
 // ClearOutbox drops every pending push of the profile at provider.
 func (s *Store) ClearOutbox(ctx context.Context, uid int64, provider string) error {
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM account_outbox WHERE user_id=? AND provider=?`, uid, provider)

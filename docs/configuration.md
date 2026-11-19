@@ -15,7 +15,7 @@ Most settings live in the web UI instead; set a variable only when you need it.
 ## Media folders
 
 Folder names inside `MEDIA_DIR`, if yours differ from the defaults. The first-run
-wizard and «Manage → Settings → Library → Server folders» can pick them in the
+wizard and «Settings → Server → Library & Languages → Server folders» can pick them in the
 web UI instead; folders picked there are used in place of these variables until
 reset.
 
@@ -33,7 +33,7 @@ reset.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `VAULT_HWACCEL` | `auto` | `auto`, `qsv`, `vaapi`, `nvenc`, `videotoolbox` or `none`. `auto` tries the GPUs it sees with a short test encode at start. The container needs the GPU: uncomment the GPU lines in `compose.yml`. «Manage → Settings → Transcoding» overrides it once changed there. |
+| `VAULT_HWACCEL` | `auto` | `auto`, `qsv`, `vaapi`, `nvenc`, `videotoolbox` or `none`. `auto` tries the GPUs it sees with a short test encode at start. The container needs the GPU: uncomment the GPU lines in `compose.yml`. «Settings → Server → Transcoding» overrides it once changed there. |
 | `VAULT_HWACCEL_DEVICE` | first node | Render node for `vaapi` when there are several, e.g. `/dev/dri/renderD128`. |
 | `VAULT_TRANSCODE_DIR` | `/media/tmp/antresol-hls` | HLS segments, live TV and offline copies. Keep it off `/config`. To move it with compose, use a `compose.override.yml`. |
 | `VAULT_TRANSCODE_MAX_BYTES` | `21474836480` (20 GB) | Total size limit of HLS segments. |
@@ -47,8 +47,8 @@ reset.
 | `VAULT_TRUSTED_NETS` | | Extra home networks, comma separated, e.g. Tailscale `100.64.0.0/10`. |
 | `VAULT_SERVER_NAME` | `Antresol` | Name the apps show when they find the server. |
 | `VAULT_DISCOVERY` | on | `off` turns off both mDNS and the UDP probe the apps use to find the server. |
-| `VAULT_MDNS` | on | `off` turns off mDNS only. |
-| `VAULT_DISCOVERY_PORT` | `8420` | UDP probe port; publish it as `8420:8420/udp`. Broadcast and mDNS need host networking. |
+| `VAULT_MDNS` | on | `off` turns off mDNS only, and with it the name `antresol.local` (`antresol-2.local`, … when another server holds it) a browser at home opens. |
+| `VAULT_DISCOVERY_PORT` | `8420` | UDP probe port; publish it as `8420:8420/udp`. Broadcast and mDNS (and so `antresol.local`) need host networking: see [install.md](install.md). |
 
 ## Subtitles
 
@@ -60,7 +60,7 @@ reset.
 
 ## Email
 
-Mail is set in the web UI, not in `.env`: «Manage → Server settings → Sending mailbox».
+Mail is set in the web UI, not in `.env`: «Settings → Server → Mail and notifications → Sending mailbox».
 It sends email notifications and books to Kindle. Any SMTP account works:
 
 | Service | Server | Port | Login | Password |
@@ -69,7 +69,7 @@ It sends email notifications and books to Kindle. Any SMTP account works:
 | Resend | `smtp.resend.com` | 465 or 587 | `resend` | an API key; the sender address must be on a domain verified in Resend |
 | Other mail | from its help pages | 587 or 465 | usually your address | usually an app password |
 
-Then each person turns on what they want in «Profile → Notifications» and confirms
+Then each person turns on what they want in «Settings → Notifications» and confirms
 their address with the test email. Everything is off until turned on.
 
 ## Telegram
@@ -79,12 +79,12 @@ as plain text, with a link to the title when `VAULT_PUBLIC_URL` is set. Telegram
 once, then each person needs two taps.
 
 **The administrator**, once: in Telegram open [@BotFather](https://t.me/BotFather), send
-`/newbot` and pick a name. Paste the token it sends into «Manage → Server settings → Send to
-Kindle → Telegram bot» and press «Check»: the bot's @name appears. The server keeps the
+`/newbot` and pick a name. Paste the token it sends into «Settings → Server → Mail and
+notifications → Telegram bot» and press «Check»: the bot's @name appears. The server keeps the
 token like the SMTP password and never shows it again; it is never written to the log.
 «Turn Bot Off» forgets it.
 
-**Each person** (adult profiles), in «Profile → Notifications»: «Connect Telegram» shows a
+**Each person** (adult profiles), in «Settings → Notifications»: «Connect Telegram» shows a
 link. Open it in Telegram and press Start; the page notices by itself, and the bot confirms in
 the profile's language. «Disconnect» in the same place, or blocking the bot in Telegram, ends
 it. Kid profiles cannot connect Telegram.

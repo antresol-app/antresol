@@ -16,7 +16,7 @@ func testConfig() *Config {
 		Info: Info{ID: "0123456789abcdef0123456789abcdef", Name: "Дом", Version: "1.2.3", Port: 8420, Scheme: "http",
 			Extra: []string{"https://media.example.org"}},
 		Addrs: func() []netip.Prefix {
-			return []netip.Prefix{netip.MustParsePrefix("192.168.1.10/24"), netip.MustParsePrefix("10.8.0.1/24")}
+			return []netip.Prefix{netip.MustParsePrefix("192.168.50.10/24"), netip.MustParsePrefix("10.8.0.1/24")}
 		},
 	}
 }
@@ -57,7 +57,7 @@ func TestUDPProbeLoopback(t *testing.T) {
 		t.Fatalf("%v: %q", err, buf[:n])
 	}
 	// a loopback peer is on neither subnet: every address, then the extra URL
-	want := []string{"http://192.168.1.10:8420", "http://10.8.0.1:8420", "https://media.example.org"}
+	want := []string{"http://192.168.50.10:8420", "http://10.8.0.1:8420", "https://media.example.org"}
 	if a.Service != "antresol" || a.Protocol != 1 || a.ID != c.Info.ID || a.Name != "Дом" || a.Version != "1.2.3" ||
 		a.Port != 8420 || a.Scheme != "http" || strings.Join(a.URLs, " ") != strings.Join(want, " ") {
 		t.Fatalf("%+v", a)
@@ -66,14 +66,14 @@ func TestUDPProbeLoopback(t *testing.T) {
 
 func TestURLsPreferPeerSubnet(t *testing.T) {
 	c := testConfig()
-	got := c.urls(netip.MustParseAddr("192.168.1.77"))
-	if strings.Join(got, " ") != "http://192.168.1.10:8420 https://media.example.org" {
+	got := c.urls(netip.MustParseAddr("192.168.50.77"))
+	if strings.Join(got, " ") != "http://192.168.50.10:8420 https://media.example.org" {
 		t.Fatalf("%v", got)
 	}
 }
 
 func TestLANClientOnly(t *testing.T) {
-	for s, want := range map[string]bool{"192.168.1.5": true, "10.0.0.1": true, "127.0.0.1": true, "169.254.1.1": true,
+	for s, want := range map[string]bool{"192.168.50.5": true, "10.0.0.1": true, "127.0.0.1": true, "169.254.1.1": true,
 		"fd00::1": true, "8.8.8.8": false, "2001:db8::1": false} {
 		if lanClient(netip.MustParseAddr(s)) != want {
 			t.Errorf("%s: want %v", s, want)
@@ -171,7 +171,7 @@ func find(rs []rr, rtype uint16) *rr {
 func TestMDNSBrowseAnswer(t *testing.T) {
 	c := testConfig()
 	msg := mdnsQuery(0, question{name: "_antresol._tcp.local.", qtype: typePTR})
-	out, unicast := c.respond(msg, netip.MustParseAddrPort("192.168.1.50:5353"))
+	out, unicast := c.respond(msg, netip.MustParseAddrPort("192.168.50.50:5353"))
 	if out == nil || unicast {
 		t.Fatalf("out %v unicast %v", out, unicast)
 	}
@@ -202,7 +202,7 @@ func TestMDNSBrowseAnswer(t *testing.T) {
 	}
 	// only the address on the asker's subnet
 	a := find(p.extra, typeA)
-	if a == nil || netip.AddrFrom4([4]byte(a.data)).String() != "192.168.1.10" {
+	if a == nil || netip.AddrFrom4([4]byte(a.data)).String() != "192.168.50.10" {
 		t.Fatalf("a %+v", a)
 	}
 	if len(p.extra) != 3 {
@@ -213,7 +213,7 @@ func TestMDNSBrowseAnswer(t *testing.T) {
 func TestMDNSLegacyUnicast(t *testing.T) {
 	c := testConfig()
 	msg := mdnsQuery(0x1234, question{name: "_ANTRESOL._tcp.local.", qtype: typePTR})
-	out, unicast := c.respond(msg, netip.MustParseAddrPort("192.168.1.50:40000"))
+	out, unicast := c.respond(msg, netip.MustParseAddrPort("192.168.50.50:40000"))
 	if !unicast {
 		t.Fatal("legacy query answered by multicast")
 	}
@@ -230,7 +230,7 @@ func TestMDNSLegacyUnicast(t *testing.T) {
 
 func TestMDNSOtherQuestions(t *testing.T) {
 	c := testConfig()
-	peer := netip.MustParseAddrPort("192.168.1.50:5353")
+	peer := netip.MustParseAddrPort("192.168.50.50:5353")
 	if out, _ := c.respond(mdnsQuery(0, question{name: "_googlecast._tcp.local.", qtype: typePTR}), peer); out != nil {
 		t.Fatal("answered another service")
 	}

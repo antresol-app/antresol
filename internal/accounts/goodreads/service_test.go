@@ -495,3 +495,31 @@ func TestPullDueCadence(t *testing.T) {
 		t.Errorf("link: %+v", l)
 	}
 }
+
+// A profile whose sync is running (its «sync now», the pull after linking) is
+// left to it by the loop: that one reads the shelves and stamps the link.
+func TestPullDueSkipsProfileWithRunningSync(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	var runs accounts.Runs
+	e.svc.Runs = &runs
+	e.svc.Link(ctx, e.uid, 777, "x")
+	e.rem.shelves[ShelfRead] = []Entry{{Title: "Emma", Author: "Jane Austen"}}
+	end, ok := runs.Start(e.uid, Provider)
+	if !ok {
+		t.Fatal("not startable")
+	}
+	if e.svc.pullDue(ctx)[e.uid] {
+		t.Fatal("pulled during a running sync")
+	}
+	if l, _, _ := e.svc.Accounts.Link(ctx, e.uid, Provider); !l.LastSync.IsZero() {
+		t.Fatalf("link stamped by a skipped pull: %+v", l)
+	}
+	end()
+	if !e.svc.pullDue(ctx)[e.uid] {
+		t.Fatal("not pulled after the sync ended")
+	}
+	if runs.Active(e.uid, Provider) {
+		t.Fatal("the loop left its run registered")
+	}
+}

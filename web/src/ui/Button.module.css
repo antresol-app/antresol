@@ -7,6 +7,9 @@
   gap: var(--s-2);
   height: var(--h);
   min-width: var(--h);
+  /* never wider than what holds it: a long label (a phone is 288 pt of
+     content at 320) is cut by its ellipsis below, not pushed out of the page */
+  max-width: 100%;
   padding: 0 var(--s-5);
   border: 0;
   border-radius: var(--r-pill);
@@ -113,13 +116,25 @@
   opacity: 0.6;
 }
 /* the label centres on its capitals, like the glyph before it */
+/* The label gives way when the button is held to its container: its box is
+   cut to the capitals but clips (for the ellipsis), so its padding holds the
+   descenders and accents and an equal negative margin takes it back out of
+   the layout (as Select's choice does). */
 .label {
   display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-box: var(--control-text-box);
+  padding-block: var(--s-1);
+  margin-block: calc(-1 * var(--s-1));
 }
 /* inside a sentence: the sentence's line, untrimmed */
 .link .label {
   display: inline;
+  overflow: visible;
+  padding-block: 0;
+  margin-block: 0;
   text-box: none;
 }
 /* A finger's 44 pt target around a small button: taller hit area, same look */

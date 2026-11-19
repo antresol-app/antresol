@@ -281,7 +281,9 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 				return
 			}
 		}
-		ctx := auth.WithUser(r.Context(), u)
+		// the token's history: the person's, or the managed account whose
+		// app password it was got with (auth.HistoryID reads it)
+		ctx := auth.WithHistory(auth.WithUser(r.Context(), u), dev.History)
 		ctx = context.WithValue(ctx, sessionKey{}, session{token: tok, dev: dev})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -322,7 +324,7 @@ func (s *Server) requirePlay(next http.Handler) http.Handler {
 			s.internal(w, r, "token lookup", err)
 			return
 		}
-		ctx := auth.WithUser(r.Context(), u)
+		ctx := auth.WithHistory(auth.WithUser(r.Context(), u), dev.History)
 		ctx = context.WithValue(ctx, sessionKey{}, session{token: p.token, dev: dev})
 		ctx = context.WithValue(ctx, scopedKey{}, psid)
 		next.ServeHTTP(w, r.WithContext(ctx))

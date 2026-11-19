@@ -2,7 +2,7 @@ import type { EnOf } from '../types'
 import type ru from '../ru/browse'
 
 export default {
-  // Movies / TV Shows grid (Browse), Home, placeholder
+  // Movies / Shows grid (Browse), Home, placeholder
   'browse.sort.recent': 'Recently Added',
   'browse.sort.recentShort': 'New',
   'browse.sort.title': 'By Title',
@@ -13,14 +13,14 @@ export default {
   'browse.rescanInSettings': 'Rescan in Settings',
   'browse.emptyOthers': 'Items appear here once they’re added to the server.',
   'browse.moviesEmpty': 'No movies yet',
-  'browse.seriesEmpty': 'No TV shows yet',
+  'browse.seriesEmpty': 'No shows yet',
   'browse.comingSoon': 'Coming soon',
   'browse.comingSoonText': 'We’re working on it. In the meantime, check out Home.',
   'browse.home.loadFailed': 'Couldn’t load Home',
   'browse.home.documentTitle': 'Home — {app}',
   'browse.home.empty': 'Your library is empty',
-  'browse.home.emptyAdmin': 'Put movies and TV shows in the library folders on the server — they’ll appear here.',
-  'browse.home.emptyOthers': 'Movies and TV shows appear here once they’re added to the server.',
+  'browse.home.emptyAdmin': 'Put movies and shows in the library folders on the server — they’ll appear here.',
+  'browse.home.emptyOthers': 'Movies and shows appear here once they’re added to the server.',
   // Search
   'search.documentTitle': 'Search — {app}',
   'search.failed': 'Search failed',
@@ -45,7 +45,7 @@ export default {
   // Title page (ItemDetail)
   'item.seasons': { one: '{count} season', other: '{count} seasons' },
   'item.notFound': 'Not Found',
-  'item.notFoundText': 'This movie or TV show isn’t in your library.',
+  'item.notFoundText': 'This movie or show isn’t in your library.',
   'item.toHome': 'Go to Home',
   'item.info.title': 'Information',
   'item.info.genre': 'Genre',

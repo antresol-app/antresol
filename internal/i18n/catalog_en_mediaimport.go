@@ -31,7 +31,7 @@ func init() {
 		"клипы":                                                                         "music videos",
 		"сезоны":                                                                        "seasons",
 		"серии":                                                                         "episodes",
-		"сериалы":                                                                       "TV shows",
+		"сериалы":                                                                       "shows",
 		"фильмы":                                                                        "movies",
 		"люди":                                                                          "people",
 		"коллекции":                                                                     "collections",

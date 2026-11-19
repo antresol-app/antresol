@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
@@ -76,6 +77,12 @@ func mountManaged(r chi.Router, users *auth.Store, sessions *auth.Sessions, prog
 	r.With(noKids).Patch("/api/me/managed/{id}", m.rename)
 	r.With(noKids).Delete("/api/me/managed/{id}", m.remove(false))
 	r.With(noKids).Post("/api/me/managed/{id}/merge", m.merge)
+	// the account's own app password: Jellyfin, Subsonic and OPDS apps that
+	// sign in with it (and the person's name) are the person, and write the
+	// account's history (a TV's Infuse)
+	r.Get("/api/me/managed/{id}/app-password", m.appPasswordInfo)
+	r.With(noKids).Post("/api/me/managed/{id}/app-password", m.newAppPassword)
+	r.With(noKids).Delete("/api/me/managed/{id}/app-password", m.clearAppPassword)
 	r.With(auth.RequireAdmin).Get("/api/managed-accounts", m.listAll)
 	r.With(auth.RequireAdmin).Delete("/api/managed-accounts/{id}", m.remove(true))
 }
@@ -310,4 +317,46 @@ func (m *managedAPI) switchDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": fresh.ID, "history": historyOf(fresh)})
+}
+
+// appPasswordInfo: GET /api/me/managed/{id}/app-password → {exists,
+// createdAt}, as /api/me/app-password: the password itself is shown once,
+// by POST.
+func (m *managedAPI) appPasswordInfo(w http.ResponseWriter, r *http.Request) {
+	ok, at, err := m.users.ManagedAppPasswordInfo(r.Context(), userOf(r).ID, managedIDParam(r))
+	if err != nil {
+		managedErr(w, r, err)
+		return
+	}
+	out := struct {
+		Exists    bool    `json:"exists"`
+		CreatedAt *string `json:"createdAt"`
+	}{Exists: ok}
+	if ok && !at.IsZero() {
+		s := at.UTC().Format(time.RFC3339)
+		out.CreatedAt = &s
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+// newAppPassword: POST → {password}; the old one and the Jellyfin tokens
+// got with it end.
+func (m *managedAPI) newAppPassword(w http.ResponseWriter, r *http.Request) {
+	p, err := m.users.SetManagedAppPassword(r.Context(), userOf(r).ID, managedIDParam(r))
+	if err != nil {
+		managedErr(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{"password": p})
+}
+
+// clearAppPassword: DELETE → 204.
+func (m *managedAPI) clearAppPassword(w http.ResponseWriter, r *http.Request) {
+	if err := m.users.ClearManagedAppPassword(r.Context(), userOf(r).ID, managedIDParam(r)); err != nil {
+		managedErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

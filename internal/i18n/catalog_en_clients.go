@@ -5,15 +5,15 @@ package i18n
 func init() {
 	Register(EN, map[string]string{
 		// shared
-		"Что-то пошло не так":                              "Something went wrong",
-		"Не найдено":                                       "Not found",
-		"Файл не найден":                                   "File not found",
-		"Внутренняя ошибка":                                "Internal error",
-		"Метод не поддерживается":                          "Method not supported",
-		"Неверное имя или пароль":                          "Incorrect name or password",
-		"Слишком много попыток, подождите":                 "Too many attempts. Please wait.",
-		"Задайте пароль для приложений в профиле Antresol": "Set an app password in your Antresol profile",
-		"Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в Управлении → Профили.": "To sign in away from home, the profile needs a password. Ask the administrator to set one in Manage → Profiles.",
+		"Что-то пошло не так":              "Something went wrong",
+		"Не найдено":                       "Not found",
+		"Файл не найден":                   "File not found",
+		"Внутренняя ошибка":                "Internal error",
+		"Метод не поддерживается":          "Method not supported",
+		"Неверное имя или пароль":          "Incorrect name or password",
+		"Слишком много попыток, подождите": "Too many attempts. Please wait.",
+		"Задайте пароль для приложений в Antresol: «Настройки → Пароль для приложений»":                                                    "Set an app password in Antresol: Settings → App Password",
+		"Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили».": "To sign in away from home, the profile needs a password. Ask the administrator to set one in Settings → Server → Profiles.",
 		"Неверный maxBitRate": "Invalid maxBitRate",
 
 		// Subsonic
@@ -69,6 +69,6 @@ func init() {
 
 		// Jellyfin views
 		"Фильмы":  "Movies",
-		"Сериалы": "TV Shows",
+		"Сериалы": "Shows",
 	})
 }

@@ -247,7 +247,7 @@ func compose(lang, name string, sections []section) (letter, error) {
 		Heading:  i18n.TL(lang, "Новое в %s", product),
 		Intro:    i18n.TL(lang, "Профиль «%s»", name),
 		Footer:   i18n.TL(lang, "Вы получили это письмо, потому что включили уведомления в профиле «%s».", name),
-		Settings: i18n.TL(lang, "Изменить их можно в меню профиля: «Уведомления на почту»."),
+		Settings: i18n.TL(lang, "Изменить их можно в разделе «Настройки → Уведомления»."),
 		Sections: sections,
 	}
 	var t strings.Builder

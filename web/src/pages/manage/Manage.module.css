@@ -85,7 +85,10 @@
 /* a row's current choice (phones only, as iOS) */
 .navValue {
   display: none;
-  flex: none;
+  /* gives way to the label (which never breaks inside a word) before it
+     pushes the chevron out of the row: an ellipsis, not a clipped word */
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -132,6 +135,7 @@
 }
 .navChevron {
   display: none;
+  flex: none;
   color: var(--label-3);
 }
 .content {

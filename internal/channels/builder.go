@@ -109,6 +109,13 @@ func (b *Builder) history(ctx context.Context, tx *sql.Tx, id int64) (history, e
 // ended more than Keep ago. A channel with nothing to play keeps what it
 // has.
 func (b *Builder) Build(ctx context.Context, c Channel) error {
+	return b.buildWith(ctx, c, nil)
+}
+
+// buildWith is Build with before run in its transaction ahead of the
+// extension (Recut drops the rows to make again there, so a viewer never
+// sees the schedule with the hole).
+func (b *Builder) buildWith(ctx context.Context, c Channel, before func(*sql.Tx, time.Time) error) error {
 	now := b.Store.now()
 	pool, err := b.Catalog.Pool(ctx, c.Rules)
 	if err != nil {
@@ -117,10 +124,10 @@ func (b *Builder) Build(ctx context.Context, c Channel) error {
 	if pool, err = b.withExtras(ctx, c, pool); err != nil {
 		return err
 	}
-	return b.build(ctx, c, pool, now)
+	return b.build(ctx, c, pool, now, before)
 }
 
-func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time) error {
+func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time, before func(*sql.Tx, time.Time) error) error {
 	tx, err := b.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -128,6 +135,11 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	defer tx.Rollback()
 	if err := b.trim(ctx, tx, c.ID, now); err != nil {
 		return err
+	}
+	if before != nil {
+		if err := before(tx, now); err != nil {
+			return err
+		}
 	}
 	h, err := b.history(ctx, tx, c.ID)
 	if err != nil {

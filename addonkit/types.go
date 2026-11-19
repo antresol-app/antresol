@@ -80,6 +80,61 @@ type User struct {
 	// not made for an app's request. Only the X-Antresol-User header
 	// carries it. An addon serving video plays no rendition taller.
 	MaxHeight int `json:"maxHeight,omitempty"`
+	// History: the request writes a separate history («Отдельная история
+	// на этом устройстве»: a shared TV, or an app signed in with a managed
+	// account's app password). The profile above is still the one asking
+	// (its limits, its settings, its rights); what it watches is recorded
+	// for History instead. Absent: the profile's own history. Only the
+	// X-Antresol-User header carries it. An addon that keeps a history
+	// (positions, «Продолжить», what was watched) keys it by
+	// User.HistoryUser().
+	History *History `json:"history,omitempty"`
+	// Histories: the profile's separate histories (managed accounts), so
+	// that an addon keeping rows by History.UID knows which uids still
+	// exist. Only GET /users fills it (HistoryProfiles lists them).
+	Histories []History `json:"histories,omitempty"`
+}
+
+// History is a managed account: a separate history under a profile. It
+// has no sign-in and no settings of its own; the profile's limits apply.
+// Its id is accepted wherever the core API takes the userId of a history
+// (GET/PUT /progress, GET /watched, episode-items).
+type History struct {
+	ID   int64  `json:"id"`
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+}
+
+// HistoryUser is u as the history it records: ID and UID of u.History
+// when the request writes a separate one, else u unchanged. The rest (the
+// rating limit, kid, language) stays u's: a separate history inherits its
+// profile's limits.
+func (u User) HistoryUser() User {
+	if u.History == nil || u.History.ID <= 0 || u.History.UID == "" {
+		u.History = nil
+		return u
+	}
+	h := *u.History
+	u.ID, u.UID, u.History, u.Histories = h.ID, h.UID, nil, nil
+	return u
+}
+
+// HistoryProfiles is us (GET /users) with each profile's separate
+// histories after it, as HistoryUser would give them: every id and uid an
+// addon may have keyed a history by.
+func HistoryProfiles(us []User) []User {
+	out := make([]User, 0, len(us))
+	for _, u := range us {
+		out = append(out, u)
+		for _, h := range u.Histories {
+			hu := u
+			hu.History = &h
+			hu = hu.HistoryUser()
+			hu.Name = h.Name
+			out = append(out, hu)
+		}
+	}
+	return out
 }
 
 // Text is a user-facing string in both interface languages.

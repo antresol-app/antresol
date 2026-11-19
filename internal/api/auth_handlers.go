@@ -427,7 +427,7 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 					writeErr(w, r, http.StatusBadRequest, "Неверный id")
 					return
 				}
-				if err := users.ClearAppPassword(r.Context(), id); err != nil {
+				if err := users.ResetAppPasswords(r.Context(), id); err != nil {
 					storeErr(w, r, err)
 					return
 				}

@@ -12,10 +12,10 @@ import (
 // Messages of failed logins.
 const (
 	msgBadLogin      = "Неверное имя или пароль"
-	msgNoAppPassword = "Задайте пароль для приложений в профиле Antresol"
+	msgNoAppPassword = "Задайте пароль для приложений в Antresol: «Настройки → Пароль для приложений»"
 	msgThrottled     = "Слишком много попыток, подождите"
 	// as the web login says it (api.msgRemotePasswordless)
-	msgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в Управлении → Профили."
+	msgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили»."
 )
 
 // authenticate checks u with t+s (t = md5(app password + s)) or p (the app
@@ -48,6 +48,7 @@ func (c *call) authenticate() bool {
 	switch out.Result {
 	case auth.LoginOK:
 		c.u = out.User
+		c.ctx = auth.WithHistory(auth.WithUser(c.ctx, out.User), out.History)
 		return true
 	case auth.LoginThrottled:
 		write(c.w, c.json, c.fail(codeAuth, msgThrottled))

@@ -922,3 +922,29 @@ func TestCountChangeTellsEpisodesChanged(t *testing.T) {
 		t.Fatalf("count not stored %+v", tw)
 	}
 }
+
+// The hourly loop leaves a profile to the sync already running for it (its
+// «sync now», the pull after linking): that one reads the list and stamps the
+// link; a second read would only repeat it.
+func TestTickSkipsProfileWithRunningSync(t *testing.T) {
+	e := newPullEnv(t)
+	var runs accounts.Runs
+	e.p.Runs = &runs
+	e.remote.entries = []Entry{entry(11, "watching", 0)}
+	end, ok := runs.Start(e.uid, Provider)
+	if !ok {
+		t.Fatal("not startable")
+	}
+	e.p.tick(context.Background())
+	if len(e.remote.logins) != 0 || !e.link().LastSync.IsZero() {
+		t.Fatalf("read the list during a running sync: %v, link %+v", e.remote.logins, e.link())
+	}
+	end()
+	e.p.tick(context.Background())
+	if len(e.remote.logins) != 1 || e.link().LastSync.IsZero() {
+		t.Fatalf("not read after the sync ended: %v", e.remote.logins)
+	}
+	if runs.Active(e.uid, Provider) {
+		t.Fatal("the loop left its run registered")
+	}
+}

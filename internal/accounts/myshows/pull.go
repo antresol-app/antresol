@@ -72,6 +72,9 @@ type Puller struct {
 	// Lock is the per-profile sync lock shared with the other providers
 	// (accounts.Syncer.UserLock); nil = the puller's own locks.
 	Lock func(uid int64) *sync.Mutex
+	// Runs is the registry of syncs in flight (accounts.Syncer.Runs): a
+	// profile whose sync is running is left to it (nil = no registry).
+	Runs *accounts.Runs
 	Now  func() time.Time
 	Log  *slog.Logger
 
@@ -575,7 +578,13 @@ func (p *Puller) tick(ctx context.Context) {
 		if l.Nickname == "" || !l.LastSync.IsZero() && p.now().Before(l.LastSync.Add(pullEvery)) {
 			continue
 		}
-		if r, err := p.PullOne(ctx, l.UserID); err != nil {
+		end, ok := p.Runs.Start(l.UserID, Provider)
+		if !ok {
+			continue // its sync is running (or was just asked for): it stamps the link when it ends
+		}
+		r, err := p.PullOne(ctx, l.UserID)
+		end()
+		if err != nil {
 			if ctx.Err() == nil {
 				p.log().Info("myshows: pull", "user", l.UserID, "err", err)
 			}

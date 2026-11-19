@@ -25,8 +25,8 @@ func unauthorized(w http.ResponseWriter, r *http.Request, msg string) {
 const (
 	msgNoCredentials      = "Нужны имя профиля и пароль для приложений"
 	msgBadLogin           = "Неверное имя или пароль"
-	msgNoAppPassword      = "Задайте пароль для приложений в профиле Antresol"
-	msgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в Управлении → Профили."
+	msgNoAppPassword      = "Задайте пароль для приложений в Antresol: «Настройки → Пароль для приложений»"
+	msgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили»."
 )
 
 // authenticate checks HTTP Basic: the profile name and its app password,

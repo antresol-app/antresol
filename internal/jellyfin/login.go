@@ -50,13 +50,15 @@ func (s *Server) authenticateByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ci := ParseAuth(r)
-	dev := auth.Device{ID: clip(ci.DeviceID), Name: clip(ci.Device), Client: clip(ci.Client), Version: clip(ci.Version)}
+	// History: a password of one of the person's managed accounts binds the
+	// token to that account's history (a TV's Infuse keeps the TV's history)
+	dev := auth.Device{ID: clip(ci.DeviceID), Name: clip(ci.Device), Client: clip(ci.Client), Version: clip(ci.Version), History: out.History}
 	tok, err := s.Tokens.Issue(r.Context(), out.User.ID, "jellyfin", dev)
 	if err != nil {
 		s.internal(w, r, "issue token", err)
 		return
 	}
-	s.log().Info("jellyfin: login", "profile", out.User.ID, "client", dev.Client, "device", dev.Name)
+	s.log().Info("jellyfin: login", "profile", out.User.ID, "history", out.History.ID, "client", dev.Client, "device", dev.Name)
 	writeJSON(w, AuthenticationResult{
 		User:        s.userDto(out.User),
 		SessionInfo: s.sessionDto(out.User, session{token: tok, dev: dev}),

@@ -42,7 +42,7 @@ describe('an empty library without addons', () => {
   it.each(ALL)('%s: the admin gets the folder and the rescan, not Search', async (page) => {
     await renderEmpty(page, admin)
     expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: 'Пересканировать в настройках' })
+    const link = screen.getByRole('link', { name: 'Сканировать в настройках' })
     expect(link).toHaveAttribute('href', '/manage/settings/library#rescan')
     expect(document.querySelector('a[href^="/search"]')).toBeNull()
   })
@@ -71,7 +71,7 @@ describe('an empty library with an addon', () => {
     act(() => setAddonUser({ isAdmin: true }))
     await renderEmpty(page, admin)
     expect(await screen.findByText(TEXT[page])).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Пересканировать в настройках' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Сканировать в настройках' })).toBeInTheDocument()
     const href = SCOPE[page] === 'home' ? '/search' : `/search?dk=${SCOPE[page]}`
     expect(screen.getByRole('link', { name: 'Найти и добавить' })).toHaveAttribute('href', href)
   })

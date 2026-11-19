@@ -50,6 +50,10 @@ type Config struct {
 	Log     *slog.Logger
 	// Addrs lists the server's own addresses (nil: the interfaces'); tests.
 	Addrs func() []netip.Prefix
+	// Status (optional) gets the state of the friendly name antresol.local.
+	Status *Status
+
+	claim *hostClaim // the friendly name, while mDNS runs
 }
 
 func (c *Config) log() *slog.Logger {
@@ -76,7 +80,10 @@ func Run(ctx context.Context, c Config) {
 			go func() { defer wg.Done(); serveUDP(ctx, conn, &c) }()
 		}
 	}
-	if c.MDNS {
+	if !c.MDNS {
+		c.Status.set(StateOff, "")
+	} else {
+		c.Status.set(StateProbing, "")
 		wg.Add(1)
 		go func() { defer wg.Done(); runMDNS(ctx, &c) }()
 	}

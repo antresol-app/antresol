@@ -21,16 +21,24 @@ test('a profile is linked, its shelves and an export land in «Книги»', as
   await scanLibrary(page.request, (s) => s.books >= 3)
   await page.goto('/settings/accounts')
   const gr = section(page)
+  // a window of another width lays the page out again and remounts the card once: go on with the one that stays
+  const resize = async (width: number, height: number) => {
+    await page.setViewportSize({ width, height })
+    await expect(async () => {
+      await gr.scrollIntoViewIfNeeded({ timeout: 2000 })
+    }).toPass()
+  }
+  const phone = () => resize(390, 844)
+  const wide = () => resize(1440, 900)
   await expect(gr).toBeVisible()
   await gr.scrollIntoViewIfNeeded()
   const shots = process.env.GOODREADS_SHOTS
   if (shots) {
     // the state a profile meets first, at both widths
     await gr.screenshot({ path: `${shots}/unlinked-wide.png` })
-    await page.setViewportSize({ width: 390, height: 844 })
-    await gr.scrollIntoViewIfNeeded()
+    await phone()
     await gr.screenshot({ path: `${shots}/unlinked-phone.png` })
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await wide()
   }
 
   // an address with no profile number, an unknown profile: the server says so
@@ -48,6 +56,20 @@ test('a profile is linked, its shelves and an export land in «Книги»', as
   await expect(gr.getByText(/Синхронизировано/)).toBeVisible()
   await expect(gr.getByText(/Только чтение/)).toBeVisible()
 
+  // «Синхронизировать»: the first read has just ended, so a second one within a minute is
+  // refused in the viewer's language (the server's cooldown), and nothing is left spinning
+  await gr.getByRole('button', { name: 'Синхронизировать' }).click()
+  await expect(gr.getByText('Только что синхронизировано, повторите через минуту')).toBeVisible()
+  await expect(gr.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
+  await expect(gr.getByText('Синхронизация…')).toHaveCount(0)
+  if (shots) {
+    await gr.scrollIntoViewIfNeeded()
+    await gr.screenshot({ path: `${shots}/synced-wide.png` })
+    await phone()
+    await gr.screenshot({ path: `${shots}/synced-phone.png` })
+    await wide()
+  }
+
   // the export: whole history, no link needed
   await gr.getByTestId('goodreads-file').setInputFiles({ name: 'goodreads_library_export.csv', mimeType: 'text/csv', buffer: Buffer.from(exportCSV) })
   await expect(gr.getByText('Файл прочитан: 4 книги, в библиотеке нашлось 2.')).toBeVisible()
@@ -58,12 +80,11 @@ test('a profile is linked, its shelves and an export land in «Книги»', as
 
   if (shots) {
     await gr.screenshot({ path: `${shots}/settings-wide.png` })
-    await page.setViewportSize({ width: 390, height: 844 })
-    await gr.scrollIntoViewIfNeeded()
+    await phone()
     await gr.screenshot({ path: `${shots}/settings-phone.png` })
     // nothing runs off the page sideways
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await wide()
   }
 
   // the books: read (the export's War and Peace, the profile's trial book), to-read

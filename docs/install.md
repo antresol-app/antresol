@@ -1,6 +1,6 @@
 # Installing Antresol Server
 
-The short version is in the [README](../README.md#quick-start). This page has the details.
+The short version is in the [README](https://github.com/antresol-app/antresol/blob/main/README.md#quick-start). This page has the details.
 
 ## Media folders
 
@@ -24,7 +24,7 @@ or set them in `.env` ([configuration.md](configuration.md#media-folders)).
 
 After you create the administrator, a short wizard walks through what the
 server needs. Every step can be skipped, and the same checks stay in
-Manage → Settings (Library → Server folders, Transcoding), so nothing has to
+Settings → Server (Library & Languages → Server folders, Transcoding), so nothing has to
 be done in one sitting:
 
 1. **Media folders.** What the server sees under `/media`, with the number of
@@ -62,7 +62,7 @@ be done in one sitting:
   (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
   If your files belong to another user, give uid 1000 write access or add
   `user: "<uid>:<gid>"` to the service (the volume `antresol-config` then needs
-  the same owner). The first-run wizard and Manage → Settings → Library test
+  the same owner). The first-run wizard and Settings → Server → Library & Languages test
   this for real and print the exact command. Settings and the database live in
   the `antresol-config` volume.
 - **Temporary files on another disk.** Playback segments, live TV and
@@ -93,15 +93,27 @@ be done in one sitting:
   the home network.
 - **Finding the server.** The apps look for servers on the home network
   by themselves: by mDNS / Bonjour (`_antresol._tcp`)
-  and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). With Docker's
-  default bridge network multicast and broadcast stay outside the
-  container: the published `8420/udp` answers apps that ask the host's
-  address, and for discovery that needs nothing typed run the container with
-  `network_mode: host` (then drop `ports:`) or the binary on the host.
-  `VAULT_SERVER_NAME` is the name the apps list (default `Antresol`);
-  `VAULT_DISCOVERY=off` turns both off, `VAULT_MDNS=off` mDNS alone. On a
-  TV, sign in by scanning its QR code with the phone app or the phone's
-  camera (the page `/pair`).
+  and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). A browser at
+  home opens it as **http://antresol.local:8420**, no IP address needed: the
+  server claims that name by mDNS, and a second server on the same network
+  takes `antresol-2.local` (and so on). «About This Server» in the profile
+  menu shows the name this server got. `VAULT_SERVER_NAME` is the name the
+  apps list (default `Antresol`); `VAULT_DISCOVERY=off` turns both off,
+  `VAULT_MDNS=off` mDNS (and the name) alone. On a TV, sign in by scanning
+  its QR code with the phone app or the phone's camera (the page `/pair`).
+- **mDNS and Docker networks.** With Docker's default bridge network
+  multicast and broadcast stay inside the container: the published
+  `8420/udp` answers apps that ask the host's address, but `antresol.local`
+  and the apps' automatic search do not work (the server notices it, says so
+  in its log and in «About This Server»). For them, run the container with
+  `network_mode: host` and drop `ports:` (or run the binary on the host). The
+  cost: the server's ports are the host's own (8420 must be free there), and
+  a helper service of an addon is no longer reachable by its service name:
+  give the addon the helper's address, with the helper publishing its port
+  on `127.0.0.1`. To keep the bridge network instead, let the host's own
+  Avahi publish the name: a line `<host LAN IP> antresol.local` in
+  `/etc/avahi/hosts`. Windows 10+, macOS, iOS and Linux with Avahi resolve
+  `.local` names; Android only from version 12, and not in every browser.
 - Every setting is an environment variable and can go in `.env`: see
   [configuration.md](configuration.md); [build-tags.md](build-tags.md)
   explains the build.

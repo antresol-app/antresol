@@ -20,8 +20,11 @@ import (
 //
 // The instance is "<name> <id6>" and the host "antresol-<id8>": both carry
 // the server id, so two servers on one network never claim the same name
-// and the responder skips probing. It announces itself at start and says
-// goodbye (TTL 0) at the end. IPv4 only.
+// and they are not probed. The apps use these. Beside them the responder
+// claims the friendly host name antresol.local (A records only) for
+// browsers, probed and defended because every server wants it (claim.go).
+// It announces itself at start and says goodbye (TTL 0) at the end. IPv4
+// only.
 
 var mdnsGroup = netip.MustParseAddrPort("224.0.0.251:5353")
 
@@ -81,11 +84,13 @@ func capTTL(rs []record, ttl uint32) []record {
 // is ours. legacy: the asker is not an mDNS responder (its source port is
 // not 5353) and gets a plain unicast DNS answer.
 func (c *Config) respond(msg []byte, peer netip.AddrPort) (out []byte, unicast bool) {
-	q, err := parseQuery(msg)
-	if err != nil || q.response || q.opcode != 0 {
+	m, err := parseMessage(msg)
+	if err != nil || m.response || m.opcode != 0 {
 		return nil, false
 	}
+	q := m.query
 	n := c.names()
+	friendly := c.claim.answered()
 	inst, host := strings.ToLower(n.instance), strings.ToLower(n.host)
 	addrs := c.addrsFor(peer.Addr())
 	hostRecs := func() []record {
@@ -141,6 +146,12 @@ func (c *Config) respond(msg []byte, peer netip.AddrPort) (out []byte, unicast b
 					add(&ans, r)
 				}
 			}
+		case friendly:
+			if friendly != "" && (all || qq.qtype == typeA) {
+				for _, a := range addrs {
+					add(&ans, aRecord(friendly, a, ttlHost))
+				}
+			}
 		}
 		if len(ans) > before {
 			asked = append(asked, qq)
@@ -166,7 +177,9 @@ func (c *Config) respond(msg []byte, peer netip.AddrPort) (out []byte, unicast b
 	if peer.Port() != mdnsGroup.Port() {
 		return buildResponse(true, q.id, asked, capTTL(ans, ttlLegacy), capTTL(ex, ttlLegacy)), true
 	}
-	return buildResponse(false, 0, nil, ans, ex), allQU
+	// a probe for a name we hold is defended by multicast (§8.1 asks for
+	// unicast, but every other prober listening learns it is taken too)
+	return buildResponse(false, 0, nil, ans, ex), allQU && len(m.authority) == 0
 }
 
 // announcement is every record of the service as an unsolicited answer
@@ -182,6 +195,9 @@ func (c *Config) announcement(goodbye bool) []byte {
 	for _, a := range c.addrsFor(netip.Addr{}) {
 		rs = append(rs, aRecord(n.host, a, ttlHost))
 	}
+	if f := c.claim.answered(); f != "" && goodbye {
+		rs = append(rs, c.claim.proposed(f)...)
+	}
 	if goodbye {
 		rs = capTTL(rs, 0)
 	}
@@ -190,11 +206,14 @@ func (c *Config) announcement(goodbye bool) []byte {
 
 func (c *Config) lanAddrs() []netip.Addr { return c.addrsFor(netip.Addr{}) }
 
-// runMDNS advertises the service until ctx ends.
+// runMDNS advertises the service, and claims the friendly name, until
+// ctx ends.
 func runMDNS(ctx context.Context, c *Config) {
+	c.Status.setPort(c.Info.Port)
 	ifaces := c.lanAddrs()
 	conn, err := listenMDNS(ifaces)
 	if err != nil {
+		c.Status.set(StateFailed, "")
 		c.log().Warn("discovery: mDNS off", "err", err)
 		return
 	}
@@ -205,6 +224,18 @@ func runMDNS(ctx context.Context, c *Config) {
 				c.log().Debug("discovery: mDNS send", "via", a, "err", err)
 			}
 		}
+	}
+	// In a Docker bridge network nobody on the home network hears this
+	// responder, and its addresses are the container's: a probe would
+	// "win" antresol.local for nobody, and the UI would show a name that
+	// does not work. The apps still find the server by the UDP probe.
+	bridge := bridgeNetwork()
+	if bridge {
+		c.Status.set(StateBridge, "")
+		c.log().Warn("discovery: the container is on a Docker bridge network: multicast does not reach the home network, " +
+			"so " + FriendlyBase + ".local is not claimed; run it with network_mode: host for that")
+	} else {
+		c.claim = newHostClaim(c.lanAddrs)
 	}
 	done := make(chan struct{})
 	go func() {
@@ -219,13 +250,17 @@ func runMDNS(ctx context.Context, c *Config) {
 		case <-time.After(time.Second):
 		}
 	}
+	if c.claim != nil && ctx.Err() == nil {
+		c.claim.run(ctx, realClaimEnv(multicast, c.Status, func(msg string, args ...any) { c.log().Info(msg, args...) }))
+	}
 	<-ctx.Done()
 	multicast(c.announcement(true))
 	conn.Close()
 	<-done
 }
 
-// serveMDNS answers the queries read from conn until it is closed.
+// serveMDNS answers the queries read from conn until it is closed, and
+// shows the friendly name's claim what other hosts say.
 func serveMDNS(ctx context.Context, conn *net.UDPConn, c *Config, multicast func([]byte)) {
 	lim := newLimiter(50)
 	buf := make([]byte, 9000)
@@ -239,6 +274,11 @@ func serveMDNS(ctx context.Context, conn *net.UDPConn, c *Config, multicast func
 		}
 		if !lanClient(from.Addr()) {
 			continue
+		}
+		if c.claim != nil {
+			if m, err := parseMessage(buf[:n]); err == nil {
+				c.claim.observe(m)
+			}
 		}
 		out, unicast := c.respond(buf[:n], from)
 		if out == nil || !lim.allow(time.Now()) {

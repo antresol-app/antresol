@@ -8,6 +8,7 @@ import type {
   Trailer,
   TrailerPlay,
   About,
+  LocalName,
   CoreUpdate,
   AccountsState,
   AddonInfo,
@@ -233,6 +234,8 @@ export function imageSrcSet(ref: string | null | undefined, min = 240, max = 960
 
 // --- System & auth ---
 export const getAbout = () => request<About>('GET', '/api/about')
+/** «О сервере»: the address to open on the home network (signed in only). */
+export const getLocalName = (signal?: AbortSignal) => request<LocalName>('GET', '/api/about/local', undefined, signal)
 /** «Обновления» (admin): the core's version and its latest release. */
 export const getCoreUpdate = (signal?: AbortSignal) => request<CoreUpdate>('GET', '/api/updates', undefined, signal)
 export const getSetup = () => request<SetupState>('GET', '/api/setup')
@@ -635,6 +638,10 @@ export const createManagedAccount = (name: string) => request<ManagedAccount>('P
 export const renameManagedAccount = (id: number, name: string) => request<ManagedAccount>('PATCH', `/api/me/managed/${id}`, { name })
 export const deleteManagedAccount = (id: number) => request<void>('DELETE', `/api/me/managed/${id}`)
 export const mergeManagedAccount = (id: number) => request<void>('POST', `/api/me/managed/${id}/merge`)
+/** A managed account's own app password: Jellyfin, Subsonic and OPDS apps signed in with it write that history. */
+export const getManagedAppPassword = (id: number) => request<{ exists: boolean; createdAt: string | null }>('GET', `/api/me/managed/${id}/app-password`)
+export const createManagedAppPassword = (id: number) => request<{ password: string }>('POST', `/api/me/managed/${id}/app-password`)
+export const revokeManagedAppPassword = (id: number) => request<void>('DELETE', `/api/me/managed/${id}/app-password`)
 // an admin's view: every profile's, with its owner
 export const getAllManagedAccounts = () => request<{ items: ManagedAccount[] }>('GET', '/api/managed-accounts')
 export const deleteAnyManagedAccount = (id: number) => request<void>('DELETE', `/api/managed-accounts/${id}`)
@@ -791,6 +798,12 @@ export const linkGoodreads = (profile: string) => request<AccountsState>('PUT', 
 export const importGoodreads = (csv: string) => request<AccountsState>('POST', '/api/accounts/goodreads/import', { csv }).then((r) => r.goodreads as GoodreadsState)
 /** Removes the link and the books read from Goodreads; the marks stay. */
 export const unlinkGoodreads = () => request<void>('DELETE', '/api/accounts/goodreads')
+/**
+ * «Синхронизировать»: the viewer's own link to `provider` is synced after the response
+ * (202 with the link states: `syncing` is true until it ends). A sync already running is joined;
+ * 429 within a minute of the last one's end, 409 without a link.
+ */
+export const syncAccount = (provider: 'shikimori' | 'myshows' | 'goodreads') => request<AccountsState>('POST', `/api/accounts/${provider}/sync`)
 export const unlinkShikimori = () => request<void>('DELETE', '/api/accounts/shikimori')
 /** enable: the sign-in address to open; disable: nothing. */
 export const setShikimoriWrite = (enable: boolean) => request<{ authorizeUrl?: string } | void>('POST', '/api/accounts/shikimori/write', { enable })

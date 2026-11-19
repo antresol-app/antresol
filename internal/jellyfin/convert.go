@@ -86,6 +86,7 @@ type conv struct {
 	s      *Server
 	ctx    context.Context
 	u      auth.User
+	hid    int64  // whose history progress is read from (auth.HistoryID)
 	limit  string // u.RatingLimit()
 	fields fieldSet
 
@@ -97,8 +98,17 @@ type conv struct {
 }
 
 func (s *Server) conv(ctx context.Context, u auth.User, fields fieldSet) *conv {
-	return &conv{s: s, ctx: ctx, u: u, limit: u.RatingLimit(), fields: fields,
+	return &conv{s: s, ctx: ctx, u: u, hid: historyOr(ctx, u), limit: u.RatingLimit(), fields: fields,
 		items: map[int64]library.Item{}, vis: map[int64]bool{}, prog: map[int64]*progress.Entry{}, counts: map[int64]epCounts{}}
+}
+
+// historyOr is the request's history (auth.HistoryID) when ctx is the
+// request of u, else u's own.
+func historyOr(ctx context.Context, u auth.User) int64 {
+	if cur, ok := auth.UserFrom(ctx); ok && cur.ID == u.ID {
+		return auth.HistoryID(ctx)
+	}
+	return u.ID
 }
 
 // item loads an item (cached); library.ErrNotFound when missing.

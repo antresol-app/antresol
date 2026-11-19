@@ -21,10 +21,14 @@ const (
 )
 
 // AppLoginOutcome: User is set for LoginOK; Wait for LoginThrottled.
+// History is the managed account whose app password matched (ID 0: the
+// person's own): the app is the person signed in, and its history goes to
+// that account (WithHistory).
 type AppLoginOutcome struct {
-	User   User
-	Result LoginResult
-	Wait   time.Duration
+	User    User
+	History History
+	Result  LoginResult
+	Wait    time.Duration
 }
 
 // AppLogin is the login of third-party protocols (Subsonic, OPDS): the
@@ -62,17 +66,25 @@ func AppLogin(ctx context.Context, users *Store, network *Network, th *Throttle,
 		log.Printf("%s: passwordless login for profile %d refused from %s (not the home network)", proto, u.ID, client)
 		return AppLoginOutcome{Result: LoginRemotePasswordless}, nil
 	}
-	var app string
-	var hasApp bool
+	// the person's own app password, then their managed accounts' (a TV's
+	// player signs in with the person's name and the TV account's password)
+	var creds []appCredential
 	if found {
-		if app, hasApp, err = users.AppPassword(ctx, u.ID); err != nil {
+		if creds, err = users.appCredentials(ctx, u.ID); err != nil {
 			return AppLoginOutcome{}, err
 		}
 	}
-	if !hasApp || app == "" || !check(app) {
+	matched := -1
+	for i, c := range creds {
+		if check(c.password) {
+			matched = i
+			break
+		}
+	}
+	if matched < 0 {
 		th.Fail(keys...)
 		switch {
-		case found && !hasApp:
+		case found && len(creds) == 0:
 			log.Printf("%s: login for profile %d from %s: no app password set", proto, u.ID, client)
 			return AppLoginOutcome{Result: LoginNoAppPassword}, nil
 		case found:
@@ -83,7 +95,7 @@ func AppLogin(ctx context.Context, users *Store, network *Network, th *Throttle,
 		return AppLoginOutcome{Result: LoginBad}, nil
 	}
 	th.Reset(appThrottleKey(u.ID))
-	return AppLoginOutcome{User: u, Result: LoginOK}, nil
+	return AppLoginOutcome{User: u, History: creds[matched].history, Result: LoginOK}, nil
 }
 
 func appThrottleKey(id int64) string { return fmt.Sprintf("app:%d", id) }

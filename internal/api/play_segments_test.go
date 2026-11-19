@@ -10,14 +10,17 @@ import (
 )
 
 type fakeSegments struct {
-	asked []int64
-	movie bool
+	asked   []int64
+	movie   bool
+	noPrint bool
 }
 
 func (f *fakeSegments) ForPlay(_ context.Context, fileID, durationMs int64, movie bool) []segments.Play {
 	f.asked, f.movie = append(f.asked, fileID), movie
 	return []segments.Play{{Kind: segments.Credits, StartSec: 1.5, EndSec: float64(durationMs) / 1000}}
 }
+
+func (f *fakeSegments) CanFingerprint() bool { return !f.noPrint }
 
 const directProbe = `{"Container":"mp4","DurationMs":5000,"Video":{"Codec":"h264","Height":720,"BitDepth":8},"Audio":[{"Index":1,"Codec":"aac","Default":true}]}`
 

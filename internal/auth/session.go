@@ -89,6 +89,7 @@ type Session struct {
 	// its name.
 	HistoryUserID int64
 	HistoryName   string
+	HistoryUID    string
 }
 
 // TokenHash is what sessions.token holds for a session token: the hex

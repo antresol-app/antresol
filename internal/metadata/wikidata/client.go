@@ -133,10 +133,11 @@ type claim struct {
 }
 
 type entity struct {
-	ID        string                            `json:"id"`
-	Labels    map[string]struct{ Value string } `json:"labels"`
-	Claims    map[string][]claim                `json:"claims"`
-	Sitelinks map[string]json0                  `json:"sitelinks"`
+	ID        string                              `json:"id"`
+	Labels    map[string]struct{ Value string }   `json:"labels"`
+	Aliases   map[string][]struct{ Value string } `json:"aliases"`
+	Claims    map[string][]claim                  `json:"claims"`
+	Sitelinks map[string]json0                    `json:"sitelinks"`
 }
 
 // json0 skips a value.

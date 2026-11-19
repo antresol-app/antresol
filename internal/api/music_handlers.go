@@ -364,7 +364,7 @@ func (h *lib) recentlyPlayed(ctx context.Context, r *http.Request) ([]Card, erro
 	if h.Music == nil {
 		return []Card{}, nil
 	}
-	ids, err := h.Music.RecentAlbums(ctx, userOf(r).ID, shelfSize)
+	ids, err := h.Music.RecentAlbums(ctx, auth.HistoryID(ctx), shelfSize)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (h *lib) albums(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, offset := pageParams(r, 100)
-	aq := library.AlbumQuery{Sort: sort, UserID: u.ID, Limit: limit, Offset: offset, MaxRating: ratingLimit(u),
+	aq := library.AlbumQuery{Sort: sort, UserID: u.ID, PlaysUserID: auth.HistoryID(r.Context()), Limit: limit, Offset: offset, MaxRating: ratingLimit(u),
 		Starred: q.Get("starred") == "1", Genre: q.Get("genre"), Owner: scopeOwner(r, u)}
 	if s := q.Get("artist"); s != "" {
 		id, err := strconv.ParseInt(s, 10, 64)
@@ -900,14 +900,15 @@ func (h *lib) played(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if at.IsZero() {
-		err = h.Music.Played(r.Context(), userOf(r).ID, it.ID, time.Time{})
+		// a play is history: the device's separate one when its switch is on
+		err = h.Music.Played(r.Context(), auth.HistoryID(r.Context()), it.ID, time.Time{})
 	} else {
 		// a future at is stored as now (PlayedAt)
 		if h.Music.Now().Sub(at) > playsMaxAge {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		err = h.Music.PlayedAt(r.Context(), userOf(r).ID, it.ID, at)
+		err = h.Music.PlayedAt(r.Context(), auth.HistoryID(r.Context()), it.ID, at)
 	}
 	if err != nil {
 		internalErr(w, r, "played", err)

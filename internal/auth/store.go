@@ -424,9 +424,11 @@ func (s *Store) Update(ctx context.Context, id int64, p UserPatch) error {
 		// A new, changed or removed login password also ends the app
 		// password: one minted from a session the password change is meant
 		// to lock out must not keep /rest and /opds access.
-		_, err = tx.ExecContext(ctx, `UPDATE users SET app_password=NULL, app_password_created_at=NULL WHERE id=?`, id)
+		// The managed accounts' app passwords too: they were made from such
+		// a session as well.
+		_, err = tx.ExecContext(ctx, `UPDATE users SET app_password=NULL, app_password_created_at=NULL WHERE id=? OR owner_id=?`, id, id)
 		if err == nil {
-			err = revokeAppTokens(ctx, tx, id) // and the app tokens got with it
+			err = revokeAppTokens(ctx, tx, id) // and the app tokens got with them
 		}
 	}
 	if err != nil {

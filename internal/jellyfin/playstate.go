@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/screentime"
 )
@@ -127,7 +128,8 @@ func (s *Server) playing(kind reportKind) http.HandlerFunc {
 			if dur == 0 {
 				dur = int64(metaOf(it).Runtime) * 60_000
 			}
-			if err := s.Progress.PlayedAt(r.Context(), userOf(r).ID, it.ID, abs, dur, time.Time{}); err != nil {
+			// the history of the token (a managed account's app password: its own)
+			if err := s.Progress.PlayedAt(r.Context(), auth.HistoryID(r.Context()), it.ID, abs, dur, time.Time{}); err != nil {
 				s.internal(w, r, "playstate", err)
 				return
 			}
@@ -212,7 +214,7 @@ func (s *Server) markPlayed(played bool) http.HandlerFunc {
 			}
 		}
 		for _, id := range ids {
-			if err := s.Progress.MarkWatchedAt(r.Context(), userOf(r).ID, id, played, at); err != nil {
+			if err := s.Progress.MarkWatchedAt(r.Context(), auth.HistoryID(r.Context()), id, played, at); err != nil {
 				s.internal(w, r, "played", err)
 				return
 			}

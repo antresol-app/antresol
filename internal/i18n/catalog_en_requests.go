@@ -12,9 +12,9 @@ func init() {
 		"Уже много запросов ждут ответа. Подожди, пока родители ответят": "Lots of requests are already waiting. Wait until your parents answer",
 		"Запрос не найден":                                               "Request not found",
 		"На этот запрос уже ответили":                                    "This request has already been answered",
-		"Неизвестный фильм или сериал":                                   "Unknown movie or TV show",
+		"Неизвестный фильм или сериал":                                   "Unknown movie or show",
 		"Недоступно для этого профиля":                                   "Not available for this profile",
-		"Такого фильма или сериала нет в TMDB":                           "This movie or TV show isn’t on TMDB",
+		"Такого фильма или сериала нет в TMDB":                           "This movie or show isn’t on TMDB",
 		"TMDB сейчас недоступен. Попробуйте позже":                       "TMDB is unavailable right now. Try again later",
 	})
 }

@@ -1,6 +1,6 @@
 // Russian source strings (setupWizard group: the first-run wizard after the administrator is created, and the folder and write checks it shares with «Настройки сервера»).
 export default {
-  'wizard.lead': 'Пара минут сейчас, и дальше ничего настраивать не придётся. Любой шаг можно пропустить: те же проверки есть в «Управление → Настройки сервера».',
+  'wizard.lead': 'Пара минут сейчас, и дальше ничего настраивать не придётся. Любой шаг можно пропустить: те же проверки есть в разделе «Настройки → Сервер».',
   'wizard.step': 'Шаг {n} из {total}',
   'wizard.skipAll': 'Пропустить настройку',
   'wizard.skip': 'Пропустить',

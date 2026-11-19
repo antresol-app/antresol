@@ -11,9 +11,9 @@ export default {
   'app.chunk.failed': 'Couldn’t open this section',
   'app.chunk.failedHint': 'Check your connection to the server and try again.',
   'app.session.remotePasswordless':
-    'To sign in away from home, the profile needs a password. Ask the administrator to set one in Manage → Profiles.',
+    'To sign in away from home, the profile needs a password. Ask the administrator to set one in Settings → Server → Profiles.',
   'app.setup.welcome': 'Welcome to Antresol',
-  'app.setup.lead': 'Movies, TV shows, music and books for the whole family — on your own server.',
+  'app.setup.lead': 'Movies, shows, music and books for the whole family — on your own server.',
   'app.setup.remote':
     'The first setup can only be done from your home network. Open Antresol on a computer or phone connected to your home Wi‑Fi.',
   'app.setup.name': 'Your name',
@@ -24,7 +24,7 @@ export default {
   'app.setup.passwordShort': 'At least 6 characters',
   'app.setup.passwordHint': 'At least 6 characters. With this profile you’ll add movies and manage the family.',
   'app.setup.continue': 'Continue',
-  'app.setup.footnote': 'You can add profiles for your family later in Manage.',
+  'app.setup.footnote': 'You can add profiles for your family later in Settings → Server → Profiles.',
   'app.profiles.whoIsWatching': 'Who’s Watching?',
   'app.profiles.loading': 'Loading profiles',
   'app.profiles.loadFailed': 'Couldn’t load profiles',

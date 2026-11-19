@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import type { About, User } from '../../api/types'
+import type { About, LocalName, User } from '../../api/types'
 import { resetAbout, sourceLink } from '../../state/about'
 import { session } from '../../state/session'
 import { AboutSheet, versionLabel } from '../AboutSheet'
@@ -14,8 +14,12 @@ const official: About = { version: '1.0.0', commit: '0123456789abcdef', license:
 const own: About = { version: 'dev', commit: '', license: 'AGPL-3.0-or-later' }
 const admin: User = { id: 1, name: 'Папа', avatar: 'grad-1', hasPassword: true, isAdmin: true, isKid: false, maxRating: null }
 
-function serve(about: About, user = admin) {
-  const fetch = vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/api/about') ? json(about) : json(user)))
+function serve(about: About, user = admin, local?: LocalName) {
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const u = String(input)
+    if (u.endsWith('/api/about/local')) return local ? json(local) : new Response('', { status: 404 })
+    return u.endsWith('/api/about') ? json(about) : json(user)
+  })
   vi.stubGlobal('fetch', fetch)
   return fetch
 }
@@ -74,6 +78,35 @@ describe('the source offer (AGPL §13)', () => {
     expect(screen.getByRole('link', { name: 'Текст лицензии' })).toBeInTheDocument()
     expect(screen.getByText(/не одобрен и не сертифицирован TMDB/)).toBeInTheDocument()
     expect(versionLabel(own)).toBe('dev')
+  })
+
+  it('«О сервере» shows the home-network address once the server holds the name', async () => {
+    serve(official, admin, { state: 'ready', name: 'antresol-2.local', url: 'http://antresol-2.local:8420' })
+    render(<AboutSheet onClose={() => {}} />)
+    expect(await screen.findByText('http://antresol-2.local:8420')).toBeInTheDocument()
+    expect(screen.getByText('В домашней сети')).toBeInTheDocument()
+    expect(screen.getByText(/IP знать не нужно/)).toBeInTheDocument()
+  })
+
+  it('«О сервере» says why there is no address in a Docker bridge network', async () => {
+    serve(official, admin, { state: 'bridge' })
+    render(<AboutSheet onClose={() => {}} />)
+    expect(await screen.findByText(/network_mode: host/)).toBeInTheDocument()
+    expect(screen.queryByText(/IP знать не нужно/)).toBeNull()
+  })
+
+  it('«О сервере» has no address row when mDNS is off or the server is older', async () => {
+    serve(official, admin, { state: 'off' })
+    const { unmount } = render(<AboutSheet onClose={() => {}} />)
+    expect(await screen.findByText('1.0.0 (0123456)')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('В домашней сети')).toBeNull()
+    unmount()
+    serve(official) // 404: a server without /api/about/local
+    render(<AboutSheet onClose={() => {}} />)
+    expect(await screen.findByText('1.0.0 (0123456)')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('В домашней сети')).toBeNull()
   })
 
   it('every profile finds «О сервере» in its «Настройки»', async () => {

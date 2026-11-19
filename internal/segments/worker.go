@@ -76,6 +76,11 @@ type Worker struct {
 	Idle time.Duration
 	// CacheDir keeps the fingerprints ("" none).
 	CacheDir string
+	// Changed is told, after each season or film, the files whose
+	// segments for the player (Pick) are not what they were: found,
+	// moved or dropped (nil: nobody listens). The channels' schedules,
+	// built ahead with the episodes as they were cut then, follow it.
+	Changed func(fileIDs []int64)
 
 	// Overrides of the media reads (tests).
 	Chapters    func(ctx context.Context, path string) ([]media.Chapter, error)
@@ -210,14 +215,28 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *Worker) chromaprint(ctx context.Context) bool {
+// CanFingerprint says whether ffmpeg has the chromaprint muxer the
+// analysis of episodes needs (asked once; the official image's ffmpeg,
+// Debian's, has it). Without it the intros and credits of episodes come
+// only from chapters and the online databases: said once in the log and
+// on «Перекодирование» (GET /api/settings/transcoding), never silently.
+func (w *Worker) CanFingerprint() bool {
+	if w == nil {
+		return false
+	}
 	if w.Chromaprint != nil {
 		return *w.Chromaprint
 	}
 	w.cpOnce.Do(func() {
+		// its own deadline: the answer is kept, a caller's cancelled
+		// request must not make it false for good
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		w.cp = media.HasMuxer(ctx, w.ffmpeg(), "chromaprint")
 		if !w.cp {
-			w.log().Warn("segments: ffmpeg has no chromaprint muxer: intros and credits are not analysed")
+			w.log().Warn("segments: ffmpeg has no chromaprint muxer (built without --enable-chromaprint): "+
+				"the intros and credits of episodes are not analysed, only chapters and the online databases give them",
+				"ffmpeg", w.ffmpeg())
 		}
 	})
 	return w.cp
@@ -348,7 +367,7 @@ func (w *Worker) pass(ctx context.Context, full bool) error {
 	if err != nil {
 		return err
 	}
-	cp := w.chromaprint(ctx)
+	cp := w.CanFingerprint()
 	units := map[int64][]file{}
 	dues := map[int64]due{}
 	for _, f := range files {
@@ -386,7 +405,15 @@ func (w *Worker) pass(ctx context.Context, full bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := w.unit(ctx, units[t.key], dues, full); err != nil {
+		before := w.picks(ctx, units[t.key])
+		err := w.unit(ctx, units[t.key], dues, full)
+		if w.Changed != nil {
+			// what got stored before a failure counts too
+			if ids := w.changedSince(context.WithoutCancel(ctx), units[t.key], before); len(ids) > 0 {
+				w.Changed(ids)
+			}
+		}
+		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -402,6 +429,35 @@ func (w *Worker) pass(ctx context.Context, full bool) error {
 		w.pruneCache(files)
 	}
 	return nil
+}
+
+// picks are what the player gets of each of fs now (nil without Changed).
+func (w *Worker) picks(ctx context.Context, fs []file) map[int64]string {
+	if w.Changed == nil {
+		return nil
+	}
+	out := make(map[int64]string, len(fs))
+	for _, f := range fs {
+		segs, err := w.Store.Of(ctx, f.ID)
+		if err != nil {
+			continue // unknown: counted as changed after
+		}
+		b, _ := json.Marshal(Pick(segs, f.DurationMs, f.Movie))
+		out[f.ID] = string(b)
+	}
+	return out
+}
+
+// changedSince lists the files of fs whose picks are not before's.
+func (w *Worker) changedSince(ctx context.Context, fs []file, before map[int64]string) []int64 {
+	after := w.picks(ctx, fs)
+	var out []int64
+	for _, f := range fs {
+		if b, ok := before[f.ID]; !ok || b != after[f.ID] {
+			out = append(out, f.ID)
+		}
+	}
+	return out
 }
 
 // unit does what is due for one season or film; the analysis only in a

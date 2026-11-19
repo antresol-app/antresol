@@ -11,3 +11,9 @@ plugins:
 relative_links:
   enabled: true
   collections: false
+# The Russian site is docs/ru/: its pages carry no front matter, the language comes from here.
+defaults:
+  - scope:
+      path: ru
+    values:
+      lang: ru

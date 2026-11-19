@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -481,7 +482,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 	}
 	var items []library.Item
 	if len(ks) > 0 {
-		entries, err := s.Progress.InProgress(r.Context(), u.ID, ks, 0)
+		entries, err := s.Progress.InProgress(r.Context(), auth.HistoryID(r.Context()), ks, 0)
 		if err != nil {
 			s.internal(w, r, "resume", err)
 			return

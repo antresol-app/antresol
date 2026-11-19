@@ -10,7 +10,7 @@ func init() {
 		"Появилось то, что вы хотели посмотреть":                                                                     "What you wanted to watch is here",
 		"Больше не присылать «%s»":                                                                                   "Stop sending “%s”",
 		"Вы получили это письмо, потому что включили уведомления в профиле «%s».":                                    "You got this email because notifications are on in the profile “%s”.",
-		"Изменить их можно в меню профиля: «Уведомления на почту».":                                                  "You can change them in the profile menu: “Email Notifications”.",
+		"Изменить их можно в разделе «Настройки → Уведомления».":                                                     "You can change them in Settings → Notifications.",
 		"%s: проверка адреса для уведомлений":                                                                        "%s: confirm your notification address",
 		"Это проверочное письмо %s. Чтобы получать уведомления на этот адрес, введите код в настройках уведомлений:": "This is a test email from %s. To get notifications at this address, enter the code in the notification settings:",
 		"Или подтвердите адрес по ссылке:":                                                                           "Or confirm the address with this link:",
@@ -35,24 +35,24 @@ func init() {
 		"Нет связи с Telegram, попробуйте ещё раз":                                             "Can’t reach Telegram, try again",
 		"Сначала вставьте токен бота":                                                          "Paste the bot token first",
 		// the Telegram bot's answers
-		"Это бот уведомлений %s. Чтобы получать их здесь, откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram».": "This is the %s notifications bot. To get them here, open “Notifications” in the profile menu and press “Connect Telegram”.",
-		"Ссылка устарела. Откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram» ещё раз.":                         "The link has expired. Open “Notifications” in the profile menu and press “Connect Telegram” again.",
-		"Не получилось подключить Telegram, попробуйте ещё раз.":                                                                  "Couldn’t connect Telegram, try again.",
-		"Готово! Уведомления %s профиля «%s» будут приходить сюда.":                                                               "Done! %s notifications for the profile “%s” will arrive here.",
+		"Это бот уведомлений %s. Чтобы получать их здесь, откройте «Настройки → Уведомления» и нажмите «Подключить Telegram».": "This is the %s notifications bot. To get them here, open Settings → Notifications and press “Connect Telegram”.",
+		"Ссылка устарела. Откройте «Настройки → Уведомления» и нажмите «Подключить Telegram» ещё раз.":                         "The link has expired. Open Settings → Notifications and press “Connect Telegram” again.",
+		"Не получилось подключить Telegram, попробуйте ещё раз.":                                                               "Couldn’t connect Telegram, try again.",
+		"Готово! Уведомления %s профиля «%s» будут приходить сюда.":                                                            "Done! %s notifications for the profile “%s” will arrive here.",
 		// kids' requests
 		"Запросы":             "Requests",
 		"Запрос одобрен: %s":  "Request approved: %s",
 		"Уже в медиатеке: %s": "Now in the library: %s",
 		// the pages of the letters' links
 		"Ссылка недействительна": "Invalid Link",
-		"Ссылка устарела или относится к другому адресу. Откройте настройки уведомлений в меню профиля.": "The link has expired or is for another address. Open the notification settings in the profile menu.",
+		"Ссылка устарела или относится к другому адресу. Откройте «Настройки → Уведомления».": "The link has expired or is for another address. Open Settings → Notifications.",
 		"Адрес подтверждён": "Address Confirmed",
 		"Уведомления, которые вы включили, будут приходить на этот адрес.": "The notifications you turned on will come to this address.",
 		"Больше не присылать «%s»?":           "Stop sending “%s”?",
 		"Остальные уведомления не изменятся.": "Your other notifications stay as they are.",
 		"Отписаться":            "Unsubscribe",
 		"Вы отписались от «%s»": "You unsubscribed from “%s”",
-		"Остальные уведомления не изменились. Включить снова можно в меню профиля: «Уведомления на почту».": "Your other notifications are unchanged. You can turn this back on in the profile menu: “Email Notifications”.",
+		"Остальные уведомления не изменились. Включить снова можно в разделе «Настройки → Уведомления».": "Your other notifications are unchanged. You can turn this back on in Settings → Notifications.",
 	})
 	RegisterPlural(EN, "новая серия", "новые серии", "новых серий", "new episode", "new episodes")
 	RegisterPlural(EN, "новость", "новости", "новостей", "update", "updates")

@@ -46,6 +46,23 @@ function stub(first: TranscodingView, after: (body: unknown, path: string) => Tr
 afterEach(() => vi.unstubAllGlobals())
 
 describe('transcoding settings', () => {
+  it('says whether ffmpeg can find intros (chromaprint)', async () => {
+    stub(view({ fingerprint: false }), () => view())
+    render(<TranscodingSection />)
+    expect(await screen.findByText('Поиск заставок')).toBeInTheDocument()
+    expect(screen.getByText(/В ffmpeg нет chromaprint/)).toBeInTheDocument()
+    cleanup()
+    stub(view({ fingerprint: true }), () => view())
+    render(<TranscodingSection />)
+    expect(await screen.findByText('ffmpeg с chromaprint: заставки и титры серий находятся по звуку')).toBeInTheDocument()
+    cleanup()
+    // an older server says nothing: no row
+    stub(view(), () => view())
+    render(<TranscodingSection />)
+    await screen.findByText('Сейчас')
+    expect(screen.queryByText('Поиск заставок')).toBeNull()
+  })
+
   it('shows what the server picked and its test encode', async () => {
     stub(view(), () => view())
     render(<TranscodingSection />)

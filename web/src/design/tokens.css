@@ -329,6 +329,9 @@
      measure of a field and the list under it inside that column. */
   --column-max: 1280px;
   --column-narrow: 680px;
+  /* The narrowest column a settings row's text is read in (ui/List): a
+     control that would squeeze the text below it goes under the text. */
+  --row-text-min: 9rem;
   /* Header heights include the iOS status-bar inset (PWA, viewport-fit=cover). */
   --nav-height: calc(76px + env(safe-area-inset-top));
   --nav-height-compact: calc(56px + env(safe-area-inset-top));

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -127,14 +128,14 @@ const maxStates = 1000
 //
 //	GET    /api/accounts
 //	  → {"goodreads": {"linked": bool, "nickname": str (the name in the profile address), "status": "ok"|"not_found"|"error",
-//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null,
+//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "syncing": bool (a sync of the link is running now),
 //	     "total", "read", "reading", "toRead": int (the profile's Goodreads books, by shelf), "inLibrary": int (of them found in the library)}
 //	     (only when Goodreads is offered; read only: nothing is sent to Goodreads, which has no way in for it),
 //	     "myshows": {"linked": bool, "nickname": str (the MyShows login), "status": "ok"|"private"|"not_found"|"error",
-//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "unmapped": int}
+//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "syncing": bool, "unmapped": int}
 //	     (only when MyShows is offered; read only: nothing is sent back to MyShows),
 //	     "shikimori": {"linked": bool, "nickname": str, "status": "ok"|"private"|"not_found"|"error"|"relogin",
-//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null,
+//	     "lastError": str (in the viewer's language), "lastSync": RFC 3339 | null, "syncing": bool,
 //	     "writeState": "unasked"|"asked"|"enabled"|"declined",
 //	     "canWrite": bool (an OAuth client is configured and the public URL is https), "unmapped": int}}
 //	PUT    /api/accounts/shikimori         {"nickname": str} → the GET body; 404 {"error"} for an unknown nickname
@@ -152,6 +153,12 @@ const maxStates = 1000
 //	POST   /api/accounts/goodreads/import  {"csv": the text of a Goodreads library export} → the GET body (the books are in the marks);
 //	                                       422 {"error"} not an export, 413 {"error"} over 24 MB; needs no link
 //	DELETE /api/accounts/goodreads         → 204 (the link and the books read from Goodreads removed; marks stay)
+//	POST   /api/accounts/{provider}/sync   (shikimori | myshows | goodreads) → 202 + the GET body: the viewer's own link is synced now
+//	                                       (a pull, and for Shikimori the queued pushes, backoff set aside) after the response, not waiting for
+//	                                       the periodic run; "syncing" is true in the body and in GET until it ends, and "lastSync",
+//	                                       "status", "lastError" tell how it went. A sync already running is joined (202, no second one starts).
+//	                                       404 for an unknown provider or one not offered; 409 {"error"} when the viewer has no link there;
+//	                                       429 {"error"} + Retry-After (seconds) within a minute of the last sync's end
 //	GET    /api/accounts/admin/shikimori   (admin) → {"clientId", "hasSecret": bool, "fromEnv": bool, "redirectUri", "scope": "user_rates"}
 //	PUT    /api/accounts/admin/shikimori   (admin) {"clientId", "clientSecret"} → 204 (an empty secret keeps the stored one)
 func (a *API) Routes(r chi.Router) {
@@ -160,6 +167,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Delete("/api/accounts/shikimori", a.unlink)
 	r.Post("/api/accounts/shikimori/write", a.write)
 	r.Post("/api/accounts/shikimori/asked", a.asked)
+	r.Post("/api/accounts/{provider}/sync", a.syncNow)
 	r.Put("/api/accounts/myshows", a.putMyShows)
 	r.Delete("/api/accounts/myshows", a.unlinkMyShows)
 	r.Put("/api/accounts/goodreads", a.putGoodreads)
@@ -237,13 +245,15 @@ type shikimoriJSON struct {
 	Status     string  `json:"status"`
 	LastError  string  `json:"lastError"`
 	LastSync   *string `json:"lastSync"`
+	Syncing    bool    `json:"syncing"`
 	WriteState string  `json:"writeState"`
 	CanWrite   bool    `json:"canWrite"`
 	Unmapped   int     `json:"unmapped"`
 }
 
 func (a *API) state(ctx context.Context, uid int64) (map[string]any, error) {
-	out := shikimoriJSON{WriteState: "unasked", Status: StatusOK, CanWrite: a.Sync.OAuth != nil && a.Sync.OAuth.CanWrite(ctx)}
+	out := shikimoriJSON{WriteState: "unasked", Status: StatusOK, CanWrite: a.Sync.OAuth != nil && a.Sync.OAuth.CanWrite(ctx),
+		Syncing: a.Sync.Runs().Active(uid, Shikimori)}
 	l, ok, err := a.Sync.Accounts.Link(ctx, uid, Shikimori)
 	if err != nil {
 		return nil, err
@@ -280,20 +290,42 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	st, err := a.state(r.Context(), v.ID)
+	a.writeState(w, r, http.StatusOK, v.ID)
+}
+
+// writeState answers the GET body with code.
+func (a *API) writeState(w http.ResponseWriter, r *http.Request, code int, uid int64) {
+	st, err := a.state(r.Context(), uid)
 	if err != nil {
 		a.fail(w, r, http.StatusInternalServerError, "Не удалось прочитать данные", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, code, st)
+}
+
+// startRun runs f after the response as the profile's sync of provider,
+// registered in the Syncer's Runs so no other sync of it starts meanwhile
+// and GET says "syncing". false: one is running already, f did not run.
+func (a *API) startRun(uid int64, provider string, timeout time.Duration, f func(ctx context.Context)) bool {
+	end, ok := a.Sync.Runs().Start(uid, provider)
+	if !ok {
+		return false
+	}
+	a.background(func() {
+		defer end()
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		f(ctx)
+	})
+	return true
 }
 
 // pullThenPush runs a pull (when wanted) and a push for the profile after
-// the response.
+// the response. With a sync running already nothing starts: the periodic
+// loops go on from the link as it is now (a new link has no last sync, so it
+// is the next minute's pull; the queue is pushed every minute).
 func (a *API) pullThenPush(uid int64, pull bool) {
-	a.background(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
+	a.startRun(uid, Shikimori, 5*time.Minute, func(ctx context.Context) {
 		if pull {
 			if _, err := a.Sync.PullOne(ctx, uid); err != nil {
 				a.log().Info("accounts: pull after link", "user", uid, "err", err)
@@ -303,6 +335,83 @@ func (a *API) pullThenPush(uid int64, pull bool) {
 			a.log().Info("accounts: push after link", "user", uid, "err", err)
 		}
 	})
+}
+
+// syncCooldown: a sync is not started again within it of the last one's end
+// (429). Each one reads the remote list whole (Shikimori and MyShows hold
+// every request to their rate limits, but a click that repeats is a read that
+// repeats), and what the last one found is as fresh as a second would find.
+const syncCooldown = time.Minute
+
+// syncTimeout bounds a «sync now»: the pull after linking is the same read
+// (MyShows: a list of hundreds of shows takes ten minutes or so).
+func syncTimeout(provider string) time.Duration {
+	if provider == myShowsProvider {
+		return linkPullTimeout
+	}
+	return 5 * time.Minute
+}
+
+// syncNow is a profile's «sync now» of its own link: a profile syncs only its
+// own accounts (the viewer's: there is no profile in the address, so an admin
+// cannot sync another's either). The sync runs after the response; a sync
+// already running is joined.
+func (a *API) syncNow(w http.ResponseWriter, r *http.Request) {
+	v, ok := a.viewer(w, r)
+	if !ok {
+		return
+	}
+	provider := chi.URLParam(r, "provider")
+	var run func(ctx context.Context) error
+	switch {
+	case provider == Shikimori:
+		run = func(ctx context.Context) error {
+			if _, err := a.Sync.PullOne(ctx, v.ID); err != nil {
+				return err // the status says how it went; a remote that fails a read fails a write
+			}
+			// pushes that wait out a backoff go now: that is what was asked for
+			if err := a.Sync.Accounts.RetryOutbox(ctx, v.ID, Shikimori); err != nil {
+				return err
+			}
+			return a.Sync.PushOne(ctx, v.ID)
+		}
+	case provider == myShowsProvider && a.MyShows != nil:
+		run = func(ctx context.Context) error { return a.MyShows.Pull(ctx, v.ID) }
+	case provider == goodreadsProvider && a.Goodreads != nil:
+		run = func(ctx context.Context) error { return a.Goodreads.Pull(ctx, v.ID) }
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	l, linked, err := a.Sync.Accounts.Link(r.Context(), v.ID, provider)
+	if err != nil {
+		a.fail(w, r, http.StatusInternalServerError, "Не удалось прочитать данные", err)
+		return
+	}
+	if !linked || provider == Shikimori && l.ExternalID == 0 {
+		a.fail(w, r, http.StatusConflict, "Сначала свяжите аккаунт", nil)
+		return
+	}
+	end, ok := a.Sync.Runs().Start(v.ID, provider)
+	if !ok {
+		a.writeState(w, r, http.StatusAccepted, v.ID) // it is running: join it
+		return
+	}
+	if wait := syncCooldown - a.Sync.now().Sub(l.LastSync); !l.LastSync.IsZero() && wait > 0 {
+		end()
+		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+		a.fail(w, r, http.StatusTooManyRequests, "Только что синхронизировано, повторите через минуту", nil)
+		return
+	}
+	a.background(func() {
+		defer end()
+		ctx, cancel := context.WithTimeout(context.Background(), syncTimeout(provider))
+		defer cancel()
+		if err := run(ctx); err != nil {
+			a.log().Info("accounts: sync now", "user", v.ID, "provider", provider, "err", err)
+		}
+	})
+	a.writeState(w, r, http.StatusAccepted, v.ID)
 }
 
 func (a *API) putNickname(w http.ResponseWriter, r *http.Request) {

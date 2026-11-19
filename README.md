@@ -98,8 +98,8 @@ the binary, the `VAULT_*` variables and the database file.
   group, then [become a tester](https://play.google.com/apps/testing/app.antresol.mobile)
   and install it from Google Play. Source:
   [antresol-android](https://github.com/antresol-app/antresol-android).
-- **Music**: any Subsonic client. Create an app password in the profile
-  menu, then use the server address, your profile name and that password.
+- **Music**: any Subsonic client. Create an app password in Settings → App
+  Password, then use the server address, your profile name and that password.
 - **E-readers**: any OPDS reader, at `<server>/opds`, with the same app
   password.
 
@@ -123,8 +123,8 @@ Antresol Server is free software under the
 [NOTICE](NOTICE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) cover
 third-party code.
 
-Every server offers its source: the sign-in screens and the profile menu
-(About this server) show a "Source code · AGPL" link, and `GET /api/about`
+Every server offers its source: the sign-in screens and Settings → About This
+Server show a "Source code · AGPL" link, and `GET /api/about`
 answers with the version, the commit, the licence and the link. Release builds
 link to their tag; a build from source shows no link until you give it one.
 If you let others use a modified server, the AGPL asks you to offer them your

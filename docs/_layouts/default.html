@@ -1,32 +1,70 @@
 <!doctype html>
+{% comment %}
+  The Russian site is docs/ru/: its pages take lang: ru from _config.yml's defaults.
+  The language link leads to the same page in the other language when there is one,
+  else to that language's home.
+{% endcomment %}
+{% if page.lang == 'ru' %}
+  {% assign home = '/ru/' %}
+  {% assign other_url = page.url | remove_first: '/ru' %}
+  {% assign other_name = 'English' %}
+  {% assign other_lang = 'en' %}
+  {% assign description = page.description | default: 'Домашний медиасервер для ваших фильмов, сериалов, музыки, аудиокниг, книг и комиксов.' %}
+{% else %}
+  {% assign home = '/' %}
+  {% assign ru_url = '/ru' | append: page.url %}
+  {% assign ru_page = site.pages | where: 'url', ru_url | first %}
+  {% if ru_page %}{% assign other_url = ru_url %}{% else %}{% assign other_url = '/ru/' %}{% endif %}
+  {% assign other_name = 'Русский' %}
+  {% assign other_lang = 'ru' %}
+  {% assign description = page.description | default: site.description %}
+{% endif %}
 <html lang="{{ page.lang | default: site.lang }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% if page.title and page.url != "/" %}{{ page.title }} · {% endif %}{{ site.title }}</title>
-<meta name="description" content="{{ page.description | default: site.description }}">
+<title>{% if page.title and page.url != home %}{{ page.title }} · {% endif %}{{ site.title }}</title>
+<meta name="description" content="{{ description }}">
 <link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
 </head>
 <body>
 <header>
-  <a class="brand" href="{{ '/' | relative_url }}">Antresol</a>
+  <a class="brand" href="{{ home | relative_url }}">Antresol</a>
+  {% if page.lang == 'ru' %}
+  <nav>
+    <a href="{{ '/ru/install.html' | relative_url }}">Установка</a>
+    <a href="{{ '/ru/apps.html' | relative_url }}">Приложения</a>
+    <a href="{{ '/releases.html' | relative_url }}">Релизы</a>
+    <a href="{{ '/ru/docs.html' | relative_url }}">Документация</a>
+    <a href="https://github.com/antresol-app/antresol">GitHub</a>
+    <a class="lang" href="{{ other_url | relative_url }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ other_name }}</a>
+  </nav>
+  {% else %}
   <nav>
     <a href="{{ '/install.html' | relative_url }}">Install</a>
     <a href="{{ '/apps.html' | relative_url }}">Apps</a>
     <a href="{{ '/releases.html' | relative_url }}">Releases</a>
     <a href="{{ '/docs.html' | relative_url }}">Docs</a>
     <a href="https://github.com/antresol-app/antresol">GitHub</a>
-    <a class="lang" href="{{ '/ru/' | relative_url }}" hreflang="ru" lang="ru">Русский</a>
+    <a class="lang" href="{{ other_url | relative_url }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ other_name }}</a>
   </nav>
+  {% endif %}
 </header>
 <main>
 {{ content }}
 </main>
 <footer>
+  {% if page.lang == 'ru' %}
+  Antresol воспроизводит только файлы, которые вы храните дома; контент не предоставляется.
+  · <a href="https://sidun-av.github.io/antresol/privacy.html">Конфиденциальность</a>
+  · <a href="https://sidun-av.github.io/antresol/support.html">Поддержка приложений</a>
+  · <a href="https://github.com/antresol-app/antresol/issues">Issues</a>
+  {% else %}
   Antresol plays only the files you keep at home; no content is provided.
   · <a href="https://sidun-av.github.io/antresol/privacy.html">Privacy</a>
   · <a href="https://sidun-av.github.io/antresol/support.html">App support</a>
   · <a href="https://github.com/antresol-app/antresol/issues">Issues</a>
+  {% endif %}
 </footer>
 </body>
 </html>

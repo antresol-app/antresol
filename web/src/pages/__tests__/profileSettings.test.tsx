@@ -195,7 +195,7 @@ describe('ProfileMenu', () => {
 // address of the answer is sent on there): pages/__tests__/accountsSettings.test.tsx.
 describe('the accounts are not in the list', () => {
   it('«Настройки» shows no account of its own, only the row to their page when the server has accounts', async () => {
-    await open(adult, (url) => (url === '/api/accounts' ? json({ shikimori: { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, writeState: 'unasked', canWrite: true, unmapped: 0 } }) : undefined))
+    await open(adult, (url) => (url === '/api/accounts' ? json({ shikimori: { linked: false, nickname: '', status: 'ok', lastError: '', lastSync: null, syncing: false, writeState: 'unasked', canWrite: true, unmapped: 0 } }) : undefined))
     expect(await screen.findByRole('button', { name: /Аккаунты и синхронизация/ })).toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: /Shikimori/ })).toBeNull()
     expect(screen.queryByLabelText(/Ник на Shikimori|Логин на MyShows|Адрес профиля на Goodreads/)).toBeNull()

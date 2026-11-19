@@ -28,7 +28,7 @@ func TestStatsTranscoding(t *testing.T) {
 
 // newTranscodingEnv: a database and an Accel whose test encodes are
 // recorded (each answers the mode asked, auto = qsv; vaapi has HEVC).
-func newTranscodingEnv(t *testing.T) (*env, *media.Accel, *[]media.HWOptions) {
+func newTranscodingEnv(t *testing.T, segs ...Segmenter) (*env, *media.Accel, *[]media.HWOptions) {
 	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -48,8 +48,36 @@ func newTranscodingEnv(t *testing.T) (*env, *media.Accel, *[]media.HWOptions) {
 	a.Apply(context.Background(), defaults, false)
 	probes = nil
 	st, ss := auth.NewStore(d), auth.NewSessions(d)
-	e := &env{db: d, t: t, store: st, h: NewRouter(Deps{Users: st, Sessions: ss, DB: d, Accel: a, TranscodingDefaults: defaults})}
+	deps := Deps{Users: st, Sessions: ss, DB: d, Accel: a, TranscodingDefaults: defaults}
+	if len(segs) > 0 {
+		deps.Segments = segs[0]
+	}
+	e := &env{db: d, t: t, store: st, h: NewRouter(deps)}
 	return e, a, &probes
+}
+
+// «Перекодирование» says whether ffmpeg can analyse episodes (chromaprint);
+// without the segments worker it says nothing.
+func TestTranscodingFingerprint(t *testing.T) {
+	for _, c := range []struct {
+		segs Segmenter
+		want string
+	}{{nil, ""}, {&fakeSegments{}, `"fingerprint":true`}, {&fakeSegments{noPrint: true}, `"fingerprint":false`}} {
+		var e *env
+		if c.segs == nil {
+			e, _, _ = newTranscodingEnv(t)
+		} else {
+			e, _, _ = newTranscodingEnv(t, c.segs)
+		}
+		w := e.do("GET", "/api/settings/transcoding", "", e.setup())
+		if w.Code != 200 {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		body := w.Body.String()
+		if c.want == "" && strings.Contains(body, "fingerprint") || c.want != "" && !strings.Contains(body, c.want) {
+			t.Fatalf("want %q: %s", c.want, body)
+		}
+	}
 }
 
 func TestTranscodingSettings(t *testing.T) {

@@ -2,10 +2,20 @@
 // play:Sub) and book readers (OPDS: KOReader) sign in with. Shows what to
 // type in the app: the server address, the profile name and the password.
 // The password is shown once, right after it is created; afterwards only
-// «Создать новый» (which replaces it) or «Отозвать».
+// «Создать новый» (which replaces it) or «Отозвать». With `managed` it is the
+// password of one of the profile's separate histories: the app signs in
+// with the profile's name and it, and writes that history.
 import { Button } from '../ui/Button'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createAppPassword, getAppPassword, revokeAppPassword, errorText } from '../api/client'
+import {
+  createAppPassword,
+  createManagedAppPassword,
+  getAppPassword,
+  getManagedAppPassword,
+  revokeAppPassword,
+  revokeManagedAppPassword,
+  errorText,
+} from '../api/client'
 import { locale, t as tr, useT } from '../i18n'
 import { Sheet } from '../ui/Sheet'
 import styles from './AppPasswordSheet.module.css'
@@ -14,6 +24,8 @@ export interface AppPasswordSheetProps {
   userName: string
   /** The profile has no password: the server lets its apps in only from home. */
   passwordless?: boolean
+  /** The separate history («Гостиная») the password is for; absent: the profile's own. */
+  managed?: { id: number; name: string }
   onClose: () => void
 }
 
@@ -88,32 +100,41 @@ function CopyRow({ label, value, field }: { label: string; value: string; field?
   )
 }
 
-export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswordSheetProps) {
+export function AppPasswordSheet({ userName, passwordless, managed, onClose }: AppPasswordSheetProps) {
   const t = useT()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState<Confirm>(null)
   const origin = window.location.origin
+  const managedID = managed?.id
+  const api = managedID
+    ? {
+        create: () => createManagedAppPassword(managedID),
+        revoke: () => revokeManagedAppPassword(managedID),
+      }
+    : { create: createAppPassword, revoke: revokeAppPassword }
 
   const load = useCallback(() => {
     let live = true
     setState({ status: 'loading' })
-    getAppPassword()
+    const info = managedID ? getManagedAppPassword(managedID) : getAppPassword()
+    info
       // the server never sends the stored password: only whether there is one
       .then((r) => live && setState({ status: 'ready', exists: r.exists, createdAt: r.createdAt, shown: null }))
       .catch((e: unknown) => live && setState({ status: 'error', message: errText(e) }))
     return () => {
       live = false
     }
-  }, [])
+  }, [managedID])
   useEffect(() => load(), [load])
 
   const create = () => {
     setConfirm(null)
     setBusy(true)
     setError('')
-    createAppPassword()
+    api
+      .create()
       .then((r) => setState({ status: 'ready', exists: true, createdAt: new Date().toISOString(), shown: r.password }))
       .catch((e: unknown) => setError(errText(e)))
       .finally(() => setBusy(false))
@@ -122,7 +143,8 @@ export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswor
     setConfirm(null)
     setBusy(true)
     setError('')
-    revokeAppPassword()
+    api
+      .revoke()
       .then(() => setState({ status: 'ready', exists: false, createdAt: null, shown: null }))
       .catch((e: unknown) => setError(errText(e)))
       .finally(() => setBusy(false))
@@ -133,11 +155,15 @@ export function AppPasswordSheet({ userName, passwordless, onClose }: AppPasswor
   return (
     <>
       <Sheet
-        title={t('comp.appPassword.title')}
+        title={managed ? t('comp.appPassword.managedTitle', { history: managed.name }) : t('comp.appPassword.title')}
         role="dialog"
         size="wide"
         message={
-          <>{t('comp.appPassword.message', { origin, name: userName })}</>
+          <>
+            {managed
+              ? t('comp.appPassword.managedMessage', { origin, name: userName, history: managed.name })
+              : t('comp.appPassword.message', { origin, name: userName })}
+          </>
         }
         onCancel={onClose}
         closeButton={false}

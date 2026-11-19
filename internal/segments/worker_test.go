@@ -543,3 +543,76 @@ func TestWorkerRecapOnlyAnalysis(t *testing.T) {
 		t.Fatalf("two covered episodes fingerprinted: %d", fx2.fpCalls)
 	}
 }
+
+// Changed hears of the files whose picks a pass changed, once: a second
+// pass that finds the same says nothing.
+func TestWorkerChanged(t *testing.T) {
+	fx := newFixture(t)
+	ctx := context.Background()
+	var got [][]int64
+	fx.w.Changed = func(ids []int64) { got = append(got, ids) }
+	if err := fx.w.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	heard := map[int64]bool{}
+	for _, ids := range got {
+		for _, id := range ids {
+			heard[id] = true
+		}
+	}
+	for _, p := range append(append([]string{}, fx.eps...), fx.movie) {
+		f, err := fx.repo.FileByPath(ctx, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fx.w.ForPlay(ctx, f.ID, 1_300_000, p == fx.movie)) > 0 && !heard[f.ID] {
+			t.Fatalf("%s has segments, not heard of: %v", p, got)
+		}
+	}
+	if len(heard) == 0 {
+		t.Fatal("nothing heard")
+	}
+	got = nil
+	if err := fx.w.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("a pass that changed nothing: %v", got)
+	}
+}
+
+// Without chromaprint CanFingerprint says so (the settings show it) and
+// the episodes are not analysed.
+func TestCanFingerprintOff(t *testing.T) {
+	fx := newFixture(t)
+	no := false
+	fx.w.Chromaprint = &no
+	if fx.w.CanFingerprint() {
+		t.Fatal("chromaprint said yes")
+	}
+	if err := fx.w.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fx.fpCalls != 0 {
+		t.Fatalf("fingerprinted %d times without chromaprint", fx.fpCalls)
+	}
+	// a stub ffmpeg without the muxer: asked once, false
+	dir := t.TempDir()
+	ff := filepath.Join(dir, "ffmpeg")
+	if err := os.WriteFile(ff, []byte("#!/bin/sh\necho ' E mp4             MP4'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{FFmpeg: ff}
+	if w.CanFingerprint() {
+		t.Fatal("stub ffmpeg has no chromaprint")
+	}
+	if err := os.WriteFile(ff, []byte("#!/bin/sh\necho ' E chromaprint     Chromaprint'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if w.CanFingerprint() {
+		t.Fatal("asked again")
+	}
+	if !(&Worker{FFmpeg: ff}).CanFingerprint() {
+		t.Fatal("a chromaprint muxer not seen")
+	}
+}

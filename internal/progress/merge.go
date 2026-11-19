@@ -27,7 +27,9 @@ func (s *Store) MergeInto(ctx context.Context, from, to int64) error {
 // account from (of the person to; ErrNotFound for any other, and nothing
 // moves) in the same transaction: a write that lands in the account
 // before it is gone is merged, none lands in it after. keepInUse keeps
-// the account (deleted false) while a device still writes into it. The
+// the account (deleted false) while a device still writes into it, or an
+// app may (the account has an app password: a TV's Jellyfin or Subsonic
+// player signs in with it, and deleting the account would sign it out). The
 // caller switches the devices off first, so that their next write is the
 // person's.
 func (s *Store) MergeAndDelete(ctx context.Context, from, to int64, keepInUse bool) (deleted bool, err error) {
@@ -48,7 +50,8 @@ func (s *Store) MergeAndDelete(ctx context.Context, from, to int64, keepInUse bo
 	}
 	var using int
 	if keepInUse {
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM device_history WHERE managed_id=? AND enabled=1`, from).Scan(&using); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM device_history WHERE managed_id=?1 AND enabled=1)
+		  + (SELECT COUNT(*) FROM users WHERE id=?1 AND app_password IS NOT NULL AND app_password<>'')`, from).Scan(&using); err != nil {
 			return false, err
 		}
 	}

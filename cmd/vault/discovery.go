@@ -13,7 +13,7 @@ import (
 
 // runDiscovery lets the apps find this server on the home network (mDNS
 // and the UDP probe responder, see internal/discovery) until ctx ends.
-func runDiscovery(ctx context.Context, cfg config.Config, serverID string) {
+func runDiscovery(ctx context.Context, cfg config.Config, serverID string, local *discovery.Status) {
 	if !cfg.MDNS && cfg.DiscoveryPort == 0 {
 		return
 	}
@@ -27,5 +27,5 @@ func runDiscovery(ctx context.Context, cfg config.Config, serverID string) {
 	if cfg.PublicURL != "" {
 		info.Extra = []string{cfg.PublicURL}
 	}
-	discovery.Run(ctx, discovery.Config{Info: info, MDNS: cfg.MDNS, UDPPort: cfg.DiscoveryPort, Log: slog.Default()})
+	discovery.Run(ctx, discovery.Config{Info: info, MDNS: cfg.MDNS, UDPPort: cfg.DiscoveryPort, Log: slog.Default(), Status: local})
 }

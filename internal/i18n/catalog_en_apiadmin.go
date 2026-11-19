@@ -33,7 +33,7 @@ func init() {
 		"Сервер уже настроен":                  "The server is already set up",
 		"Не удалось выйти, попробуйте ещё раз": "Couldn’t sign out. Try again",
 		"Запрос с другого сайта отклонён":      "A request from another site was rejected",
-		"Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в Управлении → Профили.": "To sign in away from home, the profile needs a password. Ask the administrator to set one in Manage → Profiles.",
+		"Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили».": "To sign in away from home, the profile needs a password. Ask the administrator to set one in Settings → Server → Profiles.",
 
 		// files
 		"Нет миниатюры":                                "No thumbnail",
@@ -55,7 +55,7 @@ func init() {
 		// the media disk
 		"Не удалось узнать, сколько места на диске": "Couldn’t find out how much disk space there is",
 		// deleting library items
-		"Это удаляется только вместе с альбомом или сериалом":                                              "This can only be deleted with its album or TV show",
+		"Это удаляется только вместе с альбомом или сериалом":                                              "This can only be deleted with its album or show",
 		"Медиадиск недоступен, ничего не удалено. Подключите его и попробуйте ещё раз":                     "The media disk isn’t available, nothing was deleted. Connect it and try again",
 		"Файлов нет на диске, ничего не удалено. Проверьте, подключён ли медиадиск":                        "The files aren’t on the disk, nothing was deleted. Check that the media disk is connected",
 		"Файлы лежат на другом диске, чем Корзина, и переместить их туда нельзя. Ничего не удалено":        "The files are on another disk than the Trash and can’t be moved there. Nothing was deleted",
@@ -70,7 +70,7 @@ func init() {
 		"Удалось удалить не всё: часть файлов уже в Корзине в «Файлах», остальные остались на месте": "Not everything was deleted: some files are already in the Trash in Files, the rest stayed where they were",
 		"Медиатека": "Library",
 		"Фильмы":    "Movies",
-		"Сериалы":   "TV Shows",
+		"Сериалы":   "Shows",
 		"Музыка":    "Music",
 		"Книги":     "Books",
 		"Весь диск": "Entire Disk",

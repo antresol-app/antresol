@@ -792,7 +792,9 @@ func (a *addonsAPI) coreRefTracks(w http.ResponseWriter, r *http.Request) {
 
 // coreUsers: the profiles (users.read), each with the interface language
 // the apps show it in (profileLanguages) and its rating limit, if any
-// (ratingLimit, as in the X-Antresol-User header).
+// (ratingLimit, as in the X-Antresol-User header), and its separate
+// histories (managed accounts: never listed as profiles, they have no
+// sign-in), so that an addon keeping rows by a history's uid keeps them.
 func (a *addonsAPI) coreUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.callingAddon(w, r, "users.read"); !ok {
 		return
@@ -811,6 +813,15 @@ func (a *addonsAPI) coreUsers(w http.ResponseWriter, r *http.Request) {
 		libFail(w, r, err)
 		return
 	}
+	managed, err := a.users.AllManaged(r.Context())
+	if err != nil {
+		libFail(w, r, err)
+		return
+	}
+	histories := map[int64][]addonkit.History{}
+	for _, m := range managed {
+		histories[m.OwnerID] = append(histories[m.OwnerID], addonkit.History{ID: m.ID, UID: m.UID, Name: m.Name})
+	}
 	householdList := a.householdLanguages(r.Context())
 	household := cmp.Or(firstUILanguage(householdList), i18n.Default)
 	out := make([]addonkit.User, 0, len(list))
@@ -821,7 +832,7 @@ func (a *addonsAPI) coreUsers(w http.ResponseWriter, r *http.Request) {
 			ls = householdList
 		}
 		out = append(out, addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: l,
-			Languages: append([]string{}, ls...), MaxRating: ratingLimit(u)})
+			Languages: append([]string{}, ls...), MaxRating: ratingLimit(u), Histories: histories[u.ID]})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

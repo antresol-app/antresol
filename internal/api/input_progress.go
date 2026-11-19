@@ -67,7 +67,7 @@ func (p *inputPlay) progress(w http.ResponseWriter, r *http.Request) {
 	}
 	ended := dur > 0 && pos >= dur
 	if p.hooks != nil {
-		who := addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid}
+		who := addonkit.User{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, History: addonHistory(r.Context())}
 		if p.lib != nil && p.DB != nil {
 			if _, l, err := p.effectiveUILanguage(r.Context(), u.ID); err == nil {
 				who.Lang = l

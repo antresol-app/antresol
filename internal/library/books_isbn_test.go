@@ -49,6 +49,8 @@ func TestFindBooksIsStrict(t *testing.T) {
 	messiah := add("/b/h/Dune Messiah.epub", "Dune Messiah", "Dune", "Frank Herbert")
 	bare := add("/b/x/Solaris.epub", "Solaris", "")
 	hobbit := add("/b/t/The Hobbit.epub", "The Hobbit", "", "J. R. R. Tolkien")
+	master := add("/b/b/Master.epub", "Master", "", "Mikhail Bulgakov")
+	russian := add("/b/b/Мастер.fb2", "Мастер и Маргарита", "", "Булгаков Михаил Афанасьевич")
 	// the audiobook of a book is one more match
 	audio, err := r.UpsertAudiobook(ctx, AudiobookInput{Dir: "/a/Dune", Files: []FileInput{{Path: "/a/Dune/01.mp3", Size: 1, Mtime: 1}}, Title: "Dune", Authors: []string{"Frank Herbert"}})
 	if err != nil {
@@ -74,6 +76,10 @@ func TestFindBooksIsStrict(t *testing.T) {
 		// a book with no author on file: the title alone
 		{"Stanislaw Lem", "Solaris", []int64{bare}},
 		{"J.R.R. Tolkien", "The Hobbit", []int64{hobbit}},
+		// the author's name in another script
+		{"Михаил Булгаков", "Master", []int64{master}},
+		{"Mikhail Bulgakov", "Мастер и Маргарита", []int64{russian}},
+		{"Leo Tolstoy", "Мастер и Маргарита", nil},
 		// the author's name is no title
 		{"", "Frank Herbert", nil},
 		{"", "", nil},

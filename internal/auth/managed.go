@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Managed accounts («Отдельная история на этом устройстве»): a profile row
@@ -76,6 +77,106 @@ func createManaged(ctx context.Context, tx *sql.Tx, ownerID int64, name string) 
 	}
 	id, _ := res.LastInsertId()
 	return scan(tx.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, id))
+}
+
+// SetManagedAppPassword gives the managed account id of the person ownerID
+// an app password of its own and returns it (the old one stops working, and
+// so do the Jellyfin tokens got with it). An app of a third-party protocol
+// (Jellyfin, Subsonic, OPDS) signs in with the person's name and this
+// password: it is the person signed in, and its history goes to the
+// account, as on a device whose switch is on. ErrNotFound for anything
+// but ownerID's managed account.
+func (s *Store) SetManagedAppPassword(ctx context.Context, ownerID, id int64) (string, error) {
+	p, err := newAppPassword()
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE users SET app_password=?, app_password_created_at=? WHERE id=? AND owner_id=?`, p, now, id, ownerID)
+	if err != nil {
+		return "", err
+	}
+	if n, _ := res.RowsAffected(); n == 0 || ownerID == 0 {
+		return "", ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM app_tokens WHERE history_id=?`, id); err != nil {
+		return "", err
+	}
+	return p, tx.Commit()
+}
+
+// ClearManagedAppPassword removes the managed account's app password and
+// ends the Jellyfin tokens got with it.
+func (s *Store) ClearManagedAppPassword(ctx context.Context, ownerID, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE users SET app_password=NULL, app_password_created_at=NULL WHERE id=? AND owner_id=?`, id, ownerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 || ownerID == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM app_tokens WHERE history_id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ManagedAppPasswordInfo is AppPasswordInfo of ownerID's managed account id
+// (ErrNotFound for anything else).
+func (s *Store) ManagedAppPasswordInfo(ctx context.Context, ownerID, id int64) (bool, time.Time, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE id=? AND owner_id=?`, id, ownerID).Scan(&n); err != nil {
+		return false, time.Time{}, err
+	}
+	if n == 0 || ownerID == 0 {
+		return false, time.Time{}, ErrNotFound
+	}
+	return s.AppPasswordInfo(ctx, id)
+}
+
+// appCredential is an app password the person's apps may sign in with: the
+// person's own (History.ID 0) or one of their managed accounts'.
+type appCredential struct {
+	password string
+	history  History
+}
+
+// appCredentials are the app passwords of the person id: their own first,
+// then their managed accounts' (oldest first).
+func (s *Store) appCredentials(ctx context.Context, id int64) ([]appCredential, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, owner_id IS NOT NULL, COALESCE(managed_name,''), COALESCE(uid,''), app_password FROM users
+		WHERE (id=? AND owner_id IS NULL OR owner_id=?) AND app_password IS NOT NULL AND app_password<>''
+		ORDER BY owner_id IS NOT NULL, id`, id, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []appCredential
+	for rows.Next() {
+		var c appCredential
+		var rid int64
+		var managed bool
+		if err := rows.Scan(&rid, &managed, &c.history.Name, &c.history.UID, &c.password); err != nil {
+			return nil, err
+		}
+		if managed {
+			c.history.ID = rid
+		} else {
+			c.history = History{}
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // managedKeyPrefix starts users.name of a managed account, which is
@@ -223,10 +324,10 @@ func deviceKey(ss Session) string {
 
 // withHistory fills ss.HistoryUserID and HistoryName from device_history.
 func (s *Sessions) withHistory(ctx context.Context, ss *Session) error {
-	err := s.db.QueryRowContext(ctx, `SELECT d.managed_id, `+NameSQL("u")+` FROM device_history d JOIN users u ON u.id = d.managed_id
-		WHERE d.user_id=? AND d.device_key=? AND d.enabled=1`, ss.UserID, deviceKey(*ss)).Scan(&ss.HistoryUserID, &ss.HistoryName)
+	err := s.db.QueryRowContext(ctx, `SELECT d.managed_id, `+NameSQL("u")+`, COALESCE(u.uid, '') FROM device_history d JOIN users u ON u.id = d.managed_id
+		WHERE d.user_id=? AND d.device_key=? AND d.enabled=1`, ss.UserID, deviceKey(*ss)).Scan(&ss.HistoryUserID, &ss.HistoryName, &ss.HistoryUID)
 	if errors.Is(err, sql.ErrNoRows) {
-		ss.HistoryUserID, ss.HistoryName = 0, ""
+		ss.HistoryUserID, ss.HistoryName, ss.HistoryUID = 0, "", ""
 		return nil
 	}
 	return err
@@ -348,11 +449,44 @@ func (s *Sessions) SessionByID(ctx context.Context, id int64) (Session, error) {
 	return ss, s.withHistory(ctx, &ss)
 }
 
-// HistoryID is the profile the request's history goes to: the device's
-// managed account when its separate history is on, else the caller.
-func HistoryID(ctx context.Context) int64 {
+// History is the managed account a request's history goes to (ID 0: the
+// caller's own), with its name and its stable key (what addons key their
+// own history by).
+type History struct {
+	ID        int64
+	Name, UID string
+}
+
+type historyKey struct{}
+
+// WithHistory returns ctx whose history goes to the managed account h: what
+// a credential bound to the account says (a Jellyfin token or a Subsonic
+// login with the account's app password), for the protocols that have no
+// session and so no device switch. The request stays the person's (UserFrom),
+// as on a device whose switch is on.
+func WithHistory(ctx context.Context, h History) context.Context {
+	return context.WithValue(ctx, historyKey{}, h)
+}
+
+// HistoryOf is the managed account the request's history goes to, from
+// whichever path authorised it: the device's switch (Session.HistoryUserID)
+// or the credential (WithHistory). ID 0: the caller's own history.
+func HistoryOf(ctx context.Context) History {
 	if ss, ok := SessionFrom(ctx); ok && ss.HistoryUserID != 0 {
-		return ss.HistoryUserID
+		return History{ss.HistoryUserID, ss.HistoryName, ss.HistoryUID}
+	}
+	h, _ := ctx.Value(historyKey{}).(History)
+	return h
+}
+
+// HistoryID is the profile the request's history goes to: the managed
+// account of the device or of the credential (HistoryOf), else the caller.
+// Every path that writes or reads a history (progress, watched marks,
+// music plays, what addons record) asks this, never UserFrom: the one
+// place «who to record for» is decided.
+func HistoryID(ctx context.Context) int64 {
+	if h := HistoryOf(ctx); h.ID != 0 {
+		return h.ID
 	}
 	u, _ := UserFrom(ctx)
 	return u.ID

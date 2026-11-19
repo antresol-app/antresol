@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -596,17 +597,22 @@ func (r *Repo) AlbumTracks(ctx context.Context, albumID int64) ([]Track, error) 
 }
 
 // AlbumQuery filters Albums. Sort: added (default, newest first), title,
-// year (newest first), artist, random, frequent / recent (by UserID's
-// plays; only played albums). Starred keeps UserID's starred albums, Genre
+// year (newest first), artist, random, frequent / recent (by the plays of
+// PlaysUserID, else UserID; only played albums). Starred keeps UserID's
+// starred albums, Genre
 // albums with that genre (case-insensitive), FromYear/ToYear a year range
 // (both inclusive; From > To lists newest first, as Subsonic does) and,
 // with no Sort, orders by year. MaxRating filters by the rating of the
 // album's root (its artist), the rule of Repo.Visible. Owner keeps the
 // albums that profile brought (item_owners; 0 = all).
 type AlbumQuery struct {
-	ArtistID         int64
-	Sort             string
-	UserID           int64
+	ArtistID int64
+	Sort     string
+	UserID   int64
+	// PlaysUserID: whose plays frequent / recent go by (a device's or an
+	// app's separate history, auth.HistoryID; 0: UserID's). Stars are a
+	// choice, not history: they stay UserID's.
+	PlaysUserID      int64
 	Starred          bool
 	Genre            string
 	FromYear, ToYear int
@@ -684,7 +690,7 @@ func (r *Repo) Albums(ctx context.Context, q AlbumQuery) ([]Album, int, error) {
 	if q.Sort == "frequent" || q.Sort == "recent" {
 		from += ` JOIN (SELECT t.parent_id album, COUNT(*) n, MAX(p.played_at) last FROM plays p JOIN items t ON t.id=p.item_id
 		  WHERE p.user_id=? GROUP BY 1) pl ON pl.album=i.id`
-		joinArgs = append(joinArgs, q.UserID)
+		joinArgs = append(joinArgs, cmp.Or(q.PlaysUserID, q.UserID))
 	}
 	where := []string{"i.kind='album'", "i.missing_since IS NULL"}
 	if q.ArtistID != 0 {

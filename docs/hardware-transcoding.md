@@ -17,8 +17,8 @@ At start the server makes a short test encode on each GPU it sees and uses
 the first that works (`VAULT_HWACCEL=auto`): NVIDIA NVENC, then Intel Quick
 Sync, then VA-API, on macOS VideoToolbox; else the CPU. The log says what it
 picked (`listening on :8420 (hw: vaapi)`), and so do the first-run wizard (it
-says what to uncomment when no GPU was passed), Manage → Statistics and
-Manage → Settings → Transcoding. There an administrator can pick the backend
+says what to uncomment when no GPU was passed), Settings → Server → Statistics and
+Settings → Server → Transcoding. There an administrator can pick the backend
 (Auto, Intel Quick Sync, VA-API, NVIDIA, VideoToolbox, Off), the render node
 when there are several, HDR tone mapping and HEVC output, and test the GPU
 again; a change applies at once to new playback, what is playing goes on.

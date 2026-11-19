@@ -359,7 +359,7 @@ func linkLang(r *http.Request, info notify.LinkInfo) string {
 func badLinkPage(w http.ResponseWriter, r *http.Request, info notify.LinkInfo) {
 	l := linkLang(r, info)
 	writeLinkPage(w, http.StatusBadRequest, linkView{Lang: l, Title: i18n.TL(l, "Ссылка недействительна"),
-		Text: i18n.TL(l, "Ссылка устарела или относится к другому адресу. Откройте настройки уведомлений в меню профиля.")})
+		Text: i18n.TL(l, "Ссылка устарела или относится к другому адресу. Откройте «Настройки → Уведомления».")})
 }
 
 func notifyVerifyLink(n *notify.Service) http.HandlerFunc {
@@ -404,7 +404,7 @@ func notifyUnsubscribeLink(n *notify.Service, apply bool) http.HandlerFunc {
 			return
 		}
 		writeLinkPage(w, http.StatusOK, linkView{Lang: l, Title: i18n.TL(l, "Вы отписались от «%s»", topic),
-			Text: i18n.TL(l, "Остальные уведомления не изменились. Включить снова можно в меню профиля: «Уведомления на почту».")})
+			Text: i18n.TL(l, "Остальные уведомления не изменились. Включить снова можно в разделе «Настройки → Уведомления».")})
 	}
 }
 

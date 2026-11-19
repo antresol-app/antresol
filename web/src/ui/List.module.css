@@ -138,8 +138,15 @@
 .linkButton .hint {
   display: block;
 }
+/* The choice gives way: it is the last to have room, so a long one is cut
+   by its ellipsis (never past the chevron), and the label beside it keeps
+   its longest word whole. */
+.linkButton .text {
+  min-width: min-content;
+}
 .value {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -153,6 +160,25 @@
 }
 
 @media (max-width: 699px) {
+  /* A plain row's control stays beside the text only while the text keeps a
+     column it can be read in (--row-text-min). A control that would squeeze
+     it below that (a button with a label, on a 320 pt phone) goes under the
+     text, as a stack row's does, instead of leaving the text a sliver that
+     breaks inside words. The berth between the two moves from the control to
+     the text, so a control on a line of its own is not indented by it.
+     shrink rows keep the control beside the text and cut it (above). */
+  .row:not(.shrink, .wide) {
+    flex-wrap: wrap;
+  }
+  .row:not(.shrink, .wide) > .text {
+    flex-basis: var(--row-text-min);
+  }
+  .row:not(.shrink, .wide) > .text + .control {
+    margin-left: 0;
+  }
+  .row:not(.shrink, .wide) > .text:has(+ .control) {
+    margin-right: var(--s-3);
+  }
   .row.link {
     padding: 0;
   }
@@ -175,5 +201,8 @@
     flex: 1 0 100%;
     min-width: 0;
     max-width: none;
+    /* two actions that do not fit one line (a 320 pt phone) go to two lines,
+       not on top of each other */
+    flex-wrap: wrap;
   }
 }

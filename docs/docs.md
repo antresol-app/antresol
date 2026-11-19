@@ -11,4 +11,4 @@ title: Documentation
 - [Addons](addons/contract.html): the contract an addon implements.
 - [Build tags](build-tags.html): building the server yourself.
 
-На русском: [установка](ru/install.html), [аппаратное перекодирование](ru/hardware-transcoding.html).
+[На русском](ru/docs.html): установка, конфигурация, аппаратное перекодирование, перевод, приложения.
