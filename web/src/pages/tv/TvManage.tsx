@@ -1,13 +1,14 @@
 // «Управление каналами» (/tv/manage): the channels the profile may edit — an
 // admin's shared ones and its own personal ones, a profile's own — as the
-// one numbered list, with its theme and what each plays, on/off, «Изменить», «Удалить» (a generated channel
-// is turned off instead), «Новый канал» and, for admins, «Обновить
-// автоматические каналы».
+// one numbered list, with its theme and what each plays, on/off, «Изменить»,
+// «Удалить» (an automatic channel too: the generator then leaves it alone,
+// and «Удалённые каналы» under the list gives it back), «Новый канал» and,
+// for admins, «Обновить автоматические каналы».
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { APP_NAME } from '../../brand'
 import { errorText } from '../../api/client'
-import { deleteChannel, generateChannels, getChannels, updateChannel, type Channel, type ChannelRules } from '../../api/channels'
+import { deleteChannel, generateChannels, getChannels, restoreChannel, updateChannel, type Channel, type ChannelRules, type RemovedChannel } from '../../api/channels'
 import { Icon } from '../../components/Icon'
 import { t as tr, useT } from '../../i18n'
 import { useSession } from '../../state/session'
@@ -53,6 +54,7 @@ export function TvManage() {
   const [removing, setRemoving] = useState<Channel | null>(null)
   const [toast, setToast] = useState('')
   const [busy, setBusy] = useState(false)
+  const [restoring, setRestoring] = useState<number | null>(null)
   const { state, load, update } = useLoad((signal) => getChannels(signal, true), [], {
     message: (e) => errorText(e, t('common.loadFailed')),
     events: [],
@@ -88,6 +90,39 @@ export function TvManage() {
       })
       .catch((e: unknown) => setToast(errorText(e, t('common.genericError'))))
       .finally(() => setBusy(false))
+  }
+
+  const remove = (c: Channel) => {
+    setRemoving(null)
+    deleteChannel(c.id).then(
+      () => {
+        setToast(t(c.auto ? 'tv.deletedAuto' : 'tv.deleted', { name: c.name }))
+        load(true)
+      },
+      (e: unknown) => {
+        setToast(errorText(e, t('common.genericError')))
+        load(true)
+      },
+    )
+  }
+  const restore = (c: RemovedChannel) => {
+    setRestoring(c.id)
+    restoreChannel(c.id)
+      .then((r) => setToast(t(r.restored ? 'tv.restored' : 'tv.restoredLater', { name: c.name })))
+      .catch((e: unknown) => setToast(errorText(e, t('common.genericError'))))
+      .finally(() => {
+        setRestoring(null)
+        load(true)
+      })
+  }
+  const removed = data?.removed ?? []
+  // what the delete does, by what the channel is: an automatic one is only
+  // remembered as deleted (it can be given back), one with fetching also lets
+  // go of the files fetched for it
+  const deleteMessage = (c: Channel) => {
+    if (c.auto) return t('tv.deleteMessageAuto')
+    if (c.rules?.fetch?.titles?.length) return t('tv.deleteMessageFetch')
+    return t('tv.deleteMessage')
   }
 
   return (
@@ -185,12 +220,7 @@ export function TvManage() {
                         <>
                           <MenuItem icon={<Icon name="pencil" size={16} />} label={t('tv.edit')} onSelect={() => (close(false), setEdit({ channel: c }))} />
                           <MenuSeparator />
-                          <MenuItem
-                            destructive
-                            icon={<Icon name="trash" size={16} />}
-                            label={c.auto ? t('tv.disableAuto') : t('tv.delete')}
-                            onSelect={() => (close(false), setRemoving(c))}
-                          />
+                          <MenuItem destructive icon={<Icon name="trash" size={16} />} label={t('tv.delete')} onSelect={() => (close(false), setRemoving(c))} />
                         </>
                       )}
                     </Menu>
@@ -199,6 +229,26 @@ export function TvManage() {
               ))}
             </GroupedSection>
           )}
+        {removed.length > 0 && (
+          <GroupedSection title={t('tv.removed')} footer={t('tv.removedHint')} className={styles.removed}>
+            {removed.map((c) => (
+              <ListRow
+                key={c.id}
+                label={
+                  <span className={styles.rowName}>
+                    <span>{c.name}</span>
+                    {c.personal && me.isAdmin && <Badge>{t('tv.personal')}</Badge>}
+                  </span>
+                }
+                hint={c.category}
+              >
+                <Button variant="secondary" size="small" loading={restoring === c.id} disabled={restoring !== null} aria-label={t('tv.restoreNamed', { name: c.name })} onClick={() => restore(c)}>
+                  {t('tv.restore')}
+                </Button>
+              </ListRow>
+            ))}
+          </GroupedSection>
+        )}
       </div>
 
       {edit && (
@@ -221,23 +271,12 @@ export function TvManage() {
       {removing && (
         <Sheet
           title={t('tv.deleteTitle', { name: removing.name })}
-          message={t('tv.deleteMessage')}
+          message={deleteMessage(removing)}
           icon={<Icon name="trash" size={34} strokeWidth={1.6} />}
           onCancel={() => setRemoving(null)}
           actions={[
             { label: t('common.cancel'), kind: 'cancel', run: () => setRemoving(null) },
-            {
-              label: removing.auto ? t('tv.disableAuto') : t('tv.delete'),
-              kind: 'destructive',
-              run: () => {
-                const c = removing
-                setRemoving(null)
-                deleteChannel(c.id).then(
-                  () => load(true),
-                  (e: unknown) => setToast(errorText(e, t('common.genericError'))),
-                )
-              },
-            },
+            { label: t('tv.delete'), kind: 'destructive', run: () => remove(removing) },
           ]}
         />
       )}

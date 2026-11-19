@@ -382,6 +382,10 @@
 .sourcesEntry {
   margin-bottom: var(--s-8);
 }
+/* «Удалённые каналы» under the channel list */
+.removed {
+  margin-top: var(--s-8);
+}
 .column {
   max-width: var(--column-narrow);
   margin: 0 auto;

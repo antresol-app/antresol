@@ -19,22 +19,25 @@ const SAGA = {
   ],
 }
 const PAIR = { key: 'c20', name: 'Пара', source: 'tmdb', manual: false, items: [{ id: 4, kind: 'movie', title: 'А' }, { id: 5, kind: 'movie', title: 'Б' }] }
+const GONE = { key: 'c30', name: 'Удалённая', source: 'tmdb', manual: false, channelRemoved: true, items: [{ id: 8, kind: 'movie', title: 'Д' }, { id: 9, kind: 'movie', title: 'Е' }] }
 const SHARED = { key: 'wQ1', name: 'Общая', source: 'wikidata', manual: false, channelId: 8, items: [{ id: 6, kind: 'movie', title: 'В' }, { id: 7, kind: 'series', title: 'Г' }] }
 
 type Call = { method: string; url: string; body?: unknown }
 let calls: Call[] = []
 let available = true
+let list: object[] = []
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(body === null ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
 beforeEach(() => {
   calls = []
   available = true
+  list = [SAGA, PAIR, SHARED]
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
     if (method === 'GET' && url === '/api/channels/franchises')
-      return json({ available, status: { running: false, model: 'http://llm|m', at: new Date().toISOString() }, franchises: available ? [SAGA, PAIR, SHARED] : [] })
+      return json({ available, status: { running: false, model: 'http://llm|m', at: new Date().toISOString() }, franchises: available ? list : [] })
     if (method === 'PUT' || method === 'DELETE') return json(SAGA)
     return json(null, 202)
   })
@@ -60,6 +63,13 @@ describe('«Франшизы»', () => {
     expect(screen.getByText('2 фильма или сериала · есть канал')).toBeInTheDocument()
     expect(screen.getByText('2 фильма или сериала · канала нет — мало для показа')).toBeInTheDocument()
     expect(screen.getByText(/Порядок по сюжету расставляет ИИ-помощник/)).toBeInTheDocument()
+  })
+
+  it('says a franchise channel was deleted, not that the library has too little for it', async () => {
+    list = [GONE]
+    open()
+    expect(await screen.findByText('2 фильма или сериала · канал удалён — вернуть его можно на странице «Управление каналами»')).toBeInTheDocument()
+    expect(screen.queryByText(/мало для показа/)).toBeNull()
   })
 
   it('saves the new order with a removed title hidden', async () => {

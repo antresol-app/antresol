@@ -154,6 +154,16 @@ export interface ChannelList {
   canCreate: boolean;
   /** Every category of the list once, in the filter's order (older servers: absent). */
   categories?: ChannelCategory[];
+  /** The manage list only: the deleted automatic channels this profile may give back. */
+  removed?: RemovedChannel[];
+}
+
+/** An automatic channel that was deleted: the generator skips it until it is given back. */
+export interface RemovedChannel {
+  id: number;
+  name: string;
+  category: string;
+  personal: boolean;
 }
 
 export interface ChannelGuide {
@@ -355,8 +365,15 @@ export const createChannel = (c: ChannelInput) =>
   request<Channel>("POST", "/api/channels", c);
 export const updateChannel = (id: number, c: ChannelInput) =>
   request<Channel>("PUT", `/api/channels/${id}`, c);
+/** Deletes a channel; an automatic one is also remembered as deleted (`removed` of the manage list). */
 export const deleteChannel = (id: number) =>
   request<void>("DELETE", `/api/channels/${id}`);
+/** Gives a deleted automatic channel back; `restored` false: the library has not enough for it yet, it is made when it has. */
+export const restoreChannel = (id: number) =>
+  request<{ restored: boolean }>(
+    "POST",
+    `/api/channels/removed/${id}/restore`,
+  );
 export const generateChannels = () =>
   request<{ created: number; updated: number; disabled: number }>(
     "POST",
@@ -396,6 +413,8 @@ export interface Franchise {
   items: FranchiseItem[];
   /** Its channel (none: too little of it in the library). */
   channelId?: number;
+  /** Its channel was deleted in «Управление каналами»: it comes back only when given back there. */
+  channelRemoved?: boolean;
 }
 
 export interface FranchiseStatus {

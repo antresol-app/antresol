@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -328,7 +329,8 @@ type SyncResult struct {
 // Sync makes the planned generated channels that are missing, brings the
 // ones nobody edited up to date (and enables them), and disables the
 // unedited ones the library no longer has content for. Channels an admin
-// edited (or deleted: disabled) are left alone.
+// edited are left alone, and so are the ones an owner deleted
+// (channel_removed): their keys are skipped until they are given back.
 func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 	g.sync.Lock()
 	defer g.sync.Unlock()
@@ -341,14 +343,22 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 	if err != nil {
 		return res, err
 	}
+	// read after the channels: a channel deleted in between is in neither
+	removed, err := g.Store.RemovedKeys(ctx)
+	if err != nil {
+		return res, err
+	}
 	have := map[string]Channel{}
 	for _, c := range all {
-		if c.AutoKey != "" && !c.External() { // external rows are internal/iptv's
+		if c.AutoKey != "" && !c.External() && !removed[c.AutoKey] { // external rows are internal/iptv's
 			have[c.AutoKey] = c
 		}
 	}
 	want := map[string]bool{}
 	for _, p := range plan {
+		if removed[p.AutoKey] {
+			continue
+		}
 		want[p.AutoKey] = true
 		c, ok := have[p.AutoKey]
 		switch {
@@ -359,6 +369,9 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 			}
 			p.Channel.Number = n
 			if _, err := g.Store.Create(ctx, p.Channel); err != nil {
+				if errors.Is(err, ErrRemoved) { // deleted while this pass ran
+					continue
+				}
 				if keyKind(p.AutoKey) == "franchise" { // one franchise must not stop every channel
 					log.Printf("channels: create %s: %v", p.AutoKey, err)
 					continue
@@ -370,6 +383,9 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 		case !c.Enabled || c.Name != p.Name || c.Category != p.Category || !sameRules(c.Rules, p.Rules):
 			c.Name, c.Category, c.Rules, c.Enabled = p.Name, p.Category, p.Rules, true
 			if _, err := g.Store.Update(ctx, c); err != nil {
+				if errors.Is(err, ErrNotFound) { // deleted while this pass ran
+					continue
+				}
 				if keyKind(p.AutoKey) == "franchise" {
 					log.Printf("channels: update %s: %v", p.AutoKey, err)
 					continue
@@ -383,6 +399,9 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 		if !want[key] && !c.Edited && c.Enabled {
 			c.Enabled = false
 			if _, err := g.Store.Update(ctx, c); err != nil {
+				if errors.Is(err, ErrNotFound) { // deleted while this pass ran
+					continue
+				}
 				return res, err
 			}
 			res.Disabled++

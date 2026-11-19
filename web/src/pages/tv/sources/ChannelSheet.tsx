@@ -3,7 +3,8 @@
 // «Из плейлиста» or «Новая категория…»), number (0: automatic), the switch,
 // its logo, and its guide — what it is bound to now, a search over the
 // guides' channels to bind it by hand, «Отвязать» to give it back to the
-// automatic match. Saving sends only what changed. When the source merges
+// automatic match. Saving sends only what changed. «Удалить из источника…»
+// (the page confirms) hides the channel for good. When the source merges
 // variants: the channel's group of variants (best first), how it was made
 // (the rules, the AI helper, the admin), «Отдельный канал» to take this
 // entry out of it, «Объединить с…» to make it a variant of another channel
@@ -36,6 +37,7 @@ export function ChannelSheet({
   variantsOn,
   onClose,
   onSaved,
+  onRemove,
 }: {
   c: SourceChannel
   sourceId: number
@@ -44,6 +46,8 @@ export function ChannelSheet({
   variantsOn: boolean
   onClose: () => void
   onSaved: (message?: string) => void
+  /** «Удалить из источника…»: the page asks, then hides the channel for good. */
+  onRemove: (c: SourceChannel) => void
 }) {
   const t = useT()
   const [name, setName] = useState(c.name === c.providerName ? '' : c.name)
@@ -183,6 +187,15 @@ export function ChannelSheet({
                 </Button>
               </ListRow>
             )}
+          </GroupedSection>
+        )}
+        {c.present && (
+          <GroupedSection>
+            <ListRow label={t('iptv.sheet.remove')} hint={t('iptv.sheet.removeHint')}>
+              <Button variant="destructive" size="small" onClick={() => onRemove(c)}>
+                {t('iptv.sheet.removeAction')}
+              </Button>
+            </ListRow>
           </GroupedSection>
         )}
         {error && (

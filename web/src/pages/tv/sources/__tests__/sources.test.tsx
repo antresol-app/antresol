@@ -90,6 +90,23 @@ describe('a source’s page', () => {
     expect(within(table).getAllByRole('row').length).toBeLessThan(100)
   })
 
+  it('deletes a channel from the source: asks, then hides it for good', async () => {
+    at('/tv/manage/sources/1')
+    await screen.findByRole('table')
+    fireEvent.click(screen.getByRole('button', { name: 'Действия: Канал 2 HD' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Удалить из источника/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Удалить канал «Канал 2 HD» из источника?')).toBeInTheDocument()
+    expect(within(dialog).getByText(/Вернуть его можно в списке «Скрыты»/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+    expect(writes()).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Действия: Канал 2 HD' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Удалить из источника/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+    await waitFor(() => expect(writes()).toEqual([{ method: 'PATCH', url: '/api/tv/channels', body: { channelIds: [1001], shown: false } }]))
+    expect(await screen.findByText('Канал «Канал 2 HD» удалён из источника. Он в списке «Скрыты».')).toBeInTheDocument()
+  })
+
   it('shows or hides a whole group with one call', async () => {
     at('/tv/manage/sources/1')
     await screen.findByRole('table')

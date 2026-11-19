@@ -361,7 +361,8 @@ const ManualFrom = 1
 
 // Create adds a channel (Number 0: automatic; NumberManual: the admin's
 // number, an automatic channel holding it steps aside) and returns it with
-// its id and its number after Renumber.
+// its id and its number after Renumber. A generated channel the owner
+// deleted is refused with ErrRemoved.
 func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 	if err := normalize(&c); err != nil {
 		return c, err
@@ -391,6 +392,17 @@ func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 		return c, err
 	}
 	defer tx.Rollback()
+	if c.AutoKey != "" {
+		// checked here, in the writing transaction: a delete that lands
+		// while the generator works is not undone by it
+		var one int
+		switch err := tx.QueryRowContext(ctx, `SELECT 1 FROM channel_removed WHERE auto_key=?`, c.AutoKey).Scan(&one); {
+		case err == nil:
+			return c, ErrRemoved
+		case !errors.Is(err, sql.ErrNoRows):
+			return c, err
+		}
+	}
 	var place map[int64]int64
 	if c.NumberManual {
 		p, ok, err := makeRoom(ctx, tx, c.Number, 0)
@@ -495,22 +507,34 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 	return c, nil
 }
 
-// Delete removes a channel; a generated one is disabled instead, so the
-// generator does not make it again.
+// Delete removes a channel with its schedule, cursors, favourites, last-channel
+// marks and extras (foreign keys), and numbers the rest again. A generated
+// channel's key is remembered (channel_removed) in the same transaction, so
+// the generator does not make it again until it is given back (Restore).
+// What a channel with fetching had fetched is let go by the fetch pass
+// (Service.FetchKick), which reads channel_fetch: no foreign key keeps it.
 func (s *Store) Delete(ctx context.Context, id int64) error {
 	c, err := s.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if c.AutoKey != "" {
-		_, err = s.DB.ExecContext(ctx, `UPDATE channels SET enabled=0, edited=1 WHERE id=?`, id)
-	} else {
-		_, err = s.DB.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id)
-	}
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return s.Renumber(ctx)
+	defer tx.Rollback()
+	if c.AutoKey != "" && !c.External() { // an external row's key is the IPTV sync's
+		if err := s.remove(ctx, tx, c); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id); err != nil {
+		return err
+	}
+	if err := RenumberTx(ctx, tx, nil, nil); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetLogo records channel id's uploaded logo version (0: none).

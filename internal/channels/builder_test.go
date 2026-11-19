@@ -234,8 +234,9 @@ func TestCreateNumbersAndValidation(t *testing.T) {
 	if err := f.st.Delete(ctx, g.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := f.st.Get(ctx, g.ID); got.Enabled || !got.Edited {
-		t.Fatalf("generated channel after delete: %+v", got)
+	// a generated channel goes too; its key is remembered (removed_test.go)
+	if _, err := f.st.Get(ctx, g.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("generated channel after delete: %v", err)
 	}
 	if err := f.st.Delete(ctx, a.ID); err != nil {
 		t.Fatal(err)

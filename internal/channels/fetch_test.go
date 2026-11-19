@@ -410,3 +410,53 @@ func TestFetchSpeedLearnt(t *testing.T) {
 		t.Fatalf("speed %v", v)
 	}
 }
+
+// A channel with fetching that is deleted lets go of what it asked for and
+// of what was fetched for it, by the clean-up's rules (no foreign key keeps
+// channel_fetch: a deleted channel's files still have to be cleaned up).
+func TestFetchChannelDeletedLetsGo(t *testing.T) {
+	f, c := newFetchFix(t, 3, []int{1}, FetchRules{GraceHours: 2})
+	f.pass()
+	ph, _ := f.placeholderOf(c, 2)
+	f.now = ph.Start.Add(-60 * time.Minute)
+	f.pass()
+	e2 := f.arrive(2)
+	f.pass()
+	if r := f.row(c, 2); r.State != fetchReady || r.ItemID != e2 {
+		t.Fatalf("E2 should have arrived: %+v", r)
+	}
+	if rows, _ := fetchRows(context.Background(), f.db, `channel_id=? AND pos >= 0`, c.ID); len(rows) == 0 {
+		t.Fatal("the channel has nothing in its order before the delete")
+	}
+
+	if err := f.svc.Store.Delete(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.pass()
+	// nothing is in any channel's order any more; what was only wanted or asked for is forgotten
+	var inOrder, unfetched int
+	f.db.QueryRow(`SELECT count(*) FROM channel_fetch WHERE channel_id=? AND pos >= 0`, c.ID).Scan(&inOrder)
+	f.db.QueryRow(`SELECT count(*) FROM channel_fetch WHERE channel_id=? AND state IN (?,?)`, c.ID, fetchWanted, fetchRequested).Scan(&unfetched)
+	if inOrder != 0 || unfetched != 0 {
+		t.Fatalf("after the delete: %d in order, %d only wanted or asked for", inOrder, unfetched)
+	}
+	f.pass()
+	// what arrived stays for the default grace period (the channel's own is gone), then goes
+	if len(f.removed) != 0 {
+		t.Fatalf("removed at once: %v", f.removed)
+	}
+	f.now = f.now.Add(time.Duration(DefaultFetchGraceHours)*time.Hour + time.Minute)
+	f.pass()
+	if len(f.removed) != 1 || f.removed[0] != e2 {
+		t.Fatalf("removed %v, want [%d]", f.removed, e2)
+	}
+	f.pass() // the drop goes out with the next talk
+	if len(f.fetcher.drops) == 0 {
+		t.Fatal("the addon was not told to drop what was fetched")
+	}
+	for _, id := range f.removed {
+		if id == f.eps[1] {
+			t.Fatal("removed what the library had before")
+		}
+	}
+}

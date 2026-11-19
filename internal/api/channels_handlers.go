@@ -101,6 +101,7 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Post("/api/channels", a.create)
 	r.Put("/api/channels/{id}", a.update)
 	r.Delete("/api/channels/{id}", a.remove)
+	r.Post("/api/channels/removed/{id}/restore", a.restore)
 	r.Get("/api/channels/{id}/guide", a.guide)
 	r.Get("/api/channels/{id}/logo.png", a.webLogo)
 	r.Post("/api/channels/{id}/logo", a.uploadLogo)
@@ -411,6 +412,14 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid}
 	if cats != nil {
 		resp["categories"] = cats
+	}
+	if manage {
+		removed, err := a.removedJSON(ctx, v)
+		if err != nil {
+			internalErr(w, r, "channels", err)
+			return
+		}
+		resp["removed"] = removed
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -725,7 +734,10 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.withPicks(r.Context(), a.toJSON(r.Context(), c, viewerOf(u), nil), c))
 }
 
-// DELETE /api/channels/{id} (a generated channel is disabled)
+// DELETE /api/channels/{id}: the channel, its schedule and its number go; a
+// generated channel is also remembered as deleted (channel_removed), so the
+// generator does not make it again, until POST /api/channels/removed/{id}/restore.
+// An external (IPTV) channel is hidden in its source's editor instead.
 func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 	c, ok := a.channelParam(w, r)
 	if !ok {
@@ -740,6 +752,10 @@ func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.svc.Store.Delete(r.Context(), c.ID); err != nil {
+		if errors.Is(err, channels.ErrNotFound) { // deleted meanwhile
+			writeErr(w, r, http.StatusNotFound, "Канал не найден")
+			return
+		}
 		internalErr(w, r, "channel delete", err)
 		return
 	}
@@ -749,7 +765,82 @@ func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 	if a.svc.Live != nil {
 		a.svc.Live.Stop(c.ID)
 	}
+	if c.Rules.Fetch != nil {
+		a.svc.FetchKick() // the pass lets go of what was fetched for it (the clean-up's rules)
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type removedJSON struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Personal bool   `json:"personal"`
+}
+
+// removedJSON lists the deleted generated channels v may give back, in v's language.
+func (a *channelsAPI) removedJSON(ctx context.Context, v channels.Viewer) ([]removedJSON, error) {
+	rs, err := a.svc.Store.Removed(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]removedJSON, 0, len(rs))
+	for _, rm := range rs {
+		if !channels.CanRestore(rm, v) {
+			continue
+		}
+		name, cat := a.display(ctx, rm.Channel())
+		out = append(out, removedJSON{ID: rm.ID, Name: name, Category: cat, Personal: rm.UserID != 0})
+	}
+	return out, nil
+}
+
+// POST /api/channels/removed/{id}/restore: a deleted generated channel may be
+// made again; it is made now when the library has enough for it ({restored}).
+func (a *channelsAPI) restore(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, r, http.StatusNotFound, "Канал не найден")
+		return
+	}
+	rm, err := a.svc.Store.GetRemoved(ctx, id)
+	if errors.Is(err, channels.ErrNotFound) {
+		writeErr(w, r, http.StatusNotFound, "Канал не найден")
+		return
+	}
+	if err != nil {
+		internalErr(w, r, "channel restore", err)
+		return
+	}
+	if !channels.CanRestore(rm, viewerOf(userOf(r))) {
+		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		return
+	}
+	if err := a.svc.Store.Restore(ctx, id); err != nil && !errors.Is(err, channels.ErrNotFound) {
+		internalErr(w, r, "channel restore", err)
+		return
+	}
+	if _, err := a.svc.Generator.Sync(ctx); err != nil {
+		internalErr(w, r, "channel restore", err)
+		return
+	}
+	restored := false
+	all, err := a.svc.Store.All(ctx)
+	if err != nil {
+		internalErr(w, r, "channel restore", err)
+		return
+	}
+	for _, c := range all {
+		if c.AutoKey == rm.AutoKey && !c.External() {
+			restored = true
+			if err := a.svc.BuildChannel(ctx, c); err != nil {
+				log.Printf("channels: build %d: %v", c.ID, err)
+			}
+		}
+	}
+	a.svc.Kick() // the rest of the lineup follows in the background
+	writeJSON(w, http.StatusOK, map[string]bool{"restored": restored})
 }
 
 // POST /api/channels/generate (admin): the generated channels now.

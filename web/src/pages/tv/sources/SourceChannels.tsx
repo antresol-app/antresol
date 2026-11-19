@@ -77,6 +77,7 @@ export function SourceChannels() {
   const [state, setState] = useState<StateFilter>('all')
   const [editing, setEditing] = useState<number | null>(null)
   const [sheet, setSheet] = useState<SourceChannel | null>(null)
+  const [deleting, setDeleting] = useState<SourceChannel | null>(null)
   const [settings, setSettings] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [busy, setBusy] = useState('')
@@ -157,6 +158,13 @@ export function SourceChannels() {
   const show = (c: SourceChannel, on: boolean) => {
     update([c.channelId], { shown: on, why: 'manual' })
     patchChannels({ channelIds: [c.channelId], shown: on }).catch(failed)
+  }
+  // «Удалить»: an external channel cannot be deleted (the playlist has it), so it is hidden for
+  // good — the admin's decision outlives refreshes — and listed under «Скрыты» to show again
+  const removeChannel = (c: SourceChannel) => {
+    setDeleting(null)
+    show(c, false)
+    setToast(t('iptv.remove.done', { name: c.name }))
   }
   const rename = (c: SourceChannel, name: string) => {
     setEditing(null)
@@ -400,6 +408,7 @@ export function SourceChannels() {
                   onShow={(on) => show(rows[i]!, on)}
                   onOpen={() => setSheet(rows[i]!)}
                   onReset={() => reset(rows[i]!)}
+                  onRemove={() => setDeleting(rows[i]!)}
                 />
               )}
             />
@@ -414,6 +423,7 @@ export function SourceChannels() {
           all={list ?? []}
           variantsOn={source?.presets.variants ?? false}
           onClose={() => setSheet(null)}
+          onRemove={(c) => (setSheet(null), setDeleting(c))}
           onSaved={(msg) => {
             setSheet(null)
             if (msg) setToast(msg)
@@ -435,6 +445,18 @@ export function SourceChannels() {
             setToast(t('iptv.editor.saved'))
             loadChannels()
           }}
+        />
+      )}
+      {deleting && (
+        <Sheet
+          title={t('iptv.remove.title', { name: deleting.name })}
+          message={t('iptv.remove.message')}
+          icon={<Icon name="trash" size={34} strokeWidth={1.6} />}
+          onCancel={() => setDeleting(null)}
+          actions={[
+            { label: t('common.cancel'), kind: 'cancel', run: () => setDeleting(null) },
+            { label: t('iptv.remove.confirm'), kind: 'destructive', run: () => removeChannel(deleting) },
+          ]}
         />
       )}
       {removing && source && (
@@ -470,6 +492,7 @@ function ChannelRow({
   onShow,
   onOpen,
   onReset,
+  onRemove,
 }: {
   c: SourceChannel
   phone: boolean
@@ -479,6 +502,7 @@ function ChannelRow({
   onShow: (on: boolean) => void
   onOpen: () => void
   onReset: () => void
+  onRemove: () => void
 }) {
   const t = useT()
   const epg = epgLabel(t, c)
@@ -568,6 +592,8 @@ function ChannelRow({
               <MenuItem icon={<Icon name="textSize" size={16} />} label={t('iptv.table.renameItem')} onSelect={() => (close(false), onEdit())} />
               <MenuSeparator />
               <MenuItem icon={<Icon name="restart" size={16} />} label={t('iptv.table.reset')} detail={t('iptv.table.resetDetail')} onSelect={() => (close(), onReset())} />
+              <MenuSeparator />
+              <MenuItem destructive icon={<Icon name="trash" size={16} />} label={t('iptv.table.removeItem')} detail={t('iptv.table.removeDetail')} onSelect={() => (close(false), onRemove())} />
             </>
           )}
         </Menu>

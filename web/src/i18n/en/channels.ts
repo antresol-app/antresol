@@ -78,9 +78,24 @@ export default {
   "tv.retry": "Try Again",
   "tv.edit": "Edit",
   "tv.delete": "Delete",
-  "tv.disableAuto": "Turn Off",
   "tv.deleteTitle": "Delete the channel “{name}”?",
-  "tv.deleteMessage": "It disappears from the TV tab on every device.",
+  "tv.deleteMessage":
+    "The channel, its schedule and its number are deleted. It disappears from the TV tab on every device.",
+  "tv.deleteMessageAuto":
+    "It disappears on every device and does not come back when the automatic channels update. You can bring it back from Deleted Channels below; changes made to it are reset.",
+  "tv.deleteMessageFetch":
+    "The channel, its schedule and its number are deleted. Movies and episodes fetched for it are removed after their keeping period, unless other channels need them or someone watched or kept them.",
+  "tv.deleted": "Channel “{name}” deleted",
+  "tv.deletedAuto":
+    "Channel “{name}” deleted. You can bring it back from Deleted Channels below.",
+  "tv.removed": "Deleted Channels",
+  "tv.removedHint":
+    "Automatic channels you deleted. They do not come back when the channels update until you bring them back.",
+  "tv.restore": "Bring Back",
+  "tv.restoreNamed": "Bring back the channel “{name}”",
+  "tv.restored": "Channel “{name}” is back",
+  "tv.restoredLater":
+    "Channel “{name}” will appear once the library has enough for it",
   "tv.enabled": "Channel on",
   "tv.more": "More",
   "tv.rules.movies": "Movies",
@@ -234,6 +249,8 @@ export default {
   },
   "tv.franchises.hasChannel": "has a channel",
   "tv.franchises.noChannel": "no channel — too little to play",
+  "tv.franchises.removedChannel":
+    "channel deleted — bring it back in Manage Channels",
   "tv.franchises.edit": "Order",
   "tv.franchises.orderTitle": "Order: {name}",
   "tv.franchises.order": "Play order",

@@ -282,6 +282,19 @@ bar's sections and the library menu. Numbers that change
   air `--fill-1`, past `--fill-4` with tertiary text), the now line and its
   time pill in the accent. The live player is the film player's chrome
   (`VideoPlayer.module.css`) with the programme's info in the bottom bar.
+- **Deleting a channel** (`/tv/manage`): «Удалить» is in every row's «⋯» and
+  always asks first — the `Sheet`'s message says what goes: a hand-made
+  channel, its schedule and its number; one with fetching, also what was
+  fetched for it (after its keeping period); an automatic one is only
+  remembered as deleted, so the generator leaves it alone. A deleted
+  automatic channel moves to «Удалённые каналы», a `GroupedSection` under the
+  list that exists only while there is one: a `ListRow` per channel (its
+  name and group) with a small secondary «Вернуть» at the end. A channel of
+  an external source is deleted from its source's editor («Удалить из
+  источника» in the row's «⋯» and in the channel's sheet, after the same
+  kind of confirmation): the playlist has it, so it is hidden for good (a
+  refresh does not undo it), listed under «Скрыты» and shown again by its
+  switch.
 - **External sources** (`pages/tv/sources`, admin): «Внешние источники»
   is a settings column — the sources as link rows (glyph tile, name with
   a «N новых» badge, the masked address, counts · when refreshed, the

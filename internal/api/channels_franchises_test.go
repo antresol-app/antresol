@@ -90,4 +90,18 @@ func TestFranchisesAPI(t *testing.T) {
 	if w := e.do("POST", "/api/channels/franchises/refresh", "", e.admin); w.Code != 409 {
 		t.Fatalf("refresh without TMDB: %d", w.Code)
 	}
+	// a franchise channel deleted from «Управление каналами» is not «too little to play»: the list says it
+	// was deleted, and the generator (a new order, a pass) leaves it until it is given back
+	if w := e.do("DELETE", "/api/channels/"+itoa(ch), "", e.admin); w.Code != 204 {
+		t.Fatalf("delete the franchise channel: %d %s", w.Code, w.Body)
+	}
+	if w := e.do("PUT", "/api/channels/franchises/c10/order", order([]int64{ids[1], ids[0], ids[2], ids[3], ids[4]}, nil), e.admin); w.Code != 200 {
+		t.Fatalf("order after the delete: %d %s", w.Code, w.Body)
+	}
+	w = e.do("GET", "/api/channels/franchises", "", e.admin)
+	list.Franchises = nil
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if w.Code != 200 || len(list.Franchises) != 1 || list.Franchises[0].ChannelID != 0 || !list.Franchises[0].ChannelRemoved {
+		t.Fatalf("list after the delete %d %s", w.Code, w.Body)
+	}
 }

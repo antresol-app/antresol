@@ -119,7 +119,7 @@ export function FranchisesPage() {
                           {f.manual && <Badge tone="accent">{t('tv.franchises.manual')}</Badge>}
                         </span>
                       }
-                      hint={[t('tv.franchises.titles', { count: shown }), f.channelId ? t('tv.franchises.hasChannel') : t('tv.franchises.noChannel')].join(' · ')}
+                      hint={[t('tv.franchises.titles', { count: shown }), f.channelId ? t('tv.franchises.hasChannel') : f.channelRemoved ? t('tv.franchises.removedChannel') : t('tv.franchises.noChannel')].join(' · ')}
                     >
                       <Button variant="secondary" size="small" onClick={() => setEditing(f)}>
                         {t('tv.franchises.edit')}

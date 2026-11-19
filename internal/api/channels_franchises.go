@@ -76,11 +76,21 @@ type franchiseJSON struct {
 	Items []franchiseItemJSON `json:"items"`
 	// ChannelID: its channel (0: none, under the minimum).
 	ChannelID int64 `json:"channelId,omitempty"`
+	// ChannelRemoved: its channel was deleted from «Управление каналами»
+	// (the generator leaves it until it is given back there).
+	ChannelRemoved bool `json:"channelRemoved,omitempty"`
 }
 
-func (a *channelsAPI) franchiseOut(ctx context.Context, f channels.Franchise, chans map[string]int64) franchiseJSON {
+// franchiseChans is where the franchises' channels are: the enabled one of a
+// franchise by its generator key, and the deleted ones' keys.
+type franchiseChans struct {
+	ids     map[string]int64
+	removed map[string]bool
+}
+
+func (a *channelsAPI) franchiseOut(ctx context.Context, f channels.Franchise, chans franchiseChans) franchiseJSON {
 	out := franchiseJSON{Key: f.Key, Name: f.Name, Source: f.Source, Error: f.Error, Manual: f.Manual != nil,
-		Items: []franchiseItemJSON{}, ChannelID: chans["franchise:"+f.Key]}
+		Items: []franchiseItemJSON{}, ChannelID: chans.ids["franchise:"+f.Key], ChannelRemoved: chans.removed["franchise:"+f.Key]}
 	ids := f.Effective()
 	var hidden []int64
 	if f.Manual != nil {
@@ -104,14 +114,15 @@ func (a *channelsAPI) franchiseOut(ctx context.Context, f channels.Franchise, ch
 	return out
 }
 
-func (a *channelsAPI) franchiseChannels(ctx context.Context) map[string]int64 {
-	out := map[string]int64{}
+func (a *channelsAPI) franchiseChannels(ctx context.Context) franchiseChans {
+	out := franchiseChans{ids: map[string]int64{}}
 	all, _ := a.svc.Store.All(ctx)
 	for _, c := range all {
 		if strings.HasPrefix(c.AutoKey, "franchise:") && c.Enabled {
-			out[c.AutoKey] = c.ID
+			out.ids[c.AutoKey] = c.ID
 		}
 	}
+	out.removed, _ = a.svc.Store.RemovedKeys(ctx)
 	return out
 }
 
