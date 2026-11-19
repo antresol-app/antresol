@@ -30,14 +30,20 @@ export function filterParam(f: ChannelFilter): string {
 
 type Categorized = { number: number; category: string; categories?: string[] }
 
+/** The adult category: exclusive (its channels are in no other list) and last. */
+export const ADULT = 'ai:adult'
+
+/** A channel of the exclusive category: only that category shows it. */
+export const isExclusive = (c: Categorized) => categoriesOf(c).includes(ADULT)
+
 /** A channel's category ids (a server without them: its theme's group). */
 export function categoriesOf(c: Categorized): string[] {
   return c.categories ?? (c.category ? [`group:${c.category}`] : [])
 }
 
-/** The list's categories as the server counted them, else the themes of its channels in the order of their first one. */
+/** The list's categories as the server counted them (the exclusive one last), else the themes of its channels in the order of their first one. */
 export function categoryList(list: Categorized[], server?: ChannelCategory[]): ChannelCategory[] {
-  if (server) return server
+  if (server) return [...server.filter((c) => c.id !== ADULT), ...server.filter((c) => c.id === ADULT)]
   const out: ChannelCategory[] = []
   for (const c of byNumber(list)) {
     if (!c.category) continue
@@ -73,9 +79,10 @@ export function themesOf(list: { number: number; category: string }[]): string[]
 /** The channels a filter shows, in the profile's order (ordered). */
 export function applyFilter<T extends Categorized & { favorite?: boolean }>(list: T[], f: ChannelFilter, favFirst = false): T[] {
   const sorted = ordered(list, favFirst)
-  if (f.kind === 'fav') return sorted.filter((c) => c.favorite)
   if (f.kind === 'cat') return sorted.filter((c) => categoriesOf(c).includes(f.id))
-  return sorted
+  const open = sorted.filter((c) => !isExclusive(c))
+  if (f.kind === 'fav') return open.filter((c) => c.favorite)
+  return open
 }
 
 /** A filter that no longer has anything to point at (the category is gone) falls back to all. */
@@ -262,10 +269,12 @@ const sameLang = (a: string | undefined, b: string | undefined) => !!a && !!b &&
 /**
  * The audio entry the programme plays for the viewer, on our channels and
  * external ones alike: the one they chose on this channel (by name); else
- * one in the chosen one's language; else the first of the device's
- * languages present (`system`: the browser's, navigator.languages); else
- * the first of the profile's audio languages present; else the original
- * (an entry named so, else the first one the stream lists).
+ * one in the chosen one's language; else the first of the profile's audio
+ * languages present («Мои языки», as for a film); else the first of the
+ * device's languages present (`system`: the browser's, navigator.languages
+ * — only a fallback: a browser in English must not override a profile that
+ * wants Russian); else the original (an entry named so, else the first one
+ * the stream lists).
  */
 export function pickAudio(entries: ChannelTrack[] | undefined, prefs: Pick<PlaybackPrefs, 'audioLangs'> | null, session: TrackSession, system: readonly string[] = []): ChannelTrack | undefined {
   if (!entries?.length) return undefined
@@ -273,7 +282,7 @@ export function pickAudio(entries: ChannelTrack[] | undefined, prefs: Pick<Playb
     const hit = entries.find((x) => x.name === session.audioName) ?? entries.find((x) => sameLang(x.lang, session.audioLang))
     if (hit) return hit
   }
-  for (const lang of [...system, ...(prefs?.audioLangs ?? [])]) {
+  for (const lang of [...(prefs?.audioLangs ?? []), ...system]) {
     const e = entries.find((x) => sameLang(x.lang, lang))
     if (e) return e
   }
@@ -361,4 +370,9 @@ export type Numbered = Pick<Channel, 'id' | 'number' | 'name' | 'category' | 'fa
 /** The digits of the longest channel number in a list (its number column is that wide). */
 export function numDigits(list: readonly Pick<Channel, 'number'>[]): number {
   return list.reduce((d, c) => Math.max(d, String(c.number).length), 1)
+}
+
+/** The channel with this number (a typed number: TiviMate's way of switching), undefined when none has it. */
+export function channelByNumber<C extends Pick<Channel, 'number'>>(list: readonly C[], n: number): C | undefined {
+  return Number.isFinite(n) ? list.find((c) => c.number === n) : undefined
 }

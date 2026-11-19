@@ -115,6 +115,7 @@ func init() {
 		"Региональные":      "Regional",
 		"Общие":             "General",
 		"Магазины":          "Shopping",
+		"Для взрослых":      "Adult",
 		// why an external channel is shown or hidden (internal/iptv rules.go)
 		"пресет: для взрослых":   "preset: adult",
 		"пресет: таймшифт-копия": "preset: timeshift copy",

@@ -107,6 +107,12 @@ export function FranchisesPage() {
               </Notice>
             )}
             {status?.incomplete && <Notice tone="accent">{t('tv.franchises.incomplete')}</Notice>}
+            {/* why franchises may stay apart: no Wikidata, Wikidata not read for everything yet, no AI helper */}
+            {data.evidence && !data.evidence.wikidata && <Notice tone="warning">{t('tv.franchises.whyNoWikidata')}</Notice>}
+            {data.evidence?.wikidata && data.evidence.read < data.evidence.titles && !status?.running && (
+              <Notice tone="accent">{t('tv.franchises.whyPartial', { read: data.evidence.read, titles: data.evidence.titles })}</Notice>
+            )}
+            {status && !status.model && !status.running && <p className={styles.franchiseStatus}>{t('tv.franchises.whyNoAI')}</p>}
             {data.franchises.length === 0 ? (
               <div className={styles.empty}>
                 <h2>{t('tv.franchises.empty')}</h2>
@@ -132,7 +138,11 @@ export function FranchisesPage() {
                         // who put it in this order
                         f.manual ? t('tv.franchises.orderBy.manual') : f.source === 'ai' ? t('tv.franchises.orderBy.ai') : t('tv.franchises.orderBy.release'),
                         t('tv.franchises.titles', { count: shown }),
-                        f.channelId ? t('tv.franchises.hasChannel') : f.channelRemoved ? t('tv.franchises.removedChannel') : t('tv.franchises.noChannel')].join(' · ')}
+                        f.channelId ? t('tv.franchises.hasChannel') : f.channelRemoved ? t('tv.franchises.removedChannel') : t('tv.franchises.noChannel'),
+                        f.untied && data.evidence?.wikidata ? t('tv.franchises.untied') : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     >
                       <Button variant="secondary" size="small" onClick={() => setEditing(f)}>
                         {t('tv.franchises.edit')}
@@ -191,7 +201,14 @@ export function FranchiseOrderSheet({ franchise, onClose, onSaved }: { franchise
       label: t('common.save'),
       kind: 'primary' as const,
       disabled: items.length === 0,
-      run: () => run(setFranchiseOrder(franchise.key, items.map((x) => x.id), hidden.map((x) => x.id))),
+      run: () =>
+        run(
+          setFranchiseOrder(
+            franchise.key,
+            items.map((x) => x.id),
+            hidden.map((x) => x.id),
+          ),
+        ),
     },
   ]
   return (

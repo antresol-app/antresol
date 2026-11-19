@@ -1,6 +1,7 @@
-/* A channel's logo: the picture fitted whole (its own shape) inside a
-   neutral rounded box of one height per size and a 16:10 width, so logos of
-   any shape line up in a list. */
+/* A channel's tile: one height per size and a 16:10 width, so channels
+   line up in a list whatever their logos. A logo is fitted whole (its own
+   shape) on a quiet tile; a channel without one gets a coloured tile of
+   its own (.tile). No outline: a tile is the channel, not a box around it. */
 .logo {
   flex: none;
   display: inline-grid;
@@ -10,8 +11,7 @@
   width: calc(var(--logo-h) * 1.6);
   padding: var(--s-0) var(--s-1);
   border-radius: var(--r-sm);
-  background: var(--fill-3);
-  box-shadow: inset 0 0 0 var(--hairline-w) var(--hairline);
+  background: var(--fill-2);
   overflow: hidden;
   vertical-align: middle;
 }
@@ -21,17 +21,56 @@
   max-height: 100%;
   object-fit: contain;
 }
-/* a channel without a logo: its initials in the same box */
-.initials {
+/* a channel without a logo: its own tile — an art gradient (.tone1…7, by
+   its name), white initials, the tile's shape and size */
+.tile {
   composes: logo;
+  padding: 0;
   font-family: var(--font-rounded);
-  font-weight: 600;
-  font-size: calc(var(--logo-h) * 0.42);
+  font-weight: 700;
+  font-size: calc(var(--logo-h) * 0.46);
   line-height: 1;
-  letter-spacing: 0.02em;
-  color: var(--label-2);
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   white-space: nowrap;
   user-select: none;
+}
+/* the gradients are bright art: a shade keeps white initials legible */
+.tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+.tile {
+  position: relative;
+  isolation: isolate;
+}
+.tile::before {
+  z-index: -1;
+}
+.tone1 {
+  background: var(--grad-1);
+}
+.tone2 {
+  background: var(--grad-2);
+}
+.tone3 {
+  background: var(--grad-3);
+}
+.tone4 {
+  background: var(--grad-4);
+}
+.tone5 {
+  background: var(--grad-5);
+}
+.tone6 {
+  background: var(--grad-6);
+}
+.tone7 {
+  background: var(--grad-7);
 }
 /* the empty slot of a row without a logo in a list that has some */
 .slot {

@@ -41,7 +41,7 @@ export function PlayerBar({ label, title, subtitle, artwork, fallbackIcon, onOpe
         {artwork && failed !== artwork ? (
           <img src={artwork} alt="" draggable={false} onError={() => setFailed(artwork)} />
         ) : (
-          <Icon name={fallbackIcon} size={20} />
+          <Icon name={fallbackIcon} size={16} />
         )}
       </span>
       <span className={styles.text}>
@@ -80,7 +80,7 @@ export interface PlayerBarButtonProps {
 export function PlayerBarButton({ icon, label, onClick, prominent, busy }: PlayerBarButtonProps) {
   return (
     <button type="button" className={styles.button} aria-label={label} aria-busy={busy || undefined} data-prominent={prominent || undefined} onClick={onClick}>
-      <Icon name={icon} size={prominent ? 24 : 22} />
+      <Icon name={icon} size={prominent ? 22 : 18} />
     </button>
   )
 }

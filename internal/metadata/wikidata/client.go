@@ -8,6 +8,7 @@ package wikidata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -217,19 +218,37 @@ func (c *Client) entities(ctx context.Context, ids []string, props string) (map[
 	}
 	for len(ids) > 0 {
 		n := min(len(ids), batch)
-		var raw struct {
-			Entities map[string]entity `json:"entities"`
-		}
-		q := url.Values{"action": {"wbgetentities"}, "ids": {strings.Join(ids[:n], "|")}, "props": {props}, "languages": {"ru|en"}}
-		if err := c.get(ctx, q, &raw); err != nil {
+		if err := c.entitiesPart(ctx, ids[:n], props, out); err != nil {
 			return nil, err
-		}
-		for k, e := range raw.Entities {
-			out[k] = e
 		}
 		ids = ids[n:]
 	}
 	return out, nil
+}
+
+// entitiesPart reads ids into out; an answer cut at metadata.MaxRaw (items
+// with thousands of claims: a big franchise's own item, a much-awarded
+// film) is asked again in halves, down to one item a time.
+func (c *Client) entitiesPart(ctx context.Context, ids []string, props string, out map[string]entity) error {
+	var raw struct {
+		Entities map[string]entity `json:"entities"`
+	}
+	q := url.Values{"action": {"wbgetentities"}, "ids": {strings.Join(ids, "|")}, "props": {props}, "languages": {"ru|en"}}
+	if err := c.get(ctx, q, &raw); err != nil {
+		var de *metadata.DecodeError
+		if len(ids) > 1 && ctx.Err() == nil && (errors.As(err, &de) || errors.Is(err, metadata.ErrTooLarge)) {
+			h := len(ids) / 2
+			if err := c.entitiesPart(ctx, ids[:h], props, out); err != nil {
+				return err
+			}
+			return c.entitiesPart(ctx, ids[h:], props, out)
+		}
+		return err
+	}
+	for k, e := range raw.Entities {
+		out[k] = e
+	}
+	return nil
 }
 
 // SearchBooks finds written works whose label or alias matches q (lang:

@@ -1,12 +1,13 @@
-// A channel's logo, small, in a neutral rounded box — where a channel is
-// shown (the list row, the details pane, the guide's channel column, the
-// live player's header and its channel list, the editor). A channel without
-// a logo (or one that fails to load) and a `name`: its initials in the same
-// box, so a list's rows are one shape whichever channels have logos (the
-// monogram of the design system: a profile's avatar letter, a person's
-// initials — here neutral, the box is the channel's place, not a colour of
-// its own). Without a name: nothing, or with `reserve` an empty slot of the
-// same width, so every name starts at the same place.
+// A channel's tile, as the Apple TV app shows a channel — where a channel
+// is shown (the list row, the details pane, the guide's channel column,
+// the live player's header and its channel list, the editor). With a logo
+// (or, when it fails to load, the guide's icon): the logo fitted whole on a
+// quiet tile. Without one and with a `name`: a tile of its own — one of the
+// design system's art gradients (the profile avatars'), picked by the name
+// so a channel keeps its colour everywhere, with its initials in white. A
+// list's rows are one shape whichever channels have logos. Without a name:
+// nothing, or with `reserve` an empty slot of the same width, so every name
+// starts at the same place.
 import { useState } from 'react'
 import { locale } from '../../i18n'
 import styles from './ChannelLogo.module.css'
@@ -28,6 +29,16 @@ export function channelInitials(name: string): string {
   return (out || Array.from(name.trim())[0] || '?').toLocaleUpperCase(locale())
 }
 
+/** The art gradients a generated tile takes (tokens --grad-1…7: the avatars', not the grey one). */
+export const TILE_TONES = 7
+
+/** The tone of a channel's generated tile (1…TILE_TONES): the same name, the same colour, on every screen. */
+export function channelTone(name: string): number {
+  let h = 0
+  for (const ch of name.trim().toLocaleLowerCase()) h = (h * 31 + ch.codePointAt(0)!) >>> 0
+  return (h % TILE_TONES) + 1
+}
+
 export function ChannelLogo({ url: first, fallback, name, size = 'sm', reserve, className }: { url?: string; fallback?: string; name?: string; size?: ChannelLogoSize; reserve?: boolean; className?: string }) {
   const [failed, setFailed] = useState<string[]>([])
   // a logo that does not load gives way to the fallback (an IPTV channel's guide icon), then to the initials
@@ -36,7 +47,7 @@ export function ChannelLogo({ url: first, fallback, name, size = 'sm', reserve, 
   if (!url) {
     if (name)
       return (
-        <span className={cls(styles.initials)} aria-hidden data-channel-initials>
+        <span className={[cls(styles.tile), styles[`tone${channelTone(name)}`]].join(' ')} aria-hidden data-channel-initials data-channel-tone={channelTone(name)}>
           {channelInitials(name)}
         </span>
       )

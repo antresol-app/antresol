@@ -91,7 +91,7 @@ func TestBigPlaylistList(t *testing.T) {
 		json.Unmarshal(w.Body.Bytes(), &l)
 		per := w.Body.Len() / max(1, len(l.Channels))
 		t.Logf("%s: %d channels, %d categories, %d bytes (%d per channel), %v", path, len(l.Channels), len(l.Categories), w.Body.Len(), per, took)
-		if len(l.Channels) != n || len(l.Categories) != 40 || l.Channels[0].Now == nil || l.Channels[0].Next == nil {
+		if len(l.Channels) != n || len(l.Categories) != MaxTags || l.Channels[0].Now == nil || l.Channels[0].Next == nil {
 			t.Fatalf("%d channels %d categories", len(l.Channels), len(l.Categories))
 		}
 		sizes[path] = per

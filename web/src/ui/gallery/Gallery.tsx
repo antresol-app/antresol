@@ -517,8 +517,8 @@ export function Gallery() {
             label="Разделы (пример)"
             items={[
               { to: '/dev/gallery', label: 'Главная', icon: 'homeFill' },
-              { to: '/movies', label: 'Фильмы', icon: 'filmFill' },
-              { to: '/series', label: 'Сериалы', icon: 'tvFill' },
+              { to: '/movies', label: 'Фильмы', icon: 'filmFrame' },
+              { to: '/series', label: 'Сериалы', icon: 'playTv' },
               { to: '/tv', label: 'ТВ', icon: 'antennaRadiowaves' },
               { to: '/music', label: 'Медиа', icon: 'squareStackFill', roots: ['/music', '/books'] },
             ]}

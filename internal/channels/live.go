@@ -333,7 +333,7 @@ func (c *liveChan) touch(now time.Time) {
 // (up to ReadyWait) for its first ReadySegments segments, video and every
 // audio output.
 func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, error) {
-	render, ok := l.renderer(name)
+	render, ok := l.renderer(ctx, name)
 	if !ok {
 		return nil, ErrNoSegment
 	}
@@ -373,7 +373,7 @@ func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, err
 
 // renderer is the playlist of name (ErrNoSegment: a rendition the
 // run's set does not have).
-func (l *Live) renderer(name string) (func(*liveChan) ([]byte, error), bool) {
+func (l *Live) renderer(ctx context.Context, name string) (func(*liveChan) ([]byte, error), bool) {
 	media := func(k mediaKind) func(*liveChan) ([]byte, error) {
 		return func(c *liveChan) ([]byte, error) {
 			c.mu.Lock()
@@ -390,6 +390,12 @@ func (l *Live) renderer(name string) (func(*liveChan) ([]byte, error), bool) {
 			c.mu.Lock()
 			set := c.set
 			c.mu.Unlock()
+			if lang := nameLanguage(ctx); lang != "" {
+				set = set.Localized(lang)
+			}
+			if p, ok := trackPrefs(ctx); ok {
+				set = set.WithDefaults(p)
+			}
 			return l.master(set), nil
 		}, true
 	case "video.m3u8":

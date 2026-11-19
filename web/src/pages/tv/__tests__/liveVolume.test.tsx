@@ -100,15 +100,15 @@ describe('live player: volume', () => {
     expect(localStorage.getItem('vault.player.muted')).toBeNull()
   })
 
-  it('the speaker and the slider come first in the tools row, before the channel buttons', async () => {
+  it('the speaker and the slider come first in the bottom row, before the channel list and full screen', async () => {
     await open()
     const speaker = screen.getByRole('button', { name: 'Выключить звук' })
     const slider = screen.getByRole('slider', { name: 'Громкость' })
-    const up = screen.getByRole('button', { name: 'Следующий канал' })
+    const list = screen.getByRole('button', { name: 'Каналы' })
     expect(speaker.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(slider.compareDocumentPosition(up) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // the same group as the channel buttons — the left one, not the right one that grows leftwards
-    expect(speaker.parentElement!.parentElement).toBe(up.parentElement)
+    expect(slider.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // no bare ↑/↓ icon row: channels change with the keys, a swipe or the list
+    expect(screen.queryByRole('button', { name: 'Следующий канал' })).toBeNull()
   })
 
   it('the slider sets the video volume; moving it unmutes; M mutes', async () => {

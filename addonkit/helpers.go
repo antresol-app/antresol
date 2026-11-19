@@ -116,8 +116,9 @@ func HelpersFromManifest(data []byte) ([]Helper, error) {
 	return hs, nil
 }
 
-// HelperProbeTimeout bounds one ProbeHelper.
-const HelperProbeTimeout = 3 * time.Second
+// HelperProbeTimeout bounds one ProbeHelper: as long as HelperCheckTimeout
+// (a helper that checks credentials or warms up answers slowly).
+const HelperProbeTimeout = HelperCheckTimeout
 
 // ProbeHelper asks h's health path on its compose address (client nil:
 // a plain client); nil when it answers below 400. Redirects are not
@@ -145,7 +146,7 @@ func ProbeHelper(ctx context.Context, client *http.Client, h Helper) error {
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("helper %s: status %d", h.Name, resp.StatusCode)
+		return fmt.Errorf("helper %s: %w", h.Name, &HelperStatusError{Code: resp.StatusCode})
 	}
 	return nil
 }
@@ -180,6 +181,8 @@ type HelperWatch struct {
 	Every time.Duration
 	// OnChange is called after a probe that found or lost it.
 	OnChange func(found bool)
+	// Health (optional) keeps every probe's outcome (helpers.status).
+	Health *HelperHealth
 
 	mu    sync.Mutex
 	found bool
@@ -196,8 +199,10 @@ func (w *HelperWatch) probe(ctx context.Context) error {
 // that changed).
 func (w *HelperWatch) Check(ctx context.Context) bool {
 	pctx, cancel := context.WithTimeout(ctx, HelperProbeTimeout)
-	found := w.probe(pctx) == nil
+	err := w.probe(pctx)
 	cancel()
+	found := err == nil
+	w.Health.RecordProbe(err)
 	w.mu.Lock()
 	changed := found != w.found
 	w.found = found

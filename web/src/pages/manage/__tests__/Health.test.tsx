@@ -25,6 +25,8 @@ const transcoding = {
 const helpers = [
   { addon: 'online', name: 'helper-a', address: 'http://helper-a:9118', ok: false, error: 'no such host' },
   { addon: 'online', name: 'cache', address: 'http://cache:80', ok: true },
+  { addon: 'trailers', name: 'solver', address: '', custom: true, source: 'settings', ok: true, live: true },
+  { addon: 'trailers', name: 'gate', address: '', custom: true, source: 'override', ok: false, problem: 'auth' },
 ]
 const network = [
   { id: 'github', name: 'GitHub', ok: true, ms: 120 },
@@ -122,6 +124,11 @@ describe('«Обновления»: addons', () => {
     expect(await screen.findByText('helper-a не отвечает: no such host')).toBeInTheDocument()
     expect(screen.getByText('cache · Онлайн')).toBeInTheDocument()
     expect(screen.getByText('Отвечает')).toBeInTheDocument()
+    // told by the addon: the address of its own settings, its last request
+    expect(screen.getByText('solver · Трейлеры')).toBeInTheDocument()
+    expect(screen.getByText('Свой адрес (задан в настройках расширения)')).toBeInTheDocument()
+    expect(screen.getByText('Отвечает: последний запрос расширения прошёл')).toBeInTheDocument()
+    expect(screen.getByText(/^Не пускает: логин или пароль не подходят/)).toBeInTheDocument()
     expect(await screen.findByText('Веб-часть не загрузилась: timeout')).toBeInTheDocument()
   })
 })

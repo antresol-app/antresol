@@ -237,3 +237,85 @@ func TestLabelsOnlyWhatTheProgrammeHas(t *testing.T) {
 		t.Fatal("labels of nothing")
 	}
 }
+
+// A set's NAMEs in a viewer's language: the same keys, languages, flags and
+// order; only the names change (and stay unique).
+func TestTrackSetLocalized(t *testing.T) {
+	o := PlanOptions{Studios: []string{"Кубик в Кубе"}}
+	set := BuildSet(setProgs(o), o)
+	en := set.Localized("en")
+	want := []string{"Кубик в Кубе/ru/DA", "LostFilm/ru/", "Dubbed/ru/", "Russian/ru/", "Russian 2/ru/",
+		"Original (English)/en/A", "Original (Français)/fr/A", "English/en/"}
+	if got := names(en.Audio); !reflect.DeepEqual(got, want) {
+		t.Fatalf("en audio\n%q\nwant\n%q", got, want)
+	}
+	if got := names(en.Subs); !reflect.DeepEqual(got, []string{"Russian/ru/A", "English/en/A", "English 2/en/"}) {
+		t.Fatalf("en subs %q", got)
+	}
+	for i := range set.Audio {
+		if en.Audio[i].Key != set.Audio[i].Key {
+			t.Fatalf("keys moved: %q vs %q", en.Audio[i].Key, set.Audio[i].Key)
+		}
+	}
+	// the run's own set is untouched; back in Russian it is the same again
+	if names(set.Audio)[2] != "Дубляж/ru/" || !reflect.DeepEqual(names(en.Localized("ru").Audio), names(set.Audio)) {
+		t.Fatalf("ru %q", names(set.Audio))
+	}
+	// the programme's labels carry the localized NAMEs (what the master says)
+	audio, subs := setProgs(o)[0].Labels(en, "en")
+	if audio[0].Name != "LostFilm" || subs[0].Name != "Russian" {
+		t.Fatalf("labels %+v %+v", audio, subs)
+	}
+	// a set without its sources (made elsewhere) keeps its names
+	bare := TrackSet{Audio: []Rendition{{Key: "ru:x", Name: "Голос", Lang: "ru"}}}
+	if bare.Localized("en").Audio[0].Name != "Голос" {
+		t.Fatal("bare set renamed")
+	}
+}
+
+// The master's DEFAULT follows the profile («Мои языки»): its first audio
+// language the set has; subtitles in its languages when it shows them.
+func TestTrackSetWithDefaults(t *testing.T) {
+	o := PlanOptions{Studios: []string{"Кубик в Кубе"}}
+	set := BuildSet(setProgs(o), o)
+	def := func(g []Rendition) string {
+		for _, r := range g {
+			if r.Default {
+				return r.Name
+			}
+		}
+		return "-"
+	}
+	// an English profile: the original English voice, no subtitles (they are off)
+	en := set.WithDefaults(TrackPrefs{AudioLangs: []string{"en", "ru"}, SubMode: "off"})
+	if def(en.Audio) != "Оригинал (English)" || def(en.Subs) != "-" {
+		t.Fatalf("en: %q %q", names(en.Audio), names(en.Subs))
+	}
+	// a Russian profile that always shows subtitles: the set's Russian default and Russian subtitles
+	ru := set.WithDefaults(TrackPrefs{AudioLangs: []string{"ru"}, SubMode: "always"})
+	if def(ru.Audio) != "Кубик в Кубе" || def(ru.Subs) != "Русские" {
+		t.Fatalf("ru: %q %q", names(ru.Audio), names(ru.Subs))
+	}
+	// subtitle languages of their own; region tags match their language
+	x := set.WithDefaults(TrackPrefs{AudioLangs: []string{"ru-RU"}, SubMode: "always", SubLangs: []string{"en-GB"}})
+	if def(x.Audio) != "Кубик в Кубе" || def(x.Subs) != "English" {
+		t.Fatalf("en subs: %q", names(x.Subs))
+	}
+	// «foreign»: subtitles only when the voice is in none of the profile's languages
+	if f := set.WithDefaults(TrackPrefs{AudioLangs: []string{"ru"}, SubMode: "foreign"}); def(f.Subs) != "-" {
+		t.Fatalf("foreign, Russian voice: %q", names(f.Subs))
+	}
+	if f := set.WithDefaults(TrackPrefs{AudioLangs: []string{"fr", "ru"}, SubMode: "foreign", SubLangs: []string{"ru"}}); def(f.Audio) != "Оригинал (Français)" || def(f.Subs) != "-" {
+		t.Fatalf("foreign, French voice in a French profile: %q", names(f.Subs))
+	}
+	if f := set.WithDefaults(TrackPrefs{AudioLangs: []string{"ja"}, SubMode: "foreign", SubLangs: []string{"en"}}); def(f.Audio) != "Кубик в Кубе" || def(f.Subs) != "English" {
+		t.Fatalf("foreign, no voice of the profile: %q %q", names(f.Audio), names(f.Subs))
+	}
+	// one DEFAULT per group, the run's own set untouched
+	if def(set.Audio) != "Кубик в Кубе" || def(set.Subs) != "-" {
+		t.Fatal("the run's set changed")
+	}
+	if n := strings.Count(strings.Join(names(en.Audio), " "), "/D"); n != 1 {
+		t.Fatalf("%d defaults", n)
+	}
+}

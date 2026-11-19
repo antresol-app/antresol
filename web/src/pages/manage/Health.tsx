@@ -195,8 +195,8 @@ export function Health() {
                   key={`${h.addon}:${h.name}`}
                   leading={<SettingsIcon glyph="antenna" tint="cyan" />}
                   label={owner ? `${h.name} · ${owner}` : h.name}
-                  hint={h.custom ? t('health.helperCustom') : <span className={styles.mono}>{h.address}</span>}
-                  status={<Tone ok={h.ok}>{h.ok ? t('health.helperOk') : helperProblemText(t, h)}</Tone>}
+                  hint={helperHint(t, h)}
+                  status={<Tone ok={h.ok}>{h.ok ? t(h.live ? 'health.helperOkLive' : 'health.helperOk') : helperProblemText(t, h)}</Tone>}
                 />
               )
             })
@@ -338,6 +338,14 @@ function CoreRow({ core }: { core: Load<CoreUpdate> }) {
   )
 }
 
+/** Which address of a helper is in use: the compose one is shown, an admin's never (it may carry a secret). */
+function helperHint(t: ReturnType<typeof useT>, h: HelperHealth) {
+  if (h.source === 'settings') return t('health.helperSettings')
+  if (h.custom) return t('health.helperCustom')
+  if (h.source === 'none' && !h.address) return t('health.helperNone')
+  return <span className={styles.mono}>{h.address}</span>
+}
+
 /** Why a helper does not answer, in the page's words (the raw error only when nothing better is known). */
 function helperProblemText(t: ReturnType<typeof useT>, h: HelperHealth): string {
   switch (h.problem) {
@@ -349,6 +357,10 @@ function helperProblemText(t: ReturnType<typeof useT>, h: HelperHealth): string 
       return t('health.helperTimeout', { name: h.name })
     case 'status':
       return t('health.helperStatus', { name: h.name })
+    case 'auth':
+      return t('health.helperAuth', { name: h.name })
+    case 'unset':
+      return t('health.helperUnset', { name: h.name })
   }
   return t('health.helperDown', { name: h.name, error: h.error ?? '' })
 }

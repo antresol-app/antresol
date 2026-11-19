@@ -55,6 +55,7 @@ export function TvManage() {
   const Title = frame.embedded ? 'h2' : 'h1'
   const [edit, setEdit] = useState<{ channel: Channel | null } | null>(params.get('new') ? { channel: null } : null)
   const [removing, setRemoving] = useState<Channel | null>(null)
+  const [resetting, setResetting] = useState(false)
   const [toast, setToast] = useState('')
   const [busy, setBusy] = useState(false)
   const [restoring, setRestoring] = useState<number | null>(null)
@@ -84,9 +85,10 @@ export function TvManage() {
       },
     )
   }
-  const generate = () => {
+  const generate = (reset = false) => {
+    setResetting(false)
     setBusy(true)
-    generateChannels()
+    generateChannels(reset)
       .then((r) => {
         setToast(t('tv.generated', r))
         load(true)
@@ -139,7 +141,12 @@ export function TvManage() {
             </Button>
             {me.isAdmin && (
               <Menu label={t('tv.more')} placement="bottom-end" trigger={(p) => <IconButton {...p} icon="ellipsis" label={t('tv.more')} loading={busy} />}>
-                {(close) => <MenuItem icon={<Icon name="restart" size={16} />} label={t('tv.generate')} onSelect={() => (close(false), generate())} />}
+                {(close) => (
+                  <>
+                    <MenuItem icon={<Icon name="restart" size={16} />} label={t('tv.generate')} onSelect={() => (close(false), generate())} />
+                    <MenuItem icon={<Icon name="trash" size={16} />} label={t('tv.resetAuto')} onSelect={() => (close(false), setResetting(true))} />
+                  </>
+                )}
               </Menu>
             )}
           </div>
@@ -280,6 +287,18 @@ export function TvManage() {
           actions={[
             { label: t('common.cancel'), kind: 'cancel', run: () => setRemoving(null) },
             { label: t('tv.delete'), kind: 'destructive', run: () => remove(removing) },
+          ]}
+        />
+      )}
+      {resetting && (
+        <Sheet
+          title={t('tv.resetAutoTitle')}
+          message={t('tv.resetAutoMessage')}
+          icon={<Icon name="restart" size={34} strokeWidth={1.6} />}
+          onCancel={() => setResetting(false)}
+          actions={[
+            { label: t('common.cancel'), kind: 'cancel', run: () => setResetting(false) },
+            { label: t('tv.resetAutoRun'), kind: 'destructive', run: () => generate(true) },
           ]}
         />
       )}

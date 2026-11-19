@@ -27,8 +27,8 @@
    never words (iOS 26) */
 .glass-float {
   background: var(--glass-fill-float);
-  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float));
+  backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float));
 }
 
 /* Liquid Glass, the lens (iOS 26): a modifier of .glass-float for the
@@ -46,14 +46,18 @@
    absolute) and the ring is drawn over its children. Reduce transparency:
    opaque, the rim alone; Increase contrast: a plain bright rim, nothing
    bent (tokens.css). */
+/* iOS 26 frosted: the edge is the specular ring alone (no hairline border,
+   no outer edge line, which together read as a grey outline), a soft inner
+   light and a soft drop shadow */
 .glass-liquid {
+  border-color: var(--liquid-border);
   background-image: var(--liquid-sheen);
-  box-shadow: var(--liquid-rim), var(--glass-edge), var(--glass-lift, var(--glass-shadow));
+  box-shadow: var(--liquid-rim), var(--glass-lift, var(--liquid-shadow));
 }
 /* the filter does the blur itself (full in the middle, light at the rim) */
 .glass-float.glass-liquid[style*='--liquid-lens'] {
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) var(--liquid-lens);
-  backdrop-filter: saturate(var(--glass-saturate)) var(--liquid-lens);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
+  backdrop-filter: saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
 }
 /* the rim, and the same rim on the selected tab's droplet (it floats inside
    the bar's glass, so it bends nothing itself; TabBar stretches it) */

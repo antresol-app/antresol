@@ -80,7 +80,7 @@ func TestFranchiseKeyChangeCarriesOrder(t *testing.T) {
 	if _, err := f.st.SetFranchiseOrder(ctx, "c10", &FranchiseManual{Order: []int64{l.i, l.iv, l.v}}); err != nil {
 		t.Fatal(err)
 	}
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: 5 * time.Hour} // the test franchises are short
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestFranchiseKeptOrderPlaysNothing(t *testing.T) {
 	fr := &Franchises{Store: f.st, TMDB: tm}
 	fr.Pass(ctx, false)
 	f.st.SetFranchiseOrder(ctx, "c10", &FranchiseManual{Order: []int64{l.i, l.iv, l.v}})
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: 5 * time.Hour} // the test franchises are short
 	g.Sync(ctx)
 	all := tm.of
 	tm.of = map[int]int{671: 20, 672: 20}
@@ -459,7 +459,7 @@ func TestFranchiseBadNamesDoNotStopChannels(t *testing.T) {
 	// a row from elsewhere (an older pass, a hand) with a name no channel takes
 	f.exec(`UPDATE franchises SET name='' WHERE key='c10'`)
 	f.exec(`UPDATE franchises SET name=? WHERE key='c20'`, strings.Repeat("Я", 120))
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: 5 * time.Hour} // the test franchises are short
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +484,7 @@ func TestSyncSkipsFranchiseItCannotMake(t *testing.T) {
 	fr.Pass(ctx, false)
 	// a row of an external provider holds the key (Sync leaves those to their owner)
 	f.exec(`INSERT INTO channels (number, name, rules_json, auto_key, kind, seed) VALUES (900, 'x', '{}', 'franchise:c10', 'external', 1)`)
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: 5 * time.Hour} // the test franchises are short
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatalf("one franchise stopped the sync: %v", err)
 	}

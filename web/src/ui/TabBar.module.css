@@ -34,8 +34,8 @@
   pointer-events: none;
 }
 
-/* the glass rounded rectangle; folded, a square of the current tab: only
-   its width moves, every part of the bar stays 62 high with radius 22 */
+/* the glass capsule; folded, a circle of the current tab: only
+   its width moves, every part of the bar stays --tabbar-height high, round */
 .capsule {
   /* --n, the number of tabs, comes from TabBar; the tabs and the lens are
      placed from the capsule's outer edge, not inside the glass's hairline

@@ -540,6 +540,27 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	return tx.Commit()
 }
 
+// Drop deletes the generated channel id without remembering its key: the
+// generator makes it again once the library has enough for it.
+func (s *Store) Drop(ctx context.Context, id int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if err := RenumberTx(ctx, tx, nil, nil); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // SetLogo records channel id's logo version (0: none) and how it came
 // (LogoAuto…).
 func (s *Store) SetLogo(ctx context.Context, id, version int64, auto int) error {

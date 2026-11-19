@@ -75,7 +75,7 @@ test.describe('Liquid Glass', () => {
       expect(m.capsule.rim && m.search.rim).toBe(true)
       if (engine() === 'chromium') {
         expect(m.capsule.lens).toMatch(/^url\(#liquid-/)
-        expect(m.search.lens).toMatch(/^url\(#liquid-62x62-28-/)
+        expect(m.search.lens).toMatch(/^url\(#liquid-58x58-29-/)
         expect(m.capsule.filter).toContain('url(')
         expect(m.filters).toBeGreaterThanOrEqual(2)
       } else {

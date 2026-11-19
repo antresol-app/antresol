@@ -198,11 +198,14 @@ describe('audio and subtitles', () => {
   const prefs = (audioLangs: string[], subMode: 'off' | 'always' | 'foreign', subLangs: string[] = []) => ({ audioLangs, subMode, subLangs }) as never
   const master = { audio: audio.map((x) => ({ name: x.name, lang: x.lang })), subs: subs.map((x) => ({ name: x.name, lang: x.lang })) }
 
-  it('defaults to the device’s languages, then the profile’s, then the original', () => {
+  it('defaults to the profile’s languages, then the device’s, then the original', () => {
     expect(pickAudio(audio, prefs(['en', 'ru'], 'off'), {})?.name).toBe('Оригинал (English)')
     expect(pickAudio(audio, prefs(['ja', 'de'], 'off'), {})?.name).toBe('Deutsch')
-    // the device's language comes first; one it lacks falls through to the profile's
-    expect(pickAudio(audio, prefs(['ru'], 'off'), {}, ['fr-FR', 'en'])?.name).toBe('Français')
+    // the profile's language comes first: a browser in English does not override a Russian profile
+    expect(pickAudio(audio, prefs(['ru'], 'off'), {}, ['en-US', 'en'])?.name).toBe('Дубляж')
+    expect(pickAudio(audio, prefs(['ru'], 'off'), {}, ['fr-FR', 'en'])?.name).toBe('Дубляж')
+    // one the profile's languages lack falls through to the device's
+    expect(pickAudio(audio, prefs(['ja'], 'off'), {}, ['fr-FR'])?.name).toBe('Français')
     expect(pickAudio(audio, prefs(['de'], 'off'), {}, ['ja-JP'])?.name).toBe('Deutsch')
     // none of them: the original (named so), else the first the stream lists
     expect(pickAudio(audio, prefs(['ja'], 'off'), {})?.name).toBe('Оригинал (English)')

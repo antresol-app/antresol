@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -312,7 +313,7 @@ func TestFranchisesAgent(t *testing.T) {
 			swIn = in
 		}
 	}
-	if len(swIn.Members) != 4 || swIn.Members[3].ID != l.clone || swIn.Members[3].Via != "wikidata" || swIn.Members[0].Via != "collection" ||
+	if len(swIn.Members) != 4 || swIn.Members[3].ID != l.clone || swIn.Members[3].Via != "franchise" || swIn.Members[0].Via != "collection" ||
 		!slices.Equal(swIn.Anchors, []string{"Звёздные войны"}) {
 		t.Fatalf("input %+v", swIn)
 	}
@@ -337,8 +338,10 @@ func TestFranchisesAgent(t *testing.T) {
 	}
 }
 
-// The model may leave out a title only Wikidata brought in; one that
-// leaves fewer than two is refused.
+// The model may leave out a title only Wikidata brought in, unless it
+// shares the franchise's own item with the collection's films (Star Wars'
+// animated series: a light model dropped them as spin-offs, 19.11); one
+// that leaves fewer than two is refused.
 func TestFranchisesAgentDrops(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -349,6 +352,18 @@ func TestFranchisesAgentDrops(t *testing.T) {
 	}}).llm(t)
 	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: swFacts(l), Model: func(context.Context) *LLM { return model }}
 	fr.Pass(ctx, false)
+	if sw := franchisesOf(t, f.st)["c10"]; !slices.Equal(sw.Items, []int64{l.iv, l.v, l.i, l.clone}) || sw.Error != "" {
+		t.Fatalf("the franchise's series is dropped: %+v", sw)
+	}
+	// tied by the universe alone: the model may drop it
+	uni := wikidata.Ref{QID: "Q19786052", Label: "вселенная", Rank: wikidata.RankUniverse}
+	sw := wikidata.Ref{QID: "Q462", Label: "Звёздные войны"}
+	fr.Wiki = &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{
+		"movie": {11: {QID: "Q17738", Anchors: []wikidata.Ref{sw, uni}}, 1891: {QID: "Q181795", Anchors: []wikidata.Ref{sw, uni}}},
+		"tv":    {4194: {QID: "Q1", Anchors: []wikidata.Ref{uni}}},
+	}}
+	f.exec(`DELETE FROM wikidata_facts`)
+	fr.Pass(ctx, true)
 	if sw := franchisesOf(t, f.st)["c10"]; !slices.Equal(sw.Items, []int64{l.iv, l.v, l.i}) || sw.Error != "" {
 		t.Fatalf("the series is not dropped: %+v", sw)
 	}
@@ -357,10 +372,10 @@ func TestFranchisesAgentDrops(t *testing.T) {
 	film := g.titled(g.movie("Изгой-один", 130, itemOpt{year: 2016}), 330459)
 	s, _ := g.series("Андор", 1, 12, 50, itemOpt{year: 2022})
 	andor := g.titled(s, 83867)
-	sw := []wikidata.Ref{{QID: "Q462", Label: "Звёздные войны"}}
+	swr := []wikidata.Ref{{QID: "Q462", Label: "Звёздные войны"}}
 	drop = andor
 	fr = &Franchises{Store: g.st, TMDB: &fakeCollections{}, Model: func(context.Context) *LLM { return model },
-		Wiki: &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {330459: {QID: "Qr", Anchors: sw}}, "tv": {83867: {QID: "Qa", Anchors: sw}}}}}
+		Wiki: &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {330459: {QID: "Qr", Anchors: swr}}, "tv": {83867: {QID: "Qa", Anchors: swr}}}}}
 	fr.Pass(ctx, false)
 	got := franchisesOf(t, g.st)["wQ462"]
 	if !slices.Equal(got.Items, []int64{film, andor}) || got.Source != FranchiseWikidata || got.Error == "" {
@@ -459,7 +474,7 @@ func TestFranchiseClustersMerge(t *testing.T) {
 	if want := []int64{im, im2, av, av2, loki}; mf.Name != "Marvel" || !slices.Equal(mf.Items, want) {
 		t.Fatalf("marvel %+v, want %v", mf, want)
 	}
-	if in := m.asked[0]; len(in.Members) != 5 || in.Members[4].Via != "wikidata" || len(in.Collections) != 2 {
+	if in := m.asked[0]; len(in.Members) != 5 || in.Members[4].Via != "franchise" || len(in.Collections) != 2 {
 		t.Fatalf("input %+v", in)
 	}
 	// without the model: the same franchise, release order, Wikidata's name
@@ -477,7 +492,8 @@ func TestGeneratorFranchiseChannels(t *testing.T) {
 	l, tm := starWars(f)
 	fr := &Franchises{Store: f.st, TMDB: tm}
 	fr.Pass(ctx, false)
-	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	// the default two days would drop both of these small test franchises
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: 5 * time.Hour}
 	if _, err := g.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -501,15 +517,14 @@ func TestGeneratorFranchiseChannels(t *testing.T) {
 	}
 	// an admin's order reaches the channel; under the minimum it goes
 	f.st.SetFranchiseOrder(ctx, "c10", &FranchiseManual{Order: []int64{l.i, l.iv, l.v}})
-	g.FranchiseMinRuntime = 6*time.Hour + 5*time.Minute
+	g.MinRuntime = 6*time.Hour + 5*time.Minute
 	g.Sync(ctx)
 	c, _ := f.st.Get(ctx, sw.ID)
 	if c.Rules.Picks[0].ID != l.i {
 		t.Fatalf("the admin's order: %+v", c.Rules.Picks)
 	}
-	hp, _ := f.st.Get(ctx, by["franchise:c20"].ID)
-	if hp.Enabled {
-		t.Fatal("a franchise under the minimum is still on")
+	if _, err := f.st.Get(ctx, by["franchise:c20"].ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a franchise under the minimum is still there: %v", err)
 	}
 	// the schedule plays the picks in order
 	b := f.builder()

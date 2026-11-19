@@ -68,10 +68,8 @@
   gap: var(--s-6);
   align-items: start;
 }
-@media (min-width: 1100px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 34%);
-  }
+.split[data-preview] {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 34%);
 }
 .list {
   margin: 0;
@@ -557,4 +555,88 @@
   margin: 0 0 var(--s-3);
   font: var(--t-footnote);
   color: var(--label-2);
+}
+
+/* ---------- the wide window: TiviMate's columns ---------- */
+/* without the rail the wrappers are not boxes at all */
+.noRail {
+  display: contents;
+}
+.railLayout {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+.railMain {
+  min-width: 0;
+}
+/* the categories stay in the window while the channels scroll */
+.railCol {
+  position: sticky;
+  top: calc(var(--nav-height) + var(--s-4));
+  max-height: calc(100dvh - var(--nav-height) - var(--s-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--r-group);
+  background: var(--surface-grouped);
+}
+.rail {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-2) 0;
+}
+.railSection + .railSection {
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 0.5px solid var(--separator);
+}
+.railTitle {
+  margin: 0;
+  padding: var(--s-2) var(--s-4) var(--s-1);
+  font: var(--t-caption);
+  color: var(--label-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.railRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 40px;
+  margin: 0 var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--label);
+  text-decoration: none;
+  font: var(--t-subhead);
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.railRow:hover {
+  background: var(--surface-grouped-hover);
+}
+.railRow[aria-current] {
+  background: var(--accent-fill);
+  color: var(--accent);
+  font: var(--t-subhead-em);
+}
+.railRow:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+}
+.railLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.railCount {
+  flex: none;
+  font: var(--t-footnote);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+.railRow[aria-current] .railCount {
+  color: inherit;
 }

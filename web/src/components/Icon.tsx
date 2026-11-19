@@ -11,8 +11,8 @@ const paths = {
   ),
   home: <path d="M3.6 10.6 12 3.8l8.4 6.8V19a1.2 1.2 0 0 1-1.2 1.2h-4.4v-5.7H9.2v5.7H4.8A1.2 1.2 0 0 1 3.6 19z" />,
   // The phone tab bar's glyphs and its search, in the visual language of
-  // SF Symbols at the tab bar's Medium weight (house.fill, film.fill,
-  // tv.fill, antenna.radiowaves.left.and.right, square.stack.fill,
+  // SF Symbols at the tab bar's Medium weight (house.fill, film,
+  // play.tv, antenna.radiowaves.left.and.right, square.stack.fill,
   // magnifyingglass). SF Symbols may not be shipped on the web, so these are
   // original drawings: only SF's metrics are matched (each glyph's width and
   // height, a ~2 pt stroke, 1.75 pt antenna arcs and stands, ~3 pt corners,
@@ -32,22 +32,22 @@ const paths = {
       />
     </>
   ),
-  // a frame of film: four perforations down each side, the line between two frames
-  filmFill: (
-    <path
-      d="M3.5 3.2h17a2.7 2.7 0 0 1 2.7 2.7v12.2a2.7 2.7 0 0 1-2.7 2.7h-17A2.7 2.7 0 0 1 .8 18.1V5.9a2.7 2.7 0 0 1 2.7-2.7ZM2.75 4.95h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H2.75a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm17.45-12h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4Zm0 4h1.05a.4.4 0 0 1 .4.4v1.3a.4.4 0 0 1-.4.4H20.2a.4.4 0 0 1-.4-.4v-1.3a.4.4 0 0 1 .4-.4ZM7 11.2h10a.8.8 0 0 1 0 1.6H7a.8.8 0 0 1 0-1.6Z"
-      fill="currentColor"
-      fillRule="evenodd"
-      stroke="none"
-    />
+  // Фильмы: an outlined frame of film (SF's film), a strip down each side
+  // cut into three perforation cells and nothing in the picture between
+  // them; stroked at the antenna's weight so the row reads as one set
+  filmFrame: (
+    <>
+      <rect x="1.9" y="4.1" width="20.2" height="15.8" rx="2.8" strokeWidth={1.8} />
+      <path d="M6.3 4.1v15.8M17.7 4.1v15.8M1.9 9.37h4.4M1.9 14.63h4.4M17.7 9.37h4.4M17.7 14.63h4.4" strokeWidth={1.8} />
+    </>
   ),
-  // a wide screen over a thin stand, no neck (Сериалы)
-  tvFill: (
-    <path
-      d="M3.3 2.3h17.4a3 3 0 0 1 3 3v10.2a3 3 0 0 1-3 3H3.3a3 3 0 0 1-3-3V5.3a3 3 0 0 1 3-3ZM7.4 20.1h9.2a.8.8 0 0 1 0 1.6H7.4a.8.8 0 0 1 0-1.6Z"
-      fill="currentColor"
-      stroke="none"
-    />
+  // Сериалы: an outlined screen with a play mark over a thin stand (play.tv)
+  playTv: (
+    <>
+      <rect x="1.9" y="3.4" width="20.2" height="14.2" rx="2.8" strokeWidth={1.8} />
+      <path d="M7.6 20.9h8.8" strokeWidth={1.8} />
+      <path d="M10.1 7.75v5.5a.55.55 0 0 0 .84.47l4.4-2.75a.55.55 0 0 0 0-.94l-4.4-2.75a.55.55 0 0 0-.84.47Z" fill="currentColor" stroke="none" />
+    </>
   ),
   // a mast with a ball on top, two arcs out to each side (ТВ: live channels)
   antennaRadiowaves: (

@@ -138,7 +138,7 @@ test('a big playlist: fast first rows, categories as a level, one row shape', as
   expect(await list.locator('[data-channel-logo]').count()).toBeGreaterThan(0)
   await page.screenshot({ path: test.info().outputPath('tv-big-all-desktop.png') })
 
-  // the categories' level, then one of them, and back
+  // a wide window: the categories are a column beside the channels (TiviMate); one of them, and back
   await page.goto('/tv')
   const cats = page.getByRole('navigation', { name: 'Категории' })
   await expect(cats.getByRole('link', { name: /Группа 1\b/ })).toBeVisible()
@@ -154,8 +154,7 @@ test('a big playlist: fast first rows, categories as a level, one row shape', as
   await expect(page).toHaveURL(/\/tv\/\d+\?f=k%3Agroup%3A/)
   await page.goBack()
   await expect(page).toHaveURL(/f=k%3Agroup%3A/)
-  await page.getByRole('link', { name: 'Категории' }).click()
-  await expect(cats).toBeVisible()
+  await expect(cats.getByRole('link', { name: /Группа 2\b/ })).toHaveAttribute('aria-current', 'page')
 
   // a phone
   const { defaultBrowserType: _, ...phone } = devices['iPhone 13']

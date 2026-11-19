@@ -178,7 +178,7 @@ it is not installed), and the app shows it as locked.
 | `web` | optional; no web part when absent |
 | `permissions` | any of `events`, `library.read`, `library.write`, `files.holds`, `metadata`, `images`, `play`, `notify`, `users.read`, `tracking`, `imports`, `requests`, `voiceover`, `progress`, each at most once; an unknown or repeated one is refused |
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
-| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, `channels.fetch`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
+| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, `channels.fetch`, `helpers.status`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
 | `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health" }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
 | `author`, `homepage` | free text, shown before install |
@@ -219,16 +219,21 @@ What the addon does with it (`addonkit.HelpersFromManifest`,
    (its own setting or `ANTRESOL_<ID>_*` variable) is used as it is, and the
    helper is not looked for.
 2. **Else the compose name.** The addon asks
-   `http://<name>:<port><health>` (3 s), at start and every 30 s after, so
+   `http://<name>:<port><health>` (10 s), at start and every 30 s after, so
    a helper added later is found without a restart and one that stopped
    is noticed.
 3. **Else nothing**, and the addon's settings page says so and shows the
    block to add under `services:` in `compose.yml`
    (`addonkit.Helper.Compose`), then `docker compose up -d`.
 
-The server itself never runs, pulls or asks a helper: it shows the declared
+The server itself never runs or pulls a helper: it shows the declared
 ones in `GET /api/addons` and the install preview (`helpers`: each with its
-`address` and `compose` block; `[]` when none). A helper has no published
+`address` and `compose` block; `[]` when none). Its «Состояние» page shows
+how each one is: an addon that answers the
+[`helpers.status`](#helpersstatus) hook says it itself (only the addon
+knows the address it really uses, its settings page's among them); for any
+other the server asks the address the addon would use (the admin's
+`ANTRESOL_<ID>_<HELPER>_URL`, else the compose name), 10 s. A helper has no published
 port: only the server and the other services of the project reach it.
 
 ## The process
@@ -1401,7 +1406,8 @@ hook has nothing to send).
   `tracking.titles`, `tracking.watched`, `notify.interest`,
   `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`,
   `import.resolve`, `import.search`, `migrate.leftovers`,
-  `library.afterScan`, `home.continue` and the four `channels.*`: every
+  `library.afterScan`, `home.continue`, the `channels.*` and
+  `helpers.status`: every
   hook a manifest may declare.
 - **One call per addon per operation.** Work for many keys comes in one body
   (`{"keys": [...]}`), not one call per key.
@@ -1409,7 +1415,7 @@ hook has nothing to send).
   10 s, `library.pending` and `disk.usage` 2 s, `tracking.scan:<kind>`
   120 s, `library.afterScan` 60 s, `home.continue` 500 ms, `channels.ready`
   2 s, `channels.candidates` 30 s, `channels.resolve` 60 s,
-  `channels.release` 5 s, `channels.fetch` 15 s). The `files.*` hooks of one file operation share the operation's
+  `channels.release` 5 s, `channels.fetch` 15 s, `helpers.status` 12 s). The `files.*` hooks of one file operation share the operation's
   deadline. A hook called on several addons runs on all of them in parallel
   under one deadline; the 200 answers are taken in addon-id order, and
   every addon that gives no 200 (down, failed, refused, timed out, or 204
@@ -1460,6 +1466,7 @@ channels.candidates
 channels.resolve
 channels.release
 channels.fetch
+helpers.status
 ```
 
 ### File hooks
@@ -1757,6 +1764,26 @@ profile.
   another value, are dropped.
 - The server decides by the library: a programme is on disk once its
   files are there and probed.
+
+### `helpers.status`
+
+| Hook | Body → answer | When |
+| --- | --- | --- |
+| `helpers.status` | `{}` → `{"helpers": [{"name", "source", "address"?, "ok", "problem"?, "checkedAt"?, "live"?}]}` (`HelpersStatus`) | the admin opens «Состояние» |
+
+- **Each declared helper as the addon uses it.** `source` is where its
+  address comes from: `override` (the admin's `ANTRESOL_<ID>_*` variable),
+  `settings` (the addon's own settings page), `compose` (found by its
+  compose name) or `none`. `address` is only ever the compose address
+  (`source` `compose` or `none`): an address the admin gave may carry a
+  secret, and the server drops any other.
+- **The addon's own outcome.** `ok` and `problem` (`dns`, `refused`,
+  `timeout`, `status`, `auth`: its credentials are refused, `unset`: no
+  address, `other`) come from the addon's last real request to the helper
+  when it is fresh (`live`), else from a probe of the address it uses
+  (`addonkit.HelperHealth.State`: 2 minutes, a probe of 10 s); `checkedAt`
+  is when. A helper the answer leaves out, or an addon that does not
+  answer, is asked by the server itself.
 
 ### `disk.usage`
 

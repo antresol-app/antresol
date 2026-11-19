@@ -66,8 +66,8 @@ const tab = (to: string, labelKey: Key, icon: IconName, roots: string[] = [to]):
 export function phoneTabs(media: MediaRoot): PhoneTab[] {
   return [
     tab('/', 'common.home', 'homeFill'),
-    tab('/movies', 'common.movies', 'filmFill'),
-    tab('/series', 'common.series', 'tvFill'),
+    tab('/movies', 'common.movies', 'filmFrame'),
+    tab('/series', 'common.series', 'playTv'),
     tab('/tv', 'common.tv', 'antennaRadiowaves'),
     tab(media, 'common.media', 'squareStackFill', [...MEDIA_ROOTS]),
   ]

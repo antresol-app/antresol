@@ -6,11 +6,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/antresol-app/antresol/internal/channels"
+	"github.com/antresol-app/antresol/internal/iptv"
 )
 
 // The viewer's list carries each channel's categories and every category
-// once with its count: the playlist's groups, the sources when there are
-// two, the AI's (named in the request's language) first.
+// once with its count: the AI's topic and the group meaning the same topic
+// are one category (named in the request's language), the sources when
+// there are two.
 func TestListCategories(t *testing.T) {
 	e := newTVEnv(t)
 	// what the AI helper answered before (iptv Categorize keeps it)
@@ -28,14 +32,14 @@ func TestListCategories(t *testing.T) {
 	for _, c := range l.Categories {
 		cats = append(cats, fmt.Sprintf("%s=%s/%s/%d", c.ID, c.Name, c.Kind, c.Count))
 	}
-	if got := strings.Join(cats, ","); got != "ai:news=Новости/ai/1,group:Новости=Новости/group/2,group:Кино=Кино/group/1" {
+	if got := strings.Join(cats, ","); got != "ai:news=Новости/ai/2,ai:movies=Кино/ai/1" {
 		t.Fatalf("categories %s", got)
 	}
 	by := map[string][]string{}
 	for _, c := range l.Channels {
 		by[c.Name] = c.Categories
 	}
-	if fmt.Sprint(by["Новости 1"]) != "[ai:news group:Новости]" || fmt.Sprint(by["Кино 1"]) != "[group:Кино]" {
+	if fmt.Sprint(by["Новости 1"]) != "[ai:news]" || fmt.Sprint(by["Кино 1"]) != "[ai:movies]" {
 		t.Fatalf("channels %v", by)
 	}
 	// two sources: a category each
@@ -58,5 +62,55 @@ func TestCategoriesNaturalOrder(t *testing.T) {
 	}
 	if s := strings.Join(got, ","); s != "Кино,группа 1,Группа 1a,Группа 2,Группа 10" {
 		t.Fatalf("order %s", s)
+	}
+}
+
+// Spellings of one topic meet (the AI's, the groups' in two languages, an
+// own generated channel's kind); an adult channel is in its category only,
+// last; groups of no topic are cleaned, and only the MaxTags most common
+// stay.
+func TestCategoriesDedupeCapAdult(t *testing.T) {
+	a := &channelsAPI{}
+	r := httptest.NewRequest("GET", "/api/channels", nil)
+	ext := func(name string, ai []string, groups ...string) []string {
+		return extCats(iptv.ExtChannel{Channel: channels.Channel{Name: name}, AI: iptv.AIInfo{Cats: ai}, Groups: groups}, 1)
+	}
+	lists := [][]string{
+		ext("A", []string{"movies"}, "Кино"),
+		ext("B", nil, "RU | Фильмы HD"),
+		ext("C", nil, "Movies"),
+		ownCats(channels.Channel{AutoKey: "genre:комедия"}, "Кино по жанрам"),
+		ext("D", []string{"news"}, "Кино"), // a topic of its own: the group's topic is added
+		ext("Hot", nil, "XXX"),
+		ext("E", []string{"adult"}, "Развлекательные"),
+		ext("F", nil, "НОВОСТНЫЕ HD"),
+		ext("G", nil, "Премиум"),
+		ext("H", nil, "премиум"),
+	}
+	if got := fmt.Sprint(lists[1], lists[2], lists[3], lists[5], lists[6], lists[8]); got != "[ai:movies] [ai:movies] [ai:movies] [ai:adult] [ai:adult] [group:Премиум]" {
+		t.Fatalf("tags %s", got)
+	}
+	for i := 0; i < 20; i++ { // twenty more groups of one channel each
+		lists = append(lists, ext("x", nil, fmt.Sprintf("Группа %d", i)))
+	}
+	cats := a.categoriesOf(r, lists, nil, nil)
+	var names []string
+	tags := 0
+	for _, c := range cats {
+		names = append(names, fmt.Sprintf("%s/%d", c.ID, c.Count))
+		if !c.Exclusive {
+			tags++
+		}
+	}
+	if tags != MaxTags || cats[0].ID != "ai:movies" || cats[0].Count != 5 || cats[1].ID != "ai:news" || cats[1].Count != 2 ||
+		cats[2].ID != "group:Премиум" || cats[2].Count != 2 {
+		t.Fatalf("categories %v", names)
+	}
+	if last := cats[len(cats)-1]; last.ID != "ai:adult" || !last.Exclusive || last.Count != 2 {
+		t.Fatalf("adult not last: %v", names)
+	}
+	// a channel loses the tags that did not make it
+	if l := lists[len(lists)-1]; len(l) != 0 {
+		t.Fatalf("a dropped tag stays on its channel: %v", l)
 	}
 }

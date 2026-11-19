@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -68,7 +69,8 @@ func TestGeneratorSync(t *testing.T) {
 	if res, _ := g.Sync(ctx); res != (SyncResult{}) {
 		t.Fatalf("second run: %+v", res)
 	}
-	// an edited channel is left alone; one that lost its content is disabled
+	// an edited channel is left alone; one that lost its content is dropped
+	// (not remembered as deleted: it comes back with its content)
 	c := by["genre:комедия"]
 	c.Name, c.Edited = "Смешное", true
 	if _, err := f.st.Update(ctx, c); err != nil {
@@ -79,9 +81,11 @@ func TestGeneratorSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := f.st.Get(ctx, by["series:"+itoa(s)].ID)
-	if got.Enabled || res.Disabled == 0 {
-		t.Fatalf("series channel after its files went: %+v %+v", got, res)
+	if _, err := f.st.Get(ctx, by["series:"+itoa(s)].ID); !errors.Is(err, ErrNotFound) || res.Dropped == 0 {
+		t.Fatalf("series channel after its files went: %v %+v", err, res)
+	}
+	if rm, _ := f.st.RemovedKeys(ctx); rm["series:"+itoa(s)] {
+		t.Fatal("a dropped channel is remembered as deleted")
 	}
 	if got, _ := f.st.Get(ctx, c.ID); got.Name != "Смешное" {
 		t.Fatalf("edited channel changed: %+v", got)
@@ -220,4 +224,117 @@ func TestGeneratorSyncGivesSkipSegmentsOnce(t *testing.T) {
 	if res, _ := g.Sync(ctx); res != (SyncResult{}) {
 		t.Fatalf("third run: %+v", res)
 	}
+}
+
+// Every kind needs the same two days: six films, a three-film franchise or a
+// profile's six titles make no channel.
+func TestGeneratorTwoDaysForEveryKind(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	ann := f.user("ann")
+	for i := 0; i < 6; i++ {
+		id := f.movie("C", 120, itemOpt{year: 1991 + i, genres: []string{"Комедия"}})
+		f.exec(`INSERT INTO item_owners (item_id, user_id) VALUES (?,?)`, id, ann)
+	}
+	_, tm := starWars(f)
+	(&Franchises{Store: f.st, TMDB: tm}).Pass(ctx, false)
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := f.st.All(ctx); len(all) != 0 {
+		var ks []string
+		for _, c := range all {
+			ks = append(ks, c.AutoKey)
+		}
+		t.Fatalf("channels under two days: %v", ks)
+	}
+}
+
+// A series of a franchise plays on the franchise's channel, not on its own.
+func TestGeneratorSeriesOfFranchiseHasNoOwnChannel(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	l, tm := starWars(f)
+	(&Franchises{Store: f.st, TMDB: tm}).Pass(ctx, false)
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := f.st.All(ctx)
+	by := map[string]Channel{}
+	for _, c := range all {
+		by[c.AutoKey] = c
+	}
+	sw, ok := by["franchise:c10"]
+	if !ok {
+		t.Fatalf("no franchise channel: %v", keys(by))
+	}
+	if !contains(pickIDs(sw.Rules.Picks), l.clone) {
+		t.Skipf("the fixture's franchise has no series: %+v", sw.Rules.Picks)
+	}
+	if _, ok := by["series:"+itoa(l.clone)]; ok {
+		t.Fatal("a franchise's series has its own channel")
+	}
+}
+
+func pickIDs(ps []Pick) []int64 {
+	var out []int64
+	for _, p := range ps {
+		out = append(out, p.ID)
+	}
+	return out
+}
+
+// Reset gives deleted generated channels back and keeps edited ones.
+func TestGeneratorReset(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	for i := 0; i < 6; i++ {
+		f.movie("C", 90, itemOpt{year: 1991 + i, genres: []string{"Комедия"}})
+	}
+	g := &Generator{Store: f.st, Catalog: Catalog{DB: f.db}, MinRuntime: time.Nanosecond}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]Channel{}
+	all, _ := f.st.All(ctx)
+	for _, c := range all {
+		by[c.AutoKey] = c
+	}
+	if err := f.st.Delete(ctx, by["movies"].ID); err != nil {
+		t.Fatal(err)
+	}
+	c := by["genre:комедия"]
+	c.Name, c.Edited = "Смешное", true
+	if _, err := f.st.Update(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(must(f.st.All(ctx))); n != len(all)-1 {
+		t.Fatalf("a deleted channel came back on a plain sync: %d of %d", n, len(all))
+	}
+	res, err := g.Reset(ctx)
+	if err != nil || res.Created != 1 {
+		t.Fatalf("reset %+v %v", res, err)
+	}
+	after := map[string]Channel{}
+	for _, c := range must(f.st.All(ctx)) {
+		after[c.AutoKey] = c
+	}
+	if _, ok := after["movies"]; !ok {
+		t.Fatal("reset did not give the deleted channel back")
+	}
+	if after["genre:комедия"].Name != "Смешное" {
+		t.Fatalf("reset changed an edited channel: %+v", after["genre:комедия"])
+	}
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

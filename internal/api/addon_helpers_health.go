@@ -6,33 +6,45 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antresol-app/antresol/addonkit"
 	"github.com/antresol-app/antresol/internal/addons"
 )
 
 // helperHealth is one row of GET /api/addons/helpers: a helper service an
-// enabled addon declares (its manifest's helpers), asked where the addon
-// itself goes: the admin's own address when one is set
-// (ANTRESOL_<ADDON>_<HELPER>_URL, as the addons read it), else its
-// compose address.
+// enabled addon declares (its manifest's helpers). An addon answering
+// helpers.status tells how it is as the addon itself uses it (the address
+// of its settings page, the admin's variable or the compose name, and the
+// outcome of its own last request); for any other the core asks where the
+// addon would go: the admin's own address when one is set
+// (ANTRESOL_<ADDON>_<HELPER>_URL, as the addons read it), else its compose
+// address.
 type helperHealth struct {
 	Addon   string `json:"addon"`
 	Name    string `json:"name"`
 	Address string `json:"address"`
-	// Custom: the admin's own address was asked; it is never shown (it may
-	// carry a secret), so Address is then "".
+	// Custom: an address of the admin's is in use; it is never shown (it
+	// may carry a secret), so Address is then "".
 	Custom bool `json:"custom,omitempty"`
-	OK     bool `json:"ok"`
+	// Source: where the address comes from, when the addon told
+	// (addonkit.HelperOverride, HelperSettings, HelperCompose, HelperNone);
+	// "" when the core asked by itself.
+	Source string `json:"source,omitempty"`
+	OK     bool   `json:"ok"`
 	// Problem: why it does not answer, for the page's own words: "dns" (no
-	// such name on the network), "refused", "timeout", "status", "other".
+	// such name on the network), "refused", "timeout", "status", "auth"
+	// (the credentials are refused), "unset" (no address), "other".
 	Problem string `json:"problem,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// CheckedAt: when the addon learnt it (zero: just now, by the core).
+	CheckedAt time.Time `json:"checkedAt,omitzero"`
+	// Live: the addon's own last real request, not a probe.
+	Live bool `json:"live,omitempty"`
 }
 
 // helperOverride is the address the admin set for an addon's helper, the
@@ -72,23 +84,23 @@ func (s statusErr) Error() string { return fmt.Sprintf("status %d", int(s)) }
 
 // helperProblem sorts a probe's error for the page.
 func helperProblem(err error) string {
-	var dns *net.DNSError
 	var st statusErr
-	var ne net.Error
-	switch {
-	case errors.As(err, &dns):
-		if dns.IsTimeout {
-			return "timeout"
-		}
-		return "dns"
-	case errors.As(err, &st):
-		return "status"
-	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
-		return "timeout"
-	case strings.Contains(err.Error(), "connection refused"):
-		return "refused"
+	if errors.As(err, &st) {
+		return helperProblemOf(int(st))
 	}
-	return "other"
+	return addonkit.HelperProblem(err)
+}
+
+func helperProblemOf(code int) string {
+	return addonkit.HelperProblem(&addonkit.HelperStatusError{Code: code})
+}
+
+// helperStates asks the addons answering helpers.status (tests replace it).
+var helperStates = func(ctx context.Context, h *addons.Hooks, declared func(id, name string) (addons.Helper, bool)) map[string][]addonkit.HelperState {
+	if h == nil {
+		return nil
+	}
+	return h.HelperStates(ctx, declared)
 }
 
 // helpers is GET /api/addons/helpers (admin, «Состояние»): every enabled
@@ -100,33 +112,54 @@ func (a *addonsAPI) helpers(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "Что-то пошло не так")
 		return
 	}
+	declared := map[string]addons.Helper{} // "<addon> <helper>"
+	for _, in := range list {
+		if in.Enabled {
+			for _, h := range in.Manifest.Helpers {
+				declared[in.ID+" "+h.Name] = h
+			}
+		}
+	}
+	told := helperStates(r.Context(), a.hooks, func(id, name string) (addons.Helper, bool) {
+		h, ok := declared[id+" "+name]
+		return h, ok
+	})
 	out := []helperHealth{}
 	var hs []addons.Helper
 	var bases []string
+	var asks []int // rows the core probes by itself
 	for _, in := range list {
 		if !in.Enabled {
 			continue
 		}
 		for _, h := range in.Manifest.Helpers {
+			if st, ok := toldState(told[in.ID], h.Name); ok {
+				out = append(out, helperHealth{Addon: in.ID, Name: h.Name, Address: st.Address, Source: st.Source,
+					Custom: st.Source == addonkit.HelperOverride || st.Source == addonkit.HelperSettings,
+					OK:     st.OK, Problem: st.Problem, CheckedAt: st.CheckedAt, Live: st.Live})
+				continue
+			}
 			hh := helperHealth{Addon: in.ID, Name: h.Name, Address: h.Address()}
 			base := h.Address()
 			if o := helperOverride(in.ID, h.Name); o != "" {
 				hh.Address, hh.Custom, base = "", true, o
 			}
+			asks = append(asks, len(out))
 			out = append(out, hh)
 			hs = append(hs, h)
 			bases = append(bases, base)
 		}
 	}
 	var wg sync.WaitGroup
-	for i, h := range hs {
+	for j, h := range hs {
+		i := asks[j]
 		wg.Go(func() {
-			err := probeHelper(r.Context(), bases[i], h)
+			err := probeHelper(r.Context(), bases[j], h)
 			// the admin's own address may put the service under a path of
 			// its own, where the manifest's health path is not: any HTTP
-			// answer there means it is up
+			// answer there but 401/403 means it is up
 			var st statusErr
-			if out[i].Custom && errors.As(err, &st) {
+			if out[i].Custom && errors.As(err, &st) && helperProblemOf(int(st)) != addonkit.HelperProblemAuth {
 				err = nil
 			}
 			if err != nil {
@@ -144,4 +177,14 @@ func (a *addonsAPI) helpers(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
+}
+
+// toldState is the state an addon told of helper name (the first one).
+func toldState(states []addonkit.HelperState, name string) (addonkit.HelperState, bool) {
+	for _, st := range states {
+		if st.Name == name {
+			return st, true
+		}
+	}
+	return addonkit.HelperState{}, false
 }

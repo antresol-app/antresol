@@ -253,6 +253,31 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	if strings.Count(string(master), "TYPE=AUDIO") != 4 || strings.Count(string(master), "TYPE=SUBTITLES") != 2 {
 		t.Fatalf("master %s", master)
 	}
+	// a profile in English gets the same renditions named in English
+	en, err := live.Playlist(WithNameLanguage(ctx, "en"), 5, "index.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`NAME="Russian",LANGUAGE="ru",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-0.m3u8"`,
+		`NAME="LostFilm",LANGUAGE="ru",DEFAULT=NO`, `NAME="Original (Français)",LANGUAGE="fr"`, `NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-3.m3u8"`,
+		`NAME="Russian",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-0.m3u8"`} {
+		if !strings.Contains(string(en), want) {
+			t.Fatalf("en master lacks %s:\n%s", want, en)
+		}
+	}
+	// and its DEFAULTs where its «Мои языки» pick: English voice, English subtitles
+	mine, err := live.Playlist(WithTrackPrefs(WithNameLanguage(ctx, "en"), TrackPrefs{AudioLangs: []string{"en"}, SubMode: "always"}), 5, "index.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`NAME="Russian",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,CHANNELS="2",URI="audio-0.m3u8"`,
+		`NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2",URI="audio-3.m3u8"`,
+		`NAME="Russian",LANGUAGE="ru",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="subs-0.m3u8"`,
+		`NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,URI="subs-1.m3u8"`} {
+		if !strings.Contains(string(mine), want) {
+			t.Fatalf("profile master lacks %s:\n%s", want, mine)
+		}
+	}
 	if _, err := live.Playlist(ctx, 5, "audio-4.m3u8"); err != ErrNoSegment {
 		t.Fatalf("a rendition past the set: %v", err)
 	}

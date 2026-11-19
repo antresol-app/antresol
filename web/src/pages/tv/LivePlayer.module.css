@@ -1,99 +1,292 @@
-/* The live channel player: the film player's chrome (VideoPlayer.module.css)
-   — the full-bleed picture, the scrims, the round close button, the bottom
-   bar with its tool buttons — with a channel's own parts: its number and
-   name, the programme on air with its progress and times, what is next,
-   and the channel list to switch from. Video chrome is measured against the
-   picture (DESIGN.md rule 1), as the film player's is. */
+/* The live channel player. Its layout lives here whole: nothing that places
+   the picture, the controls or the messages is composed from the film
+   player's module. (It was: VideoPlayer.module.css is bundled into three
+   stylesheets — the TV chunk's, hlsSupport's and the film player's — and
+   whichever loaded last won at equal specificity. With the film player's
+   arriving after the TV chunk's, `.video { inset: 0 }` and `.center {
+   top: 50% }` beat the upright phone's overrides: the picture sank to the
+   middle of the screen and «Запуск канала…» landed on the programme's
+   progress bar.) Only looks (the spinner's ring, the error card) are
+   repeated here; the glass comes from the global .glass* classes.
+
+   The picture is the .stage: the whole window on a desktop, a phone held
+   sideways and in full screen; at the top, 16:9, on a phone held upright
+   (data-compact), with the programme and the channels under it. Loading,
+   errors and controls are children of the stage, so they stay inside the
+   picture. */
 .root {
-  composes: root from '../../player/VideoPlayer.module.css';
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-player);
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  --pic-h: calc(100vw * 9 / 16);
 }
 .hidden {
-  composes: hidden from '../../player/VideoPlayer.module.css';
+  cursor: none;
+}
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.root[data-compact] .stage {
+  top: env(safe-area-inset-top);
+  bottom: auto;
+  height: var(--pic-h);
 }
 .video {
-  composes: video from '../../player/VideoPlayer.module.css';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
 }
 .surface {
-  composes: surface from '../../player/VideoPlayer.module.css';
+  position: absolute;
+  inset: 0;
+  touch-action: pan-x pinch-zoom;
+}
+
+/* ---------- what fades with the controls ---------- */
+.topScrim,
+.bottomScrim,
+.top,
+.bottom,
+.playCenter {
+  transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+.hidden .topScrim,
+.hidden .bottomScrim,
+.hidden .top,
+.hidden .bottom {
+  opacity: 0;
+  pointer-events: none;
+}
+.hidden .top {
+  transform: translateY(-6px);
+}
+.hidden .bottom {
+  transform: translateY(6px);
 }
 .topScrim {
-  composes: topScrim from '../../player/VideoPlayer.module.css';
-  /* the channel's two lines sit lower than a film's title: the band reaches past them */
-  height: 220px;
-  background: linear-gradient(rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0));
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 auto;
+  height: 180px;
+  background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+  pointer-events: none;
 }
 .bottomScrim {
-  composes: bottomScrim from '../../player/VideoPlayer.module.css';
-  height: 360px;
+  position: absolute;
+  z-index: 1;
+  inset: auto 0 0;
+  height: 340px;
   background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.82));
+  pointer-events: none;
 }
+.root[data-compact] .topScrim {
+  height: 72px;
+}
+.root[data-compact] .bottomScrim {
+  height: 72px;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.6));
+}
+
+/* ---------- top: close · (the channel) · tracks, picture in picture ---------- */
 .top {
-  composes: top from '../../player/VideoPlayer.module.css';
-  gap: 20px;
-}
-.round {
-  composes: round from '../../player/VideoPlayer.module.css';
-}
-.heading {
-  composes: heading from '../../player/VideoPlayer.module.css';
-}
-.bottom {
-  composes: bottom from '../../player/VideoPlayer.module.css';
-}
-.tools {
-  composes: tools from '../../player/VideoPlayer.module.css';
-  margin-top: 10px;
-}
-.toolsLeft {
+  position: absolute;
+  z-index: 3;
+  inset: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: -10px;
-}
-.toolsRight {
-  composes: toolsRight from '../../player/VideoPlayer.module.css';
-  margin-right: -10px;
-}
-.tool {
-  composes: tool from '../../player/VideoPlayer.module.css';
-}
-.tool:disabled {
-  opacity: 0.35;
-}
-.tool[aria-expanded='true'],
-.tool[data-active] {
-  background: rgba(255, 255, 255, 0.14);
-}
-.subtitles {
-  composes: subtitles from '../../player/VideoPlayer.module.css';
-}
-/* over the info bar while it shows */
-.root:not(.hidden) .subtitles {
-  bottom: 230px;
-}
-.center {
-  composes: center from '../../player/VideoPlayer.module.css';
-  flex-direction: column;
   gap: var(--s-3);
+  padding: calc(env(safe-area-inset-top) + var(--s-4)) max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left));
+}
+.root[data-compact] .top {
+  padding: var(--s-2) var(--s-2) 0;
+}
+.heading {
+  min-width: 0;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
+.topActions {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ---------- the centre: play/pause, «Запуск канала…», errors ---------- */
+.center {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: calc(100% - 2 * var(--s-4));
+  transform: translate(-50%, -50%);
   text-align: center;
+  pointer-events: none;
+}
+.center > * {
+  pointer-events: auto;
+}
+.playCenter[data-hidden] {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.96);
+}
+.playCenter[data-hidden] > * {
+  pointer-events: none;
+}
+.bigPlay {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.45));
+  transition: transform var(--d-fast) var(--ease-out), background-color var(--d-fast) var(--ease-out);
+}
+.bigPlay:hover {
+  background: var(--glass-fill-clear-hover);
+}
+.bigPlay:active {
+  transform: scale(0.92);
+}
+.root[data-compact] .bigPlay {
+  width: 64px;
+  height: 64px;
 }
 .spinner {
-  composes: spinner from '../../player/VideoPlayer.module.css';
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: live-spin 0.9s linear infinite;
 }
-.error {
-  composes: error from '../../player/VideoPlayer.module.css';
+@keyframes live-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
-/* an external channel the web cannot play: the words, the way out */
-.extError {
-  max-width: min(440px, calc(100vw - 2 * var(--gutter)));
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.6s;
+  }
 }
 .note {
   font: var(--t-subhead);
   color: var(--label-2);
   text-shadow: var(--text-shadow-art);
+  white-space: nowrap;
+}
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 420px;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  border-radius: 22px;
+  box-shadow: var(--shadow-pop);
+}
+.error h2 {
+  font: var(--t-title-3);
+}
+.error p {
+  font: var(--t-subhead);
+  color: var(--label-2);
+}
+/* inside the 16:9 picture of an upright phone: a compact card */
+.root[data-compact] .error {
+  width: calc(100vw - 2 * var(--s-4));
+  max-height: calc(var(--pic-h) - var(--s-4));
+  gap: var(--s-1h);
+  padding: var(--s-3) var(--s-4);
+  overflow: hidden;
+}
+.root[data-compact] .error h2 {
+  font: var(--t-headline);
+}
+.root[data-compact] .error p {
+  font: var(--t-footnote);
+}
+.extError {
+  max-width: min(440px, calc(100vw - 2 * var(--gutter)));
 }
 
-/* the channel: its number and name; «Прямой эфир» under it */
+/* ---------- the bottom of the picture ---------- */
+.bottom {
+  position: absolute;
+  z-index: 3;
+  inset: auto 0 0;
+  padding: 0 max(var(--gutter), env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + var(--s-3)) max(var(--gutter), env(safe-area-inset-left));
+}
+.root[data-compact] .bottom {
+  padding: 0 var(--s-2) var(--s-2) var(--s-3);
+}
+.tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+.root[data-compact] .tools {
+  margin-top: 0;
+}
+.toolsLeft,
+.toolsRight {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* «Прямой эфир» at the live edge; «В эфир» behind it */
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  /* its glass is the design's .glass-clear (LivePlayer.tsx) */
+  font: 700 11px / 1 var(--font-text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.goLive {
+  flex: none;
+}
+
+/* ---------- the channel and the programme ---------- */
+.channelLine {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
 .channel {
   display: flex;
   align-items: center;
@@ -113,26 +306,17 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.live {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font: 500 13px / 1.3 var(--font-text);
-  color: rgba(235, 235, 245, 0.8);
+.star {
+  flex: none;
 }
-.liveDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--red);
-}
-
-/* the programme on air */
 .info {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
   max-width: 820px;
+}
+.stage .info {
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
 }
 .programTitle {
@@ -144,7 +328,7 @@
 }
 .programSub {
   font: 500 15px / 1.33 var(--font-text);
-  color: rgba(235, 235, 245, 0.9);
+  color: var(--label-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -158,20 +342,19 @@
   max-width: 680px;
   margin-top: 4px;
   font: 400 15px / 1.4 var(--font-text);
-  color: rgba(235, 235, 245, 0.85);
+  color: var(--label-2);
 }
 .timeline {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 10px;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
   font: 500 13px / 1 var(--font-text);
-  color: rgba(235, 235, 245, 0.75);
+  color: var(--label-2);
   font-variant-numeric: tabular-nums;
 }
 .bar {
   flex: 1;
-  max-width: 520px;
   height: 5px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.25);
@@ -185,17 +368,67 @@
 .time {
   flex: none;
 }
-.left {
-  flex: none;
-  margin-left: 4px;
-}
 .next {
   margin-top: 4px;
   font: 500 13px / 1.3 var(--font-text);
-  color: rgba(235, 235, 245, 0.75);
+  color: var(--label-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* subtitles: drawn here, over the picture, above the controls while they show */
+.subtitles {
+  position: absolute;
+  z-index: 2;
+  left: 8%;
+  right: 8%;
+  bottom: 7%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  pointer-events: none;
+  transition: bottom 300ms var(--ease-out);
+  --cue-base: clamp(17px, 2.3vw, 38px);
+}
+.subtitles p {
+  margin: 0;
+  white-space: pre-line;
+}
+.root:not(.hidden) .subtitles {
+  bottom: 230px;
+}
+.root[data-compact] .subtitles,
+.root[data-compact]:not(.hidden) .subtitles {
+  bottom: 44px;
+  --cue-base: 15px;
+}
+
+/* ---------- under the picture on an upright phone ---------- */
+.below {
+  position: absolute;
+  z-index: 3;
+  top: calc(env(safe-area-inset-top) + var(--pic-h));
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+.below > .info {
+  padding: var(--s-3) max(var(--s-4), env(safe-area-inset-right)) var(--s-3) max(var(--s-4), env(safe-area-inset-left));
+}
+.below .programTitle {
+  font-size: 22px;
+}
+.below .channel {
+  font-size: 15px;
+  color: var(--label-2);
+}
+.below .channelLine {
+  justify-content: space-between;
+  margin: -6px -8px 0 0;
 }
 
 /* «Звук и субтитры» (TrackMenu's look) */
@@ -216,13 +449,39 @@
   composes: group from '../../player/TrackMenu.module.css';
 }
 
-/* «Каналы»: the list to switch from, at the right edge (the bottom on a phone) */
+/* a channel number being typed («23_»), TiviMate's corner */
+.numberEntry {
+  position: absolute;
+  z-index: 4;
+  /* under the top bar's buttons (they may show while the digits are typed) */
+  top: calc(env(safe-area-inset-top) + var(--s-4) + 52px);
+  right: max(var(--gutter), env(safe-area-inset-right));
+  min-width: 2.6em;
+  padding: var(--s-1h) var(--s-3);
+  border-radius: var(--r-md);
+  /* its glass is the design's .glass-strong (LivePlayer.tsx) */
+  font: 700 34px / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-align: center;
+  pointer-events: none;
+}
+.root[data-compact] .numberEntry {
+  top: calc(var(--s-2) + 44px);
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  font-size: 26px;
+}
+
+/* ---------- «Каналы» ---------- */
+/* the list over the picture (desktop, a phone held sideways, full screen) */
 .panel {
   position: absolute;
   z-index: 4;
-  top: calc(env(safe-area-inset-top) + 16px);
+  /* between the top bar's buttons (tracks, picture in picture) and the bottom row's */
+  top: calc(env(safe-area-inset-top) + var(--s-4) + 36px + var(--s-3));
   right: max(16px, env(safe-area-inset-right));
-  /* above the bottom bar's buttons: «Каналы» stays at hand to close it */
   bottom: calc(env(safe-area-inset-bottom) + 18px + 44px + 16px);
   display: flex;
   flex-direction: column;
@@ -231,23 +490,26 @@
   overflow: hidden;
   color: var(--label);
 }
-/* the bar and the channel list: free on wide screens, stacked under the
-   picture on an upright phone */
-.dock {
-  display: contents;
-}
-/* the channel list under the picture on an upright phone: plain rows, no glass */
+/* the list under the picture: plain rows, no glass */
 .panelInline {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   color: var(--label);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.below .panelInline {
+  border-top: var(--hairline-w) solid var(--separator);
 }
 .panelHead {
   padding: 18px 20px 8px;
 }
 .panelHead h2 {
   font: var(--t-headline);
+}
+.panelInline .panelHead {
+  padding: var(--s-3) max(var(--s-4), env(safe-area-inset-left)) var(--s-1);
 }
 .panelList {
   flex: 1;
@@ -275,7 +537,6 @@
   color: inherit;
   text-align: left;
 }
-/* a list with logos: the logo is a column of its own (empty where a channel has none) */
 .panelRow:hover {
   background: var(--fill-hover);
 }
@@ -344,23 +605,14 @@
 }
 
 @media (max-width: 699px) {
-  .root:not(.hidden) .subtitles {
-    bottom: 210px;
-  }
   .programTitle {
     font-size: 21px;
   }
   .channel {
     font-size: 17px;
   }
-  .bottomScrim {
-    height: 300px;
-  }
   .timeline {
-    gap: 8px;
-  }
-  .left {
-    display: none;
+    gap: var(--s-2);
   }
   .panel {
     top: auto;
@@ -379,107 +631,6 @@
     width: 80px;
   }
 }
-
-/* ---------- A phone held upright ----------
-   The picture sits under the header (no black band above it), the info and
-   the controls directly under the picture and always shown, the channels
-   to switch to fill the rest. Everything stays inside the safe areas. */
-@media (max-width: 699px) and (orientation: portrait) {
-  .root {
-    --hdr: calc(env(safe-area-inset-top) + 76px);
-    --pic-h: calc(100vw * 9 / 16);
-  }
-  .video,
-  .surface {
-    top: var(--hdr);
-    bottom: auto;
-    height: var(--pic-h);
-  }
-  .topScrim,
-  .bottomScrim {
-    display: none;
-  }
-  .hidden .top,
-  .hidden .bottom {
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
-  }
-  .hidden {
-    cursor: auto;
-  }
-  /* inside the picture's band: a compact card as wide as the screen */
-  .extError {
-    width: calc(100vw - 2 * var(--gutter));
-    max-height: calc(var(--pic-h) - var(--s-4));
-    gap: var(--s-1h);
-    padding: var(--s-3) var(--s-4);
-    overflow: hidden;
-  }
-  .extError h2 {
-    font: var(--t-headline);
-  }
-  .extError p {
-    font: var(--t-footnote);
-  }
-  .center {
-    top: calc(var(--hdr) + var(--pic-h) / 2);
-  }
-  .subtitles,
-  .root:not(.hidden) .subtitles {
-    bottom: calc(100% - var(--hdr) - var(--pic-h) + 8px);
-  }
-  .subtitles {
-    --cue-base: 15px;
-  }
-  .dock {
-    position: absolute;
-    z-index: 3;
-    top: calc(var(--hdr) + var(--pic-h));
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .dock .bottom {
-    position: static;
-    padding: 14px max(16px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
-  }
-  .dock .tools {
-    margin-top: 6px;
-  }
-  .panelInline {
-    flex: 1;
-    border-top: 0.5px solid var(--separator);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .panelInline .panelHead {
-    padding: 12px max(16px, env(safe-area-inset-left)) 4px;
-  }
-  .panelInline .panelList {
-    padding: 0 max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
-  }
-}
-
-/* ---------- Pause and the live edge ----------
-   The centre play/pause is the film player's (a clear-glass circle on the
-   picture). It comes and goes with a tap or the pointer moving (also on an
-   upright phone, where the bars stay) and stays while paused. */
-.playCenter[data-hidden] {
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.96);
-}
-.playCenter[data-hidden] > * {
-  pointer-events: none;
-}
-.bigPlay {
-  composes: bigPlay from '../../player/VideoPlayer.module.css';
-}
-/* «В эфир»: behind the edge, in the place of «Прямой эфир» — the small
-   capsule overhangs the 17 px line it replaces, so the channel's name
-   above it does not move */
-.goLive {
-  align-self: flex-start;
-  margin: 2px 0 -21px -2px;
+.close {
+  flex: none;
 }

@@ -5,7 +5,7 @@ import { TabBar } from '../TabBar'
 
 const ITEMS = [
   { to: '/', label: 'Главная', icon: 'homeFill' as const },
-  { to: '/movies', label: 'Фильмы', icon: 'filmFill' as const },
+  { to: '/movies', label: 'Фильмы', icon: 'filmFrame' as const },
   { to: '/books', label: 'Медиа', icon: 'squareStackFill' as const, roots: ['/music', '/books'] },
 ]
 
@@ -80,7 +80,7 @@ describe('TabBar', () => {
     expect(nav.querySelector('ul')).toHaveAttribute('inert')
     expect(screen.getByRole('button', { name: 'Показать вкладки' })).toBe(unfold)
     expect(unfold).toHaveAttribute('tabindex', '0')
-    expect(unfold.querySelector('svg')!.getAttribute('data-icon')).toBe('filmFill')
+    expect(unfold.querySelector('svg')!.getAttribute('data-icon')).toBe('filmFrame')
     scrollTo(300)
     expect(nav).not.toHaveAttribute('data-minimized')
     scrollTo(800)

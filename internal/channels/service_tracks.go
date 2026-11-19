@@ -170,6 +170,9 @@ func (s *Service) ProgrammeTracks(ctx context.Context, ch, fileID int64, lang st
 	if !running {
 		set = s.TrackSet(ctx, ch, time.Now())
 	}
+	if nl := nameLanguage(ctx); nl != "" {
+		set = set.Localized(nl)
+	}
 	audio, subs = t.Labels(set, lang)
 	return audio, subs, true, nil
 }

@@ -1,4 +1,4 @@
-// /tv/:id — a channel live, full window, in the film player's chrome. The
+// /tv/:id — a channel live, full window. The
 // stream is the channel's live HLS master (one encoder on the server shared
 // by everyone watching; up to 8 audio and 6 subtitle renditions, chosen by NAME): Safari
 // plays it itself, other browsers through hls.js. The picture is full
@@ -38,9 +38,15 @@
 // for it alone. Its audio and subtitles come from the stream.
 //
 // The voice, on every channel: the viewer's choice on that channel (kept
-// per channel in this browser, externalStream.ts), else the device's
-// language, else the profile's audio languages, else the original
-// (model.pickAudio). The interface language stays the profile's.
+// per channel in this browser, externalStream.ts), else the profile's
+// audio languages (as for a film), else the device's language, else the
+// original (model.pickAudio); subtitles by the profile's «Субтитры». The
+// server's master already names the renditions in the profile's language
+// and marks its DEFAULTs so (channels.TrackSet.Localized/WithDefaults).
+//
+// Full screen: the player's element, else the video's own on an iPhone
+// (liveFullscreen.ts). Loading and errors are centred on the picture,
+// never over what is under it.
 //
 // TV is TV: this player writes nothing but the profile's «last channel»
 // (PUT /api/channels/last) and its stars — no progress, no playback
@@ -60,14 +66,15 @@ import { nativeHls } from '../../player/hlsSupport'
 import { useVolume } from '../../player/useVolume'
 import { VolumeControl } from '../../player/VolumeControl'
 import { Button } from '../../ui/Button'
-import { Menu, MenuItem } from '../../ui/Menu'
+import { IconButton } from '../../ui/IconButton'
 import { useMediaQuery } from '../../state/useMediaQuery'
 import { VirtualList } from '../../ui/VirtualList'
 import { ChannelArt } from './ChannelArt'
 import { ChannelLogo } from './ChannelLogo'
 import { activeCueText, applyRenditions, entriesFromNames, renditionNames, type NativeVideo } from './liveTracks'
 import { LiveTrackMenu } from './LiveTrackMenu'
-import { applyFilter, chooseAudioIn, chooseSubsIn, isOnAir, minutesLeft, numDigits, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, systemLanguages, withFavorite, zapTarget, type Rendition } from './model'
+import { canFullscreen, fullscreenElement, isFullscreen, onFullscreenChange, toggleFullscreen, type FsVideo } from './liveFullscreen'
+import { applyFilter, channelByNumber, chooseAudioIn, chooseSubsIn, isOnAir, numDigits, parseFilter, pickAudio, pickSubs, progressOf, renditionsToPlay, systemLanguages, withFavorite, zapTarget, type Rendition } from './model'
 import { clock, useNow } from './useChannels'
 import { chromeShown, readClock, resumeTarget, showGoLive, behindLive } from './liveEdge'
 import { channelTracks, externalStreams, setChannelTracks, type ExtBlock, type ExtCandidate } from './externalStream'
@@ -76,11 +83,12 @@ import styles from './LivePlayer.module.css'
 
 const HIDE_MS = 4000
 /**
- * How long the picture may stand still after it has played before an error
+ * stallMs: how long the picture may stand still after it has played before an error
  * counts (ms): a live stream's error while its buffer still plays is a
- * hiccup. A variable for the tests.
+ * hiccup. numberMs: how long a typed channel number waits for its next
+ * digit before it switches (ms). Variables for the tests.
  */
-export const liveTiming = { stallMs: 4000 }
+export const liveTiming = { stallMs: 4000, numberMs: 1500 }
 const GUIDE_MS = 30_000
 /** A row of the channel list beside the picture (px; a phone's, a wide window's). */
 const PANEL_ROW_H = { narrow: 64, wide: 72 }
@@ -92,11 +100,6 @@ type WebkitVideo = NativeVideo & {
   webkitSupportsPresentationMode?: (m: string) => boolean
   webkitSetPresentationMode?: (m: string) => void
 }
-type WebkitDocument = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void }
-type WebkitElement = HTMLElement & { webkitRequestFullscreen?: () => void }
-const doc = () => document as WebkitDocument
-const fullscreenElement = () => doc().fullscreenElement ?? doc().webkitFullscreenElement ?? null
-const fullscreenSupported = () => typeof document !== 'undefined' && Boolean(doc().fullscreenEnabled || doc().webkitFullscreenEnabled)
 
 export function LivePlayer() {
   const t = useT()
@@ -571,24 +574,14 @@ export function LivePlayer() {
   }
 
   // ---------- sound, picture in picture, full screen ----------
-  const canFullscreen = fullscreenSupported()
+  // full screen: the player's element (its chrome comes along), else the
+  // video's own on an iPhone (liveFullscreen.ts)
+  const [fsReady, setFsReady] = useState(false)
+  useEffect(() => setFsReady(canFullscreen(videoRef.current as FsVideo | null)), [])
   const toggleFull = useCallback(() => {
-    const root = rootRef.current as WebkitElement | null
-    if (fullscreenElement()) {
-      if (document.exitFullscreen) void document.exitFullscreen().catch(() => undefined)
-      else doc().webkitExitFullscreen?.()
-    } else if (root?.requestFullscreen) void root.requestFullscreen().catch(() => undefined)
-    else root?.webkitRequestFullscreen?.()
+    toggleFullscreen(rootRef.current, videoRef.current as FsVideo | null)
   }, [])
-  useEffect(() => {
-    const on = () => setFull(Boolean(fullscreenElement()))
-    document.addEventListener('fullscreenchange', on)
-    document.addEventListener('webkitfullscreenchange', on)
-    return () => {
-      document.removeEventListener('fullscreenchange', on)
-      document.removeEventListener('webkitfullscreenchange', on)
-    }
-  }, [])
+  useEffect(() => onFullscreenChange(videoRef.current as FsVideo | null, () => setFull(isFullscreen(videoRef.current as FsVideo | null))), [])
   const [pipSupported, setPipSupported] = useState(false)
   useEffect(() => {
     const v = videoRef.current as WebkitVideo | null
@@ -602,6 +595,41 @@ export function LivePlayer() {
     else v.webkitSetPresentationMode?.('picture-in-picture')
   }
 
+  // ---------- a channel by its number ----------
+  // digits typed (a keyboard, a TV remote's number keys) show «23_» on the
+  // picture; the channel switches after a pause, or at once with Enter
+  // (TiviMate's way). A number no channel has says so and goes.
+  const [numberEntry, setNumberEntry] = useState<{ digits: string; missing?: boolean } | null>(null)
+  const typed = useRef('')
+  const numberTimer = useRef(0)
+  const commitNumber = useRef<() => void>(() => undefined)
+  commitNumber.current = () => {
+    window.clearTimeout(numberTimer.current)
+    const digits = typed.current
+    typed.current = ''
+    if (!digits) return
+    const to = channelByNumber(channels, Number(digits))
+    if (to) {
+      setNumberEntry(null)
+      if (to.id !== channelId) tune(to)
+      return
+    }
+    setNumberEntry({ digits, missing: true })
+    numberTimer.current = window.setTimeout(() => setNumberEntry(null), liveTiming.numberMs)
+  }
+  const typeDigit = useCallback((d: string) => {
+    window.clearTimeout(numberTimer.current)
+    typed.current = (typed.current + d).slice(-4)
+    setNumberEntry({ digits: typed.current })
+    numberTimer.current = window.setTimeout(() => commitNumber.current(), liveTiming.numberMs)
+  }, [])
+  const cancelNumber = useCallback(() => {
+    window.clearTimeout(numberTimer.current)
+    typed.current = ''
+    setNumberEntry(null)
+  }, [])
+  useEffect(() => () => window.clearTimeout(numberTimer.current), [])
+
   // ---------- keys ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -610,6 +638,17 @@ export function LivePlayer() {
       const onControl = tag === 'BUTTON' || tag === 'A' || tag === 'INPUT'
       // the focused volume slider keeps the arrows (↑/↓ move it, as ←/→ do), they do not zap
       const onSlider = tag === 'INPUT' && (e.target as HTMLInputElement).type === 'range'
+      if (/^[0-9]$/.test(e.key) && (tag !== 'INPUT' || onSlider)) {
+        e.preventDefault()
+        typeDigit(e.key)
+        return
+      }
+      if (typed.current && (e.key === 'Enter' || e.key === 'Escape')) {
+        e.preventDefault()
+        if (e.key === 'Enter') commitNumber.current()
+        else cancelNumber()
+        return
+      }
       switch (e.key) {
         case ' ':
           if (onControl) return
@@ -670,13 +709,20 @@ export function LivePlayer() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause, toggleMute])
+  }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause, toggleMute, typeDigit, cancelNumber])
+
+  // ---------- layout ----------
+  // a phone held upright and not in full screen: the picture at the top, the rest under it
+  const compact = upright && !full
+  // «Каналы»: under the picture on an upright phone, else a panel over it
+  const sideList = compact
+  const floatingPanel = panel && !sideList
 
   // the current channel in view in the list: when it opens and when the channel changes
   // (centred if it was out of view; the list alone scrolls, never the page). The
   // list renders only the rows near the screen: the row's place is its index.
   const listRef = useRef<HTMLDivElement>(null)
-  const listOpen = panel || upright
+  const listOpen = floatingPanel || sideList
   const listedCount = zapList.length
   const panelRowH = narrow ? PANEL_ROW_H.narrow : PANEL_ROW_H.wide
   const currentIndex = zapList.findIndex((c) => c.id === channelId)
@@ -689,293 +735,317 @@ export function LivePlayer() {
   }, [channelId, listOpen, listedCount, currentIndex, panelRowH])
 
   const playing = phase === 'playing'
-  const show = chromeShown({ poked: chrome, paused, playing, upright, info, panel, menuOpen })
+  const show = chromeShown({ poked: chrome, paused, playing, upright: false, info, panel, menuOpen })
+  // the controls on the picture (they hide after a few quiet seconds; what is under the picture stays)
   const shown = show.bars
   const pointerType = useRef('mouse')
+  const swipe = useRef<{ x: number; y: number } | null>(null)
   const pct = onAir ? progressOf(onAir, now) * 100 : 0
   const fav = Boolean(channel?.favorite)
 
+  // ---------- parts ----------
+  const liveMark = behind ? (
+    <Button variant="secondary" material="clear" size="small" icon="broadcast" className={styles.goLive} onClick={() => (goLive(), poke())}>
+      {t('tv.goLive')}
+    </Button>
+  ) : (
+    <span className={`${styles.liveBadge} glass-clear`}>
+      <span className={styles.liveDot} aria-hidden />
+      {t('tv.live')}
+    </span>
+  )
+  const star = (
+    <IconButton
+      icon={fav ? 'starFill' : 'star'}
+      label={fav ? t('tv.favRemove') : t('tv.favAdd')}
+      size="sm"
+      variant="plain"
+      material="clear"
+      toggled={fav}
+      className={styles.star}
+      onClick={() => favorite(!fav)}
+      disabled={!channel}
+    />
+  )
+  const channelLine = (
+    <div className={styles.channelLine}>
+      {channel && (
+        <h1 className={styles.channel}>
+          <span className={styles.channelNum}>{channel.number}</span>
+          <ChannelLogo url={channel.logoUrl} fallback={channel.logoAlt} name={channel.name} size="sm" />
+          <span className={styles.channelName}>{channel.name}</span>
+        </h1>
+      )}
+      {star}
+    </div>
+  )
+  const timeline = (withLive: boolean) =>
+    !onAir ? (
+      withLive && <div className={styles.timeline}>{liveMark}</div>
+    ) : (
+      <div className={styles.timeline}>
+        <span className={styles.time}>{clock(onAir.start)}</span>
+        <div className={styles.bar} role="progressbar" aria-label={t('tv.onAirNow')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+          <div className={styles.barFill} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={styles.time}>{clock(onAir.end)}</span>
+        {withLive && liveMark}
+      </div>
+    )
+  const programme = (opts: { line?: boolean; live?: boolean }) => (
+    <div className={styles.info} aria-live="polite" data-testid="live-info">
+      {opts.line && channelLine}
+      <p className={styles.programTitle}>{onAir ? onAir.title : channel ? t('tv.nothing') : ''}</p>
+      {onAir && (onAir.subtitle || onAir.year || onAir.genres?.length) && (
+        <p className={styles.programSub}>{[onAir.subtitle, onAir.subtitle ? undefined : onAir.year, ...(onAir.subtitle ? [] : (onAir.genres ?? []).slice(0, 2))].filter(Boolean).join(' · ')}</p>
+      )}
+      {info && onAir?.overview && <p className={styles.overview}>{onAir.overview}</p>}
+      {timeline(Boolean(opts.live))}
+      {next && <p className={styles.next}>{t('tv.nextAt', { time: clock(next.start), title: [next.title, next.subtitle].filter(Boolean).join(' · ') })}</p>}
+    </div>
+  )
+  const tracks = (
+    <LiveTrackMenu
+      audio={audioEntries}
+      subtitles={subEntries}
+      audioName={audioNow?.name}
+      subsName={subsNow ? subsNow.name : null}
+      onAudio={chooseAudio}
+      onSubtitles={chooseSubs}
+      onOpenChange={setMenuOpen}
+      placement="bottom-end"
+    />
+  )
+  const pipButton = pipSupported && <IconButton icon="pip" label={t('tv.pip')} size="sm" material="clear" onClick={togglePip} />
+  const fullButton = fsReady && (
+    <IconButton icon={full ? 'collapse' : 'expand'} label={full ? t('tv.exitFullscreen') : t('tv.fullscreen')} tooltip={`${full ? t('tv.exitFullscreen') : t('tv.fullscreen')} (F)`} size="sm" material="clear" onClick={() => (toggleFull(), poke())} />
+  )
+  const volumeControl = !narrow && (
+    <VolumeControl volume={volume} muted={muted} onVolume={changeVolume} onToggleMute={toggleMute} muteLabel={t('tv.mute')} unmuteLabel={t('tv.unmute')} />
+  )
+  const channelsButton = (
+    <IconButton icon="list" label={t('tv.channelsPanel')} tooltip={`${t('tv.channelsPanel')} (C)`} size="sm" material="clear" toggled={panel} aria-expanded={panel} onClick={() => setPanel((v) => !v)} />
+  )
+  const infoButton = !narrow && <IconButton icon="info" label={t('tv.info')} tooltip={`${t('tv.info')} (I)`} size="sm" material="clear" toggled={info} onClick={() => setInfo((v) => !v)} />
+  const closeButton = <IconButton icon="close" label={t('tv.close')} size="sm" material="clear" className={styles.close} onClick={close} />
+  const channelList = (
+    <>
+      <div className={styles.panelList} ref={listRef} style={{ '--num-digits': numDigits(zapList) } as CSSProperties}>
+        <VirtualList
+          count={zapList.length}
+          itemHeight={panelRowH}
+          itemKey={(i) => zapList[i]!.id}
+          label={t('tv.channelsPanel')}
+          renderItem={(i) => {
+            const c = zapList[i]!
+            const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
+            const current = c.id === channelId
+            return (
+              <button
+                type="button"
+                className={styles.panelRow}
+                aria-current={current || undefined}
+                onClick={() => tune(c)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+                  e.preventDefault()
+                  const item = e.currentTarget.parentElement
+                  const to = (e.key === 'ArrowUp' ? item?.previousElementSibling : item?.nextElementSibling)?.querySelector('button')
+                  to?.focus()
+                }}
+              >
+                <span className={styles.panelNum}>{c.number}</span>
+                <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} name={c.name} size="xs" />
+                <span className={styles.panelText}>
+                  <span className={styles.panelName}>
+                    <span className={styles.panelNameText}>{c.name}</span>
+                    {c.favorite && <Icon name="starFill" size={12} />}
+                  </span>
+                  <span className={styles.panelTitle}>{p ? p.title : t('tv.nothing')}</span>
+                  {p && (
+                    <span className={styles.panelBar}>
+                      <span style={{ width: `${progressOf(p, now) * 100}%` }} />
+                    </span>
+                  )}
+                </span>
+                <ChannelArt program={p} width={96} optional className={styles.panelArt} />
+              </button>
+            )
+          }}
+        />
+      </div>
+    </>
+  )
   return (
     <div
       ref={rootRef}
       className={[styles.root, shown ? '' : styles.hidden].join(' ')}
+      data-compact={compact || undefined}
+      data-full={full || undefined}
       onPointerMove={(e) => e.pointerType === 'mouse' && poke()}
       data-portal-host
       data-testid="live-player"
       role="region"
       aria-label={channel ? t('tv.channelNumber', { number: channel.number, name: channel.name }) : t('tv.title')}
     >
-      {/* while the channel starts, the programme's still stands in for the picture */}
-      <video
-        ref={videoRef}
-        className={styles.video}
-        playsInline
-        autoPlay
-        x-webkit-airplay="allow"
-        poster={phase !== 'playing' ? imageUrl(onAir?.backdrop, 1280) : undefined}
-      />
-      {/* a tap shows or hides the info; a double click is full screen */}
-      <div
-        className={styles.surface}
-        aria-hidden
-        onPointerDown={(e) => {
-          pointerType.current = e.pointerType
-        }}
-        onClick={() => {
-          if (panel) setPanel(false)
-          // a finger toggles: what shows hides (on an upright phone the bars stay: the centre button goes)
-          else if ((upright ? show.center : shown) && phase === 'playing' && pointerType.current === 'touch') {
-            setChrome(false)
-            setInfo(false)
-          } else poke()
-        }}
-        onDoubleClick={() => canFullscreen && toggleFull()}
-      />
-      <div className={styles.topScrim} aria-hidden />
-      {cues.length > 0 && (
-        <div className={styles.subtitles} aria-live="off" data-size={prefs?.subSize ?? 'm'} data-bg={prefs?.subBackground ?? 'translucent'}>
-          {cues.map((c, i) => (
-            <p key={`${i}-${c}`}>
-              <span className={look.cue}>{c}</span>
-            </p>
-          ))}
-        </div>
-      )}
-      <div className={styles.bottomScrim} aria-hidden />
-
-      <header className={styles.top}>
-        <button type="button" className={`${styles.round} glass`} onClick={close} aria-label={t('tv.close')} title={t('tv.close')}>
-          <Icon name="close" size={22} strokeWidth={2.2} />
-        </button>
-        <div className={styles.heading}>
-          {channel && (
-            <h1 className={styles.channel}>
-              <span className={styles.channelNum}>{channel.number}</span>
-              <ChannelLogo url={channel.logoUrl} fallback={channel.logoAlt} name={channel.name} size="md" />
-              <span className={styles.channelName}>{channel.name}</span>
-            </h1>
-          )}
-          {behind ? (
-            <Button variant="secondary" material="clear" size="small" icon="broadcast" className={styles.goLive} onClick={() => (goLive(), poke())}>
-              {t('tv.goLive')}
-            </Button>
-          ) : (
-            <p className={styles.live}>
-              <span className={styles.liveDot} aria-hidden />
-              {t('tv.live')}
-            </p>
-          )}
-        </div>
-      </header>
-
-      {playing && (
-        <div className={`${styles.center} ${styles.playCenter}`} data-hidden={show.center ? undefined : ''}>
-          <button
-            type="button"
-            className={`${styles.bigPlay} glass-clear`}
-            onClick={() => (togglePause(), poke())}
-            tabIndex={show.center ? 0 : -1}
-            aria-label={paused ? t('tv.resume') : t('common.pause')}
-            title={`${paused ? t('tv.resume') : t('common.pause')} (K)`}
-          >
-            <Icon name={paused ? 'play' : 'pause'} size={44} />
-          </button>
-        </div>
-      )}
-      {phase === 'starting' && (
-        <div className={styles.center}>
-          <span className={styles.spinner} role="status" aria-label={t('tv.starting')} />
-          <span className={styles.note}>{t('tv.starting')}</span>
-        </div>
-      )}
-      {typeof phase === 'object' && 'ext' in phase && (
-        <div className={styles.center}>
-          <div className={`${styles.error} ${styles.extError} glass-strong`} role="alert">
-            <h2>{t('tv.extOnlyApps')}</h2>
-            <p>{t(`tv.extWhy.${phase.ext}`)}</p>
-            {phase.ext === 'network' && (
-              <Button variant="secondary" size={upright ? 'small' : 'regular'} onClick={() => setAttempt((n) => n + 1)}>
-                {t('tv.retry')}
-              </Button>
-            )}
+      {/* the picture and everything on it: loading, errors and controls stay inside it */}
+      <div className={styles.stage}>
+        {/* while the channel starts, the programme's still stands in for the picture */}
+        <video
+          ref={videoRef}
+          className={styles.video}
+          playsInline
+          autoPlay
+          x-webkit-airplay="allow"
+          poster={phase !== 'playing' ? imageUrl(onAir?.backdrop, 1280) : undefined}
+        />
+        {/* a tap shows or hides the controls; a vertical swipe zaps; a double click is full screen */}
+        <div
+          className={styles.surface}
+          aria-hidden
+          onPointerDown={(e) => {
+            pointerType.current = e.pointerType
+            swipe.current = e.pointerType === 'touch' ? { x: e.clientX, y: e.clientY } : null
+          }}
+          onPointerUp={(e) => {
+            const s = swipe.current
+            swipe.current = null
+            if (!s) return
+            const dx = e.clientX - s.x
+            const dy = e.clientY - s.y
+            if (Math.abs(dy) > 60 && Math.abs(dy) > 2 * Math.abs(dx)) {
+              pointerType.current = 'swipe'
+              zap(dy < 0 ? 1 : -1)
+            }
+          }}
+          onClick={() => {
+            if (pointerType.current === 'swipe') return
+            if (panel) setPanel(false)
+            // a finger toggles: what shows hides
+            else if (shown && phase === 'playing' && pointerType.current === 'touch') {
+              setChrome(false)
+              setInfo(false)
+            } else poke()
+          }}
+          onDoubleClick={() => fsReady && toggleFull()}
+        />
+        <div className={styles.topScrim} aria-hidden />
+        <div className={styles.bottomScrim} aria-hidden />
+        {cues.length > 0 && (
+          <div className={styles.subtitles} aria-live="off" data-size={prefs?.subSize ?? 'm'} data-bg={prefs?.subBackground ?? 'translucent'}>
+            {cues.map((c, i) => (
+              <p key={`${i}-${c}`}>
+                <span className={look.cue}>{c}</span>
+              </p>
+            ))}
           </div>
-        </div>
-      )}
-      {typeof phase === 'object' && 'error' in phase && (
-        <div className={styles.center}>
-          <div className={`${styles.error} glass-strong`} role="alert">
-            <h2>{t('tv.failed')}</h2>
-            {phase.error !== t('tv.failed') && <p>{phase.error}</p>}
-            <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
-              {t('tv.retry')}
-            </Button>
+        )}
+
+        <header className={styles.top}>
+          {closeButton}
+          {!compact && <div className={styles.heading}>{channelLine}</div>}
+          <div className={styles.topActions}>
+            {tracks}
+            {pipButton}
           </div>
-        </div>
-      )}
+        </header>
 
-      <div className={styles.dock}>
-      <footer className={styles.bottom}>
-        <div className={styles.info} aria-live="polite">
-          <p className={styles.programTitle}>{onAir ? onAir.title : channel ? t('tv.nothing') : ''}</p>
-          {onAir && (onAir.subtitle || onAir.year || onAir.genres?.length) && (
-            <p className={styles.programSub}>{[onAir.subtitle, onAir.subtitle ? undefined : onAir.year, ...(onAir.subtitle ? [] : (onAir.genres ?? []).slice(0, 2))].filter(Boolean).join(' · ')}</p>
-          )}
-          {info && onAir?.overview && <p className={styles.overview}>{onAir.overview}</p>}
-          {onAir && (
-            <div className={styles.timeline}>
-              <span className={styles.time}>{clock(onAir.start)}</span>
-              <div className={styles.bar} role="progressbar" aria-label={t('tv.onAirNow')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-                <div className={styles.barFill} style={{ width: `${pct}%` }} />
-              </div>
-              <span className={styles.time}>{clock(onAir.end)}</span>
-              <span className={styles.left}>{t('tv.left', { count: minutesLeft(onAir, now) })}</span>
-            </div>
-          )}
-          {next && <p className={styles.next}>{t('tv.nextAt', { time: clock(next.start), title: [next.title, next.subtitle].filter(Boolean).join(' · ') })}</p>}
-        </div>
-
-        <div className={styles.tools}>
-          <div className={styles.toolsLeft}>
-            <VolumeControl
-              volume={volume}
-              muted={muted}
-              onVolume={changeVolume}
-              onToggleMute={toggleMute}
-              muteLabel={t('tv.mute')}
-              unmuteLabel={t('tv.unmute')}
-            />
-            <button type="button" className={styles.tool} onClick={() => zap(1)} disabled={zapList.length < 2} aria-label={t('tv.channelUp')} title={`${t('tv.channelUp')} (↑)`}>
-              <Icon name="chevronUp" size={24} strokeWidth={2.2} />
-            </button>
-            <button type="button" className={styles.tool} onClick={() => zap(-1)} disabled={zapList.length < 2} aria-label={t('tv.channelDown')} title={`${t('tv.channelDown')} (↓)`}>
-              <Icon name="chevronDown" size={24} strokeWidth={2.2} />
-            </button>
+        {playing && (
+          <div className={`${styles.center} ${styles.playCenter}`} data-hidden={show.center ? undefined : ''}>
             <button
               type="button"
-              className={styles.tool}
-              onClick={() => favorite(!fav)}
-              disabled={!channel}
-              aria-pressed={fav}
-              aria-label={fav ? t('tv.favRemove') : t('tv.favAdd')}
-              title={fav ? t('tv.favRemove') : t('tv.favAdd')}
+              className={`${styles.bigPlay} glass-clear`}
+              onClick={() => (togglePause(), poke())}
+              tabIndex={show.center ? 0 : -1}
+              aria-label={paused ? t('tv.resume') : t('common.pause')}
+              title={`${paused ? t('tv.resume') : t('common.pause')} (K)`}
             >
-              <Icon name={fav ? 'starFill' : 'star'} size={24} />
+              <Icon name={paused ? 'play' : 'pause'} size={compact ? 32 : 44} />
             </button>
           </div>
-          <div className={styles.toolsRight}>
-            {!upright && (
-              <button
-                type="button"
-                className={styles.tool}
-                onClick={() => setPanel((v) => !v)}
-                aria-expanded={panel}
-                aria-label={t('tv.channelsPanel')}
-                title={`${t('tv.channelsPanel')} (C)`}
-                data-active={panel || undefined}
-              >
-                <Icon name="list" size={24} />
-              </button>
-            )}
-            {!narrow && (
-              <button type="button" className={styles.tool} onClick={() => setInfo((v) => !v)} aria-pressed={info} aria-label={t('tv.info')} title={`${t('tv.info')} (I)`} data-active={info || undefined}>
-                <Icon name="info" size={24} />
-              </button>
-            )}
-            <LiveTrackMenu
-              audio={audioEntries}
-              subtitles={subEntries}
-              audioName={audioNow?.name}
-              subsName={subsNow ? subsNow.name : null}
-              onAudio={chooseAudio}
-              onSubtitles={chooseSubs}
-              onOpenChange={setMenuOpen}
-            />
-            {narrow && (
-              <Menu
-                label={t('tv.more')}
-                placement="top-end"
-                onOpenChange={setMenuOpen}
-                trigger={(tp) => (
-                  <button {...tp} type="button" className={styles.tool} aria-label={t('tv.more')} title={t('tv.more')}>
-                    <Icon name="ellipsis" size={24} />
-                  </button>
-                )}
-              >
-                {(closeMenu) => (
-                  <>
-                    <MenuItem icon={<Icon name="info" size={16} />} label={t('tv.info')} checked={info} multi onSelect={() => (closeMenu(), setInfo((v) => !v))} />
-                    {pipSupported && <MenuItem icon={<Icon name="pip" size={16} />} label={t('tv.pip')} onSelect={() => (closeMenu(), togglePip())} />}
-                    {canFullscreen && <MenuItem icon={<Icon name={full ? 'collapse' : 'expand'} size={16} />} label={full ? t('tv.exitFullscreen') : t('tv.fullscreen')} onSelect={() => (closeMenu(), toggleFull())} />}
-                  </>
-                )}
-              </Menu>
-            )}
-            {!narrow && pipSupported && (
-              <button type="button" className={styles.tool} onClick={togglePip} aria-label={t('tv.pip')} title={t('tv.pip')}>
-                <Icon name="pip" size={24} />
-              </button>
-            )}
-            {!narrow && canFullscreen && (
-              <button type="button" className={styles.tool} onClick={toggleFull} aria-label={full ? t('tv.exitFullscreen') : t('tv.fullscreen')} title={`${full ? t('tv.exitFullscreen') : t('tv.fullscreen')} (F)`}>
-                <Icon name={full ? 'collapse' : 'expand'} size={22} strokeWidth={2.1} />
-              </button>
-            )}
+        )}
+        {phase === 'starting' && (
+          <div className={styles.center}>
+            <span className={styles.spinner} role="status" aria-label={t('tv.starting')} />
+            <span className={styles.note}>{t('tv.starting')}</span>
           </div>
-        </div>
-      </footer>
+        )}
+        {typeof phase === 'object' && 'ext' in phase && (
+          <div className={styles.center}>
+            <div className={`${styles.error} ${styles.extError} glass-strong`} role="alert">
+              <h2>{t('tv.extOnlyApps')}</h2>
+              <p>{t(`tv.extWhy.${phase.ext}`)}</p>
+              {phase.ext === 'network' && (
+                <Button variant="secondary" size="small" onClick={() => setAttempt((n) => n + 1)}>
+                  {t('tv.retry')}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+        {typeof phase === 'object' && 'error' in phase && (
+          <div className={styles.center}>
+            <div className={`${styles.error} glass-strong`} role="alert">
+              <h2>{t('tv.failed')}</h2>
+              {phase.error !== t('tv.failed') && <p>{phase.error}</p>}
+              <Button variant="secondary" size="small" onClick={() => setAttempt((n) => n + 1)}>
+                {t('tv.retry')}
+              </Button>
+            </div>
+          </div>
+        )}
 
-      {(panel || upright) && (
-        <aside className={upright ? styles.panelInline : `${styles.panel} glass-strong`} aria-label={t('tv.channelsPanel')}>
+        {/* the bottom of the picture: on an upright phone «Прямой эфир» and full
+            screen (the programme is under the picture); else the programme,
+            its timeline and the tools */}
+        {compact ? (
+          <footer className={styles.bottom}>
+            <div className={styles.tools}>
+              <div className={styles.toolsLeft}>{liveMark}</div>
+              <div className={styles.toolsRight}>{fullButton}</div>
+            </div>
+          </footer>
+        ) : (
+          <footer className={styles.bottom}>
+            {programme({ live: true })}
+            <div className={styles.tools}>
+              <div className={styles.toolsLeft}>{volumeControl}</div>
+              <div className={styles.toolsRight}>
+                {channelsButton}
+                {infoButton}
+                {fullButton}
+              </div>
+            </div>
+          </footer>
+        )}
+        {numberEntry && (
+          <div className={`${styles.numberEntry} glass-strong`} role="status" aria-live="polite" data-testid="channel-number-entry">
+            {numberEntry.missing ? t('tv.noChannelNumber', { number: numberEntry.digits }) : `${numberEntry.digits}_`}
+          </div>
+        )}
+      </div>
+
+      {/* under the picture on an upright phone: the programme, then the channels */}
+      {compact && (
+        <div className={styles.below}>
+          {programme({ line: true })}
+          <aside className={styles.panelInline} aria-label={t('tv.channelsPanel')}>
+            <header className={styles.panelHead}>
+              <h2>{t('tv.channelsPanel')}</h2>
+            </header>
+            {channelList}
+          </aside>
+        </div>
+      )}
+
+      {floatingPanel && (
+        <aside className={`${styles.panel} glass-strong`} aria-label={t('tv.channelsPanel')}>
           <header className={styles.panelHead}>
             <h2>{t('tv.channelsPanel')}</h2>
           </header>
-          <div className={styles.panelList} ref={listRef} style={{ '--num-digits': numDigits(zapList) } as CSSProperties}>
-            <VirtualList
-              count={zapList.length}
-              itemHeight={panelRowH}
-              itemKey={(i) => zapList[i]!.id}
-              label={t('tv.channelsPanel')}
-              renderItem={(i) => {
-                const c = zapList[i]!
-                const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
-                const current = c.id === channelId
-                return (
-                  <button
-                    type="button"
-                    className={styles.panelRow}
-                    aria-current={current || undefined}
-                    onClick={() => tune(c)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
-                      e.preventDefault()
-                      const item = e.currentTarget.parentElement
-                      const to = (e.key === 'ArrowUp' ? item?.previousElementSibling : item?.nextElementSibling)?.querySelector('button')
-                      to?.focus()
-                    }}
-                  >
-                    <span className={styles.panelNum}>{c.number}</span>
-                    <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} name={c.name} size="xs" />
-                    <span className={styles.panelText}>
-                      <span className={styles.panelName}>
-                        <span className={styles.panelNameText}>{c.name}</span>
-                        {c.favorite && <Icon name="starFill" size={12} />}
-                      </span>
-                      <span className={styles.panelTitle}>{p ? p.title : t('tv.nothing')}</span>
-                      {p && (
-                        <span className={styles.panelBar}>
-                          <span style={{ width: `${progressOf(p, now) * 100}%` }} />
-                        </span>
-                      )}
-                    </span>
-                    <ChannelArt program={p} width={96} optional className={styles.panelArt} />
-                  </button>
-                )
-              }}
-            />
-          </div>
+          {channelList}
         </aside>
       )}
-      </div>
     </div>
   )
 }

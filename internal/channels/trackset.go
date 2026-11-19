@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,11 @@ import (
 type Rendition struct {
 	Key, Name, Lang     string
 	Default, Autoselect bool
+	// what the NAME is made from, so it can be said in a viewer's language
+	// (Localized): the voice's track, or the subtitles' language (named)
+	track   *AudioTrack
+	subLang string
+	named   bool
 }
 
 // TrackSet is a channel run's renditions (audio-<n>.m3u8 is Audio[n],
@@ -137,10 +143,11 @@ func BuildSet(progs []Tracks, o PlanOptions) TrackSet {
 	var set TrackSet
 	ml := o.Lang
 	for _, k := range keys {
-		set.Audio = append(set.Audio, Rendition{Key: k, Name: audioRenditionName(ml, aggs[k]), Lang: bcp47(aggs[k].track.Lang)})
+		tr := aggs[k].track
+		set.Audio = append(set.Audio, Rendition{Key: k, Name: audioRenditionName(ml, aggs[k]), Lang: bcp47(tr.Lang), track: &tr, named: true})
 	}
 	if len(set.Audio) == 0 {
-		set.Audio = []Rendition{{Key: "", Name: i18n.TL(ml, "Звук"), Lang: "und"}}
+		set.Audio = []Rendition{{Key: "", Name: i18n.TL(ml, "Звук"), Lang: "und", named: true}}
 	}
 	subKeys := make([]string, 0, len(subAggs))
 	for k := range subAggs {
@@ -160,7 +167,7 @@ func BuildSet(progs []Tracks, o PlanOptions) TrackSet {
 		subKeys = subKeys[:SubCap]
 	}
 	for _, k := range subKeys {
-		set.Subs = append(set.Subs, Rendition{Key: k, Name: subName(ml, subAggs[k].sub.Lang), Lang: bcp47(subAggs[k].sub.Lang)})
+		set.Subs = append(set.Subs, Rendition{Key: k, Name: subName(ml, subAggs[k].sub.Lang), Lang: bcp47(subAggs[k].sub.Lang), subLang: subAggs[k].sub.Lang, named: true})
 	}
 	uniqueNames(set.Audio)
 	uniqueNames(set.Subs)
@@ -178,6 +185,36 @@ func BuildSet(progs []Tracks, o PlanOptions) TrackSet {
 		}
 	}
 	return set
+}
+
+// Localized is the set with its NAMEs in language lang (a viewer's
+// interface language): the master playlist a profile gets and the
+// programme entries of its guide name the renditions alike, in its
+// language. Keys, LANGUAGE, DEFAULT and order stay as they are, so the
+// renditions are the same ones whatever the language. A rendition made
+// elsewhere (no source kept) keeps its name.
+func (s TrackSet) Localized(lang string) TrackSet {
+	if lang == "" {
+		return s
+	}
+	out := TrackSet{Audio: slices.Clone(s.Audio), Subs: slices.Clone(s.Subs)}
+	for i := range out.Audio {
+		r := &out.Audio[i]
+		switch {
+		case r.track != nil:
+			r.Name = audioRenditionName(lang, &setAgg{track: *r.track})
+		case r.named && r.Key == "":
+			r.Name = i18n.TL(lang, "Звук")
+		}
+	}
+	for i := range out.Subs {
+		if r := &out.Subs[i]; r.named {
+			r.Name = subName(lang, r.subLang)
+		}
+	}
+	uniqueNames(out.Audio)
+	uniqueNames(out.Subs)
+	return out
 }
 
 // audioRenditionName is a rendition's NAME in the server's language ml: a Russian
@@ -390,4 +427,95 @@ func namesLanguage(title, lang string) bool {
 		n++
 	}
 	return n >= 5 && !strings.ContainsRune(string(t), ' ')
+}
+
+type nameLangKey struct{}
+
+// WithNameLanguage is ctx asking for rendition NAMEs in lang (the viewer's
+// interface language): Live.Playlist's master and ProgrammeTracks name
+// them so (TrackSet.Localized). Without it the run's own names stay.
+func WithNameLanguage(ctx context.Context, lang string) context.Context {
+	return context.WithValue(ctx, nameLangKey{}, lang)
+}
+
+func nameLanguage(ctx context.Context) string {
+	l, _ := ctx.Value(nameLangKey{}).(string)
+	return l
+}
+
+// TrackPrefs are a profile's audio and subtitle defaults («Мои языки»):
+// AudioLangs best first; SubMode off | foreign | always; SubLangs ([]: the
+// audio languages).
+type TrackPrefs struct {
+	AudioLangs []string
+	SubMode    string
+	SubLangs   []string
+}
+
+type trackPrefsKey struct{}
+
+// WithTrackPrefs is ctx asking for the master's DEFAULT renditions as the
+// profile p would pick them (TrackSet.WithDefaults).
+func WithTrackPrefs(ctx context.Context, p TrackPrefs) context.Context {
+	return context.WithValue(ctx, trackPrefsKey{}, p)
+}
+
+func trackPrefs(ctx context.Context) (TrackPrefs, bool) {
+	p, ok := ctx.Value(trackPrefsKey{}).(TrackPrefs)
+	return p, ok
+}
+
+// primary is a language tag's primary subtag, lower case ("pt-BR" → "pt").
+func primary(l string) string {
+	l, _, _ = strings.Cut(strings.ToLower(strings.TrimSpace(l)), "-")
+	l, _, _ = strings.Cut(l, "_")
+	return l
+}
+
+// WithDefaults is the set with DEFAULT where profile p would pick, so a
+// player that follows the master (AVPlayer, Media3, hls.js) starts in the
+// profile's languages, as a film does: audio — the first rendition in the
+// first of p's audio languages the set has (none: the set's own default);
+// subtitles — DEFAULT on the first rendition in p's subtitle languages
+// when p shows subtitles («always», or «foreign» with a default voice in
+// none of its languages), else on none (subtitles off). The renditions,
+// their names and order are unchanged.
+func (s TrackSet) WithDefaults(p TrackPrefs) TrackSet {
+	out := TrackSet{Audio: slices.Clone(s.Audio), Subs: slices.Clone(s.Subs)}
+	in := func(l string, langs []string) bool {
+		return slices.ContainsFunc(langs, func(x string) bool { return primary(x) == primary(l) })
+	}
+	for _, l := range p.AudioLangs {
+		k := slices.IndexFunc(out.Audio, func(r Rendition) bool { return primary(r.Lang) == primary(l) })
+		if k < 0 {
+			continue
+		}
+		for i := range out.Audio {
+			out.Audio[i].Default = i == k
+		}
+		out.Audio[k].Autoselect = true
+		break
+	}
+	for i := range out.Subs {
+		out.Subs[i].Default = false
+	}
+	voice := ""
+	if k := slices.IndexFunc(out.Audio, func(r Rendition) bool { return r.Default }); k >= 0 {
+		voice = out.Audio[k].Lang
+	}
+	show := p.SubMode == "always" || (p.SubMode == "foreign" && voice != "" && voice != "und" && !in(voice, p.AudioLangs))
+	if !show {
+		return out
+	}
+	langs := p.SubLangs
+	if len(langs) == 0 {
+		langs = p.AudioLangs
+	}
+	for _, l := range langs {
+		if k := slices.IndexFunc(out.Subs, func(r Rendition) bool { return primary(r.Lang) == primary(l) }); k >= 0 {
+			out.Subs[k].Default, out.Subs[k].Autoselect = true, true
+			break
+		}
+	}
+	return out
 }

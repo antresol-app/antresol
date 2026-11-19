@@ -4,7 +4,7 @@
 // Any number of entries with any names (up to 8 voices and 6 subtitle
 // languages): an entry is chosen by its rendition NAME; a long menu scrolls.
 import type { ChannelTrack } from '../../api/channels'
-import { Icon } from '../../components/Icon'
+import { IconButton } from '../../ui/IconButton'
 import { useT } from '../../i18n'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../../ui/Menu'
 import styles from './LivePlayer.module.css'
@@ -19,9 +19,11 @@ export interface LiveTrackMenuProps {
   onAudio: (entry: ChannelTrack) => void
   onSubtitles: (entry: ChannelTrack | null) => void
   onOpenChange?: (open: boolean) => void
+  /** Where the menu opens from its button (default: above it, to the left). */
+  placement?: 'top-end' | 'bottom-end'
 }
 
-export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, onSubtitles, onOpenChange }: LiveTrackMenuProps) {
+export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, onSubtitles, onOpenChange, placement = 'top-end' }: LiveTrackMenuProps) {
   const t = useT()
   const unknown = audio === undefined && subtitles === undefined
   // a cleaned voice-over is its voice-over with «Очищенный перевод» on (the film player's switch)
@@ -35,13 +37,11 @@ export function LiveTrackMenu({ audio, subtitles, audioName, subsName, onAudio, 
   return (
     <Menu
       label={t('tv.tracks')}
-      placement="top-end"
+      placement={placement}
       className={[styles.trackMenu, audio && audio.length > 0 ? styles.trackMenuTwo : ''].join(' ')}
       onOpenChange={onOpenChange}
       trigger={(p) => (
-        <button {...p} type="button" className={styles.tool} aria-label={t('tv.tracks')} title={t('tv.tracks')}>
-          <Icon name="captions" size={24} />
-        </button>
+        <IconButton {...p} icon="captions" label={t('tv.tracks')} size="sm" material="clear" />
       )}
     >
       {(close) =>

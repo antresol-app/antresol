@@ -79,6 +79,18 @@ type franchiseJSON struct {
 	// ChannelRemoved: its channel was deleted from «Управление каналами»
 	// (the generator leaves it until it is given back there).
 	ChannelRemoved bool `json:"channelRemoved,omitempty"`
+	// Untied: Wikidata ties none of its titles to a franchise (no item, an
+	// item of none, or not read yet): nothing could merge it with another.
+	Untied bool `json:"untied,omitempty"`
+}
+
+// franchiseEvidenceJSON: what the franchises could be merged by
+// (channels.FranchiseEvidence).
+type franchiseEvidenceJSON struct {
+	Wikidata bool `json:"wikidata"`
+	Titles   int  `json:"titles"`
+	Read     int  `json:"read"`
+	Tied     int  `json:"tied"`
 }
 
 // franchiseChans is where the franchises' channels are: the enabled one of a
@@ -135,14 +147,22 @@ func (a *channelsAPI) franchises(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chans := a.franchiseChannels(ctx)
+	ev, err := a.svc.Franchises.Evidence(ctx)
+	if err != nil {
+		internalErr(w, r, "franchises", err)
+		return
+	}
 	list := make([]franchiseJSON, 0, len(fs))
 	for _, f := range fs {
 		if len(f.Items) == 0 { // an order kept for titles that may come back
 			continue
 		}
-		list = append(list, a.franchiseOut(ctx, f, chans))
+		j := a.franchiseOut(ctx, f, chans)
+		j.Untied = !slices.ContainsFunc(f.Items, func(id int64) bool { return !ev.Untied[id] })
+		list = append(list, j)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": a.svc.Franchises.Status(ctx), "available": a.svc.Franchises.TMDB != nil, "franchises": list})
+	writeJSON(w, http.StatusOK, map[string]any{"status": a.svc.Franchises.Status(ctx), "available": a.svc.Franchises.TMDB != nil, "franchises": list,
+		"evidence": franchiseEvidenceJSON{Wikidata: ev.Wikidata, Titles: ev.Titles, Read: ev.Read, Tied: ev.Tied}})
 }
 
 // POST /api/channels/franchises/refresh: a pass now, whatever changed (202).

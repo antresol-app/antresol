@@ -946,18 +946,24 @@ export interface TasksView {
   workers: TaskProgress[]
 }
 
-/** GET /api/addons/helpers: an enabled addon's helper service, asked on its compose address. */
+/** GET /api/addons/helpers: an enabled addon's helper service, as the addon itself uses it (helpers.status) or asked by the server. */
 export interface HelperHealth {
   addon: string
   name: string
   /** Its compose address; '' when `custom` (the admin's own is never shown). */
   address: string
-  /** The admin's own address (ANTRESOL_<ADDON>_<HELPER>_URL) was asked. */
+  /** An address of the admin's is in use (a variable, or the addon's own settings). */
   custom?: boolean
+  /** Where the address comes from, when the addon told; absent when the server asked by itself. */
+  source?: 'override' | 'settings' | 'compose' | 'none'
   ok: boolean
   /** Why it does not answer. */
-  problem?: 'dns' | 'refused' | 'timeout' | 'status' | 'other'
+  problem?: 'dns' | 'refused' | 'timeout' | 'status' | 'auth' | 'unset' | 'other'
   error?: string
+  /** When the addon learnt it (RFC 3339). */
+  checkedAt?: string
+  /** The addon's own last real request, not a probe. */
+  live?: boolean
 }
 
 /** GET /api/admin/health/network: one service the server reaches out to. */

@@ -14,15 +14,15 @@
   border-radius: var(--r-playerbar);
   overflow: hidden;
   transform: translateX(-50%);
-  --glass-lift: var(--shadow-pop);
   transition:
     bottom var(--d-tabbar-spring) var(--ease-tabbar-spring),
     width var(--d-tabbar-spring) var(--ease-tabbar-spring),
     height var(--d-tabbar-spring) var(--ease-tabbar-spring);
 }
 /* The phone's tab bar folded on scroll (ui/TabBar): the bar takes the room
-   between its square and the search, in the bar's own shape (62 high, radius
-   22, the artwork 46 at radius 14), and keeps only play/pause. */
+   between its circle and the search, in the bar's own shape (--tabbar-height
+   high, a capsule, the artwork --tabbar-art, concentric), and keeps only
+   play/pause. */
 :root:has([data-bottom-bar][data-minimized]) .bar {
   bottom: var(--tabbar-bottom);
   width: calc(var(--tabbar-screen-w) - 2 * (var(--tabbar-inset) + var(--tabbar-height) + var(--tabbar-gap)));
@@ -65,9 +65,9 @@ button.info:focus-visible {
   flex: none;
   display: grid;
   place-items: center;
-  width: var(--control-h-md);
-  height: var(--control-h-md);
-  border-radius: var(--r-md);
+  width: var(--playerbar-art);
+  height: var(--playerbar-art);
+  border-radius: var(--r-playerbar-art);
   overflow: hidden;
   background: var(--fill-2);
   color: var(--label-3);
@@ -92,11 +92,11 @@ button.info:focus-visible {
   text-overflow: ellipsis;
 }
 .title {
-  font: var(--t-subhead-em);
+  font: var(--t-playerbar-title);
   letter-spacing: var(--track-text);
 }
 .subtitle {
-  font: var(--t-footnote);
+  font: var(--t-playerbar-subtitle);
   color: var(--label-2);
 }
 
@@ -121,6 +121,15 @@ button.info:focus-visible {
     background-color var(--d-fast) var(--ease-out),
     transform var(--d-fast) var(--ease-out);
 }
+/* iOS 26's accessory: small glyphs in a slim bar (the target stays 44) */
+.button svg {
+  width: var(--playerbar-glyph);
+  height: var(--playerbar-glyph);
+}
+.button[data-prominent] svg {
+  width: var(--playerbar-glyph-prominent);
+  height: var(--playerbar-glyph-prominent);
+}
 .button:active {
   transform: scale(0.9);
 }
@@ -134,18 +143,21 @@ button.info:focus-visible {
   }
 }
 
-/* a hairline of progress along the bottom edge, clipped by the capsule */
+/* a hairline of progress inside the capsule's bottom edge, clear of its
+   round ends (iOS 26's Now Playing accessory) */
 .progress {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
+  left: var(--playerbar-progress-inset);
+  right: var(--playerbar-progress-inset);
+  bottom: var(--playerbar-progress-bottom);
+  height: var(--playerbar-progress-h);
+  border-radius: var(--playerbar-progress-h);
   background: var(--fill-3);
   pointer-events: none;
 }
 .fill {
   display: block;
   height: 100%;
+  border-radius: inherit;
   background: var(--label-2);
 }

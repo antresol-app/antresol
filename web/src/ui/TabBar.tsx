@@ -156,7 +156,7 @@ export function TabBar({ label, items, accessory, expandLabel, className }: TabB
           className={cls(styles.accessory, 'glass-float glass-liquid')}
         >
           {/* 26: the system's search tab draws its magnifier about 22 pt across */}
-          <Icon name={accessory.icon} size={26} />
+          <Icon name={accessory.icon} size={22} />
         </Link>
       )}
     </nav>

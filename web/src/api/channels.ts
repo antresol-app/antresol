@@ -140,13 +140,18 @@ export interface Channel {
 /**
  * A category of the viewer's list: `ai:<code>` (the AI helper's, named in the
  * request's language), `source:<id>` (an external source, when there are two or
- * more), `group:<name>` (a playlist's group-title, an own channel's theme).
+ * more), `group:<name>` (a group of none of the topics). The server keeps the
+ * most common topics and groups only, one spelling each («Кино», «Фильмы» and
+ * «Movies» are one). `ai:adult` is exclusive: its channels are in no other
+ * category, nor in «Все» and «Избранное»; it comes last.
  */
 export interface ChannelCategory {
   id: string;
   name: string;
   kind: "ai" | "source" | "group";
   count: number;
+  /** Its channels are in no other list (the adult category). */
+  exclusive?: boolean;
 }
 
 export interface ChannelList {
@@ -399,10 +404,11 @@ export const restoreChannel = (id: number) =>
     "POST",
     `/api/channels/removed/${id}/restore`,
   );
-export const generateChannels = () =>
-  request<{ created: number; updated: number; disabled: number }>(
+/** Brings the automatic channels up to date; `reset` rebuilds them (deleted ones back, ones the library has not enough for dropped; made or edited ones stay). */
+export const generateChannels = (reset = false) =>
+  request<{ created: number; updated: number; dropped: number }>(
     "POST",
-    "/api/channels/generate",
+    reset ? "/api/channels/generate?reset=1" : "/api/channels/generate",
   );
 
 /** The web player's live stream of a channel. */
@@ -440,6 +446,16 @@ export interface Franchise {
   channelId?: number;
   /** Its channel was deleted in «Управление каналами»: it comes back only when given back there. */
   channelRemoved?: boolean;
+  /** Wikidata ties none of its titles to a franchise: nothing could merge it with another. */
+  untied?: boolean;
+}
+
+/** What the franchises could be merged by: Wikidata on, the library's titles, read in Wikidata, tied to a franchise there. */
+export interface FranchiseEvidence {
+  wikidata: boolean;
+  titles: number;
+  read: number;
+  tied: number;
 }
 
 export interface FranchiseStatus {
@@ -453,7 +469,7 @@ export interface FranchiseStatus {
 }
 
 export const getFranchises = (signal?: AbortSignal) =>
-  request<{ status: FranchiseStatus; available: boolean; franchises: Franchise[] }>(
+  request<{ status: FranchiseStatus; available: boolean; franchises: Franchise[]; evidence?: FranchiseEvidence }>(
     "GET",
     "/api/channels/franchises",
     undefined,

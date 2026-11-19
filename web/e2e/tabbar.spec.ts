@@ -77,15 +77,15 @@ test.describe('on the generated home page', () => {
         expect(m.tabs.map((t) => t.text)).toEqual(LABELS[lang])
         expect(m.cut).toEqual([])
         for (let i = 1; i < m.labels.length; i++) expect(m.labels[i]!.left - m.labels[i - 1]!.right).toBeGreaterThanOrEqual(1.5)
-        // 62 high, 16 from the sides (8 at 320, gap 8), 26 over the bottom edge, radius 28 (Apple's continuous 22)
+        // 58 high, 16 from the sides (8 at 320, gap 8), 26 over the bottom edge, a capsule (radius 29)
         const side = width < 360 ? 8 : 16
         const gap = width < 360 ? 8 : 10
-        expect(m.capsule.height).toBe(62)
+        expect(m.capsule.height).toBe(58)
         expect(m.capsule.left).toBe(side)
         expect(m.screen.height - m.capsule.bottom).toBe(26)
-        expect(m.capsule.radius).toBe('28px')
-        // the search: a 62 square of radius 28 (Apple's continuous 22), 10 beside the capsule, 16 from the edge
-        expect([m.search.width, m.search.height, m.search.radius]).toEqual([62, 62, '28px'])
+        expect(m.capsule.radius).toBe('29px')
+        // the search: a 58 circle, 10 beside the capsule, 16 from the edge
+        expect([m.search.width, m.search.height, m.search.radius]).toEqual([58, 58, '29px'])
         expect(m.search.left - m.capsule.right).toBe(gap)
         expect(m.screen.width - m.search.right).toBe(side)
         // equal tabs inside the 4 pt padding; the lens is the current one's
@@ -93,7 +93,7 @@ test.describe('on the generated home page', () => {
         for (const t of m.tabs) expect(t.width).toBeCloseTo(w, 1)
         expect(m.tabs[0]!.left).toBeCloseTo(m.capsule.left + 4, 1)
         expect(m.tabs.map((t) => t.width).every((w) => w >= 44 || width < 360)).toBe(true)
-        expect(m.lens).toMatchObject({ height: 54 })
+        expect(m.lens).toMatchObject({ height: 50 })
         expect(m.lens!.left).toBeCloseTo(m.current.left, 0)
         expect(m.lens!.width).toBeCloseTo(m.current.width, 0)
         expect(m.current.text).toBe(LABELS[lang][1])
@@ -121,8 +121,8 @@ test.describe('on the generated home page', () => {
     await expect(bar).toHaveAttribute('data-minimized')
     await page.waitForTimeout(700)
     let m = await measure(page)
-    // only the width folds: everything stays 62 high at radius 28 (Apple's continuous 22)
-    expect([m.capsule.width, m.capsule.height, m.capsule.radius, m.search.width, m.search.height]).toEqual([62, 62, '28px', 62, 62])
+    // only the width folds: everything stays 58 high and round
+    expect([m.capsule.width, m.capsule.height, m.capsule.radius, m.search.width, m.search.height]).toEqual([58, 58, '29px', 58, 58])
     expect(m.screen.height - m.capsule.bottom).toBe(26)
     // the square shows the current tab's glyph and opens the bar
     const unfold = page.getByRole('button', { name: 'Показать вкладки' })
@@ -135,7 +135,7 @@ test.describe('on the generated home page', () => {
     await expect(bar).not.toHaveAttribute('data-minimized')
     await page.waitForTimeout(700)
     m = await measure(page)
-    expect([m.capsule.height, m.search.width]).toEqual([62, 62])
+    expect([m.capsule.height, m.search.width]).toEqual([58, 58])
 
     await page.mouse.wheel(0, 900)
     await expect(bar).toHaveAttribute('data-minimized')
@@ -177,7 +177,7 @@ test.describe('on the generated home page', () => {
     await expect(bar).toHaveAttribute('data-minimized')
     // in place at once: no settling wait needed
     const m = await measure(page)
-    expect([m.capsule.width, m.capsule.height]).toEqual([62, 62])
+    expect([m.capsule.width, m.capsule.height]).toEqual([58, 58])
   })
 
   test('keyboard: the tabs and the search take focus with a visible ring; the current tab is aria-current', async ({ page, browserName }) => {
@@ -240,8 +240,8 @@ test.describe('«Медиа»', () => {
     await page.waitForTimeout(700)
     const m = await measure(page)
     const p = (await mini.boundingBox())!
-    expect(p.height).toBe(62)
-    expect(await mini.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('28px')
+    expect(p.height).toBe(58)
+    expect(await mini.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('29px')
     expect(p.y + p.height).toBe(m.capsule.bottom)
     expect(p.x - m.capsule.right).toBe(10)
     expect(m.search.left - (p.x + p.width)).toBe(10)

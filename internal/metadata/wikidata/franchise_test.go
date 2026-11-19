@@ -192,3 +192,32 @@ func TestEntitiesClaimsBatch(t *testing.T) {
 		t.Fatalf("batches %v, want %v", sizes, want)
 	}
 }
+
+// An answer cut at the size limit is asked again in halves (a batch of
+// heavy items: a big franchise's own item, a much-awarded film).
+func TestEntitiesCutAnswerSplit(t *testing.T) {
+	var sizes []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ids := strings.Split(r.URL.Query().Get("ids"), "|")
+		sizes = append(sizes, len(ids))
+		if len(ids) > 2 {
+			w.Write([]byte(`{"entities":{"Q1":{`)) // cut
+			return
+		}
+		var parts []string
+		for _, id := range ids {
+			parts = append(parts, `"`+id+`":{"claims":{}}`)
+		}
+		w.Write([]byte(`{"entities":{` + strings.Join(parts, ",") + `}}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Limiter: &metadata.Limiter{}}
+	ids := []string{"Q1", "Q2", "Q3", "Q4", "Q5"}
+	got, err := c.entities(context.Background(), ids, "claims")
+	if err != nil || len(got) != 5 {
+		t.Fatalf("%v %v (requests %v)", got, err, sizes)
+	}
+	if want := []int{5, 2, 3, 1, 2}; !slices.Equal(sizes, want) {
+		t.Fatalf("requests %v, want %v", sizes, want)
+	}
+}

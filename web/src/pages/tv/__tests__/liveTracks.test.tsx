@@ -183,14 +183,14 @@ describe('the live player’s tracks (hls.js)', () => {
 })
 
 describe('the default voice', () => {
-  it('the device’s language before the profile’s', async () => {
+  it('the profile’s language before the device’s', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
     langs = ['en-GB', 'ru']
     mount('/tv/2')
     await screen.findByText('Канал 2')
     await waitFor(() => expect(hlsState.last?.audioTracks.length).toBe(2))
-    // the profile says Russian; the browser is English: the original English
-    await waitFor(() => expect(hlsState.last?.audioTrack).toBe(0))
+    // the profile says Russian; the browser is English: Russian, as for a film
+    await waitFor(() => expect(hlsState.last?.audioTrack).toBe(1))
   })
   it('no device language present: the profile’s', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')

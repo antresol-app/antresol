@@ -44,6 +44,7 @@ var CategoryList = []Category{
 	{"regional", "Региональные"},
 	{"general", "Общие"},
 	{"shopping", "Магазины"},
+	{AdultCode, "Для взрослых"},
 }
 
 // CategoryName is a code's name (a catalog key; "" for an unknown code).

@@ -20,14 +20,11 @@ const (
 	MinTitles   = 6  // movies or series of a genre, a decade, kids…
 	MinEpisodes = 8  // a series' own channel
 	MaxSeries   = 30 // series channels at most (most episodes first)
-	// DefaultMinRuntime: a generated channel needs at least this much to
-	// play, or it repeats itself within a couple of days.
+	// DefaultMinRuntime: a generated channel of every kind (a category, a
+	// series, a franchise, a profile's library) needs at least this much to
+	// play, or it repeats itself within a couple of days: a channel of three
+	// or six films is not worth a number.
 	DefaultMinRuntime = 48 * time.Hour
-	// DefaultFranchiseMinRuntime: what a franchise channel needs. A
-	// franchise is a marathon whose loop is the point: 48 h would leave
-	// almost none (the Harry Potter films are about 19 h); 5 h keeps a
-	// trilogy and drops a lone pair of short films.
-	DefaultFranchiseMinRuntime = 5 * time.Hour
 	// MinFranchiseTitles: a franchise channel has at least these many titles.
 	MinFranchiseTitles = 2
 )
@@ -71,11 +68,9 @@ type planned struct {
 type Generator struct {
 	Store   *Store
 	Catalog Catalog
-	// MinRuntime: what a generated channel needs to play (0: DefaultMinRuntime).
+	// MinRuntime: what a generated channel of any kind needs to play (0:
+	// DefaultMinRuntime).
 	MinRuntime time.Duration
-	// FranchiseMinRuntime: what a franchise channel needs (0:
-	// DefaultFranchiseMinRuntime).
-	FranchiseMinRuntime time.Duration
 
 	sync sync.Mutex // one Sync at a time (a refresh and an admin's request overlap)
 }
@@ -178,7 +173,8 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 			Rules{Kinds: []string{library.KindMovie}, YearFrom: d, YearTo: d + 9})
 	}
 	// franchises in their order (the background pass's, franchise_pass.go)
-	if err := g.planFranchises(ctx, append(append([]Unit{}, movies...), series...), progs, add); err != nil {
+	inFranchise, err := g.planFranchises(ctx, append(append([]Unit{}, movies...), series...), progs, minRuntime, add)
+	if err != nil {
 		return nil, err
 	}
 	kids := Rules{Genres: kidsGenres, MaxRating: "6+", SkipSegments: true}
@@ -200,6 +196,9 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		if runtime([]Unit{u}) < minRuntime {
 			continue // a short series repeats within days: no channel of its own
 		}
+		if inFranchise[u.ID] {
+			continue // its franchise's channel plays it
+		}
 		n++
 		add("series:"+strconv.FormatInt(u.ID, 10), u.Title, CatSeries, 100, Rules{Titles: []int64{u.ID}, Order: OrderOrdered, SkipSegments: true})
 	}
@@ -208,18 +207,18 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	playable := map[int64]bool{}
+	playable := map[int64]Unit{}
 	for _, u := range append(append([]Unit{}, movies...), series...) {
-		playable[u.ID] = true
+		playable[u.ID] = u
 	}
 	for _, o := range owners {
-		k := 0
+		var mine []Unit
 		for _, id := range o.items {
-			if playable[id] {
-				k++
+			if u, ok := playable[id]; ok {
+				mine = append(mine, u)
 			}
 		}
-		if k >= MinTitles {
+		if enough(mine) {
 			p := planned{Channel: Channel{Name: "Моя медиатека", Category: CatMine, AutoKey: "mine:" + strconv.FormatInt(o.uid, 10),
 				UserID: o.uid, Rules: Rules{LibraryUser: o.uid}, Enabled: true}, from: 200}
 			out = append(out, p)
@@ -229,18 +228,16 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 }
 
 // planFranchises adds a channel of each franchise with at least
-// MinFranchiseTitles playable titles and FranchiseMinRuntime of them: its
-// titles in the effective order (an admin's order kept), played in order,
-// episodes without their openings and credits.
-func (g *Generator) planFranchises(ctx context.Context, units []Unit, progs map[int64][]Prog, add func(key, name, cat string, from int, r Rules)) error {
+// MinFranchiseTitles playable titles and min of them: its titles in the
+// effective order (an admin's order kept), played in order, episodes without
+// their openings and credits. It returns the titles those channels play: a
+// series of a franchise gets no channel of its own.
+func (g *Generator) planFranchises(ctx context.Context, units []Unit, progs map[int64][]Prog, min time.Duration, add func(key, name, cat string, from int, r Rules)) (map[int64]bool, error) {
 	fs, err := g.Store.Franchises(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	min := g.FranchiseMinRuntime
-	if min == 0 {
-		min = DefaultFranchiseMinRuntime
-	}
+	covered := map[int64]bool{}
 	playable := map[int64]bool{}
 	for _, u := range units {
 		playable[u.ID] = true
@@ -267,8 +264,11 @@ func (g *Generator) planFranchises(ctx context.Context, units []Unit, progs map[
 			name = franchiseFallbackName(f.Key)
 		}
 		add("franchise:"+f.Key, name, CatFranchises, 45, Rules{Picks: picks, Order: OrderOrdered, SkipSegments: true})
+		for _, p := range picks {
+			covered[p.ID] = true
+		}
 	}
-	return nil
+	return covered, nil
 }
 
 // franchiseFallbackName is the channel name of a franchise whose own name
@@ -323,17 +323,35 @@ func (g *Generator) owners(ctx context.Context) ([]owner, error) {
 
 // SyncResult counts what Sync did.
 type SyncResult struct {
-	Created, Updated, Disabled int
+	Created, Updated, Dropped int
 }
 
 // Sync makes the planned generated channels that are missing, brings the
-// ones nobody edited up to date (and enables them), and disables the
-// unedited ones the library no longer has content for. Channels an admin
-// edited are left alone, and so are the ones an owner deleted
-// (channel_removed): their keys are skipped until they are given back.
+// ones nobody edited up to date (and enables them), and drops the unedited
+// ones the library no longer has enough for (a switched-off channel nobody
+// asked for is clutter: it comes back by itself once the library has
+// enough). Channels an admin edited are left alone, and so are the ones an
+// owner deleted (channel_removed): their keys are skipped until they are
+// given back.
 func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 	g.sync.Lock()
 	defer g.sync.Unlock()
+	return g.syncLocked(ctx)
+}
+
+// Reset rebuilds the generated set: every deleted generated channel is given
+// back (channel_removed is cleared), and Sync then makes what the library has
+// enough for and drops the rest. Channels an admin made or edited stay.
+func (g *Generator) Reset(ctx context.Context) (SyncResult, error) {
+	g.sync.Lock()
+	defer g.sync.Unlock()
+	if _, err := g.Store.DB.ExecContext(ctx, `DELETE FROM channel_removed`); err != nil {
+		return SyncResult{}, err
+	}
+	return g.syncLocked(ctx)
+}
+
+func (g *Generator) syncLocked(ctx context.Context) (SyncResult, error) {
 	var res SyncResult
 	plan, err := g.Plan(ctx)
 	if err != nil {
@@ -396,15 +414,14 @@ func (g *Generator) Sync(ctx context.Context) (SyncResult, error) {
 		}
 	}
 	for key, c := range have {
-		if !want[key] && !c.Edited && c.Enabled {
-			c.Enabled = false
-			if _, err := g.Store.Update(ctx, c); err != nil {
+		if !want[key] && !c.Edited {
+			if err := g.Store.Drop(ctx, c.ID); err != nil {
 				if errors.Is(err, ErrNotFound) { // deleted while this pass ran
 					continue
 				}
 				return res, err
 			}
-			res.Disabled++
+			res.Dropped++
 		}
 	}
 	return res, nil

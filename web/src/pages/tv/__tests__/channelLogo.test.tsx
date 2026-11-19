@@ -3,7 +3,7 @@
 // dead logos hid the guide's).
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
-import { ChannelLogo } from '../ChannelLogo'
+import { ChannelLogo, channelTone, TILE_TONES } from '../ChannelLogo'
 
 describe('ChannelLogo', () => {
   it('falls back to the guide icon, then to nothing', () => {
@@ -18,5 +18,16 @@ describe('ChannelLogo', () => {
   it('keeps a slot when asked', () => {
     const { container } = render(<ChannelLogo url={undefined} fallback={undefined} reserve />)
     expect(container.querySelector('[data-logo-slot]')).not.toBeNull()
+  })
+  it('a channel without a logo gets a coloured tile of its own: its initials, the same colour everywhere', () => {
+    const { container } = render(<ChannelLogo name="Documentaries" />)
+    const tile = container.querySelector('[data-channel-initials]')!
+    expect(tile.textContent).toBe('D')
+    expect(container.querySelector('img')).toBeNull()
+    expect(tile.getAttribute('data-channel-tone')).toBe(String(channelTone('Documentaries')))
+    expect(channelTone('Documentaries')).toBe(channelTone(' documentaries '))
+    const tones = new Set(['All Series', 'Documentaries', 'Kids', 'Movies', 'My Library', 'Comedy', 'Drama'].map(channelTone))
+    expect([...tones].every((t) => t >= 1 && t <= TILE_TONES)).toBe(true)
+    expect(tones.size).toBeGreaterThan(2)
   })
 })

@@ -40,14 +40,19 @@ type FranchiseFacts interface {
 
 // Limits of a pass.
 const (
-	franchiseAlgo        = "3" // a new value recomputes every library once (2: franchises from Wikidata's anchors; 3: Wikidata's facts actually read, see wikidata.claimsBatch)
+	franchiseAlgo        = "4" // a new value recomputes every library once (2: franchises from Wikidata's anchors; 3: Wikidata's facts actually read, see wikidata.claimsBatch; 4: facts in small cached batches, firm franchise members)
 	franchiseEvery       = 6 * time.Hour
 	franchisePassTimeout = 15 * time.Minute
 	franchiseAskTimeout  = 120 * time.Second
-	franchiseWikiTimeout = 90 * time.Second // a batch of 50 titles: the search, their claims and their anchors' (a few dozen requests)
-	franchiseWikiTTL     = 30 * 24 * time.Hour
-	maxFranchiseAsks     = 40 // clusters the model is asked about in a pass
-	maxFranchiseMembers  = 60
+	franchiseWikiTimeout = 90 * time.Second // a batch of franchiseWikiBatch titles: the search, their claims and their anchors' (a dozen requests, megabytes)
+	// franchiseWikiBatch: titles per TitleFacts call. Each call's facts are
+	// cached at once: a slow link or a Wikidata hiccup halfway through a big
+	// library loses one small batch, and the next pass goes on from there
+	// (50 a call made one slow batch fail every pass from its start).
+	franchiseWikiBatch  = 10
+	franchiseWikiTTL    = 30 * 24 * time.Hour
+	maxFranchiseAsks    = 40 // clusters the model is asked about in a pass
+	maxFranchiseMembers = 60
 )
 
 // Franchises works the library's franchises out in the background and
@@ -436,7 +441,7 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wi
 			}
 		}
 		for len(missing) > 0 && !failed {
-			n := min(len(missing), 50)
+			n := min(len(missing), franchiseWikiBatch)
 			part := missing[:n]
 			missing = missing[n:]
 			wctx, cancel := context.WithTimeout(ctx, franchiseWikiTimeout)
@@ -466,4 +471,50 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wi
 		}
 	}
 	return out, wikiErr
+}
+
+// FranchiseEvidence is what the last passes had to merge franchises by,
+// for the admin: whether Wikidata is on, how many of the library's titles
+// (with a TMDB id) it was read for and how many it ties to a franchise, and
+// the titles it ties to none (no item, or an item of no franchise): their
+// franchise is their TMDB collection alone.
+type FranchiseEvidence struct {
+	Wikidata bool
+	Titles   int
+	Read     int
+	Tied     int
+	Untied   map[int64]bool
+}
+
+// Evidence reads FranchiseEvidence from the facts cache (wikidata_facts).
+func (f *Franchises) Evidence(ctx context.Context) (FranchiseEvidence, error) {
+	ev := FranchiseEvidence{Wikidata: f != nil && f.Wiki != nil, Untied: map[int64]bool{}}
+	if f == nil || f.Store == nil {
+		return ev, nil
+	}
+	titles, err := f.titles(ctx)
+	if err != nil {
+		return ev, err
+	}
+	ev.Titles = len(titles)
+	for _, t := range titles {
+		wk := "movie"
+		if t.Kind == library.KindSeries {
+			wk = "tv"
+		}
+		var data string
+		err := f.Store.DB.QueryRowContext(ctx, `SELECT data FROM wikidata_facts WHERE kind=? AND tmdb_id=?`, wk, t.TMDB).Scan(&data)
+		if err != nil {
+			ev.Untied[t.ID] = true
+			continue
+		}
+		ev.Read++
+		var x wikidata.TitleFacts
+		if data != "" && json.Unmarshal([]byte(data), &x) == nil && len(x.Anchors) > 0 {
+			ev.Tied++
+		} else {
+			ev.Untied[t.ID] = true
+		}
+	}
+	return ev, nil
 }

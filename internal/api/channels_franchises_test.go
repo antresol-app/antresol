@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/channels"
 )
@@ -17,7 +18,8 @@ func TestFranchisesAPI(t *testing.T) {
 		id, _ := e.movie(n, "", n)
 		ids = append(ids, id)
 	}
-	e.withDuration() // 5 × 90 min: over the franchise minimum with one hidden
+	e.withDuration() // 5 × 90 min: over this test's minimum with one hidden
+	svc.Generator.MinRuntime = 5 * time.Hour
 	other, _ := e.movie("Чужой", "", "x")
 	items, _ := json.Marshal(ids)
 	if _, err := e.db.Exec(`INSERT INTO franchises (key, name, source, items_json, updated_at) VALUES ('c10', 'Сага', 'tmdb', ?, 0)`, string(items)); err != nil {

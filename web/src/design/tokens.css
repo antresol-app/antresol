@@ -151,9 +151,12 @@
      of a phone (the tab bar, its search, the player bar). iOS 26 blurs
      these far harder than a sidebar: titles sliding underneath must not be
      readable through the labels, while their colour still shows. */
-  --glass-fill-float: rgba(30, 30, 36, 0.66);
-  --glass-blur-float: 40px;
+  --glass-fill-float: rgba(36, 36, 40, 0.52);
+  --glass-blur-float: 22px;
   --glass-saturate: 1.8;
+  /* a slight dim of what is behind the floating bars, so white labels hold
+     over bright artwork without a darker tint */
+  --glass-brightness-float: 0.92;
   --glass-rim: inset 1px 1px 0 -0.5px rgba(255, 255, 255, 0.28), inset -1px -1px 0 -0.5px rgba(255, 255, 255, 0.1);
   --glass-edge: 0 0 0 0.5px rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -172,19 +175,23 @@
      --liquid-stretch is how far the selected tab's droplet stretches along
      its way to the next tab (and squashes across it) per tab it passes, up
      to --liquid-stretch-max. */
+  /* iOS 26 frosted: a thin specular edge lit from the top left (its
+     reflection at the bottom right), fading to almost nothing along the
+     sides, never a grey outline; a soft inner light; no hairline border */
   --liquid-specular: linear-gradient(
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0.16) 18%,
-    rgba(255, 255, 255, 0.04) 45%,
-    rgba(255, 255, 255, 0.06) 70%,
+    150deg,
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0.12) 25%,
+    rgba(255, 255, 255, 0.04) 50%,
+    rgba(255, 255, 255, 0.08) 75%,
     rgba(255, 255, 255, 0.3)
   );
-  --liquid-rim-w: 1px;
-  --liquid-rim:
-    inset 0 1px 1px -0.5px rgba(255, 255, 255, 0.22), inset 0 -1px 1px -0.5px rgba(255, 255, 255, 0.1), inset 0 0 8px rgba(255, 255, 255, 0.07),
-    inset 0 -10px 16px -12px rgba(255, 255, 255, 0.09);
-  --liquid-sheen: linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 55%);
-  --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08) 30%, rgba(255, 255, 255, 0.03) 60%, rgba(255, 255, 255, 0.2));
+  --liquid-rim-w: 0.6px;
+  --liquid-rim: inset 0 0 8px rgba(255, 255, 255, 0.05);
+  --liquid-border: transparent;
+  --liquid-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  --liquid-sheen: none;
+  --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 40%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.05));
   --liquid-bezel: 14px;
   --liquid-refraction: 10px;
   --liquid-rim-blur: 1.5px;
@@ -285,6 +292,9 @@
   --t-tile: 600 11px / 1.2 var(--font-text);
   /* a toast's message; a player bar's title */
   --t-toast: 500 14px / 1.3 var(--font-text);
+  /* the player bar (ui/PlayerBar, iOS 26's Now Playing accessory) */
+  --t-playerbar-title: 600 14px / 1.2 var(--font-text);
+  --t-playerbar-subtitle: 400 12px / 1.25 var(--font-text);
   --t-subhead-em: 600 15px / 1.25 var(--font-text);
   /* a macOS alert: bold title, small message, small buttons */
   --t-alert-title: 700 14px / 1.3 var(--font-text);
@@ -348,7 +358,7 @@
      it covers (only the home indicator's on wide screens). The player bar
      (ui/PlayerBar) and toasts (ui/Toast) stack above it; --page-end is the
      room a page leaves under its content. */
-  --tabbar-item-h: 54px;
+  --tabbar-item-h: 50px;
   --tabbar-pad: var(--s-1);
   --tabbar-height: calc(var(--tabbar-item-h) + 2 * var(--tabbar-pad));
   --tabbar-margin: 26px;
@@ -356,34 +366,40 @@
   --tabbar-inset: 16px;
   /* between the tabs' capsule and the search beside it */
   --tabbar-gap: 10px;
-  /* A rounded rectangle, not a pill (each tab of the Apple TV app is one).
-     Apple draws it with a continuous corner of 22, whose curve starts
-     further along the side and reads rounder than a circular CSS radius of
-     the same value: 22 × 1.25 here looks like it. Every part of the bar is
-     62 high and takes this radius (the capsule, the folded square, the
-     search, the player bar in the bar's row). */
-  --r-tabbar: 28px;
+  /* A capsule (iOS 26: the tab bar, its search circle and the folded bar
+     are all fully round). Every part of the bar is 58 high and takes this
+     radius (the capsule, the folded circle, the search, the player bar in
+     the bar's row). */
+  --r-tabbar: calc(var(--tabbar-height) / 2);
   /* the selected tab's lens, concentric: the bar's radius less its padding */
   --r-tabbar-lens: calc(var(--r-tabbar) - var(--tabbar-pad));
-  --tabbar-lens-fill: rgba(255, 255, 255, 0.13);
-  --tabbar-lens-rim: inset 0 0.5px 0 rgba(255, 255, 255, 0.25);
+  /* a quiet lighter glass, no rim of its own (iOS 26 frosted) */
+  --tabbar-lens-fill: rgba(255, 255, 255, 0.12);
+  --tabbar-lens-rim: none;
   /* the screen the bar spans (vw, not the layout viewport; a pretend
      screen in the gallery sets its own) */
   --tabbar-screen-w: 100vw;
   /* the player bar's artwork while it sits in the folded tab bar's row */
-  --tabbar-art: 46px;
-  /* concentric with the bar: its radius less the (62 − 46) / 2 around the art */
+  --tabbar-art: 40px;
+  /* concentric with the bar: its radius less the (58 − 40) / 2 around the art */
   --r-tabbar-art: calc(var(--r-tabbar) - (var(--tabbar-height) - var(--tabbar-art)) / 2);
-  /* A tab's glyph box. The system tab bar (iOS 26, measured on the native
-     app at 402 pt) draws its symbols about 27 pt across; a 24 box leaves
-     these solid glyphs (18 of the 24) visibly smaller beside it. */
-  --tabbar-glyph: 28px;
+  /* A tab's glyph box: iOS 26's tab bar symbols, about 24 pt */
+  --tabbar-glyph: 24px;
   /* the selected tab's glyph and label: the app mark's violet, not the
      controls' blue --accent (the tab bar is the brand's place, as the
      Apple TV app's is its white) */
   --tabbar-selected: #a78bfa;
   --bottom-bar-space: env(safe-area-inset-bottom);
-  --playerbar-h: 60px;
+  /* the player bar: iOS 26's Now Playing accessory, a slim capsule */
+  --playerbar-h: 48px;
+  --playerbar-art: 32px;
+  --r-playerbar-art: var(--r-md);
+  --playerbar-glyph: 18px;
+  --playerbar-glyph-prominent: 22px;
+  /* its progress: a hairline inside the capsule, clear of the round ends */
+  --playerbar-progress-h: 1.5px;
+  --playerbar-progress-inset: calc(var(--r-playerbar) - var(--s-1));
+  --playerbar-progress-bottom: 3px;
   --playerbar-max-w: 440px;
   --playerbar-bottom: calc(var(--bottom-bar-space) + var(--s-4));
   --toast-max-w: 440px;
@@ -422,7 +438,7 @@
   --r-group: 14px; /* cards, grouped sections, menus */
   --r-sheet: 20px;
   --r-pill: 999px;
-  --r-playerbar: 18px;
+  --r-playerbar: calc(var(--playerbar-h) / 2);
   /* a window drawn in the page (Files' Finder window) */
   --r-window: 16px;
 
@@ -570,14 +586,18 @@
     --label-4: rgba(235, 235, 245, 0.4);
     --glass-fill: rgba(28, 28, 32, 0.92);
     --glass-fill-strong: rgba(28, 28, 32, 0.96);
-    --glass-fill-float: rgba(28, 28, 32, 0.94);
+    /* the floating bars stay glass: a denser frost, a clear but thin edge */
+    --glass-fill-float: rgba(24, 24, 28, 0.78);
+    --glass-brightness-float: 0.85;
     --glass-fill-clear: rgba(28, 28, 32, 0.85);
     --glass-border: rgba(255, 255, 255, 0.3);
     --glass-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
-    /* Liquid Glass: a plain bright rim, no sheen, nothing bent */
-    --liquid-specular: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6));
-    --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6));
-    --liquid-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    /* Liquid Glass: an even, defined edge (not a thick grey ring), no
+       sheen, nothing bent; the selected tab a brighter capsule */
+    --liquid-specular: linear-gradient(rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.45));
+    --liquid-lens-specular: linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3));
+    --liquid-rim: inset 0 0 8px rgba(255, 255, 255, 0.04);
+    --tabbar-lens-fill: rgba(255, 255, 255, 0.2);
     --liquid-sheen: none;
     --liquid-refraction: 0px;
     --surface-grouped-border: rgba(255, 255, 255, 0.3);

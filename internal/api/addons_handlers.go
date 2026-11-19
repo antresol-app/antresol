@@ -133,6 +133,8 @@ type addonsAPI struct {
 	maxHeight func(*http.Request) int
 	// public: the address in force (nil: info's PublicURL as built)
 	public *publicurl.Address
+	// hooks: the addons' hooks (helpers.status of «Состояние»; nil: none)
+	hooks *addons.Hooks
 }
 
 func newAddonsAPI(deps Deps) *addonsAPI {
@@ -141,6 +143,7 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 		inputs: deps.AddonInputs, notify: deps.Notify, imports: deps.PlaylistImport}
 	a.maxHeight = func(r *http.Request) int { return remoteMaxHeight(&deps, r) }
 	a.public = deps.PublicAddress
+	a.hooks = deps.AddonHooks
 	if deps.Tracking != nil && deps.Tracking.Store != nil {
 		a.trackStore, a.trackKick = deps.Tracking.Store, deps.Tracking.Kick
 	}

@@ -193,11 +193,11 @@ type channelJSON struct {
 
 	// LogoURL: the uploaded logo (absent: none); PickInfo: the picks
 	// described, for the editor (channels_fine.go)
-	LogoURL  string              `json:"logoUrl,omitempty"`
-	LogoAuto bool                `json:"logoAuto,omitempty"` // the logo was found by the server (channels/logo_auto.go)
+	LogoURL  string `json:"logoUrl,omitempty"`
+	LogoAuto bool   `json:"logoAuto,omitempty"` // the logo was found by the server (channels/logo_auto.go)
 	// LogoAlt: an external channel's guide icon when LogoURL is another
 	// one (its tvg-logo): shown when that one does not load
-	LogoAlt string `json:"logoAlt,omitempty"`
+	LogoAlt  string              `json:"logoAlt,omitempty"`
 	PickInfo []channels.PickInfo `json:"pickInfo,omitempty"`
 
 	// External: a channel of an external playlist (internal/iptv); Stream
@@ -287,9 +287,12 @@ func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.E
 // withTracks fills the renditions of channel ch's programme on air at now
 // and the next one (the first two from now on), labelled in the viewer's
 // language: those of the run's track set (or the set it would have now)
-// the programme really has.
-func (a *channelsAPI) withTracks(ctx context.Context, ch int64, ps []programJSON, now time.Time) {
+// the programme really has. Their NAMEs are the profile's master
+// playlist's (live: both in the profile's interface language).
+func (a *channelsAPI) withTracks(ctx context.Context, u auth.User, ch int64, ps []programJSON, now time.Time) {
 	lang := i18n.FromContext(ctx)
+	// the NAMEs as this profile's master playlist has them (its interface language)
+	ctx = channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
 	n := 0
 	for i := range ps {
 		p := &ps[i]
@@ -386,7 +389,7 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			if brief {
 				ps = briefPrograms(ps)
 			} else {
-				a.withTracks(ctx, c.ID, ps, now)
+				a.withTracks(ctx, u, c.ID, ps, now)
 			}
 			if u.IsKid && len(ps) > 0 && ps[0].Start.After(now) {
 				// what is on air was left out for the kid: only what is next
@@ -399,7 +402,7 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 					j.Next = &ps[1]
 				}
 			}
-			j.Categories = ownCats(j.Category)
+			j.Categories = ownCats(c, j.Category)
 		} else {
 			j = a.withPicks(ctx, j, c)
 		}
@@ -436,6 +439,9 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			lists[i] = j.Categories
 		}
 		cats = a.categoriesOf(r, lists, names, pos)
+		for i := range out {
+			out[i].Categories = lists[i]
+		}
 	}
 	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid, "favoritesFirst": prefs.FavoritesFirst}
 	if cats != nil {
@@ -510,7 +516,7 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "guide", err)
 		return
 	}
-	a.withTracks(r.Context(), c.ID, ps, now)
+	a.withTracks(r.Context(), u, c.ID, ps, now)
 	if ps == nil {
 		ps = []programJSON{}
 	}
@@ -871,9 +877,15 @@ func (a *channelsAPI) restore(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"restored": restored})
 }
 
-// POST /api/channels/generate (admin): the generated channels now.
+// POST /api/channels/generate (admin): the generated channels now;
+// ?reset=1 rebuilds the generated set (deleted ones given back, the ones the
+// library has not enough for dropped; channels an admin made or edited stay).
 func (a *channelsAPI) generate(w http.ResponseWriter, r *http.Request) {
-	res, err := a.svc.Generator.Sync(r.Context())
+	sync := a.svc.Generator.Sync
+	if r.URL.Query().Get("reset") == "1" {
+		sync = a.svc.Generator.Reset
+	}
+	res, err := sync(r.Context())
 	if err != nil {
 		internalErr(w, r, "channels generate", err)
 		return
@@ -881,7 +893,7 @@ func (a *channelsAPI) generate(w http.ResponseWriter, r *http.Request) {
 	if err := a.svc.Refresh(r.Context()); err != nil {
 		log.Printf("channels: refresh: %v", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"created": res.Created, "updated": res.Updated, "disabled": res.Disabled})
+	writeJSON(w, http.StatusOK, map[string]int{"created": res.Created, "updated": res.Updated, "dropped": res.Dropped})
 }
 
 func (a *channelsAPI) iptvBase(r *http.Request, tok string) string {
@@ -963,6 +975,18 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 		}
 	}
 	name := chi.URLParam(r, "name")
+	if name == "index.m3u8" {
+		// the renditions named in the profile's interface language (as its guide names them)
+		ctx = channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
+		// and DEFAULT where the profile's «Мои языки» would pick (a film's defaults)
+		if a.cards != nil {
+			if p, err := a.cards.prefsFor(ctx, u.ID); err == nil {
+				ctx = channels.WithTrackPrefs(ctx, channels.TrackPrefs{AudioLangs: p.AudioLangs, SubMode: p.SubMode, SubLangs: p.SubLangs})
+			} else if ctx.Err() == nil {
+				log.Printf("channels: playback prefs of profile %d: %v", u.ID, err)
+			}
+		}
+	}
 	sig := screentime.Signal{Category: screentime.Video, Key: "channel:" + strconv.FormatInt(c.ID, 10)}
 	if strings.HasSuffix(name, ".m3u8") {
 		if name == "index.m3u8" {
@@ -1218,16 +1242,16 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			internalErr(w, r, "epg", err)
 			return
 		}
-		a.withTracks(ctx, c.ID, ps, now)
+		a.withTracks(ctx, u, c.ID, ps, now)
 		if ps == nil {
 			ps = []programJSON{}
 		}
 		name, cat := a.display(ctx, c)
-		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c), Categories: ownCats(cat)})
+		out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Favorite: favs[c.ID], Programs: ps, LogoURL: logoURL(c), Categories: ownCats(c, cat)})
 	}
 	xs := sortedExt(a.extFor(r, u, ""))
+	names, pos := a.sourceNames(ctx)
 	if len(xs) > 0 {
-		names, _ := a.sourceNames(ctx)
 		progs := a.extProgrammes(ctx, xs, from, to)
 		for _, x := range xs {
 			ps := progs[x.ChannelID]
@@ -1239,6 +1263,15 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 				LogoURL: extLogoURL(x), LogoAlt: extLogoAlt(x), External: true, Categories: extCats(x, len(names))})
 		}
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	}
+	// the same categories as the list's (the most common tags only)
+	lists := make([][]string, len(out))
+	for i, c := range out {
+		lists[i] = c.Categories
+	}
+	a.categoriesOf(r, lists, names, pos)
+	for i := range out {
+		out[i].Categories = lists[i]
 	}
 	if p, err := a.svc.Store.Prefs(ctx, u.ID); err == nil && p.FavoritesFirst {
 		channels.FavoritesFirst(out, favs, func(c channelEPGJSON) int64 { return c.ID })

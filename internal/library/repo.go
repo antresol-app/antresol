@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -569,7 +570,8 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 
 // Search finds movies and series (only: no seasons, episodes, music or
 // books) by title, original title, any alias (item_titles: ё=е,
-// case-insensitive, substring) or full text (FTS5, prefix). SearchKinds
+// case-insensitive, substring) or full text (FTS5, prefix), else with a
+// typo or two (searchFuzzy). SearchKinds
 // searches other kinds.
 func (r *Repo) Search(ctx context.Context, text string, limit int) ([]Item, error) {
 	return r.SearchRated(ctx, text, limit, "")
@@ -620,9 +622,10 @@ func (r *Repo) searchWith(ctx context.Context, text string, kinds []string, limi
 
 // searchSections: titles (item_titles, substring) first, an exact title,
 // then a prefix, then by sort title; a section left short is filled from
-// the full text (FTS5, prefix tokens) by rank.
-func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSection, joins, rate string, rateArgs []any) ([][]Item, error) {
-	out := make([][]Item, len(secs))
+// the full text (FTS5, prefix tokens) by rank. When all of that finds
+// nothing, the typo-tolerant pass answers (searchFuzzy).
+func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSection, joins, rate string, rateArgs []any) (out [][]Item, err error) {
+	out = make([][]Item, len(secs))
 	norm := release.Normalize(text)
 	if norm == "" {
 		return out, nil
@@ -684,6 +687,12 @@ func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSec
 	if len(fillKinds) == 0 {
 		return out, nil
 	}
+	defer func() {
+		// nothing at all: the typo-tolerant pass answers (fuzzy.go)
+		if err == nil && slices.IndexFunc(out, func(l []Item) bool { return len(l) > 0 }) < 0 {
+			out, err = r.searchFuzzy(ctx, norm, secs, limits, secOf, kindIn, kindArgs, joins, rate, rateArgs)
+		}
+	}()
 	var toks []string
 	for _, f := range strings.FieldsFunc(norm, func(c rune) bool { return !unicode.IsLetter(c) && !unicode.IsDigit(c) }) {
 		toks = append(toks, `"`+f+`"*`)
