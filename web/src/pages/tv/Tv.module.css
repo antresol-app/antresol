@@ -39,6 +39,27 @@
 .empty {
   composes: empty from '../Browse.module.css';
 }
+/* a big list's second level: «Категории» back, the category's name */
+.level {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-0);
+  margin-bottom: var(--s-4);
+}
+.levelBack {
+  margin-left: calc(-1 * var(--s-3));
+}
+.levelTitle {
+  margin: 0;
+  font: var(--t-title-2);
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+/* a big list's first level: «Избранное», «Все каналы» and the categories */
+.categories {
+  max-width: var(--column-narrow);
+}
 
 /* the list and, on a wide window, the details pane */
 .split {
@@ -62,11 +83,14 @@
 }
 
 /* ---------- a channel row ---------- */
+/* one height for every row (the list renders only the rows near the
+   screen): the item of the virtual list is as tall as Tv.tsx says */
 .row {
   position: relative;
+  height: 100%;
 }
-/* the separator, from the still on */
-.row + .row::before {
+/* the separator, from the logo on (the virtual list's items are siblings) */
+.rowItem + .rowItem .row::before {
   content: '';
   position: absolute;
   top: 0;
@@ -81,8 +105,11 @@
   --art-w: 112px;
 }
 .rowLink {
+  box-sizing: border-box;
+  height: 100%;
   display: grid;
-  grid-template-columns: var(--num-w) var(--art-w) minmax(0, 1fr);
+  /* number, logo (or initials), text, and the programme's picture when it has one */
+  grid-template-columns: var(--num-w) auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s-3) var(--s-4);
   /* room at the end for the star */
@@ -90,9 +117,6 @@
   color: inherit;
   text-decoration: none;
   transition: background-color var(--d-fast) var(--ease-out);
-}
-.rowLink[data-logos] {
-  grid-template-columns: var(--num-w) var(--art-w) auto minmax(0, 1fr);
 }
 .rowLink:hover,
 .row[data-selected] .rowLink {
@@ -198,16 +222,15 @@
     gap: var(--s-2h);
     padding: var(--s-2h) calc(var(--control-h-sm) + var(--s-1)) var(--s-2h) var(--s-2h);
   }
-  .row + .row::before {
+  .rowItem + .rowItem .row::before {
     left: calc(var(--s-2h) + var(--num-w) + var(--s-2h));
   }
   .rowNum {
     font: var(--t-headline);
   }
   /* a phone: the logo column at the small size, the name keeps the room */
-  .rowLink[data-logos] [data-channel-logo],
-  .rowLink[data-logos] [data-logo-slot] {
-    --logo-h: var(--icon-md);
+  .rowLink .rowLogo {
+    --logo-h: var(--icon-lg);
   }
   .rowChannel {
     font: var(--t-subhead-em);
@@ -351,6 +374,11 @@
 /* a poster in a wide frame: whole, on the neutral fill */
 .artPoster {
   object-fit: contain;
+}
+/* a list's picture whose image failed: no frame left behind */
+.artOptional:not(:has(img)) {
+  background: none;
+  box-shadow: none;
 }
 .artPlaceholder {
   position: absolute;

@@ -25,6 +25,9 @@ func TestEventVisibilityCore(t *testing.T) {
 		{"kid it names", kid7, events.RequestChanged, data, true},
 		{"other kid", kid8, events.RequestChanged, data, false},
 		{"other kid, other event", kid8, events.LibraryUpdated, nil, true},
+		{"addons.changed: admin", admin, events.AddonsChanged, nil, true},
+		{"addons.changed: adult", auth.User{ID: 9}, events.AddonsChanged, nil, true},
+		{"addons.changed: never a kid", kid7, events.AddonsChanged, nil, false},
 	} {
 		if got := eventVisible(c.u, c.typ, c.data); got != c.want {
 			t.Errorf("%s: eventVisible = %v, want %v", c.name, got, c.want)

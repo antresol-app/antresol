@@ -80,6 +80,10 @@ func LogoQuery(c Channel) string {
 // SaveLogo keeps pngData (FitLogo's) as channel c's logo and returns the
 // channel with its new version.
 func (s *Service) SaveLogo(ctx context.Context, c Channel, pngData []byte) (Channel, error) {
+	return s.saveLogo(ctx, c, pngData, LogoAutoNone)
+}
+
+func (s *Service) saveLogo(ctx context.Context, c Channel, pngData []byte, auto int) (Channel, error) {
 	if s.DataDir == "" {
 		return c, errors.New("channels: no data dir for logos")
 	}
@@ -96,21 +100,22 @@ func (s *Service) SaveLogo(ctx context.Context, c Channel, pngData []byte) (Chan
 		return c, err
 	}
 	v := max(s.Store.now().Unix(), c.LogoVersion+1)
-	if err := s.Store.SetLogo(ctx, c.ID, v); err != nil {
+	if err := s.Store.SetLogo(ctx, c.ID, v, auto); err != nil {
 		return c, err
 	}
-	c.LogoVersion = v
+	c.LogoVersion, c.LogoAuto = v, auto
 	return c, nil
 }
 
-// RemoveLogo forgets channel id's uploaded logo (none: nothing to do).
+// RemoveLogo forgets channel id's logo (none: nothing to do); a generated
+// channel's is not looked for again (LogoAutoRemoved).
 func (s *Service) RemoveLogo(ctx context.Context, id int64) error {
 	if s.DataDir != "" {
 		if err := os.Remove(LogoFile(s.DataDir, id)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
-	if err := s.Store.SetLogo(ctx, id, 0); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.Store.SetLogo(ctx, id, 0, LogoAutoRemoved); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	return nil

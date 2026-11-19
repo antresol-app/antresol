@@ -1,10 +1,17 @@
 // Typed client for the Vault HTTP API. Every endpoint has one function here;
 // pages never call fetch directly.
 import type {
+  ApiKey,
+  ApiKeyEvent,
+  ApiKeyScope,
+  ApiKeysState,
   AutoSkipPrefs,
   TranscodingSettings,
   TranscodingView,
   VocleanStatus,
+  TasksView,
+  NetCheck,
+  HelperHealth,
   Trailer,
   TrailerPlay,
   About,
@@ -33,6 +40,8 @@ import type {
   Card,
   PendingEntry,
   ReviewTrack,
+  MigrateConnect,
+  MigrateConnectRequest,
   MigrateReport,
   MigrateRunRequest,
   MigrateState,
@@ -271,7 +280,8 @@ export const getMe = (): Promise<User> => {
   )
 }
 /** The settings a profile changes for itself. */
-export const updateMe = (patch: { hideProgress?: boolean }) => request<User>('PATCH', '/api/me', patch)
+/** The profile's own settings; `kindleEmail` "" removes the address (a kid's are the admin's: 403). */
+export const updateMe = (patch: { hideProgress?: boolean; kindleEmail?: string }) => request<User>('PATCH', '/api/me', patch)
 
 // --- Library ---
 /** The `scope` query parameter: only «Моя медиатека» is sent (no parameter is the shared library). */
@@ -537,6 +547,9 @@ export async function playTrailer(play: string, signal?: AbortSignal): Promise<T
   }
   return readResponse<TrailerPlay>(res, play)
 }
+export const getTasks = (signal?: AbortSignal) => request<TasksView>('GET', '/api/admin/tasks', undefined, signal)
+export const getAddonHelpers = (signal?: AbortSignal) => request<HelperHealth[]>('GET', '/api/addons/helpers', undefined, signal)
+export const getNetworkHealth = (signal?: AbortSignal) => request<NetCheck[]>('GET', '/api/admin/health/network', undefined, signal)
 export const getVoclean = (signal?: AbortSignal) => request<VocleanStatus>('GET', '/api/admin/voclean', undefined, signal)
 export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => request<VocleanStatus>('POST', '/api/admin/voclean/backfill', b)
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
@@ -626,13 +639,20 @@ export const getAppPassword = () => request<{ exists: boolean; createdAt: string
 export const createAppPassword = () => request<{ password: string }>('POST', '/api/me/app-password')
 export const revokeAppPassword = () => request<void>('DELETE', '/api/me/app-password')
 
+// --- «Ключи API и ИИ»: the profile's personal API keys ---
+export const getApiKeys = () => request<ApiKeysState>('GET', '/api/me/api-keys')
+export const createApiKey = (name: string, scope: ApiKeyScope) => request<{ key: string; info: ApiKey }>('POST', '/api/me/api-keys', { name, scope })
+export const revokeApiKey = (id: number) => request<void>('DELETE', `/api/me/api-keys/${id}`)
+export const getApiKeyLog = () => request<{ events: ApiKeyEvent[] }>('GET', '/api/me/api-keys/log?limit=20')
+
 // --- Devices (the Vault app signed in to this profile) ---
-export const getDevices = () => request<{ items: Device[] }>('GET', '/api/me/devices')
-export const revokeDevice = (id: number) => request<void>('DELETE', `/api/me/devices/${id}`)
+/** The profile's own devices (an admin's too); `all`: every profile's (admin, «Профили → Устройства»). */
+export const getDevices = (all = false) => request<{ items: Device[] }>('GET', all ? '/api/admin/devices' : '/api/me/devices')
+export const revokeDevice = (id: number, all = false) => request<void>('DELETE', `${all ? '/api/admin/devices' : '/api/me/devices'}/${id}`)
 // «Отдельная история на этом устройстве»: on (a new account named after the
 // device, the one it had, or accountId), or off keeping or merging its history
-export const setDeviceHistory = (id: number | 'current', body: { separate: true; accountId?: number } | { separate: false; merge: boolean }) =>
-  request<{ id: number; history: DeviceHistory | null }>('PUT', `/api/me/devices/${id}/history`, body)
+export const setDeviceHistory = (id: number | 'current', body: { separate: true; accountId?: number } | { separate: false; merge: boolean }, all = false) =>
+  request<{ id: number; history: DeviceHistory | null }>('PUT', `${all ? '/api/admin/devices' : '/api/me/devices'}/${id}/history`, body)
 export const getManagedAccounts = () => request<{ items: ManagedAccount[] }>('GET', '/api/me/managed')
 export const createManagedAccount = (name: string) => request<ManagedAccount>('POST', '/api/me/managed', { name })
 export const renameManagedAccount = (id: number, name: string) => request<ManagedAccount>('PATCH', `/api/me/managed/${id}`, { name })
@@ -728,6 +748,9 @@ export async function getFile(fileId: number, signal?: AbortSignal): Promise<Blo
 export const migrateStatus = (signal?: AbortSignal) => request<MigrateStatus>('GET', '/api/migrate', undefined, signal)
 export const migrateState = (signal?: AbortSignal) => request<MigrateState>('GET', '/api/migrate/state', undefined, signal)
 export const migrateRun = (req: MigrateRunRequest) => request<{ reportId: string }>('POST', '/api/migrate/run', req)
+export const migrateConnect = (id: string, req: MigrateConnectRequest) =>
+  request<{ detail: string; connect: MigrateConnect }>('POST', `/api/migrate/sources/${encodeURIComponent(id)}/connect`, req)
+export const migrateForget = (id: string) => request<{ ok: boolean }>('DELETE', `/api/migrate/sources/${encodeURIComponent(id)}/connect`)
 export const migrateReports = (signal?: AbortSignal) => request<MigrateReport[]>('GET', '/api/migrate/reports', undefined, signal)
 export const migrateReport = (id: string, signal?: AbortSignal) =>
   request<MigrateReport>('GET', `/api/migrate/reports/${encodeURIComponent(id)}`, undefined, signal)

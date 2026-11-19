@@ -40,11 +40,11 @@ type FranchiseFacts interface {
 
 // Limits of a pass.
 const (
-	franchiseAlgo        = "2" // a new value recomputes every library once (2: franchises from Wikidata's anchors)
+	franchiseAlgo        = "3" // a new value recomputes every library once (2: franchises from Wikidata's anchors; 3: Wikidata's facts actually read, see wikidata.claimsBatch)
 	franchiseEvery       = 6 * time.Hour
 	franchisePassTimeout = 15 * time.Minute
 	franchiseAskTimeout  = 120 * time.Second
-	franchiseWikiTimeout = 10 * time.Second
+	franchiseWikiTimeout = 90 * time.Second // a batch of 50 titles: the search, their claims and their anchors' (a few dozen requests)
 	franchiseWikiTTL     = 30 * 24 * time.Hour
 	maxFranchiseAsks     = 40 // clusters the model is asked about in a pass
 	maxFranchiseMembers  = 60
@@ -229,7 +229,7 @@ func (f *Franchises) Pass(ctx context.Context, force bool) (ran bool, err error)
 	pctx, cancel := context.WithTimeout(ctx, franchisePassTimeout)
 	defer cancel()
 	colls, complete := f.collections(pctx, titles)
-	facts := f.facts(pctx, titles)
+	facts, wikiErr := f.facts(pctx, titles)
 	groups := clusters(titles, colls, facts)
 	var out []Franchise
 	var passErr string
@@ -266,8 +266,13 @@ func (f *Franchises) Pass(ctx context.Context, force bool) (ran bool, err error)
 	if retry > 0 {
 		state["retry"] = strconv.FormatInt(retry, 10)
 	}
-	if complete {
+	if wikiErr != "" { // Wikidata failed: the pass is asked again next time, and the admin sees why
+		state["error"] = strings.TrimPrefix(passErr+"; "+wikiErr, "; ")
+	}
+	if complete && wikiErr == "" {
 		state["fingerprint"] = fp
+	} else if complete {
+		state["fingerprint"] = ""
 	} else {
 		state["incomplete"], state["fingerprint"] = "1", ""
 	}
@@ -385,11 +390,12 @@ func factsCurrent(data string) bool {
 
 // facts are Wikidata's facts of the titles by item id, cached in
 // wikidata_facts; Wikidata off or failing: what the cache has, expired or not.
-func (f *Franchises) facts(ctx context.Context, titles []libTitle) map[int64]wikidata.TitleFacts {
+func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wikidata.TitleFacts, string) {
 	out := map[int64]wikidata.TitleFacts{}
 	if f.Wiki == nil {
-		return out
+		return out, ""
 	}
+	wikiErr := ""
 	lang, _, _ := strings.Cut(f.TMDB.Language(), "-")
 	fresh := f.Store.now().Add(-franchiseWikiTTL).Unix()
 	failed := false
@@ -433,11 +439,12 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) map[int64]wik
 			n := min(len(missing), 50)
 			part := missing[:n]
 			missing = missing[n:]
-			wctx, cancel := context.WithTimeout(ctx, 3*franchiseWikiTimeout) // a search, the claims, the labels
+			wctx, cancel := context.WithTimeout(ctx, franchiseWikiTimeout)
 			got, err := f.Wiki.TitleFacts(wctx, wk, part, lang)
 			cancel()
 			if err != nil {
 				log.Printf("channels: franchises: wikidata: %v", err)
+				wikiErr = "Wikidata: " + err.Error()
 				failed = true // the rest of the pass goes without it
 				useStale(part)
 				useStale(missing)
@@ -458,5 +465,5 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) map[int64]wik
 			}
 		}
 	}
-	return out
+	return out, wikiErr
 }

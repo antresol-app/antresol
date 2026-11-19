@@ -96,6 +96,9 @@ type Channel struct {
 	// LogoVersion: the uploaded logo's version (0: none, the generated
 	// tile stands for the channel).
 	LogoVersion int64 `json:"-"`
+	// LogoAuto: how the logo came (LogoAutoNone, LogoAutoFound,
+	// LogoAutoRemoved; logo_auto.go).
+	LogoAuto int `json:"-"`
 	// Kind: KindAntresol (made of the library) or KindExternal (a channel
 	// of an external IPTV playlist, internal/iptv: never scheduled or
 	// encoded here, seen through the viewer's set only).
@@ -144,14 +147,14 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed, logo_version, kind, number_manual, why`
+const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json, COALESCE(auto_key,''), enabled, edited, seed, logo_version, kind, number_manual, why, logo_auto`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanChannel(r rowScanner) (Channel, error) {
 	var c Channel
 	var rules string
-	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed, &c.LogoVersion, &c.Kind, &c.NumberManual, &c.Why)
+	err := r.Scan(&c.ID, &c.Number, &c.Name, &c.Category, &c.UserID, &rules, &c.AutoKey, &c.Enabled, &c.Edited, &c.Seed, &c.LogoVersion, &c.Kind, &c.NumberManual, &c.Why, &c.LogoAuto)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -537,9 +540,10 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	return tx.Commit()
 }
 
-// SetLogo records channel id's uploaded logo version (0: none).
-func (s *Store) SetLogo(ctx context.Context, id, version int64) error {
-	res, err := s.DB.ExecContext(ctx, `UPDATE channels SET logo_version=? WHERE id=?`, version, id)
+// SetLogo records channel id's logo version (0: none) and how it came
+// (LogoAuto…).
+func (s *Store) SetLogo(ctx context.Context, id, version int64, auto int) error {
+	res, err := s.DB.ExecContext(ctx, `UPDATE channels SET logo_version=?, logo_auto=? WHERE id=?`, version, auto, id)
 	if err != nil {
 		return err
 	}

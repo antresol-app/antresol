@@ -98,76 +98,98 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 			writeJSON(w, http.StatusOK, map[string]string{"key": key, "expiresAt": exp.UTC().Format(time.RFC3339)})
 		})
 	}
+	// «Устройства» of the profile: its own devices, an admin's too (the
+	// server's list of every profile's devices is /api/admin/devices, in
+	// «Профили»; a profile's settings show only what is the profile's)
 	r.Get("/api/me/devices", func(w http.ResponseWriter, r *http.Request) {
 		u := userOf(r)
 		cur, _ := auth.SessionFrom(r.Context())
-		type item struct {
-			ID        int64  `json:"id"`
-			Kind      string `json:"kind"` // native | web (a browser)
-			Name      string `json:"name"`
-			Model     string `json:"model"`
-			Version   string `json:"version"`
-			CreatedAt string `json:"createdAt"`
-			LastSeen  string `json:"lastSeen"`
-			Current   bool   `json:"current"`
-			// the profile signed in on it (an admin sees every profile's)
-			UserID     int64  `json:"userId"`
-			UserName   string `json:"userName"`
-			UserAvatar string `json:"userAvatar"`
-			UserPhoto  string `json:"userPhoto,omitempty"`
-			// History: the managed account the device writes its history
-			// into (null: the profile's own)
-			History *historyRef `json:"history"`
+		list, err := sessions.Devices(r.Context(), u.ID)
+		if err != nil {
+			internalErr(w, r, "devices", err)
+			return
 		}
-		of := func(s auth.Session, name, avatar, photo string) item {
-			return item{s.ID, s.Kind, s.Device.Name, s.Device.Model, s.Device.Version,
-				s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == cur.ID, s.UserID, name, avatar, photo, historyOf(s)}
+		out := make([]deviceView, 0, len(list))
+		for _, s := range list {
+			out = append(out, deviceViewOf(s, cur.ID, u.Name, u.Avatar, u.Photo))
 		}
-		var out []item
-		if u.IsAdmin {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{"items": out})
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAdmin)
+		// every profile's devices, by the profile signed in on each
+		r.Get("/api/admin/devices", func(w http.ResponseWriter, r *http.Request) {
+			cur, _ := auth.SessionFrom(r.Context())
 			list, err := sessions.AllDevices(r.Context())
 			if err != nil {
 				internalErr(w, r, "devices", err)
 				return
 			}
-			out = make([]item, 0, len(list))
+			out := make([]deviceView, 0, len(list))
 			for _, d := range list {
-				out = append(out, of(d.Session, d.UserName, d.UserAvatar, d.UserPhoto))
+				out = append(out, deviceViewOf(d.Session, cur.ID, d.UserName, d.UserAvatar, d.UserPhoto))
 			}
-		} else {
-			list, err := sessions.Devices(r.Context(), u.ID)
-			if err != nil {
-				internalErr(w, r, "devices", err)
-				return
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, map[string]any{"items": out})
+		})
+		// an admin signs out any profile's device
+		r.Delete("/api/admin/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+			if err == nil {
+				err = sessions.RevokeAnyDevice(r.Context(), id)
+			} else {
+				err = auth.ErrNotFound
 			}
-			out = make([]item, 0, len(list))
-			for _, s := range list {
-				out = append(out, of(s, u.Name, u.Avatar, u.Photo))
-			}
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]any{"items": out})
+			deviceRevoked(w, r, err)
+		})
 	})
 	r.Delete("/api/me/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err != nil {
-			writeErr(w, r, http.StatusNotFound, "Устройство не найдено")
-			return
-		}
-		// an admin signs out any profile's device, everyone else only their own
-		if u := userOf(r); u.IsAdmin {
-			err = sessions.RevokeAnyDevice(r.Context(), id)
+		if err == nil {
+			// the caller's own device, an admin's too (any profile's: /api/admin/devices)
+			err = sessions.RevokeDevice(r.Context(), userOf(r).ID, id)
 		} else {
-			err = sessions.RevokeDevice(r.Context(), u.ID, id)
+			err = auth.ErrNotFound
 		}
-		if errors.Is(err, auth.ErrNotFound) {
-			writeErr(w, r, http.StatusNotFound, "Устройство не найдено")
-			return
-		}
-		if err != nil {
-			internalErr(w, r, "revoke device", err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+		deviceRevoked(w, r, err)
 	})
+}
+
+// deviceView is a device of GET /api/me/devices and /api/admin/devices.
+type deviceView struct {
+	ID        int64  `json:"id"`
+	Kind      string `json:"kind"` // native | web (a browser)
+	Name      string `json:"name"`
+	Model     string `json:"model"`
+	Version   string `json:"version"`
+	CreatedAt string `json:"createdAt"`
+	LastSeen  string `json:"lastSeen"`
+	Current   bool   `json:"current"`
+	// the profile signed in on it
+	UserID     int64  `json:"userId"`
+	UserName   string `json:"userName"`
+	UserAvatar string `json:"userAvatar"`
+	UserPhoto  string `json:"userPhoto,omitempty"`
+	// History: the managed account the device writes its history
+	// into (null: the profile's own)
+	History *historyRef `json:"history"`
+}
+
+func deviceViewOf(s auth.Session, current int64, name, avatar, photo string) deviceView {
+	return deviceView{s.ID, s.Kind, s.Device.Name, s.Device.Model, s.Device.Version,
+		s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == current, s.UserID, name, avatar, photo, historyOf(s)}
+}
+
+// deviceRevoked answers a sign-out of a device: 204, or 404 when there is none to sign out.
+func deviceRevoked(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, auth.ErrNotFound) {
+		writeErr(w, r, http.StatusNotFound, "Устройство не найдено")
+		return
+	}
+	if err != nil {
+		internalErr(w, r, "revoke device", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

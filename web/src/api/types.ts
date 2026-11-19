@@ -110,6 +110,42 @@ export interface Health {
 }
 
 /** A Vault app signed in to the profile («Устройства»). */
+/** «Ключи API и ИИ»: what a personal API key may do (GET /api/me/api-keys). */
+export type ApiKeyScope = 'read' | 'act' | 'admin'
+
+/** A personal API key as the list shows it (never the key itself). */
+export interface ApiKey {
+  id: number
+  name: string
+  scope: ApiKeyScope
+  /** The key's last four characters. */
+  hint: string
+  createdAt: string
+  lastUsedAt: string | null
+  lastUsedFrom?: string
+}
+
+export interface ApiKeysState {
+  keys: ApiKey[]
+  /** The profile is an admin: it may make keys with administration. */
+  canAdmin: boolean
+  /** The server's public address (VAULT_PUBLIC_URL), "" when not set. */
+  publicUrl: string
+  mcpPath: string
+}
+
+/** A row of the keys' log: a change made with a key, or a refusal. */
+export interface ApiKeyEvent {
+  at: string
+  keyName: string
+  method: string
+  path: string
+  status: number
+  /** The MCP tool it was made for ("mcp:set_watched"). */
+  via?: string
+  client?: string
+}
+
 export interface Device {
   id: number
   /** 'web': a browser signed in to the profile (an older server sends none: an app). */
@@ -797,6 +833,10 @@ export interface Settings {
   aiFromEnv?: string
   /** What transcodes video now («Перекодирование»'s summary; response only). */
   transcodingName?: string
+  /** «Адрес сервера»: how the server is reached from outside the home network ("" none). */
+  publicUrl?: string
+  /** The server's VAULT_PUBLIC_URL: the address whatever is saved (response only). */
+  publicUrlFromEnv?: string
 }
 
 /** The hardware of video transcodes: VAULT_HWACCEL modes. */
@@ -883,6 +923,45 @@ export interface VocleanStatus {
   notEligible: number
   /** «Обработать всю медиатеку»: the backlog runs even while something plays */
   backfill: boolean
+}
+
+/** A background worker's progress (bgtask.Progress), «Задачи». */
+export interface TaskProgress {
+  /** trickplay, segments, loudness (an unknown one is shown by its id) */
+  id: string
+  /** a pass is under way (it may wait for playback to be quiet) */
+  running: boolean
+  done: number
+  total: number
+  /** why it stands still: off (in the settings), full (its space is used up), offline (the media disk is away) */
+  state?: 'off' | 'full' | 'offline'
+  /** when the last pass ended */
+  lastRun?: string
+}
+
+/** GET /api/admin/tasks: what runs in the background, in one place. */
+export interface TasksView {
+  scan?: LibraryStatus
+  voclean?: VocleanStatus
+  workers: TaskProgress[]
+}
+
+/** GET /api/addons/helpers: an enabled addon's helper service, asked on its compose address. */
+export interface HelperHealth {
+  addon: string
+  name: string
+  address: string
+  ok: boolean
+  error?: string
+}
+
+/** GET /api/admin/health/network: one service the server reaches out to. */
+export interface NetCheck {
+  id: string
+  name: string
+  ok: boolean
+  ms: number
+  error?: string
 }
 
 /** «ИИ-помощник»'s models by weight: each AI task asks the tier that fits it. */
@@ -1355,6 +1434,28 @@ export interface MigrateSource {
   detail: string
   /** A problem reading it ('' = none). */
   error: string
+  /** Jellyfin, Kavita, Audiobookshelf: reading it over its API instead of its database file. */
+  connect?: MigrateConnect
+}
+
+/** A source's API connection as the page sees it (never the key or the password). */
+export interface MigrateConnect {
+  /** apikey: an address and an API key; apikeyOrLogin (Jellyfin): or a user name and a password. */
+  kind: 'apikey' | 'apikeyOrLogin'
+  url: string
+  username?: string
+  hasSecret: boolean
+  connected: boolean
+  /** Its database file is mounted too (used while not connected). */
+  mounted: boolean
+}
+
+/** POST /api/migrate/sources/{id}/connect; a blank key or password keeps the kept one. */
+export interface MigrateConnectRequest {
+  url: string
+  apiKey?: string
+  username?: string
+  password?: string
 }
 
 export type MigrateStatusKind = 'planned' | 'imported' | 'skipped' | 'failed' | 'warning'

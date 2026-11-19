@@ -32,7 +32,8 @@ export function clock(t: string | number): string {
 /** The channel list with stars that turn at once. */
 export function useChannelList() {
   const t = useT()
-  const { state, load } = useLoad((signal) => getChannels(signal), [], {
+  // brief: the list without the programmes' descriptions (thousands of rows with a playlist)
+  const { state, load } = useLoad((signal) => getChannels(signal, false, true), [], {
     message: (e) => errorText(e, t('common.loadFailed')),
     events: ['library.updated'],
   })

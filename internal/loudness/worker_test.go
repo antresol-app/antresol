@@ -150,6 +150,9 @@ func TestWorkerMeasuresUntaggedAndAlbum(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("measured %v, want the two untagged tracks", calls)
 	}
+	if p := w.Progress.Snapshot(); p.Running || p.Done != 2 || p.Total != 2 || p.LastRun.IsZero() {
+		t.Fatalf("progress %+v", p)
+	}
 	g := f.gain(t, 1)
 	if g.TrackGain == nil || *g.TrackGain != -12 || g.TrackPeak == nil || *g.TrackPeak != 0.5 {
 		t.Fatalf("measured track gain %+v", g)

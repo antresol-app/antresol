@@ -1,7 +1,7 @@
 // Shared body of «Фильмы» and «Сериалы»: a large title, a segmented sort
 // control (kept in the URL) and a poster grid that loads more as you scroll.
 import { APP_NAME } from '../brand'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { getItems } from '../api/client'
 import type { Card, ItemSort } from '../api/types'
@@ -33,9 +33,11 @@ export interface BrowseProps {
   kind: 'movie' | 'series'
   title: string
   emptyTitle: string
+  /** More of the page's tools after the sort («Календарь» on «Сериалы»). */
+  tools?: ReactNode
 }
 
-export function Browse({ kind, title, emptyTitle }: BrowseProps) {
+export function Browse({ kind, title, emptyTitle, tools }: BrowseProps) {
   const t = useT()
   const { user } = useSession()
   const [params, setParams] = useSearchParams()
@@ -68,6 +70,7 @@ export function Browse({ kind, title, emptyTitle }: BrowseProps) {
         <h1 className={styles.title}>{title}</h1>
         <LibraryTools>
           <SegmentedControl label={t('common.sort')} segments={sorts()} value={sort} onChange={setSort} />
+          {tools}
         </LibraryTools>
       </header>
 

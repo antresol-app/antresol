@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/bgtask"
 	"github.com/antresol-app/antresol/internal/media"
 )
 
@@ -88,6 +89,10 @@ type Worker struct {
 	Black       func(ctx context.Context, path string, fromSec, durSec, minSec float64, keyframesOnly bool) ([]media.BlackRun, error)
 	// Chromaprint says whether ffmpeg can fingerprint (nil: asked once).
 	Chromaprint *bool
+
+	// Progress: the files with nothing left to do of the library's
+	// («Задачи»), updated by full passes.
+	Progress bgtask.Tracker
 
 	once     sync.Once
 	kick     chan struct{} // a full pass
@@ -395,6 +400,16 @@ func (w *Worker) pass(ctx context.Context, full bool) error {
 		}
 	}
 	w.mu.Unlock()
+	if full {
+		pending := 0
+		for _, f := range files {
+			if d := dues[f.ID]; d.cheap() || d.analysis {
+				pending++
+			}
+		}
+		w.Progress.Begin(len(files)-pending, len(files))
+		defer func() { w.Progress.End(w.now()) }()
+	}
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].wanted != list[j].wanted {
 			return list[i].wanted
@@ -424,6 +439,15 @@ func (w *Worker) pass(ctx context.Context, full bool) error {
 			delete(w.want, f.ID)
 		}
 		w.mu.Unlock()
+		if full {
+			n := 0
+			for _, f := range units[t.key] {
+				if d := dues[f.ID]; d.cheap() || d.analysis {
+					n++
+				}
+			}
+			w.Progress.Add(n)
+		}
 	}
 	if full {
 		w.pruneCache(files)

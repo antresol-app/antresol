@@ -203,18 +203,9 @@ const othersKey = runkit.OthersKey
 // overwritten and a second run changes nothing. Only internal errors and
 // ctx's are returned; everything else is a line of rep.
 func ImportJellyfin(ctx context.Context, o ProgressOptions, lib LibraryLookup, ps ProgressSink, rep *Report) error {
-	d := openProgressDB(o, SourceJellyfin, "Jellyfin", o.JellyfinDB, rep)
-	if d == nil {
-		return nil
-	}
-	defer d.Close()
-	data, err := readJellyfin(ctx, d.DB)
+	data, err := loadJellyfin(ctx, o)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		progressReadFailed(SourceJellyfin, "Jellyfin", rep, err)
-		return nil
+		return loadFailed(ctx, SourceJellyfin, "Jellyfin", rep, err)
 	}
 	if data.channels > 0 {
 		rep.Add(JellyfinChannelsLine(i18n.RU, data.channels))

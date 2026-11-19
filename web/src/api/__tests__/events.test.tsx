@@ -22,7 +22,7 @@ describe('events', () => {
   it('no edition events', () => {
     vi.stubGlobal('EventSource', FakeSource)
     const { unmount } = render(<Listener />)
-    expect(named).toEqual(['library.updated', 'request.changed', 'disk.warning', 'migrate.progress', 'import.progress'])
+    expect(named).toEqual(['library.updated', 'request.changed', 'disk.warning', 'migrate.progress', 'import.progress', 'addons.changed'])
     unmount()
     vi.unstubAllGlobals()
   })

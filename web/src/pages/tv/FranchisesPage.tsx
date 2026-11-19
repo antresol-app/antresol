@@ -13,16 +13,20 @@ import { useT } from '../../i18n'
 import { ago } from '../../state/format'
 import { useLoad } from '../../state/useLoad'
 import { Badge } from '../../ui/Badge'
-import { Button } from '../../ui/Button'
+import { Button, ButtonLink } from '../../ui/Button'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
 import { Sheet } from '../../ui/Sheet'
 import { SortableList, SortableRowText } from '../../ui/SortableList'
 import { Toast } from '../../ui/Toast'
+import { useChannelsFrame } from './manageBase'
+import sourcesStyles from './sources/Sources.module.css'
 import styles from './Tv.module.css'
 
 export function FranchisesPage() {
   const t = useT()
+  const frame = useChannelsFrame()
+  const Title = frame.embedded ? 'h2' : 'h1'
   const [editing, setEditing] = useState<Franchise | null>(null)
   const [toast, setToast] = useState('')
   const { state, load } = useLoad((signal) => getFranchises(signal), [], {
@@ -62,10 +66,15 @@ export function FranchisesPage() {
       : [status.model ? t('tv.franchises.byAI') : t('tv.franchises.byTMDB'), status.at ? t('tv.franchises.at', { ago: ago(status.at) }) : ''].filter(Boolean).join(' · ')
 
   return (
-    <div className={styles.page}>
-      <div className={styles.column}>
-        <header className={styles.columnHeader}>
-          <h1 className={styles.title}>{t('tv.franchises.title')}</h1>
+    <div className={frame.page(styles.page)}>
+      <div className={frame.column(styles.column)}>
+        {frame.embedded && (
+          <ButtonLink to={frame.base} variant="plain" size="small" icon="chevronLeft" className={sourcesStyles.back}>
+            {t('tv.manageTitle')}
+          </ButtonLink>
+        )}
+        <header className={frame.header(styles.columnHeader)}>
+          <Title className={frame.title(styles.title)}>{t('tv.franchises.title')}</Title>
           {data?.available && (
             <div className={styles.actions}>
               <Button variant="secondary" icon="restart" disabled={status?.running} onClick={refresh}>
@@ -93,7 +102,7 @@ export function FranchisesPage() {
           <>
             {statusLine && <p className={styles.franchiseStatus}>{statusLine}</p>}
             {status?.error && (
-              <Notice tone="warning" title={t('tv.franchises.aiFailed')}>
+              <Notice tone="warning" title={t('tv.franchises.passError')}>
                 {status.error}
               </Notice>
             )}
@@ -119,7 +128,11 @@ export function FranchisesPage() {
                           {f.manual && <Badge tone="accent">{t('tv.franchises.manual')}</Badge>}
                         </span>
                       }
-                      hint={[t('tv.franchises.titles', { count: shown }), f.channelId ? t('tv.franchises.hasChannel') : f.channelRemoved ? t('tv.franchises.removedChannel') : t('tv.franchises.noChannel')].join(' · ')}
+                      hint={[
+                        // who put it in this order
+                        f.manual ? t('tv.franchises.orderBy.manual') : f.source === 'ai' ? t('tv.franchises.orderBy.ai') : t('tv.franchises.orderBy.release'),
+                        t('tv.franchises.titles', { count: shown }),
+                        f.channelId ? t('tv.franchises.hasChannel') : f.channelRemoved ? t('tv.franchises.removedChannel') : t('tv.franchises.noChannel')].join(' · ')}
                     >
                       <Button variant="secondary" size="small" onClick={() => setEditing(f)}>
                         {t('tv.franchises.edit')}

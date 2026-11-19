@@ -283,7 +283,11 @@ func compose(lang, name string, sections []section) (letter, error) {
 
 // linker makes absolute links on the public address ("" without one).
 func (s *Service) linker() func(string) string {
-	base := strings.TrimRight(strings.TrimSpace(s.PublicURL), "/")
+	public := s.PublicURL
+	if s.PublicURLOf != nil {
+		public = s.PublicURLOf()
+	}
+	base := strings.TrimRight(strings.TrimSpace(public), "/")
 	u, err := url.Parse(base)
 	if base == "" || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return func(string) string { return "" }

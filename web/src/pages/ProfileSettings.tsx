@@ -1,18 +1,21 @@
 // «Настройки» of the signed-in profile (every profile, from the profile
-// menu; an admin's are also the first row of «Управление», drawn in its frame): the photo (an adult's), the language, «Звук и субтитры», mail, the app password, devices,
-// what is saved on this device and «О сервере». One short list: a row opens
+// menu; an admin's are also the first row of «Управление», drawn in its frame): the photo (an adult's), the language, «Звук и субтитры», mail, the Kindle address, the app password, devices, «Ключи API и ИИ» (an adult's, pages/ApiKeysSettings.tsx),
+// «Избранные каналы первыми» (the profile's channel list, on the web and in
+// the apps: /api/channels/prefs), what is saved on this device and «О сервере». One short list: a row opens
 // its sheet, or a page («Аккаунты и синхронизация», pages/AccountsSettings.tsx).
 // What applies to the whole server is the admin's, in «Управление → Настройки
 // сервера». A kid's sound and mail are the admin's (Профили), as «Скрывать
 // прогресс» is.
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
+import { getChannelPrefs, setChannelPrefs } from '../api/channels'
 import { updateMe } from '../api/client'
 import type { AccountsState } from '../api/types'
 import { APP_NAME } from '../brand'
 import { AboutSheet } from '../components/AboutSheet'
 import { AppPasswordSheet } from '../components/AppPasswordSheet'
 import { DevicesSheet } from '../components/DevicesSheet'
+import { KindleAddressRow } from '../components/KindleAddressRow'
 import { NotifySheet } from '../components/NotifySheet'
 import { PlaybackPrefsSheet } from '../components/PlaybackPrefsSheet'
 import { ProfilePhotoRow } from '../components/ProfilePhotoRow'
@@ -38,6 +41,9 @@ export function ProfileSettings() {
   const [open, setOpen] = useState<Open>('')
   const [pref, setPref] = useState<LangPref>(getLanguagePref)
   const [hideFailed, setHideFailed] = useState(false)
+  // «Избранные каналы первыми» (null: not read yet)
+  const [favFirst, setFavFirst] = useState<boolean | null>(null)
+  const [favFirstFailed, setFavFirstFailed] = useState(false)
   const { search } = useLocation()
   // the linked accounts, for the row that leads to their page (null: this server has none)
   const [accounts, setAccounts] = useState<AccountsState | null>(null)
@@ -61,11 +67,26 @@ export function ProfileSettings() {
     document.title = `${t('common.settings')} — ${APP_NAME}`
   }, [t])
 
+  useEffect(() => {
+    const ac = new AbortController()
+    getChannelPrefs(ac.signal).then((p) => setFavFirst(p?.favoritesFirst !== false), () => undefined)
+    return () => ac.abort()
+  }, [user?.id])
+
   if (!user) return null
   // the old address of Shikimori's sign-in coming back (and the links made from it): the accounts page has it now
   if (new URLSearchParams(search).get('account') === 'shikimori') return <Navigate to={`/settings/accounts${search}`} replace />
   const close = () => setOpen('')
   const linked = accounts ? [accounts.shikimori, accounts.myshows, accounts.goodreads].filter((a) => a?.linked).length : 0
+
+  const toggleFavFirst = (on: boolean) => {
+    setFavFirst(on)
+    setFavFirstFailed(false)
+    setChannelPrefs({ favoritesFirst: on }).catch(() => {
+      setFavFirst(!on)
+      setFavFirstFailed(true)
+    })
+  }
 
   const toggleHidden = (on: boolean) => {
     setHideFailed(false)
@@ -115,18 +136,33 @@ export function ProfileSettings() {
           </ListRow>
         </GroupedSection>
 
-        {adult && (
+        {/* a kid's sound and «Скрывать прогресс» are the admin's; the channel order is everyone's own */}
+        {(adult || favFirst !== null) && (
           <GroupedSection title={t('prefs.watching')}>
-            <ListLinkRow icon="speaker" tint="pink" label={t('prefs.playback')} onOpen={() => setOpen('playback')} />
-            <ListRow label={t('comp.profile.hideProgress')} hint={t('prefs.hideProgress.hint')} status={hideFailed ? t('comp.profile.hideProgressFailed') : undefined}>
-              <Toggle label={t('comp.profile.hideProgress')} checked={!!user.hideProgress} onChange={toggleHidden} />
-            </ListRow>
+            {adult && <ListLinkRow icon="speaker" tint="pink" label={t('prefs.playback')} onOpen={() => setOpen('playback')} />}
+            {adult && (
+              <ListRow label={t('comp.profile.hideProgress')} hint={t('prefs.hideProgress.hint')} status={hideFailed ? t('comp.profile.hideProgressFailed') : undefined}>
+                <Toggle label={t('comp.profile.hideProgress')} checked={!!user.hideProgress} onChange={toggleHidden} />
+              </ListRow>
+            )}
+            {favFirst !== null && (
+              <ListRow label={t('prefs.favoritesFirst')} hint={t('prefs.favoritesFirst.hint')} status={favFirstFailed ? t('prefs.favoritesFirst.failed') : undefined}>
+                <Toggle label={t('prefs.favoritesFirst')} checked={favFirst} onChange={toggleFavFirst} />
+              </ListRow>
+            )}
           </GroupedSection>
         )}
 
         {adult && (
           <GroupedSection title={t('prefs.notifications')}>
             <ListLinkRow icon="bell" tint="red" label={t('prefs.notify')} onOpen={() => setOpen('notify')} />
+          </GroupedSection>
+        )}
+
+        {/* the Send to Kindle address is the profile's own (the sending mailbox is the server's) */}
+        {adult && (
+          <GroupedSection title={t('prefs.books')}>
+            <KindleAddressRow user={user} />
           </GroupedSection>
         )}
 
@@ -139,6 +175,7 @@ export function ProfileSettings() {
         <GroupedSection title={t('prefs.apps')}>
           <ListLinkRow icon="key" tint="gray" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />
           <ListLinkRow icon="devices" tint="blue" label={t('prefs.devices')} onOpen={() => setOpen('devices')} />
+          {adult && <ListLinkRow icon="sparkles" tint="purple" label={t('apikeys.title')} hint={t('apikeys.row.hint')} onOpen={() => navigate('/settings/api-keys')} />}
           {offlineSupported() && <ListLinkRow icon="phoneDown" tint="green" label={t('comp.profile.onDevice')} onOpen={() => navigate('/offline')} />}
         </GroupedSection>
 

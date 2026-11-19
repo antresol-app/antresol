@@ -2,23 +2,38 @@
 {% comment %}
   The Russian site is docs/ru/: its pages take lang: ru from _config.yml's defaults.
   The language link leads to the same page in the other language when there is one,
-  else to that language's home.
+  else to that language's home. The guide's contents (_data/guide.yml) is the
+  sidebar: always shown on a wide screen, a «Содержание» disclosure on a narrow one.
 {% endcomment %}
 {% if page.lang == 'ru' %}
   {% assign home = '/ru/' %}
+  {% assign guide = site.data.guide.ru %}
   {% assign other_url = page.url | remove_first: '/ru' %}
   {% assign other_name = 'English' %}
   {% assign other_lang = 'en' %}
+  {% assign toc_name = 'Содержание' %}
   {% assign description = page.description | default: 'Домашний медиасервер для ваших фильмов, сериалов, музыки, аудиокниг, книг и комиксов.' %}
 {% else %}
   {% assign home = '/' %}
+  {% assign guide = site.data.guide.en %}
   {% assign ru_url = '/ru' | append: page.url %}
   {% assign ru_page = site.pages | where: 'url', ru_url | first %}
   {% if ru_page %}{% assign other_url = ru_url %}{% else %}{% assign other_url = '/ru/' %}{% endif %}
   {% assign other_name = 'Русский' %}
   {% assign other_lang = 'ru' %}
+  {% assign toc_name = 'Contents' %}
   {% assign description = page.description | default: site.description %}
 {% endif %}
+{% capture toc %}
+{% for section in guide %}
+<p class="toc-group">{{ section.title }}</p>
+<ul>
+{% for p in section.pages %}{% assign u = home | append: p.url %}
+<li><a href="{{ u | relative_url }}"{% if page.url == u %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+{% endfor %}
+</ul>
+{% endfor %}
+{% endcapture %}
 <html lang="{{ page.lang | default: site.lang }}">
 <head>
 <meta charset="utf-8">
@@ -33,26 +48,30 @@
   {% if page.lang == 'ru' %}
   <nav>
     <a href="{{ '/ru/install.html' | relative_url }}">Установка</a>
+    <a href="{{ '/ru/docs.html' | relative_url }}">Документация</a>
     <a href="{{ '/ru/apps.html' | relative_url }}">Приложения</a>
     <a href="{{ '/releases.html' | relative_url }}">Релизы</a>
-    <a href="{{ '/ru/docs.html' | relative_url }}">Документация</a>
     <a href="https://github.com/antresol-app/antresol">GitHub</a>
     <a class="lang" href="{{ other_url | relative_url }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ other_name }}</a>
   </nav>
   {% else %}
   <nav>
     <a href="{{ '/install.html' | relative_url }}">Install</a>
+    <a href="{{ '/docs.html' | relative_url }}">Docs</a>
     <a href="{{ '/apps.html' | relative_url }}">Apps</a>
     <a href="{{ '/releases.html' | relative_url }}">Releases</a>
-    <a href="{{ '/docs.html' | relative_url }}">Docs</a>
     <a href="https://github.com/antresol-app/antresol">GitHub</a>
     <a class="lang" href="{{ other_url | relative_url }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ other_name }}</a>
   </nav>
   {% endif %}
 </header>
-<main>
+<div class="page">
+  <aside class="toc" aria-label="{{ toc_name }}">{{ toc }}</aside>
+  <main>
+    <details class="toc-mobile"><summary>{{ toc_name }}</summary>{{ toc }}</details>
 {{ content }}
-</main>
+  </main>
+</div>
 <footer>
   {% if page.lang == 'ru' %}
   Antresol воспроизводит только файлы, которые вы храните дома; контент не предоставляется.

@@ -5,23 +5,25 @@ lang: ru
 
 # Ваша медиатека на всех устройствах
 
-<p class="lead">Antresol — домашний медиасервер для ваших фильмов, сериалов, музыки, аудиокниг, книг и комиксов. Укажите папки, откройте сервер в браузере — и у всей семьи одна медиатека с профилями, прогрессом, который переходит между устройствами, и плеером, который работает дома и в дороге.</p>
+<p class="lead">Antresol — домашний медиасервер для ваших фильмов, сериалов, музыки, аудиокниг, книг и комиксов. Укажите папки, откройте сервер в браузере — и у всей семьи одна медиатека с профилями и прогрессом, который переходит между устройствами.</p>
 
 <p><a class="btn" href="install.html">Установить сервер</a><a class="btn secondary" href="apps.html">Приложения</a></p>
 
-## Документация
+![Главный экран: полки фильмов и сериалов](../images/home.png)
 
-- [Установка и обновление](install.html)
-- [Конфигурация: параметры `.env` и почта](configuration.html)
-- [Аппаратное перекодирование](hardware-transcoding.html)
-- [Как добавить язык](translating.html)
-- [Приложения](apps.html)
-- [Что нового](../releases.html) (на английском)
+## С чего начать
 
-## Приложения
+<div class="cards">
+  <a href="install.html"><strong>Установка</strong><span>Docker Compose за десять минут</span></a>
+  <a href="first-setup.html"><strong>Первая настройка</strong><span>Папки, права, профили семьи</span></a>
+  <a href="apps.html"><strong>Приложения</strong><span>Телефоны, планшеты, телевизоры</span></a>
+  <a href="public-address.html"><strong>Доступ извне</strong><span>Публичный адрес и обратный прокси</span></a>
+  <a href="tv.html"><strong>ТВ-каналы</strong><span>Каналы из медиатеки и IPTV</span></a>
+  <a href="addons.html"><strong>Расширения</strong><span>Онлайн, трейлеры и другие</span></a>
+  <a href="migrate.html"><strong>Переезд</strong><span>С Jellyfin, Kavita, Audiobookshelf</span></a>
+  <a href="troubleshooting.html"><strong>Решение проблем</strong><span>Если что-то не работает</span></a>
+</div>
 
-- **Android и Android TV:** вступите в группу [antresol-test](https://groups.google.com/g/antresol-test), примите приглашение по ссылке [play.google.com/apps/testing/app.antresol.mobile](https://play.google.com/apps/testing/app.antresol.mobile) и установите Antresol из Google Play.
-- **iPhone, iPad, Mac и Apple TV:** бета в TestFlight, приглашение — через [issue на GitHub](https://github.com/antresol-app/antresol/issues/new) с адресом Apple ID.
-- **Браузер:** откройте адрес сервера, ничего ставить не нужно.
+Все разделы — в [документации](docs.html).
 
 Antresol показывает только ваши файлы, контент не предоставляется.

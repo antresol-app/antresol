@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/antresol-app/antresol/internal/auth"
@@ -45,30 +44,25 @@ func ProposeUsers(ctx context.Context, o ProgressOptions, users *auth.Store) ([]
 		found[k] = &UserProposal{Source: source, SourceID: id, SourceName: name, Rows: 1}
 	}
 	var unreadable []UserProposal
-	read := func(app, path string, fn func(*srcDB) error) error {
-		source := map[string]string{"Jellyfin": SourceJellyfin, "Kavita": SourceKavita, "Audiobookshelf": SourceABS}[app]
+	read := func(source, app string, fn func() error) error {
+		err := fn()
+		if err == nil || errors.Is(err, errNoSourceDB) {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		impLog().Warn("read", "app", app, "err", err)
 		failed := UserProposal{Source: source, SourceName: app, Error: i18n.T(ctx, "Не удалось прочитать базу %s", app)}
-		d, err := snapshotDB(o.Tmp, path)
-		if errors.Is(err, errNoSourceDB) {
-			return nil
+		var re *RemoteError
+		if errors.As(err, &re) {
+			failed.Error = re.Msg
 		}
-		if err != nil {
-			impLog().Warn("snapshot", "app", app, "file", path, "err", err)
-			unreadable = append(unreadable, failed)
-			return nil
-		}
-		defer d.Close()
-		if err := fn(d); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			impLog().Warn("read", "app", app, "err", err)
-			unreadable = append(unreadable, failed)
-		}
+		unreadable = append(unreadable, failed)
 		return nil
 	}
-	err := read("Jellyfin", o.JellyfinDB, func(d *srcDB) error {
-		data, err := readJellyfin(ctx, d.DB)
+	err := read(SourceJellyfin, "Jellyfin", func() error {
+		data, err := loadJellyfin(ctx, o)
 		if err != nil {
 			return err
 		}
@@ -78,17 +72,17 @@ func ProposeUsers(ctx context.Context, o ProgressOptions, users *auth.Store) ([]
 		return nil
 	})
 	if err == nil {
-		err = read("Kavita", o.KavitaDB, func(d *srcDB) error {
-			list, err := readKavita(ctx, d.DB)
+		err = read(SourceKavita, "Kavita", func() error {
+			list, err := loadKavita(ctx, o)
 			for _, r := range list {
-				add(SourceKavita, strconv.FormatInt(r.userID, 10), r.userName)
+				add(SourceKavita, r.userID, r.userName)
 			}
 			return err
 		})
 	}
 	if err == nil {
-		err = read("Audiobookshelf", o.ABSDB, func(d *srcDB) error {
-			list, err := readABS(ctx, d.DB)
+		err = read(SourceABS, "Audiobookshelf", func() error {
+			list, _, err := loadABS(ctx, o, false)
 			for _, r := range list {
 				add(SourceABS, r.userID, r.userName)
 			}

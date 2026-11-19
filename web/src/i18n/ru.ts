@@ -24,6 +24,7 @@ import episodes from './ru/episodes'
 import addons from './ru/addons'
 import pairing from './ru/pairing'
 import setupWizard from './ru/setupWizard'
+import apiKeys from './ru/apiKeys'
 import full from './ru/full'
 
 export const ru = {
@@ -47,5 +48,6 @@ export const ru = {
   ...addons,
   ...pairing,
   ...setupWizard,
+  ...apiKeys,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

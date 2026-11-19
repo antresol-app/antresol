@@ -9,8 +9,9 @@ import type { PlaybackPrefs } from '../../api/types'
 
 /**
  * «Все», «Избранное» or one category (the server's ids: `ai:<code>`, `source:<id>`,
- * `group:<name>` — an own channel's theme is its group). In the address: ?f=fav,
- * ?f=k:<id>; an older ?f=c:<theme> is the theme's group.
+ * `group:<name>` — an own channel's theme is its group). In the address: ?f=all,
+ * ?f=fav, ?f=k:<id>; an older ?f=c:<theme> is the theme's group. No ?f: «Все»
+ * for a small list, the list of categories (the first level) for a big one.
  */
 export type ChannelFilter = { kind: 'all' } | { kind: 'fav' } | { kind: 'cat'; id: string }
 
@@ -24,7 +25,7 @@ export function parseFilter(s: string | null | undefined): ChannelFilter {
 }
 
 export function filterParam(f: ChannelFilter): string {
-  return f.kind === 'fav' ? 'fav' : f.kind === 'cat' ? `k:${f.id}` : ''
+  return f.kind === 'fav' ? 'fav' : f.kind === 'cat' ? `k:${f.id}` : 'all'
 }
 
 type Categorized = { number: number; category: string; categories?: string[] }
@@ -47,9 +48,19 @@ export function categoryList(list: Categorized[], server?: ChannelCategory[]): C
   return out
 }
 
-/** The list in number order (a TV's list never reorders: favourites stay where they are). */
+/** The list in number order. */
 export function byNumber<T extends { number: number }>(list: T[]): T[] {
   return [...list].sort((a, b) => a.number - b.number)
+}
+
+/**
+ * The list as the profile reads it: number order, and with `favFirst` (the
+ * profile's «Избранные каналы первыми») the starred channels first, each
+ * part in number order.
+ */
+export function ordered<T extends { number: number; favorite?: boolean }>(list: T[], favFirst = false): T[] {
+  const sorted = byNumber(list)
+  return favFirst ? [...sorted.filter((c) => c.favorite), ...sorted.filter((c) => !c.favorite)] : sorted
 }
 
 /** The themes in the order of their first channel. */
@@ -59,9 +70,9 @@ export function themesOf(list: { number: number; category: string }[]): string[]
   return out
 }
 
-/** The channels a filter shows, in number order. */
-export function applyFilter<T extends Categorized & { favorite?: boolean }>(list: T[], f: ChannelFilter): T[] {
-  const sorted = byNumber(list)
+/** The channels a filter shows, in the profile's order (ordered). */
+export function applyFilter<T extends Categorized & { favorite?: boolean }>(list: T[], f: ChannelFilter, favFirst = false): T[] {
+  const sorted = ordered(list, favFirst)
   if (f.kind === 'fav') return sorted.filter((c) => c.favorite)
   if (f.kind === 'cat') return sorted.filter((c) => categoriesOf(c).includes(f.id))
   return sorted
@@ -81,11 +92,11 @@ export function withFavorite<T extends { id: number; favorite?: boolean }>(list:
 
 /**
  * The channel `step` away from `id` in the list the player was opened from
- * (number order, wrapping round). A channel no longer in that list (it was
- * unstarred) zaps from where its number would stand.
+ * (in the order the list shows: ordered, wrapping round). A channel no
+ * longer in that list (it was unstarred) zaps from where its number would stand.
  */
-export function zapTarget<T extends { id: number; number: number }>(list: T[], id: number, step: number, number?: number): T | undefined {
-  const sorted = byNumber(list)
+export function zapTarget<T extends { id: number; number: number; favorite?: boolean }>(list: T[], id: number, step: number, number?: number, favFirst = false): T | undefined {
+  const sorted = ordered(list, favFirst)
   if (sorted.length === 0) return undefined
   let i = sorted.findIndex((c) => c.id === id)
   if (i < 0) {

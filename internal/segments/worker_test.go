@@ -195,6 +195,9 @@ func TestWorkerPass(t *testing.T) {
 	if err := fx.w.Pass(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if p := fx.w.Progress.Snapshot(); p.Running || p.Total != 4 || p.Done != 4 {
+		t.Errorf("progress %+v", p)
+	}
 	if fx.fpCalls != calls || fx.tidb["1418/3"] != 1 || fx.idb["tt0898266/3"] != 1 {
 		t.Errorf("second pass worked again: fp %d→%d, %v %v", calls, fx.fpCalls, fx.tidb, fx.idb)
 	}

@@ -103,4 +103,15 @@ describe('the profile menu’s addon entries', () => {
     await openMenu({ ...adult, deviceHistory: { id: 9, name: 'Гостиная' } })
     expect(await screen.findByText('История этого устройства: Гостиная')).toBeInTheDocument()
   })
+
+  it('«Сменить профиль» is the round button in the head, reached with the arrows but not focused first', async () => {
+    await openMenu(adult)
+    const sw = screen.getByRole('menuitem', { name: 'Сменить профиль' })
+    // in the head beside the profile's name, not a row among the places
+    expect(sw.closest('[role="menu"]')!.querySelector('[class*="head"]')).toContainElement(sw)
+    // the menu opens on its first place, not on the switch
+    expect(document.activeElement).toHaveAccessibleName('Календарь')
+    fireEvent.click(sw)
+    expect(await screen.findByTestId('where')).toHaveTextContent('/profiles')
+  })
 })

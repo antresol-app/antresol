@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/antresol-app/antresol/internal/discovery"
+	"github.com/antresol-app/antresol/internal/publicurl"
 	"io/fs"
 	"log"
 	"net/http"
@@ -70,6 +71,9 @@ type Deps struct {
 	// PublicURL is the server's public address (VAULT_PUBLIC_URL; "" when
 	// unset), told to addons by /api/addon-core/v1/info.
 	PublicURL string
+	// PublicAddress is the address in force, VAULT_PUBLIC_URL or the one
+	// saved in «Адрес сервера» (nil: PublicURL as it is).
+	PublicAddress *publicurl.Address
 	// MediaRoot is the server's media folder (VAULT_MEDIA_ROOT), told to
 	// addons by /api/addon-core/v1/info ("" when unset).
 	MediaRoot string
@@ -189,6 +193,15 @@ type Deps struct {
 	// Trickplay are the scrub previews of the library's videos
 	// (/api/files/{fileId}/trickplay); nil: none (404).
 	Trickplay Trickplay
+
+	// Background are the workers «Задачи» shows the progress of
+	// (/api/admin/tasks), besides the scan (Jobs) and Voclean.
+	Background []BackgroundTask
+	// NetTargets are the services «Состояние» checks the server reaches
+	// (/api/admin/health/network); NetClient asks them (nil: a plain
+	// client with netTimeout).
+	NetTargets []NetTarget
+	NetClient  *http.Client
 
 	// CastPhotos keeps the cast's TMDB photos in the image cache and
 	// fetches a missing one on its first view; nil: cast photos 404.
@@ -363,6 +376,17 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	}
 	// the one session check of every authenticated route
 	guard := &auth.Guard{Sessions: deps.Sessions, Network: deps.Network, Keys: deps.MediaKeys}
+	// personal API keys («Ключи API и ИИ») and the MCP server that takes them
+	var mcp *mcpServer
+	if deps.DB != nil && deps.Sessions != nil {
+		guard.APIKeys = auth.NewAPIKeys(deps.DB)
+		mcp = &mcpServer{addons: deps.Addons}
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountAPIKeys(r, guard.APIKeys, deps.PublicURL)
+			mountMCP(r, mcp)
+		})
+	}
 	if deps.Users != nil && deps.Sessions != nil {
 		mountAuth(r, deps.Users, guard, deps.Throttle, deps.LibraryOnly || libraryEdition, deps.Addons != nil, requestsOpen,
 			func(ctx context.Context) {
@@ -500,6 +524,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			mountTranscoding(r, deps)
 			mountStorage(r, deps)
 			mountVoclean(r, deps)
+			mountTasks(r, deps)
 		})
 	}
 	if deps.Sessions != nil && deps.Users != nil && deps.MediaImport != nil {
@@ -550,6 +575,9 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	}
 	r.Handle("/api/*", http.NotFoundHandler())
 	r.NotFound(spa(webui.FS).ServeHTTP)
+	if mcp != nil {
+		mcp.api = r // the tools call the routes above
+	}
 	return r
 }
 

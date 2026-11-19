@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
@@ -21,6 +23,8 @@ func mountMediaImport(r chi.Router, deps Deps) {
 		r.Post("/api/migrate/run", h.run)
 		r.Get("/api/migrate/reports", h.reports)
 		r.Get("/api/migrate/reports/{id}", h.report)
+		r.Post("/api/migrate/sources/{id}/connect", h.connect)
+		r.Delete("/api/migrate/sources/{id}/connect", h.forget)
 	})
 }
 
@@ -62,6 +66,8 @@ func (h *mediaImportAPI) err(w http.ResponseWriter, r *http.Request, what string
 		writeErr(w, r, http.StatusBadRequest, "Такого профиля в Antresol нет — обновите страницу")
 	case errors.Is(err, mediaimport.ErrNotFound):
 		writeErr(w, r, http.StatusNotFound, "Отчёт не найден")
+	case errors.Is(err, mediaimport.ErrUnknownRemote):
+		writeErr(w, r, http.StatusBadRequest, "Неизвестный источник")
 	default:
 		internalErr(w, r, what, err)
 	}
@@ -72,8 +78,16 @@ type migrateProfile struct {
 	Name string `json:"name"`
 }
 
+// migrateSource is a source's status and, for Jellyfin, Kavita and
+// Audiobookshelf, its connection over the network (never the key or the
+// password).
+type migrateSource struct {
+	mediaimport.SourceStatus
+	Connect *mediaimport.RemoteView `json:"connect,omitempty"`
+}
+
 type migrateStatus struct {
-	Sources   []mediaimport.SourceStatus `json:"sources"`
+	Sources   []migrateSource            `json:"sources"`
 	Leftovers []mediaimport.Line         `json:"leftovers"`
 	Users     []mediaimport.UserProposal `json:"users"`
 	Profiles  []migrateProfile           `json:"profiles"`
@@ -106,13 +120,18 @@ func (h *mediaImportAPI) state(w http.ResponseWriter, r *http.Request) {
 
 func (h *mediaImportAPI) status(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	out := migrateStatus{Sources: h.svc.Discover(ctx), Leftovers: h.svc.Leftovers(ctx)}
+	found := h.svc.Discover(ctx)
+	out := migrateStatus{Sources: make([]migrateSource, len(found)), Leftovers: h.svc.Leftovers(ctx)}
 	if out.Leftovers == nil {
 		out.Leftovers = []mediaimport.Line{}
 	}
-	for i := range out.Sources {
-		out.Sources[i].Detail = i18n.Localize(ctx, out.Sources[i].Detail)
-		out.Sources[i].Error = i18n.Localize(ctx, out.Sources[i].Error)
+	for i, st := range found {
+		st.Detail = i18n.Localize(ctx, st.Detail)
+		st.Error = i18n.Localize(ctx, st.Error)
+		out.Sources[i].SourceStatus = st
+		if v, ok := h.svc.Remote(st.ID); ok {
+			out.Sources[i].Connect = &v
+		}
 	}
 	out.Leftovers = mediaimport.LocalizeLines(ctx, out.Leftovers)
 	var err error
@@ -176,4 +195,48 @@ func (h *mediaImportAPI) report(w http.ResponseWriter, r *http.Request) {
 	}
 	rep.Localize(r.Context())
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// connectTimeout bounds «Подключить» (it reads every user's marks once, to
+// count them).
+const connectTimeout = 3 * time.Minute
+
+// connect is «Подключить» on a Jellyfin, Kavita or Audiobookshelf card:
+// the address and the key (Jellyfin: or the login) are checked and kept in
+// memory for the migration; the answer is what was found, or the reason in
+// {"error"}. The key and the password are never answered or logged.
+func (h *mediaImportAPI) connect(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL      string `json:"url"`
+		APIKey   string `json:"apiKey"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	ctx, cancel := context.WithTimeout(r.Context(), connectTimeout)
+	defer cancel()
+	detail, err := h.svc.Connect(ctx, id, mediaimport.Remote{URL: req.URL, APIKey: req.APIKey, Username: req.Username, Password: req.Password})
+	var re *mediaimport.RemoteError
+	if errors.As(err, &re) {
+		writeErr(w, r, http.StatusBadRequest, re.Msg)
+		return
+	}
+	if err != nil {
+		h.err(w, r, "migrate connect", err)
+		return
+	}
+	v, _ := h.svc.Remote(id)
+	writeJSON(w, http.StatusOK, map[string]any{"detail": i18n.Localize(r.Context(), detail), "connect": v})
+}
+
+// forget drops a kept connection («Забыть»): the database file is used again.
+func (h *mediaImportAPI) forget(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.Forget(chi.URLParam(r, "id")); err != nil {
+		h.err(w, r, "migrate forget", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

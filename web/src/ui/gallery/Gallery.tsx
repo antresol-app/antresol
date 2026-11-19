@@ -280,6 +280,7 @@ export function Gallery() {
         <GroupedSection title="Просмотр">
           <ListLinkRow icon="speaker" tint="pink" label="Звук и субтитры" onOpen={() => {}} />
           <ListLinkRow icon="key" tint="gray" label="Пароль для приложений" hint="One short line under the label." onOpen={() => {}} />
+          <ListLinkRow label="Избранное" value="12" to="/dev/gallery" />
           <ListLinkRow label="Без иконки" value="Включены" onOpen={() => {}} />
         </GroupedSection>
       </Section>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -100,6 +101,10 @@ type Service struct {
 
 	scans atomic.Int64 // reads of the old databases for the screen
 	cache screenCache
+
+	// HTTP is the client of the API connections (nil: remoteHTTP's own).
+	HTTP    *http.Client
+	remotes remotes // the connections typed on the page (Connect), memory only
 }
 
 // NewService removes the run folders an earlier process left (database
@@ -284,13 +289,14 @@ func (s *Service) Discover(ctx context.Context) []SourceStatus {
 	for _, src := range srcs {
 		key += src.ID() + "\n"
 	}
-	key += i18n.FromContext(ctx)
+	_, gen := s.remotes.all()
+	key += strconv.Itoa(gen) + "\n" + i18n.FromContext(ctx)
 	if v, ok := s.cache.get("discover", key); ok {
 		return slices.Clone(v.([]SourceStatus))
 	}
 	s.scans.Add(1)
 	out := s.discover(ctx, srcs)
-	if ctx.Err() == nil {
+	if ctx.Err() == nil && !apiFailed(out, s) {
 		s.cache.put("discover", key, slices.Clone(out))
 	}
 	return out
@@ -306,8 +312,18 @@ func (s *Service) discover(ctx context.Context, srcs []Source) []SourceStatus {
 	out := make([]SourceStatus, 0, len(srcs))
 	for _, src := range srcs {
 		st := SourceStatus{ID: src.ID(), Name: src.Name(), Path: src.Path()}
-		if !present(st.Path, src.IsDir()) {
-			st.Detail = i18n.T(ctx, "Не найден — смонтируйте %s", st.Path)
+		overAPI := false
+		if d, ok := src.(*dbSource); ok {
+			if r, ok := s.remotes.get(d.id); ok {
+				overAPI, st.Path = true, redactURL(r.URL)
+			}
+		}
+		if !overAPI && !present(st.Path, src.IsDir()) {
+			if RemoteKind(src.ID()) != "" {
+				st.Detail = i18n.T(ctx, "Не подключён — укажите адрес и ключ ниже (или смонтируйте %s)", st.Path)
+			} else {
+				st.Detail = i18n.T(ctx, "Не найден — смонтируйте %s", st.Path)
+			}
 			out = append(out, st)
 			continue
 		}
@@ -319,9 +335,13 @@ func (s *Service) discover(ctx context.Context, srcs []Source) []SourceStatus {
 			}
 			s.log().Warn("discover", "source", src.ID(), "err", err)
 			var ue *UserError
-			if errors.As(err, &ue) {
+			var re *RemoteError
+			switch {
+			case errors.As(err, &ue):
 				st.Error = ue.Msg
-			} else {
+			case errors.As(err, &re):
+				st.Error = re.Msg
+			default:
 				st.Error = i18n.T(ctx, "Не удалось прочитать базу %s", st.Name)
 			}
 		}
@@ -332,6 +352,17 @@ func (s *Service) discover(ctx context.Context, srcs []Source) []SourceStatus {
 		out = append(out, st)
 	}
 	return out
+}
+
+// apiFailed: a source read over its API has an error (the network may be
+// back on the next look, so the look is not kept).
+func apiFailed(out []SourceStatus, s *Service) bool {
+	for _, st := range out {
+		if _, ok := s.remotes.get(st.ID); ok && st.Error != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func present(p string, dir bool) bool {
@@ -359,67 +390,76 @@ func (d *dbSource) Path() string                   { return d.path }
 func (d *dbSource) IsDir() bool                    { return false }
 func (d *dbSource) Problem(context.Context) string { return "" }
 func (d *dbSource) Detail(ctx context.Context, tmp string) (string, error) {
-	users, rows, epubs, err := progressUsers(ctx, tmp, d.id, d.path)
+	o := d.s.progressOptions(tmp, nil, true)
+	switch d.id {
+	case SourceJellyfin:
+		data, err := loadJellyfin(ctx, o)
+		if err != nil {
+			return "", err
+		}
+		return jellyfinDetail(ctx, data), nil
+	case SourceKavita:
+		list, err := loadKavita(ctx, o)
+		if err != nil {
+			return "", err
+		}
+		return kavitaDetail(ctx, list), nil
+	}
+	list, _, err := loadABS(ctx, o, false)
 	if err != nil {
 		return "", err
 	}
-	if d.id != SourceJellyfin && rows == 0 {
-		return i18n.T(ctx, reasonNoData), nil
-	}
-	det := i18n.Plural(ctx, users, "пользователь", "пользователя", "пользователей") + ", " + i18n.Plural(ctx, rows, "отметка", "отметки", "отметок")
-	if epubs > 0 {
-		det = i18n.T(ctx, "%s · место внутри EPUB не переносится (только процент)", det)
-	}
-	return det, nil
+	return absDetail(ctx, list), nil
 }
 
 func (d *dbSource) Import(ctx context.Context, r Run) error {
 	return d.imp(ctx, d.s.progressOptions(r.Tmp, r.UserMap, r.DryRun), d.s.Library, d.s.Progress, r.Report)
 }
 
-// progressUsers counts the users with marks to carry over and the marks
-// (the rows the importer reads); epubs: Kavita marks in EPUB books, whose
-// place inside the book does not move.
-func progressUsers(ctx context.Context, tmp, id, path string) (users, rows, epubs int, err error) {
-	d, err := snapshotDB(tmp, path)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	defer d.Close()
+// jellyfinDetail, kavitaDetail and absDetail say what a source has: the
+// users with marks to carry over and the marks (the rows the importer
+// reads); Kavita's marks in EPUB books keep only their share.
+func jellyfinDetail(ctx context.Context, data jfData) string {
 	seen := map[string]bool{}
-	switch id {
-	case SourceJellyfin:
-		data, err := readJellyfin(ctx, d.DB)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		for _, r := range append(data.progress, data.favorites...) {
-			seen[r.userID] = true
-			rows++
-		}
-	case SourceKavita:
-		list, err := readKavita(ctx, d.DB)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		for _, r := range list {
-			seen[strconv.FormatInt(r.userID, 10)] = true
-			rows++
-			if strings.HasSuffix(strings.ToLower(r.filePath), ".epub") {
-				epubs++
-			}
-		}
-	case SourceABS:
-		list, err := readABS(ctx, d.DB)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		for _, r := range list {
-			seen[r.userID] = true
-			rows++
+	rows := 0
+	for _, r := range append(data.progress, data.favorites...) {
+		seen[r.userID] = true
+		rows++
+	}
+	return detailText(ctx, len(seen), rows, 0, true)
+}
+
+func kavitaDetail(ctx context.Context, list []kvRow) string {
+	seen := map[string]bool{}
+	epubs := 0
+	for _, r := range list {
+		seen[r.userID] = true
+		if strings.HasSuffix(strings.ToLower(r.filePath), ".epub") {
+			epubs++
 		}
 	}
-	return len(seen), rows, epubs, nil
+	return detailText(ctx, len(seen), len(list), epubs, false)
+}
+
+func absDetail(ctx context.Context, list []absRow) string {
+	seen := map[string]bool{}
+	for _, r := range list {
+		seen[r.userID] = true
+	}
+	return detailText(ctx, len(seen), len(list), 0, false)
+}
+
+// detailText is «2 пользователя, 14 отметок»; an empty source other than
+// Jellyfin (whose users always show) is «Нет данных для переноса».
+func detailText(ctx context.Context, users, rows, epubs int, jellyfin bool) string {
+	if !jellyfin && rows == 0 {
+		return i18n.T(ctx, reasonNoData)
+	}
+	det := i18n.Plural(ctx, users, "пользователь", "пользователя", "пользователей") + ", " + i18n.Plural(ctx, rows, "отметка", "отметки", "отметок")
+	if epubs > 0 {
+		det = i18n.T(ctx, "%s · место внутри EPUB не переносится (только процент)", det)
+	}
+	return det
 }
 
 // Leftovers is what the old services have that does not move: the
@@ -436,6 +476,9 @@ func (s *Service) Leftovers(ctx context.Context) []Line {
 // coreLeftovers is the core's part of Leftovers, kept in the screen's
 // cache.
 func (s *Service) coreLeftovers(ctx context.Context) []Line {
+	if _, ok := s.remotes.get(SourceJellyfin); ok {
+		return nil // read over the API: the check's report says it (the importer's line)
+	}
 	key := fingerprint(s.Jellyfin) + "\n" + i18n.FromContext(ctx)
 	if v, ok := s.cache.get("leftovers", key); ok {
 		return slices.Clone(v.([]Line))
@@ -461,6 +504,9 @@ func (s *Service) leftovers(ctx context.Context, tmp string, running []string) [
 	if slices.Contains(running, SourceJellyfin) {
 		return nil
 	}
+	if _, ok := s.remotes.get(SourceJellyfin); ok {
+		return nil // its database is not read
+	}
 	var out []Line
 	lang := i18n.FromContext(ctx)
 	if n, err := CountIn(ctx, tmp, s.Jellyfin, TableCount{Table: "BaseItems", Where: "Type LIKE '%LiveTvChannel'"}); err != nil {
@@ -477,7 +523,8 @@ func (s *Service) leftovers(ctx context.Context, tmp string, running []string) [
 // Audiobookshelf (the last look while their databases and the Vault
 // profiles are unchanged).
 func (s *Service) Users(ctx context.Context) ([]UserProposal, error) {
-	key := fingerprint(s.Jellyfin, s.Kavita, s.ABS) + "\n" + i18n.FromContext(ctx) + "\n"
+	_, gen := s.remotes.all()
+	key := fingerprint(s.Jellyfin, s.Kavita, s.ABS) + "\n" + strconv.Itoa(gen) + "\n" + i18n.FromContext(ctx) + "\n"
 	if s.Profiles != nil {
 		profiles, err := s.Profiles.List(ctx)
 		if err != nil {
@@ -500,15 +547,16 @@ func (s *Service) Users(ctx context.Context) ([]UserProposal, error) {
 	if list == nil {
 		list = []UserProposal{}
 	}
-	if err == nil {
+	if err == nil && !slices.ContainsFunc(list, func(u UserProposal) bool { return u.Error != "" }) {
 		s.cache.put("users", key, slices.Clone(list))
 	}
 	return list, err
 }
 
 func (s *Service) progressOptions(tmp string, um map[string]int64, dry bool) ProgressOptions {
+	rm, _ := s.remotes.all()
 	return ProgressOptions{JellyfinDB: s.Jellyfin, KavitaDB: s.Kavita, ABSDB: s.ABS,
-		Tmp: tmp, Paths: s.ImportPaths, UserMap: um, DryRun: dry}
+		Tmp: tmp, Paths: s.ImportPaths, UserMap: um, DryRun: dry, Remotes: rm, HTTP: s.HTTP}
 }
 
 // --- runs ---

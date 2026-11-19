@@ -34,6 +34,7 @@ import { ago } from '../../../state/format'
 import { COMPACT_QUERY, useMediaQuery } from '../../../state/useMediaQuery'
 import { Badge } from '../../../ui/Badge'
 import { Button, ButtonLink } from '../../../ui/Button'
+import { useChannelsFrame } from '../manageBase'
 import { FilterChips } from '../../../ui/FilterChips'
 import { IconButton } from '../../../ui/IconButton'
 import { GroupedSection, ListRow } from '../../../ui/List'
@@ -64,6 +65,8 @@ const capital = (s: string) => s.charAt(0).toLocaleUpperCase() + s.slice(1)
 export function SourceChannels() {
   const t = useT()
   const navigate = useNavigate()
+  const frame = useChannelsFrame()
+  const Title = frame.embedded ? 'h2' : 'h1'
   const { id: idParam } = useParams()
   const id = Number(idParam)
   const phone = useMediaQuery(COMPACT_QUERY)
@@ -238,14 +241,14 @@ export function SourceChannels() {
   const dropNotice = source && source.pendingDrop > 0 ? <DropNotice s={source} busy={busy} onConfirm={() => drop('confirm')} onKeep={() => drop('keep')} /> : null
 
   return (
-    <div className={styles.page}>
-      <div className={styles.wideColumn}>
-        <ButtonLink to="/tv/manage/sources" variant="plain" size="small" icon="chevronLeft" className={styles.back}>
+    <div className={frame.page(styles.page)}>
+      <div className={frame.column(styles.wideColumn)}>
+        <ButtonLink to={`${frame.base}/sources`} variant="plain" size="small" icon="chevronLeft" className={styles.back}>
           {t('iptv.backToSources')}
         </ButtonLink>
         <header className={`${styles.header} ${styles.row}`}>
           <div className={styles.headText}>
-            <h1 className={styles.title}>{source?.name ?? ' '}</h1>
+            <Title className={frame.title(styles.title)}>{source?.name ?? ' '}</Title>
             {source && (
               <p className={styles.sub}>
                 <span className={styles.subLine}>{sourceAddress(source)}</span>
@@ -472,7 +475,7 @@ export function SourceChannels() {
               kind: 'destructive',
               run: () => {
                 setRemoving(false)
-                deleteSource(id).then(() => navigate('/tv/manage/sources', { replace: true }), failed)
+                deleteSource(id).then(() => navigate(`${frame.base}/sources`, { replace: true }), failed)
               },
             },
           ]}

@@ -89,22 +89,9 @@ var absPageRe = regexp.MustCompile(`^\d+$`)
 // ImportABS carries over the listening and reading positions of the
 // mapped Audiobookshelf users.
 func ImportABS(ctx context.Context, o ProgressOptions, lib LibraryLookup, ps ProgressSink, rep *Report) error {
-	d := openProgressDB(o, SourceABS, "Audiobookshelf", o.ABSDB, rep)
-	if d == nil {
-		return nil
-	}
-	defer d.Close()
-	list, err := readABS(ctx, d.DB)
-	var others map[string]int
-	if err == nil {
-		others, err = readABSOthers(ctx, d.DB)
-	}
+	list, others, err := loadABS(ctx, o, true)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		progressReadFailed(SourceABS, "Audiobookshelf", rep, err)
-		return nil
+		return loadFailed(ctx, SourceABS, "Audiobookshelf", rep, err)
 	}
 	if w := othersWarning("Audiobookshelf", others); w != "" {
 		rep.Add(Line{Source: SourceABS, Kind: "leftover", Name: "Другие отметки", Status: StatusWarning, Reason: w})

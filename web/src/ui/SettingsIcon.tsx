@@ -192,6 +192,8 @@ const glyphs = {
     </>
   ),
   /** about */
+  /** the server's health: a pulse line */
+  pulse: <path {...line} d="M2.8 12.4h4.1l2.3-5.6 4.2 11 2.6-6.6 1.2 1.2h4" />,
   info: cut('M12 2.4a9.6 9.6 0 1 1 0 19.2 9.6 9.6 0 0 1 0-19.2zm0 3.8a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zm-1.9 4.1v1.7h1v4.6h-1v1.7h4.4v-1.7h-1.2v-6.3z'),
 } satisfies Record<string, ReactNode>
 

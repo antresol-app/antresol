@@ -238,7 +238,12 @@ type deviceItem struct {
 
 func (e *env) devices(c *http.Cookie, hdr ...string) []deviceItem {
 	e.t.Helper()
-	w := e.do("GET", "/api/me/devices", "", c, hdr...)
+	return e.devicesAt("/api/me/devices", c, hdr...)
+}
+
+func (e *env) devicesAt(path string, c *http.Cookie, hdr ...string) []deviceItem {
+	e.t.Helper()
+	w := e.do("GET", path, "", c, hdr...)
 	if w.Code != 200 {
 		e.t.Fatalf("devices %d %s", w.Code, w.Body)
 	}
@@ -257,8 +262,12 @@ func TestDevicesListAndRevoke(t *testing.T) {
 	mac := e.deviceLogin(1, "secret", "mac-000001")
 	other := e.deviceLogin(u.ID, "ded1", "ipad-00001")
 
-	// an admin sees every profile's devices, each with its profile
-	list := e.devices(nil, bearer(phone)...)
+	// the admin's own «Устройства» are the admin's own devices only
+	if own := e.devices(nil, bearer(phone)...); len(own) != 3 {
+		t.Fatalf("admin's own %+v", own)
+	}
+	// the server's list (Профили → Устройства): every profile's devices, each with its profile
+	list := e.devicesAt("/api/admin/devices", nil, bearer(phone)...)
 	if len(list) != 4 {
 		t.Fatalf("%+v", list)
 	}
@@ -318,8 +327,17 @@ func TestDevicesListAndRevoke(t *testing.T) {
 	if w := e.do("GET", "/api/me", "", nil, bearer(other)...); w.Code != 200 {
 		t.Fatalf("other user's device: %d", w.Code)
 	}
-	// the admin signs out another profile's device
-	if w := e.do("DELETE", "/api/me/devices/"+itoa(otherID), "", nil, bearer(phone)...); w.Code != 204 {
+	// not as one of the admin's own; from the server's list it is
+	if w := e.do("DELETE", "/api/me/devices/"+itoa(otherID), "", nil, bearer(phone)...); w.Code != 404 {
+		t.Fatalf("other's as own: %d %s", w.Code, w.Body)
+	}
+	if w := e.do("GET", "/api/admin/devices", "", nil, bearer(other)...); w.Code != 403 {
+		t.Fatalf("server list for a non-admin: %d", w.Code)
+	}
+	if w := e.do("DELETE", "/api/admin/devices/"+itoa(otherID), "", nil, bearer(other)...); w.Code != 403 {
+		t.Fatalf("server sign-out by a non-admin: %d", w.Code)
+	}
+	if w := e.do("DELETE", "/api/admin/devices/"+itoa(otherID), "", nil, bearer(phone)...); w.Code != 204 {
 		t.Fatalf("other's by admin: %d %s", w.Code, w.Body)
 	}
 	if w := e.do("GET", "/api/me", "", nil, bearer(other)...); w.Code != 401 {

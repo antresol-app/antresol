@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/bgtask"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
 )
@@ -76,6 +77,10 @@ type Worker struct {
 	ReadTags func(path string, image bool) (library.ReplayGain, error)
 	// StartDelay: the first pass after Run starts (startDelay when 0).
 	StartDelay time.Duration
+
+	// Progress: the tracks measured of those due in the current or last
+	// pass («Задачи»).
+	Progress bgtask.Tracker
 
 	once sync.Once
 	kick chan struct{}
@@ -204,6 +209,8 @@ func (w *Worker) Pass(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	w.Progress.Begin(0, len(list))
+	defer func() { w.Progress.End(w.now()) }()
 	measured := 0
 	for _, c := range list {
 		if err := ctx.Err(); err != nil {
@@ -232,12 +239,14 @@ func (w *Worker) Pass(ctx context.Context) error {
 			if err := w.RefreshAlbums(ctx, c.AlbumID); err != nil {
 				return err
 			}
+			w.Progress.Add(1)
 			continue
 		}
 		if err := w.store(ctx, c.ID, r); err != nil {
 			return err
 		}
 		measured++
+		w.Progress.Add(1)
 		if err := w.RefreshAlbums(ctx, c.AlbumID); err != nil {
 			return err
 		}

@@ -23,6 +23,7 @@ import { Toast } from '../../ui/Toast'
 import { Toggle } from '../../ui/Toggle'
 import { ChannelEditor } from './ChannelEditor'
 import { ChannelLogo } from './ChannelLogo'
+import { useChannelsFrame } from './manageBase'
 import { byNumber } from './model'
 import sourcesStyles from './sources/Sources.module.css'
 import styles from './Tv.module.css'
@@ -50,6 +51,8 @@ export function TvManage() {
   const t = useT()
   const { user } = useSession()
   const [params, setParams] = useSearchParams()
+  const frame = useChannelsFrame()
+  const Title = frame.embedded ? 'h2' : 'h1'
   const [edit, setEdit] = useState<{ channel: Channel | null } | null>(params.get('new') ? { channel: null } : null)
   const [removing, setRemoving] = useState<Channel | null>(null)
   const [toast, setToast] = useState('')
@@ -126,10 +129,10 @@ export function TvManage() {
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.column}>
-        <header className={styles.columnHeader}>
-          <h1 className={styles.title}>{t('tv.manageTitle')}</h1>
+    <div className={frame.page(styles.page)}>
+      <div className={frame.column(styles.column)}>
+        <header className={frame.header(styles.columnHeader)}>
+          <Title className={frame.title(styles.title)}>{t('tv.manageTitle')}</Title>
           <div className={styles.actions}>
             <Button icon="plus" onClick={() => setEdit({ channel: null })}>
               {t('tv.newChannel')}
@@ -152,7 +155,7 @@ export function TvManage() {
                 </span>
               }
               label={
-                <Link to="/tv/manage/sources" className={sourcesStyles.rowLink}>
+                <Link to={`${frame.base}/sources`} className={sourcesStyles.rowLink}>
                   {t('iptv.entry')}
                 </Link>
               }
@@ -168,7 +171,7 @@ export function TvManage() {
                 </span>
               }
               label={
-                <Link to="/tv/manage/franchises" className={sourcesStyles.rowLink}>
+                <Link to={`${frame.base}/franchises`} className={sourcesStyles.rowLink}>
                   {t('tv.franchises.entry')}
                 </Link>
               }
@@ -201,7 +204,7 @@ export function TvManage() {
                   leading={
                     <span className={styles.rowLead}>
                       <span className={styles.rowNumber}>{c.number}</span>
-                      {data.channels.some((x) => x.logoUrl) && <ChannelLogo url={c.logoUrl} size="sm" reserve />}
+                      {data.channels.some((x) => x.logoUrl) && <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} size="sm" reserve />}
                     </span>
                   }
                   label={

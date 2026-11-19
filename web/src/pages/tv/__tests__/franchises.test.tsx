@@ -59,16 +59,16 @@ describe('«Франшизы»', () => {
     expect(screen.getByText('TMDB')).toBeInTheDocument()
     expect(screen.getByText('Wikidata')).toBeInTheDocument()
     expect(screen.getByText('Свой порядок')).toBeInTheDocument()
-    expect(screen.getByText('3 фильма или сериала · есть канал')).toBeInTheDocument()
-    expect(screen.getByText('2 фильма или сериала · есть канал')).toBeInTheDocument()
-    expect(screen.getByText('2 фильма или сериала · канала нет — мало для показа')).toBeInTheDocument()
+    expect(screen.getByText('ваш порядок · 3 фильма или сериала · есть канал')).toBeInTheDocument()
+    expect(screen.getByText('по выходу · 2 фильма или сериала · есть канал')).toBeInTheDocument()
+    expect(screen.getByText('по выходу · 2 фильма или сериала · канала нет — мало для показа')).toBeInTheDocument()
     expect(screen.getByText(/Порядок по сюжету расставляет ИИ-помощник/)).toBeInTheDocument()
   })
 
   it('says a franchise channel was deleted, not that the library has too little for it', async () => {
     list = [GONE]
     open()
-    expect(await screen.findByText('2 фильма или сериала · канал удалён — вернуть его можно на странице «Управление каналами»')).toBeInTheDocument()
+    expect(await screen.findByText('по выходу · 2 фильма или сериала · канал удалён — вернуть его можно на странице «Управление каналами»')).toBeInTheDocument()
     expect(screen.queryByText(/мало для показа/)).toBeNull()
   })
 

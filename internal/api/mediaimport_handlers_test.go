@@ -135,6 +135,8 @@ func TestMediaImportAdminOnly(t *testing.T) {
 		{"POST", "/api/migrate/run", `{"sources":["jellyfin"],"dryRun":true}`},
 		{"GET", "/api/migrate/reports", ""},
 		{"GET", "/api/migrate/reports/20261025T193000Z-abcdef", ""},
+		{"POST", "/api/migrate/sources/jellyfin/connect", `{"url":"http://127.0.0.1:1","apiKey":"k"}`},
+		{"DELETE", "/api/migrate/sources/jellyfin/connect", ""},
 	} {
 		for who, ck := range map[string]*http.Cookie{"adult": adult, "kid": kid} {
 			if w := e.do(c.method, c.path, c.body, ck); w.Code != http.StatusForbidden {
@@ -147,5 +149,71 @@ func TestMediaImportAdminOnly(t *testing.T) {
 	}
 	if e.svc.Running() != "" {
 		t.Fatal("a refused request started a run")
+	}
+}
+
+// TestMediaImportConnectHTTP: «Подключить» on the Audiobookshelf card keeps
+// the address and the token; the status shows the connection without the
+// token; a refused token is the reason in {"error"}; «Забыть» drops it.
+func TestMediaImportConnectHTTP(t *testing.T) {
+	e := newMediaImportEnv(t)
+	const token = "abs-token-for-the-test"
+	abs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/me":
+			w.Write([]byte(`{"id":"u-1","username":"alex","type":"root","mediaProgress":[]}`))
+		case "/api/users":
+			w.Write([]byte(`{"users":[{"id":"u-1","username":"alex","type":"root"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(abs.Close)
+	path := "/api/migrate/sources/audiobookshelf/connect"
+	w := e.do("POST", path, `{"url":"`+abs.URL+`","apiKey":"wrong"}`, e.admin)
+	if w.Code != http.StatusBadRequest || !strings.HasPrefix(errText(w), "Audiobookshelf не принял API-токен") {
+		t.Fatalf("wrong token: %d %s", w.Code, w.Body)
+	}
+	w = e.do("POST", path, `{"url":"`+abs.URL+`","apiKey":"`+token+`"}`, e.admin)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"detail":"Нет данных для переноса"`) || strings.Contains(w.Body.String(), token) {
+		t.Fatalf("connect: %d %s", w.Code, w.Body)
+	}
+	w = e.do("GET", "/api/migrate", "", e.admin)
+	var st struct {
+		Sources []struct {
+			ID      string
+			Found   bool
+			Connect *mediaimport.RemoteView
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(w.Body.String(), token) || len(st.Sources) != 3 {
+		t.Fatalf("status %s", w.Body)
+	}
+	for _, s := range st.Sources {
+		if s.Connect == nil {
+			t.Fatalf("%s has no connection form: %s", s.ID, w.Body)
+		}
+		if s.ID == "audiobookshelf" && (!s.Found || !s.Connect.Connected || s.Connect.URL != abs.URL || s.Connect.Kind != "apikey") {
+			t.Fatalf("abs %+v %+v", s, *s.Connect)
+		}
+		if s.ID == "jellyfin" && s.Connect.Kind != "apikeyOrLogin" {
+			t.Fatalf("jellyfin %+v", *s.Connect)
+		}
+	}
+	if w := e.do("POST", "/api/migrate/sources/nosuch/connect", `{"url":"http://x"}`, e.admin); w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown: %d", w.Code)
+	}
+	if w := e.do("DELETE", path, "", e.admin); w.Code != http.StatusOK {
+		t.Fatalf("forget: %d %s", w.Code, w.Body)
+	}
+	if v, _ := e.svc.Remote("audiobookshelf"); v.Connected {
+		t.Fatalf("still connected %+v", v)
 	}
 }

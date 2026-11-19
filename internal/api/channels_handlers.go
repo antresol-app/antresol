@@ -88,6 +88,8 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Get("/api/channels", a.list)
 	r.Get("/api/channels/epg", a.epgGrid)
 	r.Put("/api/channels/last", a.setLast)
+	r.Get("/api/channels/prefs", a.prefs)
+	r.Put("/api/channels/prefs", a.setPrefs)
 	r.Put("/api/channels/{id}/favorite", a.favorite(true))
 	r.Delete("/api/channels/{id}/favorite", a.favorite(false))
 	r.Get("/api/channels/options", a.options)
@@ -192,6 +194,10 @@ type channelJSON struct {
 	// LogoURL: the uploaded logo (absent: none); PickInfo: the picks
 	// described, for the editor (channels_fine.go)
 	LogoURL  string              `json:"logoUrl,omitempty"`
+	LogoAuto bool                `json:"logoAuto,omitempty"` // the logo was found by the server (channels/logo_auto.go)
+	// LogoAlt: an external channel's guide icon when LogoURL is another
+	// one (its tvg-logo): shown when that one does not load
+	LogoAlt string `json:"logoAlt,omitempty"`
 	PickInfo []channels.PickInfo `json:"pickInfo,omitempty"`
 
 	// External: a channel of an external playlist (internal/iptv); Stream
@@ -207,7 +213,8 @@ type channelJSON struct {
 func (a *channelsAPI) toJSON(ctx context.Context, c channels.Channel, v channels.Viewer, favs map[int64]bool) channelJSON {
 	name, cat := a.display(ctx, c)
 	j := channelJSON{ID: c.ID, Number: c.Number, Name: name, Category: cat, Personal: c.UserID != 0, Auto: c.AutoKey != "",
-		Enabled: c.Enabled, CanEdit: channels.CanEdit(c, v), Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID], LogoURL: logoURL(c)}
+		Enabled: c.Enabled, CanEdit: channels.CanEdit(c, v), Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID], LogoURL: logoURL(c),
+		LogoAuto: c.LogoVersion != 0 && c.LogoAuto == channels.LogoAutoFound}
 	if j.CanEdit {
 		r := c.Rules
 		j.Rules = &r
@@ -313,11 +320,17 @@ func (a *channelsAPI) withTracks(ctx context.Context, ch int64, ps []programJSON
 }
 
 // GET /api/channels: the channels the profile sees with what is on now
-// and next; ?manage=1: the channels it may edit (disabled ones too).
+// and next, in number order — the starred ones first when the profile
+// wants them so (channel_prefs, favoritesFirst in the answer); ?manage=1:
+// the channels it may edit (disabled ones too). ?brief=1 (the web's list,
+// thousands of rows with a big playlist): now and next without their
+// descriptions and tracks — the details pane and the player read those
+// from the channel's guide.
 func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 	ctx, u := r.Context(), userOf(r)
 	v := viewerOf(u)
 	manage := r.URL.Query().Get("manage") == "1"
+	brief := r.URL.Query().Get("brief") == "1"
 	var cs []channels.Channel
 	var err error
 	if manage {
@@ -346,6 +359,11 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "channels", err)
 		return
 	}
+	prefs, err := a.svc.Store.Prefs(ctx, u.ID)
+	if err != nil {
+		internalErr(w, r, "channels", err)
+		return
+	}
 	now := time.Now()
 	out := make([]channelJSON, 0, len(cs))
 	var lastChannel any // null unless the last channel is still in the list
@@ -365,7 +383,11 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 				internalErr(w, r, "channels", err)
 				return
 			}
-			a.withTracks(ctx, c.ID, ps, now)
+			if brief {
+				ps = briefPrograms(ps)
+			} else {
+				a.withTracks(ctx, c.ID, ps, now)
+			}
 			if u.IsKid && len(ps) > 0 && ps[0].Start.After(now) {
 				// what is on air was left out for the kid: only what is next
 				j.Next = &ps[0]
@@ -395,6 +417,9 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			j := a.extJSON(r, x, favs)
 			j.Categories = extCats(x, len(names))
 			if ps := progs[x.ChannelID]; len(ps) > 0 {
+				if brief {
+					ps = briefPrograms(ps[:min(2, len(ps))])
+				}
 				j.Now = &ps[0]
 				if len(ps) > 1 {
 					j.Next = &ps[1]
@@ -403,13 +428,16 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			out = append(out, j)
 		}
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+		if prefs.FavoritesFirst {
+			channels.FavoritesFirst(out, favs, func(c channelJSON) int64 { return c.ID })
+		}
 		lists := make([][]string, len(out))
 		for i, j := range out {
 			lists[i] = j.Categories
 		}
 		cats = a.categoriesOf(r, lists, names, pos)
 	}
-	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid}
+	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid, "favoritesFirst": prefs.FavoritesFirst}
 	if cats != nil {
 		resp["categories"] = cats
 	}
@@ -1064,6 +1092,40 @@ func (a *channelsAPI) favorite(on bool) http.HandlerFunc {
 	}
 }
 
+// briefPrograms: copies of ps without their descriptions and tracks
+// (GET /api/channels?brief=1).
+func briefPrograms(ps []programJSON) []programJSON {
+	out := make([]programJSON, len(ps))
+	for i, p := range ps {
+		p.Overview, p.Audio, p.Subtitles = "", nil, nil
+		out[i] = p
+	}
+	return out
+}
+
+// GET /api/channels/prefs: the profile's own choices for its channel list.
+func (a *channelsAPI) prefs(w http.ResponseWriter, r *http.Request) {
+	p, err := a.svc.Store.Prefs(r.Context(), userOf(r).ID)
+	if err != nil {
+		internalErr(w, r, "channel prefs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+// PUT /api/channels/prefs {favoritesFirst}
+func (a *channelsAPI) setPrefs(w http.ResponseWriter, r *http.Request) {
+	var b channels.Prefs
+	if !decode(w, r, &b) {
+		return
+	}
+	if err := a.svc.Store.SetPrefs(r.Context(), userOf(r).ID, b); err != nil {
+		internalErr(w, r, "channel prefs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
+}
+
 // PUT /api/channels/last {channelId}: the channel the profile tuned in
 // (a TV's «last channel»; never media progress or history).
 func (a *channelsAPI) setLast(w http.ResponseWriter, r *http.Request) {
@@ -1099,6 +1161,7 @@ type channelEPGJSON struct {
 	Programs []programJSON `json:"programs"`
 
 	LogoURL string `json:"logoUrl,omitempty"` // the uploaded logo (absent: none); an external channel's tvg-logo
+	LogoAlt string `json:"logoAlt,omitempty"` // an external channel's guide icon when logoUrl is another one
 	// External: a channel of an external playlist (its stream: the list's).
 	External bool `json:"external,omitempty"`
 	// Categories: as the list's (channels_categories.go).
@@ -1173,9 +1236,12 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 			}
 			c := x.Channel
 			out = append(out, channelEPGJSON{ID: c.ID, Number: c.Number, Name: c.Name, Category: c.Category, Favorite: favs[c.ID], Programs: ps,
-				LogoURL: extLogoURL(x), External: true, Categories: extCats(x, len(names))})
+				LogoURL: extLogoURL(x), LogoAlt: extLogoAlt(x), External: true, Categories: extCats(x, len(names))})
 		}
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	}
+	if p, err := a.svc.Store.Prefs(ctx, u.ID); err == nil && p.FavoritesFirst {
+		channels.FavoritesFirst(out, favs, func(c channelEPGJSON) int64 { return c.ID })
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"from": from.UTC(), "to": to.UTC(), "channels": out})
 }

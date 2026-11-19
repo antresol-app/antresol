@@ -5,7 +5,10 @@
 // checked at once and takes effect when applied: the server restarts for a
 // few seconds for other folders, marks apply at once; taking out a folder
 // asks first, its titles leave the library), and the write test with
-// «Проверить» and the fix to copy when the server may not write.
+// «Проверить» and the fix to copy when the server may not write: each
+// library folder's row says whether writing works, the media folder and the
+// transcoding folder have their own rows below (never a second list of the
+// same folders).
 // Its own endpoint (/api/settings/storage), not the settings object: until
 // folders are picked here the server's VAULT_*_DIR apply.
 import { useState } from 'react'
@@ -104,7 +107,8 @@ export function StorageSection() {
           onConfirm={() => void apply(asking?.reset ?? false, true)}
         />
       )}
-      <StoragePerms view={view} />
+      {/* the library's folders say their write test in their rows above: only the others here */}
+      <StoragePerms view={view} libraryFolders={false} title={t('storage.perms.serverFolders')} />
     </>
   )
 }

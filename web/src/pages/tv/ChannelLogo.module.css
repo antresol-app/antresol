@@ -21,6 +21,18 @@
   max-height: 100%;
   object-fit: contain;
 }
+/* a channel without a logo: its initials in the same box */
+.initials {
+  composes: logo;
+  font-family: var(--font-rounded);
+  font-weight: 600;
+  font-size: calc(var(--logo-h) * 0.42);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+  white-space: nowrap;
+  user-select: none;
+}
 /* the empty slot of a row without a logo in a list that has some */
 .slot {
   flex: none;

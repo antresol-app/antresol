@@ -9,7 +9,7 @@ import { expect, setupAdmin, test } from './vault'
 
 test.use({ library: 'empty', fakes: true, viewport: { width: 320, height: 700 } })
 
-const PAGES = ['/', '/movies', '/series', '/manage', '/settings', '/settings/accounts', '/manage/settings/library', '/manage/settings/transcoding', '/manage/settings/kindle']
+const PAGES = ['/', '/movies', '/series', '/manage', '/settings', '/settings/accounts', '/manage/settings/library', '/manage/settings/processing', '/manage/settings/kindle', '/manage/health', '/manage/tasks', '/manage/channels']
 
 const widths = () => ({ inner: window.innerWidth, scroll: document.documentElement.scrollWidth })
 

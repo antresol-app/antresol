@@ -36,6 +36,7 @@ import type { Contribution } from '../../addons/registry'
 import { Select } from '../../ui/Select'
 import { Sheet } from '../../ui/Sheet'
 import { locale, t, useT, type Key } from '../../i18n'
+import { MigrateConnectForm } from './MigrateConnect'
 import styles from './Migrate.module.css'
 import m from './Manage.module.css'
 
@@ -310,7 +311,9 @@ function SourceCard({
         <span className={styles.sourceText}>
           <span className={styles.sourceName}>{s.name}</span>
           {meta?.what && <span className={styles.sourceWhat}>{textOf(t, meta.what)}</span>}
-          <span className={s.found ? styles.sourceFound : styles.sourceDetail}>{s.found ? t('migrate.found', { detail: s.detail }) : s.detail}</span>
+          <span className={s.found ? styles.sourceFound : styles.sourceDetail}>
+            {s.found ? t(s.connect?.connected ? 'migrate.foundApi' : 'migrate.found', { detail: s.detail }) : s.detail}
+          </span>
           {[s.error, ...problems].filter(Boolean).map((p) => (
             <span key={p} className={styles.sourceError}>
               {p}
@@ -383,6 +386,10 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
   const [problem, setProblem] = useState('')
   const [confirmRun, setConfirmRun] = useState(false)
   const inited = useRef(false)
+  // what the page has seen found and proposed: a service connected later is
+  // chosen, and its users get their proposed profiles, as at the start
+  const seenFound = useRef<Set<string>>(new Set())
+  const seenUsers = useRef<Set<string>>(new Set())
   const reportRef = useRef<HTMLDivElement>(null)
   const t = useT()
 
@@ -395,12 +402,21 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
       (st) => {
         setStatus(st)
         setLoadError('')
+        const found = st.sources.filter((s) => s.found && !s.error).map((s) => s.id)
+        const newFound = found.filter((id) => !seenFound.current.has(id))
+        const newUsers = st.users.filter((u) => !u.error && !seenUsers.current.has(userKey(u)))
+        for (const id of found) seenFound.current.add(id)
+        for (const u of newUsers) seenUsers.current.add(userKey(u))
+        if (newFound.length > 0) setSelected((cur) => new Set([...cur, ...newFound]))
+        if (newUsers.length > 0) {
+          setUserMap((cur) => {
+            const um = { ...cur }
+            for (const u of newUsers) if (u.vaultUserId && um[userKey(u)] === undefined) um[userKey(u)] = u.vaultUserId
+            return um
+          })
+        }
         if (!inited.current) {
           inited.current = true
-          setSelected(new Set(st.sources.filter((s) => s.found && !s.error).map((s) => s.id)))
-          const um: Record<string, number> = {}
-          for (const u of st.users) if (!u.error && u.vaultUserId) um[userKey(u)] = u.vaultUserId
-          setUserMap(um)
           if (st.running) setActiveId(st.running)
         }
       },
@@ -588,7 +604,23 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
             checked={selected.has(s.id)}
             disabled={!!running || busy !== ''}
             problems={userProblems(s.id)}
-            setup={ext?.SourceSetup && <ext.SourceSetup ctx={ctx} source={s} />}
+            setup={
+              ext?.SourceSetup ? (
+                <ext.SourceSetup ctx={ctx} source={s} />
+              ) : !given && s.connect ? (
+                <MigrateConnectForm
+                  source={s}
+                  locked={!!running || busy !== ''}
+                  onChanged={(on) => {
+                    if (!on) {
+                      setSelected((cur) => new Set([...cur].filter((id) => id !== s.id)))
+                      seenFound.current.delete(s.id)
+                    }
+                    load()
+                  }}
+                />
+              ) : undefined
+            }
             onToggle={(on) =>
               setSelected((cur) => {
                 const n = new Set(cur)

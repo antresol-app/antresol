@@ -11,14 +11,14 @@ import (
 
 // kvRow is one reading position of Kavita (a chapter's first file).
 type kvRow struct {
-	userID           int64
+	userID           string // AspNetUsers.Id; over the API the token's user id
 	userName         string
 	pagesRead, pages int64
 	filePath         string
 	at               time.Time
 }
 
-func (r kvRow) userKey() string { return SourceKavita + ":" + strconv.FormatInt(r.userID, 10) }
+func (r kvRow) userKey() string { return SourceKavita + ":" + r.userID }
 
 func (r kvRow) lineName() string { return r.userName + ": " + path.Base(r.filePath) }
 
@@ -37,9 +37,11 @@ func readKavita(ctx context.Context, d *sql.DB) ([]kvRow, error) {
 	for rows.Next() {
 		var r kvRow
 		var at string
-		if err := rows.Scan(&r.userID, &r.userName, &r.pagesRead, &r.pages, &r.filePath, &at); err != nil {
+		var uid int64
+		if err := rows.Scan(&uid, &r.userName, &r.pagesRead, &r.pages, &r.filePath, &at); err != nil {
 			return nil, err
 		}
+		r.userID = strconv.FormatInt(uid, 10)
 		r.at, _ = parseSourceTime(at)
 		out = append(out, r)
 	}
@@ -50,18 +52,9 @@ func readKavita(ctx context.Context, d *sql.DB) ([]kvRow, error) {
 // users: comics and PDFs by page (Vault counts pages from 1), EPUB by the
 // read share only (Kavita's position inside a chapter has no Vault form).
 func ImportKavita(ctx context.Context, o ProgressOptions, lib LibraryLookup, ps ProgressSink, rep *Report) error {
-	d := openProgressDB(o, SourceKavita, "Kavita", o.KavitaDB, rep)
-	if d == nil {
-		return nil
-	}
-	defer d.Close()
-	list, err := readKavita(ctx, d.DB)
+	list, err := loadKavita(ctx, o)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		progressReadFailed(SourceKavita, "Kavita", rep, err)
-		return nil
+		return loadFailed(ctx, SourceKavita, "Kavita", rep, err)
 	}
 	if len(list) == 0 {
 		rep.Add(Line{Source: SourceKavita, Kind: "progress", Name: "Kavita", Status: StatusSkipped, Reason: reasonNoData})

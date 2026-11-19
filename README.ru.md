@@ -69,8 +69,9 @@ docker compose up -d
 видеокарты раскомментируйте её строки в `compose.yml`
 ([перекодирование на видеокарте](docs/ru/hardware-transcoding.md)).
 
-Ещё: [подробности установки](docs/ru/install.md) (пути, права, обратный
-прокси, поиск сервера) · [все настройки](docs/configuration.md) ·
+Ещё: [документация](https://antresol-app.github.io/antresol/ru/docs.html) (первая
+настройка, приложения, [публичный адрес и обратный прокси](docs/ru/public-address.md),
+[решение проблем](docs/ru/troubleshooting.md)) · [все настройки](docs/ru/configuration.md) ·
 [что нового в версиях](https://github.com/antresol-app/antresol/releases).
 
 

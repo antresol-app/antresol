@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 )
 
 // Favorites are the channels profile uid starred.
@@ -51,4 +52,46 @@ func (s *Store) SetLastChannel(ctx context.Context, uid, id int64) error {
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO channel_last (user_id, channel_id, at) VALUES (?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 	  ON CONFLICT (user_id) DO UPDATE SET channel_id=excluded.channel_id, at=excluded.at`, uid, id)
 	return err
+}
+
+// Prefs are a profile's own choices for its channel list.
+type Prefs struct {
+	// FavoritesFirst: the starred channels stand at the top of the list
+	// (default on).
+	FavoritesFirst bool `json:"favoritesFirst"`
+}
+
+// Prefs reads profile uid's choices (the defaults when it has made none).
+func (s *Store) Prefs(ctx context.Context, uid int64) (Prefs, error) {
+	p := Prefs{FavoritesFirst: true}
+	var ff int
+	err := s.DB.QueryRowContext(ctx, `SELECT favorites_first FROM channel_prefs WHERE user_id=?`, uid).Scan(&ff)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, nil
+	}
+	if err != nil {
+		return p, err
+	}
+	p.FavoritesFirst = ff != 0
+	return p, nil
+}
+
+// SetPrefs stores profile uid's choices.
+func (s *Store) SetPrefs(ctx context.Context, uid int64, p Prefs) error {
+	ff := 0
+	if p.FavoritesFirst {
+		ff = 1
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO channel_prefs (user_id, favorites_first) VALUES (?,?)
+	  ON CONFLICT (user_id) DO UPDATE SET favorites_first=excluded.favorites_first`, uid, ff)
+	return err
+}
+
+// FavoritesFirst orders a list already in number order: the starred
+// channels first (each part keeps its order). id is a channel's id.
+func FavoritesFirst[T any](list []T, favs map[int64]bool, id func(T) int64) {
+	if len(favs) == 0 {
+		return
+	}
+	sort.SliceStable(list, func(i, j int) bool { return favs[id(list[i])] && !favs[id(list[j])] })
 }

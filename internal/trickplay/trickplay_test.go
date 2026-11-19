@@ -257,6 +257,10 @@ func TestWorkerOrderAndSkips(t *testing.T) {
 	if got, want := fx.order(), []string{"Old", "Watching", "Newest"}; !eq(got, want) {
 		t.Fatalf("order %v, want %v", got, want)
 	}
+	// «Задачи»: every file that gets previews has them, the pass is over
+	if p := fx.w.Progress.Snapshot(); p.Running || p.Done != p.Total || p.Total == 0 || p.LastRun.IsZero() {
+		t.Fatalf("progress %+v", p)
+	}
 	for _, title := range []string{"Old", "Watching", "Newest"} {
 		ix, ok := fx.w.Index(fx.paths[title], 100, 1)
 		if !ok || ix.Count != 60 || ix.Sheets != 1 || ix.Height != 100 {
@@ -286,6 +290,9 @@ func TestWorkerDisabled(t *testing.T) {
 	}
 	if len(fx.reads) != 0 {
 		t.Fatalf("off, yet read %v", fx.order())
+	}
+	if p := fx.w.Progress.Snapshot(); p.State != "off" {
+		t.Fatalf("progress %+v", p)
 	}
 }
 

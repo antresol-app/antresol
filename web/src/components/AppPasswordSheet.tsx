@@ -62,7 +62,7 @@ async function copyText(text: string, input?: HTMLInputElement | null): Promise<
   }
 }
 
-function CopyRow({ label, value, field }: { label: string; value: string; field?: boolean }) {
+export function CopyRow({ label, value, field }: { label: string; value: string; field?: boolean }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
   const ref = useRef<HTMLInputElement>(null)

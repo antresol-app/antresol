@@ -826,7 +826,52 @@ func (a *iptvAdmin) sourceChannels(w http.ResponseWriter, r *http.Request) {
 			Why: whyCode(m.Why), WhyText: i18n.Localize(ctx, m.Why), Present: m.Present, New: nw,
 			Variant: variantJSON(m, variants[m.ID], byID)})
 	}
+	a.guideLogos(ctx, src.ID, out)
 	writeJSON(w, http.StatusOK, map[string]any{"groups": groups, "channels": out, "total": total})
+}
+
+// guideLogos shows an entry without a tvg-logo with its guide channel's
+// icon, as the channel lists do (iptv guideLogos): a playlist without logos
+// whose guide has them (19.11) showed none here.
+func (a *iptvAdmin) guideLogos(ctx context.Context, sourceID int64, out []memberJSON) {
+	es, err := a.svc.Store.EPGURLs(ctx, sourceID)
+	if err != nil {
+		return
+	}
+	keysOf := func(e memberEPGJSON) []iptv.EPGKey {
+		if e.XMLID == "" {
+			return nil
+		}
+		if e.EPGURLID != 0 {
+			return []iptv.EPGKey{{EPGURLID: e.EPGURLID, XMLID: e.XMLID}}
+		}
+		var ks []iptv.EPGKey
+		for _, g := range es {
+			ks = append(ks, iptv.EPGKey{EPGURLID: g.ID, XMLID: e.XMLID})
+		}
+		return ks
+	}
+	var keys []iptv.EPGKey
+	for _, m := range out {
+		if m.Logo == "" {
+			keys = append(keys, keysOf(m.EPG)...)
+		}
+	}
+	icons, err := a.svc.GuideIcons(ctx, keys)
+	if err != nil {
+		return
+	}
+	for i, m := range out {
+		if m.Logo != "" {
+			continue
+		}
+		for _, k := range keysOf(m.EPG) {
+			if icon := icons[k]; icon != "" {
+				out[i].Logo = icon
+				break
+			}
+		}
+	}
 }
 
 // variantJSON: an entry's group of variants and the admin's word on it.

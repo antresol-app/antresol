@@ -1,11 +1,26 @@
-// «Очищенные озвучки» in the server settings: the counts from
-// /api/admin/voclean, «Обработать всю медиатеку» and «Перепроверить
-// неподходящие» posted to /api/admin/voclean/backfill.
+// «Очищенные озвучки» in the server settings («Обработка»): «Обработать всю
+// медиатеку» and «Перепроверить неподходящие» posted to
+// /api/admin/voclean/backfill; the counts are in «Задачи», a row leads there.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import type { VocleanStatus } from '../../../api/types'
 import { VocleanSection } from '../VocleanSettings'
+
+function Where() {
+  return <span data-testid="where">{useLocation().pathname}</span>
+}
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <MemoryRouter initialEntries={['/manage/settings/processing']}>
+      <Routes>
+        <Route path="/manage/settings/processing" element={ui} />
+        <Route path="*" element={<Where />} />
+      </Routes>
+    </MemoryRouter>,
+  )
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -29,11 +44,13 @@ function stub(first: VocleanStatus, after: (body: { on: boolean; recheck?: boole
 afterEach(() => vi.unstubAllGlobals())
 
 describe('cleaned voice-overs settings', () => {
-  it('shows the counts', async () => {
+  it('leads to «Задачи» for the counts, which it no longer shows', async () => {
     stub(status(), () => status())
     render(<VocleanSection />)
-    expect(await screen.findByText('Готово 120 · в очереди 34 · ошибки 2 · не подходят 5')).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Обработать всю медиатеку' })).toHaveAttribute('aria-checked', 'false')
+    expect(await screen.findByRole('switch', { name: 'Обработать всю медиатеку' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByText(/Готово 120/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Ход обработки/ }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/manage/tasks')
   })
 
   it('turns the whole library on', async () => {
@@ -49,8 +66,7 @@ describe('cleaned voice-overs settings', () => {
     const calls = stub(status({ backfill: true }), () => status({ backfill: true, queued: 41, failed: 0, notEligible: 0 }))
     render(<VocleanSection />)
     await userEvent.click(await screen.findByRole('button', { name: 'Перепроверить' }))
-    expect(await screen.findByText('Готово 120 · в очереди 41 · ошибки 0 · не подходят 0')).toBeInTheDocument()
-    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ on: true, recheck: true })
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ on: true, recheck: true }))
     // nothing left to recheck
     expect(screen.getByRole('button', { name: 'Перепроверить' })).toBeDisabled()
   })

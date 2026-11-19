@@ -184,6 +184,7 @@ func (s *Service) Refresh(ctx context.Context) error {
 	if _, err := s.Generator.Sync(ctx); err != nil {
 		return err
 	}
+	s.autoLogos(ctx) // franchises and series show their titles' logo
 	// one list 1…N (numbers.go): also what a version before it numbered
 	if err := s.Store.Renumber(ctx); err != nil {
 		return err

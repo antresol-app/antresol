@@ -1,10 +1,14 @@
-// One channel of the list, as a TV's channel list: its number, the
-// programme's still, the channel's name, what is on (one line) and a thin
-// progress bar — nothing more (the time left and what follows are in the
-// details pane, the guide and the player). The star at the trailing edge
-// (shown on hover and focus with a mouse, always on touch and when starred)
-// and the row's context menu star the channel. The row opens the player.
-import { useState, type MouseEvent } from 'react'
+// One channel of the list, as a TV's channel list: its number, its logo
+// (or its initials: every row has one, so the names line up), the channel's
+// name, what is on (one line) and a thin progress bar, and at the end the
+// programme's picture when it has one (no picture: no box) — nothing more
+// (the time left and what follows are in the details pane, the guide and
+// the player). Every row has one height (the list renders only the rows
+// near the screen: a playlist has thousands). The star at the trailing
+// edge (shown on hover and focus with a mouse, always on touch and when
+// starred) and the row's context menu star the channel. The row opens the
+// player.
+import { memo, useState, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import type { Channel } from '../../api/channels'
 import { Icon } from '../../components/Icon'
@@ -25,14 +29,12 @@ export interface ChannelRowProps {
   last?: boolean
   selected?: boolean
   eager?: boolean
-  onFavorite: (on: boolean) => void
-  /** Some channel of the list has a logo: keep its slot in this row too. */
-  logoSlot?: boolean
+  onFavorite: (id: number, on: boolean) => void
   /** The pointer or the focus is on the row (the wide screen's preview follows it). */
-  onPreview?: () => void
+  onPreview?: (id: number) => void
 }
 
-export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlot, onFavorite, onPreview }: ChannelRowProps) {
+export const ChannelRow = memo(function ChannelRow({ channel: c, now, to, last, selected, eager, onFavorite, onPreview }: ChannelRowProps) {
   const t = useT()
   const navigate = useNavigate()
   const onWatch = () => navigate(to)
@@ -45,12 +47,12 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlo
     e.preventDefault()
     setMenu({ x: e.clientX, y: e.clientY })
   }
+  const preview = onPreview ? () => onPreview(c.id) : undefined
   return (
-    <li className={styles.row} data-last={last || undefined} data-selected={selected || undefined} data-fav={fav || undefined} onPointerEnter={onPreview} onFocus={onPreview} onContextMenu={onContext}>
-      <Link to={to} className={styles.rowLink} data-logos={logoSlot || undefined} aria-label={`${t('tv.channelNumber', { number: c.number, name: c.name })}. ${title}`}>
+    <div className={styles.row} data-last={last || undefined} data-selected={selected || undefined} data-fav={fav || undefined} onPointerEnter={preview} onFocus={preview} onContextMenu={onContext}>
+      <Link to={to} className={styles.rowLink} aria-label={`${t('tv.channelNumber', { number: c.number, name: c.name })}. ${title}`}>
         <span className={styles.rowNum}>{c.number}</span>
-        <ChannelArt program={p} width={112} sizes="(max-width: 699px) 80px, 112px" eager={eager} className={styles.rowArt} />
-        {logoSlot && <ChannelLogo url={c.logoUrl} size="sm" reserve />}
+        <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} name={c.name} size="sm" className={styles.rowLogo} />
         <span className={styles.rowText}>
           <span className={styles.rowChannel}>
             <span className={styles.rowChannelName}>{c.name}</span>
@@ -58,6 +60,7 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlo
           <span className={styles.rowTitle}>{title}</span>
           {p && <ProgressBar value={pct / 100} tone="label" className={styles.rowBar} />}
         </span>
+        <ChannelArt program={p} width={112} sizes="(max-width: 699px) 80px, 112px" eager={eager} optional className={styles.rowArt} />
       </Link>
       <span className={styles.rowStar}>
         <IconButton
@@ -67,7 +70,7 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlo
           className={styles.starButton}
           label={fav ? t('tv.favRemove') : t('tv.favAdd')}
           aria-pressed={fav}
-          onClick={() => onFavorite(!fav)}
+          onClick={() => onFavorite(c.id, !fav)}
         />
       </span>
       {menu && (
@@ -78,11 +81,11 @@ export function ChannelRow({ channel: c, now, to, last, selected, eager, logoSlo
             label={fav ? t('tv.favRemove') : t('tv.favAdd')}
             onSelect={() => {
               setMenu(null)
-              onFavorite(!fav)
+              onFavorite(c.id, !fav)
             }}
           />
         </PointMenu>
       )}
-    </li>
+    </div>
   )
-}
+})

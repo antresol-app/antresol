@@ -203,10 +203,20 @@ func (e entity) year() int {
 	return y
 }
 
+// claimsBatch: items whose claims are read in one wbgetentities. A film's
+// claims (cast, awards, identifiers) run to a few hundred KB: fifty of them
+// overran the answer limit (metadata.MaxRaw), the cut JSON failed every
+// franchise pass of a big library.
+const claimsBatch = 10
+
 func (c *Client) entities(ctx context.Context, ids []string, props string) (map[string]entity, error) {
 	out := map[string]entity{}
+	batch := 50
+	if props == "claims" { // the franchise walk; a book search asks for twelve at most
+		batch = claimsBatch
+	}
 	for len(ids) > 0 {
-		n := min(len(ids), 50)
+		n := min(len(ids), batch)
 		var raw struct {
 			Entities map[string]entity `json:"entities"`
 		}

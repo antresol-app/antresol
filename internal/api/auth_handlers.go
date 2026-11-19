@@ -64,15 +64,25 @@ func (a *authAPI) patchMe(w http.ResponseWriter, r *http.Request) {
 	u := userOf(r)
 	var in struct {
 		HideProgress *bool `json:"hideProgress"`
+		// KindleEmail: the profile's own Send to Kindle address ("" removes
+		// it); the mailbox books leave from stays the server's, one for all
+		KindleEmail *string `json:"kindleEmail"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.HideProgress != nil && u.IsKid {
+	if (in.HideProgress != nil || in.KindleEmail != nil) && u.IsKid {
 		writeErr(w, r, http.StatusForbidden, "Это может изменить только администратор")
 		return
 	}
-	if err := a.users.Update(r.Context(), u.ID, auth.UserPatch{HideProgress: in.HideProgress}); err != nil {
+	if in.KindleEmail != nil {
+		*in.KindleEmail = strings.TrimSpace(*in.KindleEmail)
+		if *in.KindleEmail != "" && !validKindleEmail(*in.KindleEmail) {
+			writeErr(w, r, http.StatusBadRequest, "Адрес Kindle заканчивается на @kindle.com")
+			return
+		}
+	}
+	if err := a.users.Update(r.Context(), u.ID, auth.UserPatch{HideProgress: in.HideProgress, KindleEmail: in.KindleEmail}); err != nil {
 		storeErr(w, r, err)
 		return
 	}

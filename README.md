@@ -66,8 +66,9 @@ docker compose up -d
 Open `http://<host>:8420` and create the first administrator. For a GPU,
 uncomment its lines in `compose.yml` ([hardware transcoding](docs/hardware-transcoding.md)).
 
-More: [install details](docs/install.md) (paths, permissions, reverse proxy,
-finding the server) · [all settings](docs/configuration.md) ·
+More: [the guide](https://antresol-app.github.io/antresol/docs.html) (first setup,
+apps, [public address and reverse proxy](docs/public-address.md),
+[troubleshooting](docs/troubleshooting.md)) · [all settings](docs/configuration.md) ·
 [release notes](https://github.com/antresol-app/antresol/releases).
 
 

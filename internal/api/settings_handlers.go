@@ -15,6 +15,7 @@ import (
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/lang"
 	"github.com/antresol-app/antresol/internal/media"
+	"github.com/antresol-app/antresol/internal/publicurl"
 	"github.com/antresol-app/antresol/internal/releaseprefs"
 	"github.com/antresol-app/antresol/internal/subtitles"
 	"github.com/go-chi/chi/v5"
@@ -59,6 +60,10 @@ type AppSettings struct {
 	// medium, powerful) the AI tasks ask; empty: the server's VAULT_LLM_*
 	// or none.
 	AI AISettings `json:"ai"`
+	// PublicURL is «Адрес сервера»: how browsers and the apps reach the
+	// server from outside the home network ("" none); VAULT_PUBLIC_URL wins
+	// over it. The links of letters and Shikimori's redirect URI are on it.
+	PublicURL string `json:"publicUrl,omitempty"`
 }
 
 // defaultTrickplayBudgetGB: «Место для превью» when unset.
@@ -285,6 +290,9 @@ type settingsView struct {
 	// TranscodingName: what transcodes video now («Перекодирование»'s
 	// summary; response only, the settings are /api/settings/transcoding)
 	TranscodingName string `json:"transcodingName,omitempty"`
+	// PublicURLFromEnv: the server's VAULT_PUBLIC_URL, which is the address
+	// whatever is saved here (response only; "" when unset)
+	PublicURLFromEnv string `json:"publicUrlFromEnv,omitempty"`
 }
 
 type settingsAPI struct {
@@ -299,11 +307,14 @@ type settingsAPI struct {
 	settingsFull
 	// accel: the transcodes' hardware (the summary of «Перекодирование»)
 	accel *media.Accel
+	// public: the server's public address (VAULT_PUBLIC_URL; nil: none)
+	public *publicurl.Address
 }
 
 func newSettingsAPI(deps Deps) *settingsAPI {
 	return &settingsAPI{db: deps.DB, defaults: deps.SettingsDefaults, apply: deps.ApplySettings,
-		subtitles: deps.Subtitles != nil, prefs: releaseprefs.Store{DB: deps.DB}, settingsFull: newSettingsFull(deps), accel: deps.Accel}
+		subtitles: deps.Subtitles != nil, prefs: releaseprefs.Store{DB: deps.DB}, settingsFull: newSettingsFull(deps), accel: deps.Accel,
+		public: deps.PublicAddress}
 }
 
 func mountSettings(r chi.Router, s *settingsAPI) {
@@ -338,6 +349,7 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	if s.accel != nil {
 		v.TranscodingName = media.HWName(s.accel.Mode())
 	}
+	v.PublicURLFromEnv = s.public.Env()
 	if v.Studios, err = s.prefs.Studios(ctx); err != nil {
 		return settingsView{}, err
 	}
@@ -380,6 +392,9 @@ func (v settingsView) validate() string {
 		return "Выберите язык метаданных: русский или английский"
 	case v.TrickplayBudgetGB != 0 && !validTrickplayBudget(v.TrickplayBudgetGB):
 		return "Место для превью — от 1 до 1000 ГБ"
+	}
+	if _, ok := publicurl.Normalize(v.PublicURL); !ok {
+		return "Адрес сервера — ссылка вида https://media.example.org"
 	}
 	if msg := v.Mail.validate(); msg != "" {
 		return msg
@@ -437,6 +452,7 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.fitLanguages()
+	v.PublicURL, _ = publicurl.Normalize(v.PublicURL)
 	ctx := r.Context()
 	// app_settings first: the release prefs are validated above, so their
 	// write failing is unlikely, and a stored value is never lost.

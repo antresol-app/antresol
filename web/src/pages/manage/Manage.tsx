@@ -6,8 +6,8 @@
 // Медиатека (its settings, Файлы, Импорт, Переезд), Воспроизведение (the
 // playback settings, the channels), Загрузки и источники (the addons' tiles
 // that name that group), Расширения (an addon's tile with no group), Система
-// (Статистика, Расширения, Обновления, ИИ, Kindle, Аккаунты и синхронизация) — with the section on the
-// right. The screens of the server's settings (/manage/settings/<group>) are
+// (Состояние, Задачи, Обработка, Статистика, Расширения, ИИ, Kindle, Аккаунты и синхронизация) — with the section on the
+// right (the channels' pages, pages/tv, are drawn in it too). The screens of the server's settings (/manage/settings/<group>) are
 // rows of their groups, a phone's row with its current choice («1080p»). On
 // phones the list is its own screen and each section has a back button.
 // Every row's tile is ui/SettingsIcon: one glyph set, one palette colour
@@ -42,9 +42,16 @@ const GROUPS: { id: Group; title: Key }[] = [
 ]
 const ADDON_GROUPS: readonly string[] = ['family', 'library', 'playback', 'downloads', 'server']
 
-// to: under /manage/, or an app path starting with `/` (the channels' own page).
+// to: under /manage/ (every section is drawn in this frame: the settings
+// are apart from the app's own pages), or an app path starting with `/`.
 // ifRequests: shown when kids' requests are open on this server (user.requests).
 // ifAddons: shown when the server runs addons (user.addons).
+// Медиатека is what is in the library and where it lies; Воспроизведение
+// how it is watched (quality, languages, voice-overs, the channels);
+// Система the server itself: «Состояние» (is everything working, versions
+// and updates), «Задачи» (what runs in the background, in one place) and
+// «Обработка» (what the server makes of the files: transcoding, preview
+// frames, cleaned voice-overs).
 export const MANAGE_SECTIONS: { to: string; label: Key; glyph: SettingsGlyph; tint: SettingsTint; group: ManageGroup; ifRequests?: boolean; ifAddons?: boolean }[] = [
   { to: 'profiles', label: 'manage.section.profiles', glyph: 'people', tint: 'blue', group: 'family' },
   { to: 'requests', label: 'manage.section.requests', glyph: 'bubble', tint: 'orange', group: 'family', ifRequests: true },
@@ -53,16 +60,18 @@ export const MANAGE_SECTIONS: { to: string; label: Key; glyph: SettingsGlyph; ti
   { to: 'import', label: 'manage.section.import', glyph: 'trayDown', tint: 'green', group: 'library' },
   { to: 'migrate', label: 'manage.section.migrate', glyph: 'box', tint: 'orange', group: 'library' },
   { to: 'settings/watching', label: 'settings.watching', glyph: 'playRect', tint: 'red', group: 'playback' },
-  { to: 'settings/transcoding', label: 'settings.group.transcoding', glyph: 'cpu', tint: 'gray', group: 'playback' },
   { to: 'settings/music', label: 'common.music', glyph: 'note', tint: 'pink', group: 'playback' },
   { to: 'settings/subtitles', label: 'common.subtitles', glyph: 'captions', tint: 'teal', group: 'playback' },
-  { to: '/tv/manage', label: 'manage.section.channels', glyph: 'tv', tint: 'blue', group: 'playback' },
+  { to: 'channels', label: 'manage.section.channels', glyph: 'tv', tint: 'blue', group: 'playback' },
+  { to: 'health', label: 'manage.section.health', glyph: 'pulse', tint: 'green', group: 'server' },
+  { to: 'tasks', label: 'manage.section.tasks', glyph: 'updates', tint: 'orange', group: 'server' },
+  { to: 'settings/processing', label: 'settings.group.processing', glyph: 'cpu', tint: 'gray', group: 'server' },
   { to: 'stats', label: 'manage.section.stats', glyph: 'chart', tint: 'indigo', group: 'server' },
   { to: 'addons', label: 'addons.title', glyph: 'puzzle', tint: 'green', group: 'server', ifAddons: true },
-  { to: 'updates', label: 'manage.section.updates', glyph: 'updates', tint: 'gray', group: 'server' },
   { to: 'settings/ai', label: 'settings.group.ai', glyph: 'sparkles', tint: 'purple', group: 'server' },
   { to: 'settings/kindle', label: 'settings.mailGroup', glyph: 'envelope', tint: 'blue', group: 'server' },
   { to: 'settings/accounts', label: 'acct.section', glyph: 'link', tint: 'cyan', group: 'server' },
+  { to: 'settings/address', label: 'settings.group.address', glyph: 'globe', tint: 'blue', group: 'server' },
 ]
 
 /** Where a section's row leads. */

@@ -8,6 +8,8 @@
 // settings were saved in. A switch saves at once, the address when the field
 // is left (useAutosave); «Готово» only closes.
 import { useEffect, useId, useState } from 'react'
+import { Link } from 'react-router'
+import { PUBLIC_ADDRESS_PATH } from '../pages/manage/PublicAddressSettings'
 import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, unlinkTelegram, type NotifyPrefsInput, errorText } from '../api/client'
 import type { NotifyPrefs, NotifyTopic } from '../api/types'
 import { getLanguage, useT, type Key } from '../i18n'
@@ -330,7 +332,11 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 {autosave.status === 'saving' ? t('settings.saving') : autosave.status === 'saved' ? t('settings.saved') : ''}
               </p>
               {/* a server setting: only the admin can do anything about it */}
-              {!prefs.publicLinks && isAdmin && <p className={styles.hint}>{t('comp.notify.noLinks')}</p>}
+              {!prefs.publicLinks && isAdmin && (
+                <p className={styles.hint}>
+                  {t('comp.notify.noLinks')} <Link to={PUBLIC_ADDRESS_PATH}>{t('comp.notify.setUrl')}</Link>
+                </p>
+              )}
             </section>
           </>
         )}

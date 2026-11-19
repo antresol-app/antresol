@@ -17,7 +17,7 @@
 //
 // Keys: Space/K (and a keyboard's play/pause key) pause and resume;
 // ↑/↓ (PageUp/PageDown) zap within the list the player was opened
-// from (?f=: all, favourites or one theme), in number order, wrapping;
+// from (?f=: all, favourites or one category), in its order, wrapping;
 // i or Enter shows the info (with the description) and hides it; C the
 // channels; M sound; F full screen; Escape closes what is open, then the
 // player.
@@ -27,8 +27,15 @@
 // hls.js, a raw MPEG-TS one through mpegts.js (externalStream.ts). When the web cannot
 // play it (headers a browser cannot send, http on an https page, a
 // provider that refuses other sites — CORS — or a dead stream) the player
-// says so: the channel opens in the Antresol apps or an IPTV player. Its
-// audio and subtitles come from the stream.
+// says so: the channel opens in the Antresol apps or an IPTV player — only
+// when nothing plays. Once the picture has moved, an error is a hiccup, not
+// a failure: while the picture still moves nothing is said (a live
+// playlist's reload that failed, a late error of an attempt already
+// abandoned, an MPEG-TS connection the relay ended); when it stops for
+// liveTiming.stallMs the same stream is started again once, then the next
+// one; the message shows only when none is left, and goes as soon as the
+// picture moves again. Each attempt has its own engine and its errors count
+// for it alone. Its audio and subtitles come from the stream.
 //
 // The voice, on every channel: the viewer's choice on that channel (kept
 // per channel in this browser, externalStream.ts), else the device's
@@ -55,6 +62,7 @@ import { VolumeControl } from '../../player/VolumeControl'
 import { Button } from '../../ui/Button'
 import { Menu, MenuItem } from '../../ui/Menu'
 import { useMediaQuery } from '../../state/useMediaQuery'
+import { VirtualList } from '../../ui/VirtualList'
 import { ChannelArt } from './ChannelArt'
 import { ChannelLogo } from './ChannelLogo'
 import { activeCueText, applyRenditions, entriesFromNames, renditionNames, type NativeVideo } from './liveTracks'
@@ -67,7 +75,15 @@ import look from '../../player/SubtitleLook.module.css'
 import styles from './LivePlayer.module.css'
 
 const HIDE_MS = 4000
+/**
+ * How long the picture may stand still after it has played before an error
+ * counts (ms): a live stream's error while its buffer still plays is a
+ * hiccup. A variable for the tests.
+ */
+export const liveTiming = { stallMs: 4000 }
 const GUIDE_MS = 30_000
+/** A row of the channel list beside the picture (px; a phone's, a wide window's). */
+const PANEL_ROW_H = { narrow: 64, wide: 72 }
 
 type MpegtsPlayer = Mpegts.Player
 type Phase = 'starting' | 'playing' | { error: string } | { ext: ExtBlock }
@@ -95,6 +111,7 @@ export function LivePlayer() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const [channels, setChannels] = useState<Channel[]>([])
+  const [favFirst, setFavFirst] = useState(false)
   const [listed, setListed] = useState(false)
   const [programs, setPrograms] = useState<ChannelProgram[]>([])
   const [phase, setPhase] = useState<Phase>('starting')
@@ -129,9 +146,9 @@ export function LivePlayer() {
   const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${JSON.stringify(external.urls)}`) : 'own'
   // the list ↑/↓ zap through: the one it was opened from
   const zapList = useMemo(() => {
-    const l = applyFilter(channels, filter)
-    return l.length ? l : applyFilter(channels, { kind: 'all' })
-  }, [channels, filter])
+    const l = applyFilter(channels, filter, favFirst)
+    return l.length ? l : applyFilter(channels, { kind: 'all' }, favFirst)
+  }, [channels, filter, favFirst])
   const onAir = programs.find((p) => Date.parse(p.end) > now) ?? (channel?.now && isOnAir(channel.now, now) ? channel.now : undefined)
   const next = onAir ? (programs[programs.indexOf(onAir) + 1] ?? channel?.next) : undefined
 
@@ -141,9 +158,11 @@ export function LivePlayer() {
     const load = () => {
       ac.abort()
       ac = new AbortController()
-      getChannels(ac.signal).then(
+      // brief: what is on, without descriptions (this channel's are in its guide)
+      getChannels(ac.signal, false, true).then(
         (l) => {
           setChannels(l.channels)
+          setFavFirst(Boolean(l.favoritesFirst))
           setListed(true)
         },
         () => setListed(true),
@@ -201,8 +220,29 @@ export function LivePlayer() {
     let at = 0
     // a stream of unknown format that is no HLS playlist gets one try as MPEG-TS
     let asTs = false
-    // each start's errors count for it alone (an engine torn down may still report)
+    // each attempt's errors count for it alone (an engine torn down may still report)
     let gen = 0
+    // the picture has moved on this channel; when it last moved; the stream
+    // started again after it stopped (once per stop)
+    let started = false
+    let movedAt = 0
+    let restarted = false
+    let later = 0
+    // what was said when nothing was left to try (the picture moving again hides it until it stops again)
+    let gaveUp: Phase | null = null
+    const giveUp = (ph: Phase) => {
+      gaveUp = ph
+      setPhase(ph)
+    }
+    const watchStall = () => {
+      window.clearTimeout(later)
+      later = window.setTimeout(() => {
+        if (gone || !gaveUp) return
+        if (moving()) watchStall()
+        else setPhase(gaveUp)
+      }, liveTiming.stallMs)
+    }
+    const moving = () => started && !video.paused && Date.now() - movedAt < liveTiming.stallMs
     const relist = () => !gone && setRenditions(renditionNames(hls, video as NativeVideo))
     // a browser that refuses to start it with sound (no tap before it) starts it muted
     const play = () =>
@@ -224,10 +264,25 @@ export function LivePlayer() {
       hls = null
       hlsRef.current = null
     }
-    // an external stream that fails moves on to the next one, once; none left: the web cannot play it
+    // an attempt failed. Before anything played: the next stream (once each;
+    // none left: the web cannot play it). After the picture has moved: not
+    // while it still moves (asked again shortly); once it stopped, the same
+    // stream once more, then on as before.
     const fail = (g: number, msg: string) => {
       if (gone || g !== gen) return
-      if (!ext) return setPhase({ error: msg })
+      window.clearTimeout(later)
+      if (moving()) {
+        later = window.setTimeout(() => fail(g, msg), 1000)
+        return
+      }
+      if (started && !restarted) {
+        restarted = true
+        if (!ext) startHls(liveUrl(channelId))
+        else if (asTs) startTs(ext[at]!.url)
+        else startAt(at)
+        return
+      }
+      if (!ext) return giveUp({ error: msg })
       const c = ext[at]!
       if (c.format === '' && !asTs) {
         asTs = true
@@ -240,9 +295,7 @@ export function LivePlayer() {
         startAt(at)
         return
       }
-      stopTs()
-      hls?.stopLoad()
-      setPhase({ ext: 'network' })
+      giveUp({ ext: 'network' })
     }
     const startHls = (url: string) => {
       const g = ++gen
@@ -252,15 +305,11 @@ export function LivePlayer() {
         play()
         return
       }
-      if (hls) {
-        hls.stopLoad()
-        hls.loadSource(url)
-        play()
-        return
-      }
+      // a new engine for every attempt: a late error of the one before never counts for this one
+      stopHls()
       void import('hls.js').then(({ default: H }) => {
         if (gone || g !== gen) return
-        hls = new H({
+        const h = new H({
           liveSyncDurationCount: 3,
           enableWorker: true,
           backBufferLength: 30,
@@ -282,20 +331,21 @@ export function LivePlayer() {
                 },
           },
         })
-        hlsRef.current = hls
-        hls.on(H.Events.ERROR, (_e, data) => {
-          if (!data.fatal) return
+        hls = h
+        hlsRef.current = h
+        h.on(H.Events.ERROR, (_e, data) => {
+          if (!data.fatal || g !== gen) return
           if (data.type === H.ErrorTypes.MEDIA_ERROR) {
-            hls?.recoverMediaError()
+            h.recoverMediaError()
             return
           }
-          fail(gen, t('tv.failed'))
+          fail(g, t('tv.failed'))
         })
-        if (H.Events.MANIFEST_PARSED) hls.on(H.Events.MANIFEST_PARSED, relist)
-        if (H.Events.AUDIO_TRACKS_UPDATED) hls.on(H.Events.AUDIO_TRACKS_UPDATED, relist)
-        if (H.Events.SUBTITLE_TRACKS_UPDATED) hls.on(H.Events.SUBTITLE_TRACKS_UPDATED, relist)
-        hls.loadSource(url)
-        hls.attachMedia(video)
+        if (H.Events.MANIFEST_PARSED) h.on(H.Events.MANIFEST_PARSED, relist)
+        if (H.Events.AUDIO_TRACKS_UPDATED) h.on(H.Events.AUDIO_TRACKS_UPDATED, relist)
+        if (H.Events.SUBTITLE_TRACKS_UPDATED) h.on(H.Events.SUBTITLE_TRACKS_UPDATED, relist)
+        h.loadSource(url)
+        h.attachMedia(video)
         play()
       }, () => fail(g, t('tv.failed')))
     }
@@ -332,23 +382,33 @@ export function LivePlayer() {
     }
     if (ext) startAt(0)
     else startHls(liveUrl(channelId))
-    let started = false
+    // the picture moves: playing (a message an error left goes: something plays)
     const onPlaying = () => {
-      if (gone || started) return
+      if (gone) return
+      movedAt = Date.now()
+      restarted = false
+      if (started) {
+        setPhase((ph) => (ph === 'playing' ? ph : 'playing'))
+        if (gaveUp) watchStall()
+        return
+      }
       started = true
       const r = video.seekable
       startOffset.current = hls || !r?.length ? 0 : Math.min(40, Math.max(0, r.end(r.length - 1) - video.currentTime))
       setPhase('playing')
       relist()
     }
-    // Safari's own HLS may start without a «playing» event: time moving is enough
+    // time moving is the picture moving (Safari's own HLS may start without a «playing» event)
     let last = -1
     const onTime = () => {
       if (gone || video.paused) return
       if (last >= 0 && video.currentTime > last) onPlaying()
       last = video.currentTime
     }
-    const onError = () => fail(gen, t('tv.failed'))
+    // the video's own error (the browser's HLS): the attempt playing in it now
+    const onError = () => {
+      if (video.error) fail(gen, t('tv.failed'))
+    }
     video.addEventListener('timeupdate', onTime)
     video.addEventListener('playing', onPlaying)
     video.addEventListener('error', onError)
@@ -358,6 +418,7 @@ export function LivePlayer() {
     video.textTracks?.addEventListener?.('addtrack', relist)
     return () => {
       gone = true
+      window.clearTimeout(later)
       video.removeEventListener('timeupdate', onTime)
       video.removeEventListener('playing', onPlaying)
       video.removeEventListener('error', onError)
@@ -479,8 +540,8 @@ export function LivePlayer() {
   const close = useCallback(() => {
     if (fullscreenElement()) void document.exitFullscreen?.().catch(() => undefined)
     if (window.history.length > 1) navigate(-1)
-    else navigate('/tv', { replace: true })
-  }, [navigate])
+    else navigate(fParam ? `/tv?f=${encodeURIComponent(fParam)}` : '/tv', { replace: true })
+  }, [navigate, fParam])
 
   const hideTimer = useRef(0)
   const poke = useCallback(() => {
@@ -501,7 +562,7 @@ export function LivePlayer() {
     },
     [channelId, fParam, navigate, poke],
   )
-  const zap = useCallback((step: number) => tune(zapTarget(zapList, channelId, step, channel?.number)), [tune, zapList, channelId, channel?.number])
+  const zap = useCallback((step: number) => tune(zapTarget(zapList, channelId, step, channel?.number, favFirst)), [tune, zapList, channelId, channel?.number, favFirst])
 
   const favorite = (on: boolean) => {
     if (!channel) return
@@ -612,19 +673,20 @@ export function LivePlayer() {
   }, [zap, toggleFull, close, poke, panel, info, menuOpen, togglePause, toggleMute])
 
   // the current channel in view in the list: when it opens and when the channel changes
-  // (centred if it was out of view; the list alone scrolls, never the page)
-  const listRef = useRef<HTMLUListElement>(null)
+  // (centred if it was out of view; the list alone scrolls, never the page). The
+  // list renders only the rows near the screen: the row's place is its index.
+  const listRef = useRef<HTMLDivElement>(null)
   const listOpen = panel || upright
   const listedCount = zapList.length
+  const panelRowH = narrow ? PANEL_ROW_H.narrow : PANEL_ROW_H.wide
+  const currentIndex = zapList.findIndex((c) => c.id === channelId)
   useEffect(() => {
     const list = listRef.current
-    const row = list?.querySelector<HTMLElement>('[aria-current]')
-    if (!list || !row) return
-    const lr = list.getBoundingClientRect()
-    const rr = row.getBoundingClientRect()
-    if (rr.top >= lr.top && rr.bottom <= lr.bottom) return
-    list.scrollTop += rr.top - lr.top - (lr.height - rr.height) / 2
-  }, [channelId, listOpen, listedCount])
+    if (!list || currentIndex < 0) return
+    const top = currentIndex * panelRowH
+    if (top >= list.scrollTop && top + panelRowH <= list.scrollTop + list.clientHeight) return
+    list.scrollTop = top - (list.clientHeight - panelRowH) / 2
+  }, [channelId, listOpen, listedCount, currentIndex, panelRowH])
 
   const playing = phase === 'playing'
   const show = chromeShown({ poked: chrome, paused, playing, upright, info, panel, menuOpen })
@@ -689,7 +751,7 @@ export function LivePlayer() {
           {channel && (
             <h1 className={styles.channel}>
               <span className={styles.channelNum}>{channel.number}</span>
-              <ChannelLogo url={channel.logoUrl} size="md" />
+              <ChannelLogo url={channel.logoUrl} fallback={channel.logoAlt} name={channel.name} size="md" />
               <span className={styles.channelName}>{channel.name}</span>
             </h1>
           )}
@@ -867,30 +929,32 @@ export function LivePlayer() {
           <header className={styles.panelHead}>
             <h2>{t('tv.channelsPanel')}</h2>
           </header>
-          <ul className={styles.panelList} ref={listRef} style={{ '--num-digits': numDigits(zapList) } as CSSProperties}>
-            {zapList.map((c) => {
-              const stripLogos = zapList.some((x) => x.logoUrl)
-              const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
-              const current = c.id === channelId
-              return (
-                <li key={c.id}>
+          <div className={styles.panelList} ref={listRef} style={{ '--num-digits': numDigits(zapList) } as CSSProperties}>
+            <VirtualList
+              count={zapList.length}
+              itemHeight={panelRowH}
+              itemKey={(i) => zapList[i]!.id}
+              label={t('tv.channelsPanel')}
+              renderItem={(i) => {
+                const c = zapList[i]!
+                const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
+                const current = c.id === channelId
+                return (
                   <button
                     type="button"
                     className={styles.panelRow}
-                    data-logos={stripLogos || undefined}
                     aria-current={current || undefined}
                     onClick={() => tune(c)}
                     onKeyDown={(e) => {
                       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
                       e.preventDefault()
-                      const li = e.currentTarget.parentElement
-                      const to = (e.key === 'ArrowUp' ? li?.previousElementSibling : li?.nextElementSibling)?.querySelector('button')
+                      const item = e.currentTarget.parentElement
+                      const to = (e.key === 'ArrowUp' ? item?.previousElementSibling : item?.nextElementSibling)?.querySelector('button')
                       to?.focus()
                     }}
                   >
                     <span className={styles.panelNum}>{c.number}</span>
-                    <ChannelArt program={p} width={96} className={styles.panelArt} />
-                    {stripLogos && <ChannelLogo url={c.logoUrl} size="xs" reserve />}
+                    <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} name={c.name} size="xs" />
                     <span className={styles.panelText}>
                       <span className={styles.panelName}>
                         <span className={styles.panelNameText}>{c.name}</span>
@@ -903,11 +967,12 @@ export function LivePlayer() {
                         </span>
                       )}
                     </span>
+                    <ChannelArt program={p} width={96} optional className={styles.panelArt} />
                   </button>
-                </li>
-              )
-            })}
-          </ul>
+                )
+              }}
+            />
+          </div>
         </aside>
       )}
       </div>

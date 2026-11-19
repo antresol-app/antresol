@@ -277,7 +277,8 @@ func TestChannelsFavoritesLastAndEPG(t *testing.T) {
 		t.Fatalf("last %d %s", w.Code, w.Body)
 	}
 	l = get(e.admin)
-	if !l.Channels[1].Favorite || l.Channels[0].Favorite || l.LastChannel == nil || *l.LastChannel != ids[0] {
+	// the starred channel heads the list (favourites first, the default)
+	if l.Channels[0].ID != ids[1] || !l.Channels[0].Favorite || l.Channels[1].Favorite || l.LastChannel == nil || *l.LastChannel != ids[0] {
 		t.Fatalf("after %+v", l)
 	}
 	// per profile

@@ -214,6 +214,9 @@ type Service struct {
 	// PublicURL is how browsers reach the server ("https://antresol.example",
 	// no trailing slash; "": letters carry no links).
 	PublicURL string
+	// PublicURLOf, when set, is asked for the address instead of PublicURL
+	// each time (an admin may save it while the server runs).
+	PublicURLOf func() string
 	// Now is the clock (nil: time.Now); Location the time zone of quiet
 	// hours (nil: time.Local).
 	Now      func() time.Time

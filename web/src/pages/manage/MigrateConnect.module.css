@@ -1,0 +1,50 @@
+/* A media server reached over the network (MigrateConnect.tsx), under its card. */
+.form {
+  display: grid;
+  gap: var(--s-2h);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--separator);
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  gap: var(--s-2h);
+}
+.hint {
+  font: var(--t-footnote);
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.submit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.error {
+  font: var(--t-footnote);
+  color: var(--destructive-text);
+  text-wrap: pretty;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--separator);
+}
+.text {
+  flex: 1 1 16ch;
+  min-width: 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  gap: var(--s-2);
+}
+.line .error {
+  flex-basis: 100%;
+}

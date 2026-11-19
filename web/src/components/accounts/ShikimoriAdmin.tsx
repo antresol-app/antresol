@@ -1,6 +1,7 @@
 // «Настройки сервера → Shikimori»: the OAuth client that lets profiles mark
 // on Shikimori too. The secret is written, never shown again; the redirect
-// URI is what to enter in Shikimori's application. Nothing here when the
+// URI is what to enter in Shikimori's application; without the server's
+// external address there is none, and the row leads to «Адрес сервера». Nothing here when the
 // server has no accounts.
 import { useEffect, useRef, useState } from 'react'
 import { errorText, getShikimoriAdmin, putShikimoriAdmin } from '../../api/client'
@@ -8,6 +9,8 @@ import type { ShikimoriAdminSettings } from '../../api/types'
 import { useT } from '../../i18n'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { TextField } from '../../ui/TextField'
+import { ButtonLink } from '../../ui/Button'
+import { PUBLIC_ADDRESS_PATH } from '../../pages/manage/PublicAddressSettings'
 import styles from '../../pages/manage/Settings.module.css'
 
 export function ShikimoriAdmin() {
@@ -67,7 +70,19 @@ export function ShikimoriAdmin() {
       </ListRow>
       <ListRow wide label={t('acct.admin.redirect')} hint={t('acct.admin.redirect.hint')}>
         <div className={styles.aiFields}>
-          <TextField label="Redirect URI" value={cfg.redirectUri || t('acct.admin.noUrl')} readOnly onFocus={(e) => e.currentTarget.select()} />
+          {cfg.redirectUri ? (
+            <TextField label="Redirect URI" value={cfg.redirectUri} readOnly onFocus={(e) => e.currentTarget.select()} />
+          ) : (
+            // no address yet: where it is set, not a dead end
+            <div className={styles.aiFields}>
+              <p className={styles.noUrl}>{t('acct.admin.noUrl')}</p>
+              <div>
+                <ButtonLink to={PUBLIC_ADDRESS_PATH} variant="secondary" size="small">
+                  {t('acct.admin.setUrl')}
+                </ButtonLink>
+              </div>
+            </div>
+          )}
           <TextField label="Scope" value={cfg.scope} readOnly />
         </div>
       </ListRow>

@@ -40,7 +40,7 @@ services:
     #           capabilities: [gpu]
 
   # antresol.local and the apps' search on the home network: mDNS only,
-  # UDP 5353 on the host, no secrets (docs/install.md)
+  # UDP 5353 on the host, no secrets (docs/troubleshooting.md)
   antresol-mdns:
     image: ghcr.io/antresol-app/antresol-server:latest
     container_name: antresol-mdns
@@ -55,7 +55,7 @@ services:
     healthcheck:
       disable: true
 
-  # An addon's helper service (see docs/install.md) goes here, under services:.
+  # An addon's helper service (see docs/addon-services.md) goes here, under services:.
 
 volumes:
   antresol-config:

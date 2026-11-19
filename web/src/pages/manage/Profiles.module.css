@@ -34,3 +34,8 @@
   font: var(--t-footnote);
   color: var(--warning);
 }
+
+/* «Устройства всех профилей» under the list */
+.devices {
+  margin-top: var(--s-5);
+}

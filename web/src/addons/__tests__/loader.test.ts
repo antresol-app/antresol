@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { registerAddon, useEvents } from '../sdk'
-import { contributionsOf, resetAddonsForTests } from '../registry'
+import { contributionsOf, resetAddonsForTests, useAddonWebFailure } from '../registry'
 import { importer, initAddons, reloadAddons, resetLoaderForTests } from '../loader'
 
 const admin = { id: 1, isAdmin: true }
@@ -219,5 +219,76 @@ describe('addon loader', () => {
     })
     await initAddons(admin)
     expect(contributionsOf('styled')?.manageTiles?.[0]?.label).toBe('S')
+  })
+  it('an addon that starts after the tab loaded joins on addons.changed (and on the stream coming back)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const listeners = new Map<string, (m: { data: string }) => void>()
+    let instance: { onopen: (() => void) | null } | null = null
+    vi.stubGlobal(
+      'EventSource',
+      class {
+        onmessage: unknown = null
+        onopen: (() => void) | null = null
+        constructor() {
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          instance = this
+        }
+        addEventListener(t: string, f: (m: { data: string }) => void) {
+          listeners.set(t, f)
+        }
+        close() {}
+      },
+    )
+    vi.spyOn(importer, 'load').mockImplementation(async (url: string) => {
+      const id = url.split('/')[2]!
+      registerAddon(id, { manageTiles: [{ label: id, icon: 'gear', to: `/addons/${id}/` }] })
+      return {}
+    })
+    // the server restarted: online runs, fetcher is still starting
+    serve([{ id: 'online', entry: '/addons/online/ui/index.js' }])
+    await initAddons(admin)
+    expect(contributionsOf('fetcher')).toBeUndefined()
+    // fetcher is up: the event makes the tab ask again
+    serve([
+      { id: 'online', entry: '/addons/online/ui/index.js' },
+      { id: 'fetcher', entry: '/addons/fetcher/ui/index.js' },
+    ])
+    listeners.get('addons.changed')!({ data: '{"id":"fetcher","status":"running"}' })
+    await vi.advanceTimersByTimeAsync(400)
+    await reloadAddons()
+    expect(contributionsOf('fetcher')).toBeDefined()
+    // the stream reconnects (the server was away): asked again too
+    const fetchMock = serve([{ id: 'online', entry: '/addons/online/ui/index.js' }])
+    instance!.onopen!()
+    await vi.advanceTimersByTimeAsync(400)
+    await reloadAddons()
+    expect(fetchMock).toHaveBeenCalled()
+    expect(contributionsOf('fetcher')).toBeUndefined()
+    vi.useRealTimers()
+  })
+
+  it("a bundle that fails is said on its row, not only in the console; a later success clears it", async () => {
+    serve([{ id: 'fetcher', entry: '/addons/fetcher/ui/index.js' }])
+    let fail = true
+    vi.spyOn(importer, 'load').mockImplementation(async () => {
+      if (fail) throw new Error('boom')
+      registerAddon('fetcher', { manageTiles: [{ label: 'T', icon: 'gear', to: 'downloads' }] })
+      return {}
+    })
+    await initAddons(admin)
+    const { result, rerender } = renderHook(() => useAddonWebFailure('fetcher'))
+    expect(result.current).toBe('boom')
+    fail = false
+    await reloadAddons()
+    rerender()
+    expect(result.current).toBeUndefined()
+  })
+
+  it('a bundle that runs but never registers is a failure too', async () => {
+    serve([{ id: 'mute', entry: '/addons/mute/ui/index.js?v=2' }])
+    vi.spyOn(importer, 'load').mockResolvedValue({})
+    await initAddons(admin)
+    const { result } = renderHook(() => useAddonWebFailure('mute'))
+    expect(result.current).toBe('did not register')
   })
 })

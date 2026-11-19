@@ -99,6 +99,7 @@ export function ChannelEditor({
     channel ? !!r.skipSegments : true,
   );
   const [logoUrl, setLogoUrl] = useState(channel?.logoUrl);
+  const [logoAuto, setLogoAuto] = useState(Boolean(channel?.logoAuto));
   const [pendingLogo, setPendingLogo] = useState<File | null>(null);
   const [options, setOptions] = useState<ChannelOptions | null>(null);
   const [busy, setBusy] = useState(false);
@@ -334,10 +335,12 @@ export function ChannelEditor({
           url={logoUrl}
           onChanged={(u) => {
             setLogoUrl(u);
+            setLogoAuto(false);
             onLogoChanged?.();
           }}
           pending={pendingLogo}
           onPending={setPendingLogo}
+          auto={logoAuto}
         />
         <ListRow label={t("tv.enabled")}>
           <Toggle

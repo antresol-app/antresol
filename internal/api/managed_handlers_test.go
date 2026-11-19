@@ -26,7 +26,13 @@ func (e *libEnv) tv(id string) *http.Cookie {
 
 func (e *libEnv) switchHistory(c *http.Cookie, device, body string) historyOut {
 	e.t.Helper()
-	w := e.do("PUT", "/api/me/devices/"+device+"/history", body, c)
+	return e.switchHistoryAt("/api/me/devices/", c, device, body)
+}
+
+// switchHistoryAt: under /api/me/devices/ (the caller's own) or /api/admin/devices/ (any profile's).
+func (e *libEnv) switchHistoryAt(base string, c *http.Cookie, device, body string) historyOut {
+	e.t.Helper()
+	w := e.do("PUT", base+device+"/history", body, c)
 	if w.Code != 200 {
 		e.t.Fatalf("switch %s: %d %s", body, w.Code, w.Body)
 	}
@@ -279,7 +285,7 @@ func TestKidDeviceHistoryKeepsKidLimits(t *testing.T) {
 	adult, _ := e.movie("Adult", "18+", "x")
 	_, kid := e.profile(`{"name":"Kid","isKid":true,"maxRating":"6+"}`)
 	// a kid's device is switched by an administrator
-	on := e.switchHistory(e.admin, itoa(e.currentDevice(kid)), `{"separate":true}`)
+	on := e.switchHistoryAt("/api/admin/devices/", e.admin, itoa(e.currentDevice(kid)), `{"separate":true}`)
 	if on.History == nil {
 		t.Fatal("kid switch")
 	}
@@ -317,8 +323,12 @@ func TestKidCannotChangeSeparateHistories(t *testing.T) {
 		t.Fatalf("a kid made %+v", list)
 	}
 
-	// the administrator switches the kid's device on; the kid's history goes there
-	on := e.switchHistory(e.admin, dev, `{"separate":true}`)
+	// the administrator switches the kid's device on, from the server's
+	// list of devices (not as one of the admin's own); the kid's history goes there
+	if w := e.do("PUT", "/api/me/devices/"+dev+"/history", `{"separate":true}`, e.admin); w.Code != 404 {
+		t.Fatalf("a kid's device as the admin's own: %d", w.Code)
+	}
+	on := e.switchHistoryAt("/api/admin/devices/", e.admin, dev, `{"separate":true}`)
 	if on.History == nil {
 		t.Fatal("admin could not switch a kid's device")
 	}
@@ -347,7 +357,7 @@ func TestKidCannotChangeSeparateHistories(t *testing.T) {
 	}
 
 	// the administrator turns it off with «Перенести»: the kid's own history gets it
-	off := e.switchHistory(e.admin, dev, `{"separate":false,"merge":true}`)
+	off := e.switchHistoryAt("/api/admin/devices/", e.admin, dev, `{"separate":false,"merge":true}`)
 	if off.History != nil {
 		t.Fatalf("off: %+v", off)
 	}
@@ -358,7 +368,7 @@ func TestKidCannotChangeSeparateHistories(t *testing.T) {
 		t.Fatalf("merged history missing %+v", p)
 	}
 	// and deletes an account with its history
-	on = e.switchHistory(e.admin, dev, `{"separate":true}`)
+	on = e.switchHistoryAt("/api/admin/devices/", e.admin, dev, `{"separate":true}`)
 	e.put("/api/progress/"+itoa(movie), `{"positionMs":90000,"durationMs":6000000}`, kid)
 	if w := e.do("DELETE", "/api/managed-accounts/"+itoa(on.History.ID), "", e.admin); w.Code != 204 {
 		t.Fatalf("admin delete %d %s", w.Code, w.Body)

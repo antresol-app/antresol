@@ -1,4 +1,4 @@
-// «Настройки сервера → Перекодирование»: what re-encodes video (the GPU's
+// «Настройки сервера → Обработка → Перекодирование»: what re-encodes video (the GPU's
 // backend or the CPU), the render node of VA-API, HDR tone mapping and HEVC
 // output. A change is in effect at once for new playback; the line «Сейчас»
 // says what the server picked and whether its test encode passed, and
@@ -77,7 +77,8 @@ export function statusLine(
   return parts.join(" · ");
 }
 
-export function TranscodingSection() {
+/** `title`: the group's heading (the section is one part of «Обработка»). */
+export function TranscodingSection({ title }: { title?: string } = {}) {
   const t = useT();
   const [view, setView] = useState<TranscodingView | null>(null);
   const [error, setError] = useState("");
@@ -114,7 +115,7 @@ export function TranscodingSection() {
 
   if (!view) {
     return (
-      <GroupedSection>
+      <GroupedSection title={title}>
         <ListRow label={t("settings.group.transcoding")}>
           {error ? (
             <span className={m.problem} role="alert">
@@ -150,7 +151,7 @@ export function TranscodingSection() {
     view.devices.length > 1 && (v.mode === "auto" || v.mode === "vaapi");
   return (
     <>
-    <GroupedSection footer={t("settings.tc.footer")}>
+    <GroupedSection title={title} footer={t("settings.tc.footer")}>
       <ListRow
         stack
         label={t("settings.tc.mode")}

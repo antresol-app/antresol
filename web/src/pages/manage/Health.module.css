@@ -1,5 +1,5 @@
-/* «Обновления»: the command to copy, the word for a newer release and a
-   check that could not say. */
+/* «Состояние»: the command to copy, the word for a newer release, what
+   works and what does not. */
 .command {
   display: flex;
   flex-wrap: wrap;
@@ -24,4 +24,10 @@
 }
 .problem {
   color: var(--warning);
+}
+.fine {
+  color: var(--success);
+}
+.mono {
+  font-family: var(--font-mono);
 }

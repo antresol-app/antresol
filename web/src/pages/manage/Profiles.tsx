@@ -1,7 +1,8 @@
 // «Профили»: who uses Vault. Create, rename, change the avatar, make a
 // profile a kid's (with an age limit) or an administrator, set a password,
 // set its «Звук и субтитры» and «Экранное время» (a kid's only here), delete
-// (with a confirmation).
+// (with a confirmation). «Устройства всех профилей»: the server's list of
+// signed-in apps and browsers (a profile's own are in its «Настройки»).
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useState } from 'react'
 import { createUser, deleteUser, getScreenLimited, getUsers, removeUserPhoto, resetAppPassword, setUserPhoto, updateUser, type UserInput, errorText } from '../../api/client'
@@ -13,6 +14,8 @@ import { IconButton } from '../../ui/IconButton'
 import { Icon } from '../../components/Icon'
 import { PlaybackPrefsSheet } from '../../components/PlaybackPrefsSheet'
 import { NotifySheet } from '../../components/NotifySheet'
+import { DevicesSheet } from '../../components/DevicesSheet'
+import { GroupedSection, ListLinkRow } from '../../ui/List'
 import { ScreenTimeSheet } from '../../components/ScreenTimeSheet'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
@@ -51,6 +54,8 @@ export function Profiles() {
   const [notify, setNotify] = useState<User | null>(null)
   // a kid's «Экранное время»: usage, limits, the day's bonus
   const [screen, setScreen] = useState<User | null>(null)
+  // «Устройства всех профилей»: the server's list of devices
+  const [devices, setDevices] = useState(false)
 
   // kids with screen-time rules and the profiles open without a password (a way around them)
   const [limited, setLimited] = useState<ScreenLimited | null>(null)
@@ -150,6 +155,13 @@ export function Profiles() {
           ))}
         </ul>
       )}
+      {list && (
+        // the server's list of devices: every profile's (a profile's own «Устройства» are its own)
+        <GroupedSection className={styles.devices}>
+          <ListLinkRow icon="devices" tint="blue" label={t('profiles.devices')} hint={t('profiles.devices.hint')} onOpen={() => setDevices(true)} />
+        </GroupedSection>
+      )}
+      {devices && <DevicesSheet all onClose={() => setDevices(false)} />}
       {edit && (
         <ProfileSheet
           user={edit.user}

@@ -1,7 +1,8 @@
 // Avatar button in the top-right corner. Opens the app's Menu (a sheet on a
 // phone) with the current profile, its places («Файлы», «Мои запросы», the
 // addons' entries), «Настройки» (the profile's own: pages/ProfileSettings.tsx;
-// an admin's open «Управление», the profile's and the server's in two parts) and «Сменить профиль», then the profile's
+// an admin's open «Управление», the profile's and the server's in two parts),
+// with «Сменить профиль» as a round button in the head beside the profile; then the profile's
 // library («Общая медиатека / Моя медиатека», as Photos has it in its View
 // menu besides the toolbar picker).
 import { useNavigate } from 'react-router'
@@ -16,6 +17,7 @@ import { Avatar } from './Avatar'
 import { Icon, type IconName } from './Icon'
 import { LIBRARY_OPTIONS } from './LibraryScopeMenu'
 import styles from './ProfileMenu.module.css'
+import { IconButton } from '../ui/IconButton'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../ui/Menu'
 
 interface Item {
@@ -37,12 +39,25 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
   // requests waiting for an admin's answer (none where requests are closed)
   const pending = usePendingRequests(user.id, Boolean(user.requests))
 
+  // «Сменить профиль»: the round button at the head's trailing edge, beside
+  // the profile it leaves (as an account switcher has it), not a row among
+  // the profile's places
+  const switchProfile = () => {
+    if (onSwitchProfile) onSwitchProfile()
+    // The session is cleared locally even if the server can't be reached.
+    else
+      void session
+        .logout()
+        .catch(() => {})
+        .finally(() => navigate('/profiles'))
+  }
+
   const items: Item[] = [
     // what comes out of the titles this profile marked
     {
       id: 'calendar',
       label: t('tracking.calendar.title'),
-      icon: 'clock' as const,
+      icon: 'calendar' as const,
       run: () => navigate('/calendar'),
     },
     // The file browser of the media disk (not for kid profiles).
@@ -91,20 +106,6 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
           icon: 'sliders' as const,
           run: () => navigate('/settings'),
         },
-    {
-      id: 'switch',
-      label: t('comp.profile.switch'),
-      icon: 'switchUser',
-      run: () => {
-        if (onSwitchProfile) onSwitchProfile()
-        // The session is cleared locally even if the server can't be reached.
-        else
-          void session
-            .logout()
-            .catch(() => {})
-            .finally(() => navigate('/profiles'))
-      },
-    },
   ]
 
   return (
@@ -150,6 +151,21 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
                 {/* «Отдельная история на этом устройстве»: where this device's history goes */}
                 {user.deviceHistory && <div className={styles.role}>{t('comp.profile.deviceHistory', { name: user.deviceHistory.name })}</div>}
               </div>
+              <IconButton
+                // a row of the menu for the arrow keys, as the items below
+                role="menuitem"
+                tabIndex={-1}
+                data-menu-aside
+                icon="switchUser"
+                size="sm"
+                variant="plain"
+                label={t('comp.profile.switch')}
+                className={styles.switch}
+                onClick={() => {
+                  close(false)
+                  switchProfile()
+                }}
+              />
             </div>
             <MenuSeparator />
             {items.map((it) => (

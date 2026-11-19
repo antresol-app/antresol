@@ -94,6 +94,9 @@ type ExtChannel struct {
 	// TvgID, Logo: of the first entry that has one; no entry has a logo:
 	// its guide channel's icon (guideLogos).
 	TvgID, Logo string
+	// GuideLogo: its guide channel's icon ("": none), the web's fallback
+	// for a tvg-logo that does not load.
+	GuideLogo string
 	// HideURL: the primary stream's source hides provider addresses.
 	HideURL bool
 	// Groups: the playlist groups of its entries (the admin's category
@@ -262,62 +265,73 @@ func (s *Service) Visible(ctx context.Context, v channels.Viewer, setID int64) (
 	return out, nil
 }
 
-// guideLogos gives a channel without a tvg-logo its guide channel's
-// <icon> (the first of its guide keys that has one): a playlist without
-// logos whose guide has them shows them — in the web, the apps and the
-// IPTV links alike.
+// guideLogos gives every channel with a guide its guide channel's <icon>
+// (GuideLogo: the first of its guide keys that has one), and a channel
+// without a tvg-logo that icon as its Logo: a playlist without logos whose
+// guide has them shows them — in the web, the apps and the IPTV links
+// alike — and a tvg-logo that does not load falls back to it (the web).
 func (s *Service) guideLogos(ctx context.Context, out map[int64]ExtChannel) error {
-	want := map[string]bool{}
+	var keys []EPGKey
 	for _, x := range out {
-		if x.Logo == "" {
-			for _, k := range x.EPGKeys {
-				want[k.XMLID] = true
-			}
-		}
+		keys = append(keys, x.EPGKeys...)
 	}
-	if len(want) == 0 {
-		return nil
-	}
-	ids := make([]any, 0, len(want))
-	for id := range want {
-		ids = append(ids, id)
-	}
-	icons := map[EPGKey]string{}
-	for start := 0; start < len(ids); start += 500 {
-		part := ids[start:min(start+500, len(ids))]
-		rows, err := s.Store.DB.QueryContext(ctx, `SELECT epg_url_id, xml_id, icon FROM iptv_xml_channels
-			WHERE icon<>'' AND xml_id IN (?`+strings.Repeat(",?", len(part)-1)+`)`, part...)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var k EPGKey
-			var icon string
-			if err := rows.Scan(&k.EPGURLID, &k.XMLID, &icon); err != nil {
-				rows.Close()
-				return err
-			}
-			icons[k] = icon
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
+	icons, err := s.GuideIcons(ctx, keys)
+	if err != nil {
+		return err
 	}
 	for id, x := range out {
-		if x.Logo != "" {
-			continue
-		}
 		for _, k := range x.EPGKeys {
 			if icon := icons[k]; icon != "" {
-				x.Logo = icon
+				x.GuideLogo = icon
+				if x.Logo == "" {
+					x.Logo = icon
+				}
 				out[id] = x
 				break
 			}
 		}
 	}
 	return nil
+}
+
+// GuideIcons are the <icon>s of the guide channels of keys (a key without
+// one is not in the map).
+func (s *Service) GuideIcons(ctx context.Context, keys []EPGKey) (map[EPGKey]string, error) {
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k.XMLID] = true
+	}
+	icons := map[EPGKey]string{}
+	if len(want) == 0 {
+		return icons, nil
+	}
+	ids := make([]any, 0, len(want))
+	for id := range want {
+		ids = append(ids, id)
+	}
+	for start := 0; start < len(ids); start += 500 {
+		part := ids[start:min(start+500, len(ids))]
+		rows, err := s.Store.DB.QueryContext(ctx, `SELECT epg_url_id, xml_id, icon FROM iptv_xml_channels
+			WHERE icon<>'' AND xml_id IN (?`+strings.Repeat(",?", len(part)-1)+`)`, part...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var k EPGKey
+			var icon string
+			if err := rows.Scan(&k.EPGURLID, &k.XMLID, &icon); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			icons[k] = icon
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return icons, nil
 }
 
 // externalRows reads the external channel rows by id.

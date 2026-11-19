@@ -112,17 +112,39 @@ describe('ProfileSettings', () => {
       expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
     }
     expect(screen.getByRole('switch', { name: 'Скрывать прогресс просмотра' })).toBeInTheDocument()
-    // no server-wide settings here
-    expect(screen.queryByText(/Качество видео|Мои языки|Kindle/)).toBeNull()
+    // no server-wide settings here (the Kindle address is the profile's own; the mailbox is the server's)
+    expect(screen.queryByText(/Качество видео|Мои языки|Почта для отправки/)).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Адрес Kindle' })).toBeInTheDocument()
   })
 
-  it('a kid gets the language, apps and «О сервере», not sound, mail or hiding progress', async () => {
-    await open(kid)
+  it('the Kindle address is the profile’s own: saved on leaving the field, through PATCH /api/me', async () => {
+    const calls = await open(adult)
+    const field = screen.getByRole('textbox', { name: 'Адрес Kindle' })
+    expect(screen.getByText(/с одной почты сервера на все профили/)).toBeInTheDocument()
+    await userEvent.type(field, 'mama_42@kindle.com')
+    fireEvent.blur(field)
+    await waitFor(() => expect(calls.some(([u, m, b]) => u.endsWith('/api/me') && m === 'PATCH' && (b as { kindleEmail?: string }).kindleEmail === 'mama_42@kindle.com')).toBe(true))
+    expect(await screen.findByText('Сохранено')).toBeInTheDocument()
+  })
+
+  it('a kid gets the language, its channel order, apps and «О сервере», not sound, mail or hiding progress', async () => {
+    await open(kid, (url) => (url.endsWith('/api/channels/prefs') ? json({ favoritesFirst: true }) : undefined))
     expect(screen.getByRole('button', { name: /Пароль для приложений/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /О сервере/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Звук и субтитры/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Уведомления/ })).toBeNull()
-    expect(screen.queryByRole('switch')).toBeNull()
+    expect(await screen.findByRole('switch', { name: 'Избранные каналы первыми' })).toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Скрывать прогресс просмотра' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Адрес Kindle' })).toBeNull()
+  })
+
+  it('«Избранные каналы первыми»: on by default, the profile turns it off for itself (the web and the apps)', async () => {
+    const calls = await open(adult, (url) => (url.endsWith('/api/channels/prefs') ? json({ favoritesFirst: true }) : undefined))
+    const sw = await screen.findByRole('switch', { name: 'Избранные каналы первыми' })
+    expect(sw).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(sw)
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Избранные каналы первыми' })).toHaveAttribute('aria-checked', 'false'))
+    expect(calls.at(-1)).toEqual(['/api/channels/prefs', 'PUT', { favoritesFirst: false }])
   })
 
   it('«Язык интерфейса» → English re-renders the page and remembers it in this browser', async () => {

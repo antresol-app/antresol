@@ -21,19 +21,30 @@ import (
 // and secret override the stored ones (account_settings); the redirect URI
 // is the server's public URL + /api/accounts/shikimori/callback.
 type OAuth struct {
-	Store                        *Store
-	PublicURL                    string
+	Store     *Store
+	PublicURL string
+	// PublicURLOf, when set, is asked for the address instead of PublicURL
+	// each time (an admin may save it while the server runs).
+	PublicURLOf                  func() string
 	EnvClientID, EnvClientSecret string
+}
+
+func (o *OAuth) publicURL() string {
+	if o.PublicURLOf != nil {
+		return o.PublicURLOf()
+	}
+	return o.PublicURL
 }
 
 const callbackPath = "/api/accounts/shikimori/callback"
 
 // RedirectURI is where the provider sends the browser back.
 func (o *OAuth) RedirectURI() string {
-	if o.PublicURL == "" {
+	public := o.publicURL()
+	if public == "" {
 		return ""
 	}
-	return strings.TrimRight(o.PublicURL, "/") + callbackPath
+	return strings.TrimRight(public, "/") + callbackPath
 }
 
 // Client returns the OAuth client; ok is false while id or secret is
@@ -60,7 +71,7 @@ func (o *OAuth) Client(ctx context.Context) (OAuthClient, bool, error) {
 // CanWrite: write-back can be offered (a client, and an https public URL
 // the provider can send the browser back to).
 func (o *OAuth) CanWrite(ctx context.Context) bool {
-	if !strings.HasPrefix(o.PublicURL, "https://") {
+	if !strings.HasPrefix(o.publicURL(), "https://") {
 		return false
 	}
 	_, ok, err := o.Client(ctx)

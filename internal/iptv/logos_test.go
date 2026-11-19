@@ -30,10 +30,16 @@ func TestGuideIconIsTheLogoFallback(t *testing.T) {
 	}
 	vis := e.visible(channels.Viewer{ID: e.user("v")}, 0)
 	logos := map[string]string{}
+	alts := map[string]string{}
 	keys := map[int64][]EPGKey{}
 	for id, x := range vis {
 		logos[x.Channel.Name] = x.Logo
+		alts[x.Channel.Name] = x.GuideLogo
 		keys[id] = x.EPGKeys
+	}
+	// the guide icon stays at hand where a tvg-logo wins: the web falls back to it
+	if alts["Второй"] != "http://epg.example.test/two.png" {
+		t.Errorf("guide logos %v", alts)
 	}
 	if logos["Первый"] != "http://epg.example.test/one.png" || logos["Второй"] != "http://pl.example.test/two.png" {
 		t.Fatalf("logos %v", logos)

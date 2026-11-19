@@ -175,7 +175,7 @@ describe('the first-run wizard', () => {
     expect(within(root).getByText('books/ebooks')).toBeInTheDocument()
     // found / missing, with a count and a way out
     const movies = kindRow('Фильмы')
-    expect(within(movies).getByText('Найдена, 3 элемента')).toBeInTheDocument()
+    expect(within(movies).getByText('Запись работает, 3 элемента')).toBeInTheDocument()
     const series = kindRow('Сериалы')
     expect(within(series).getByText('Такой папки нет. Похожая: tv')).toBeInTheDocument()
     expect(within(series).getByRole('button', { name: 'Создать' })).toBeInTheDocument()
@@ -201,7 +201,7 @@ describe('the first-run wizard', () => {
     const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
     // checked, nothing saved yet
-    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Запись работает, 12 элементов')).toBeInTheDocument())
     expect(calls.find((c) => c.path === '/api/settings/storage/check')?.body).toEqual({ folders: picks({ series: [{ path: 'tv', adult: false, unlisted: false }] }) })
     expect(calls.some((c) => c.method === 'PUT')).toBe(false)
     await userEvent.click(button('Далее'))
@@ -229,7 +229,7 @@ describe('the first-run wizard', () => {
     open()
     const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Запись работает, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Пропустить'))
     expect(await screen.findByRole('heading', { name: 'Права на запись' })).toBeInTheDocument()
     expect(calls.some((c) => c.method === 'PUT')).toBe(false)
@@ -398,7 +398,7 @@ describe('the first-run wizard', () => {
     open()
     const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Запись работает, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByText(/Сервер отвечает дольше обычного/)).toBeInTheDocument()
     expect(health).toBeGreaterThan(1)
@@ -423,7 +423,7 @@ describe('the first-run wizard', () => {
     open()
     const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Запись работает, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByRole('heading', { name: 'Права на запись' })).toBeInTheDocument()
     expect(health).toBe(4)
@@ -448,7 +448,7 @@ describe('the first-run wizard', () => {
     open()
     const series = await findKindRow('Сериалы')
     await userEvent.click(within(series).getByRole('button', { name: 'Использовать «tv»' }))
-    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Найдена, 12 элементов')).toBeInTheDocument())
+    await waitFor(() => expect(within(kindRow('Сериалы')).getByText('Запись работает, 12 элементов')).toBeInTheDocument())
     await userEvent.click(button('Далее'))
     expect(await screen.findByText(/Сервер отвечает дольше обычного/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Медиа-папки' })).toBeInTheDocument()
@@ -483,7 +483,7 @@ describe('the first-run wizard', () => {
     expect(within(movies).getByText('Найдена, пусто. Есть папка с файлами: Фильмы')).toBeInTheDocument()
     expect(within(movies).getByRole('button', { name: 'Использовать «Фильмы»' })).toBeInTheDocument()
     // a folder that has files is just found
-    expect(within(kindRow('Музыка')).getByText('Найдена, 3 элемента')).toBeInTheDocument()
+    expect(within(kindRow('Музыка')).getByText('Запись работает, 3 элемента')).toBeInTheDocument()
   })
 
   it('folders whose place is missing are told to be mounted, with no chown', async () => {

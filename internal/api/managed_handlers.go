@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
@@ -72,6 +73,8 @@ type managedAPI struct {
 func mountManaged(r chi.Router, users *auth.Store, sessions *auth.Sessions, prog *progress.Store) {
 	m := &managedAPI{users, sessions, prog}
 	r.With(noKids).Put("/api/me/devices/{id}/history", m.switchDevice)
+	// any profile's device: the server's list of devices (Профили → Устройства)
+	r.With(auth.RequireAdmin).Put("/api/admin/devices/{id}/history", m.switchDevice)
 	r.Get("/api/me/managed", m.listMine)
 	r.With(noKids).Post("/api/me/managed", m.create)
 	r.With(noKids).Patch("/api/me/managed/{id}", m.rename)
@@ -276,7 +279,9 @@ func (m *managedAPI) switchDevice(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var err error
 		ss, err = m.sessions.SessionByID(ctx, managedIDParam(r))
-		if err != nil || (ss.UserID != u.ID && !u.IsAdmin) {
+		// /api/me/devices: the caller's own; /api/admin/devices (admins only): any profile's
+		anyProfile := strings.HasPrefix(r.URL.Path, "/api/admin/")
+		if err != nil || (ss.UserID != u.ID && !(u.IsAdmin && anyProfile)) {
 			writeErr(w, r, http.StatusNotFound, msgNoDevice)
 			return
 		}

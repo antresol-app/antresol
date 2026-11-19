@@ -136,7 +136,7 @@ func (a *channelsAPI) streamOf(r *http.Request, x iptv.ExtChannel) *streamJSON {
 func (a *channelsAPI) extJSON(r *http.Request, x iptv.ExtChannel, favs map[int64]bool) channelJSON {
 	c := x.Channel
 	j := channelJSON{ID: c.ID, Number: c.Number, Name: c.Name, Category: c.Category, Enabled: c.Enabled,
-		Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID], LogoURL: extLogoURL(x), External: true, Stream: a.streamOf(r, x)}
+		Logo: channels.LogoIndex(c.ID), Favorite: favs[c.ID], LogoURL: extLogoURL(x), LogoAlt: extLogoAlt(x), External: true, Stream: a.streamOf(r, x)}
 	return j
 }
 
@@ -147,6 +147,15 @@ func extLogoURL(x iptv.ExtChannel) string {
 		return u
 	}
 	return x.Logo
+}
+
+// extLogoAlt: the guide channel's icon where the logo is another one (a
+// tvg-logo): the web shows it when that one does not load.
+func extLogoAlt(x iptv.ExtChannel) string {
+	if u := extLogoURL(x); x.GuideLogo != "" && x.GuideLogo != u {
+		return x.GuideLogo
+	}
+	return ""
 }
 
 // extProgrammes: the programmes of chans overlapping [from, to), as the

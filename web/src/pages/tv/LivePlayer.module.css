@@ -260,7 +260,11 @@
 .panelRow {
   display: grid;
   --num-w: max(2.2em, calc(var(--num-digits, 2) * 0.62em));
-  grid-template-columns: var(--num-w) 96px minmax(0, 1fr);
+  /* number, logo (or initials), text, the programme's picture when it has one;
+     one height for every row (the list renders only the rows near the screen) */
+  grid-template-columns: var(--num-w) auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  height: 100%;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -272,9 +276,6 @@
   text-align: left;
 }
 /* a list with logos: the logo is a column of its own (empty where a channel has none) */
-.panelRow[data-logos] {
-  grid-template-columns: var(--num-w) 96px auto minmax(0, 1fr);
-}
 .panelRow:hover {
   background: var(--fill-hover);
 }
@@ -372,11 +373,7 @@
   }
   .panelRow {
     --num-w: max(1.8em, calc(var(--num-digits, 2) * 0.62em));
-    grid-template-columns: var(--num-w) 80px minmax(0, 1fr);
     gap: 10px;
-  }
-  .panelRow[data-logos] {
-    grid-template-columns: var(--num-w) 80px auto minmax(0, 1fr);
   }
   .panelArt {
     width: 80px;

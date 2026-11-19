@@ -24,6 +24,9 @@ type Guard struct {
 	Sessions *Sessions
 	Network  *Network
 	Keys     *MediaKeys
+	// APIKeys: the profiles' personal API keys (Bearer antresol_…); nil:
+	// none accepted.
+	APIKeys *APIKeys
 }
 
 type sessionKey struct{}
@@ -105,6 +108,10 @@ func RequestToken(r *http.Request) string {
 func (g *Guard) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := RequestToken(r)
+		if IsAPIKey(tok) {
+			g.serveKey(w, r, tok, next)
+			return
+		}
 		var mk string
 		if tok == "" && g.Keys != nil && mediaKeyRoute(r) {
 			mk = r.URL.Query().Get("mk")

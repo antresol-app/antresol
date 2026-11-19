@@ -156,9 +156,11 @@ export function Menu({ label, trigger, children, placement = 'bottom-start', cla
 
   useEffect(() => {
     if (!open || !focusItem) return
-    const els = menuRef.current?.querySelectorAll<HTMLElement>(ITEMS)
+    const els = Array.from(menuRef.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])
     const checked = pickList ? menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"]') : null
-    ;(checked ?? els?.[0])?.focus({ preventScroll: true })
+    // an item marked data-menu-aside (a button in the menu's head: «Сменить
+    // профиль») is reached with the arrows but never focused first
+    ;(checked ?? els.find((el) => !el.hasAttribute('data-menu-aside')) ?? els[0])?.focus({ preventScroll: true })
   }, [open, focusItem, pickList])
 
   const onKey = useMenuKeys(menuRef, close)

@@ -50,6 +50,15 @@
   gap: var(--s-3);
   padding: var(--s-2h) var(--s-2h) var(--s-2);
 }
+.head > div {
+  flex: 1;
+  min-width: 0;
+}
+/* «Сменить профиль» at the head's trailing edge */
+.switch {
+  flex: none;
+  align-self: center;
+}
 .name {
   font: var(--t-headline);
 }

@@ -22,6 +22,8 @@ function stub(v: Values) {
         return json({ ...body, subtitlesAvailable: v.subtitlesAvailable })
       }
       if (url.endsWith('/api/settings')) return json(v)
+      if (url.endsWith('/api/settings/transcoding')) return json({ error: 'нет' }, 500)
+      if (url.endsWith('/api/admin/voclean')) return json({ done: 0, queued: 0, failed: 0, notEligible: 0, backfill: false })
       if (url.endsWith('/api/library/status')) return json({ running: false, queued: false, movies: 0, episodes: 0 })
       return json({})
     }),
@@ -51,7 +53,8 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Мои языки»: added, reordered and removed; subtitles keep only them, in their order', async () => {
     const puts = stub({ ...base, subtitlesAvailable: true, languages: ['ru', 'en'] })
-    const { go } = renderSettings('library')
+    // «Мои языки» are part of «Просмотр» (how the library is watched)
+    const { go } = renderSettings('watching')
     const mine = await screen.findByRole('list', { name: 'Мои языки' })
     expect(within(mine).getAllByRole('listitem').map((li) => li.dataset.value)).toEqual(['ru', 'en'])
     await userEvent.click(screen.getByRole('button', { name: 'Добавить язык' }))
@@ -62,7 +65,7 @@ describe('Настройки: музыка и субтитры', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Языки субтитров: Русский, Английский' }))
     expect(screen.getAllByRole('menuitemcheckbox').map((i) => i.textContent)).toEqual(['Русский', 'Английский', 'Японский'])
     await userEvent.keyboard('{Escape}')
-    go('library')
+    go('watching')
     // reordered by the handle: English becomes the main language
     screen.getByRole('button', { name: 'Переместить: Английский' }).focus()
     await userEvent.keyboard('{ArrowUp}')
@@ -75,7 +78,8 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Превью при перемотке»: on when the server says nothing, saved when turned off', async () => {
     const puts = stub(base)
-    renderSettings('watching')
+    // the preview frames are made by the server: «Обработка»
+    renderSettings('processing')
     const sw = await screen.findByRole('switch', { name: 'Превью при перемотке' })
     expect(sw).toBeChecked()
     await userEvent.click(sw)
@@ -86,7 +90,7 @@ describe('Настройки: музыка и субтитры', () => {
 
   it('«Место для превью»: 10 ГБ by default, saved when changed', async () => {
     const puts = stub(base)
-    renderSettings('watching')
+    renderSettings('processing')
     const space = await screen.findByRole('radiogroup', { name: 'Место для превью' })
     expect(within(space).getByRole('radio', { name: '10 ГБ' })).toHaveAttribute('aria-checked', 'true')
     await userEvent.click(within(space).getByRole('radio', { name: '20 ГБ' }))
@@ -111,12 +115,21 @@ describe('Настройки сервера: the groups', () => {
   it('are screens of their own (rows of «Управление»); the old list and an unknown group land on the first group', async () => {
     stub({ ...base, languages: ['ru', 'en'] })
     const { go } = renderSettings()
-    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Медиатека', level: 2 })).toBeInTheDocument()
     go('nope' as never)
-    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Медиатека', level: 2 })).toBeInTheDocument()
+    // the library is what it holds: no languages, no processing
+    expect(screen.queryByRole('list', { name: 'Мои языки' })).toBeNull()
+    expect(screen.queryByText('Очищенные озвучки')).toBeNull()
     go('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Мои языки' })).toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: /онлайн/i })).toBeNull()
+    // «Перекодирование» became part of «Обработка», with the preview frames and the cleaned voice-overs
+    go('transcoding' as never)
+    expect(await screen.findByRole('heading', { name: 'Обработка', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Превью при перемотке' })).toBeInTheDocument()
+    expect(await screen.findByText('Очищенные озвучки')).toBeInTheDocument()
   })
 })
 
@@ -126,7 +139,7 @@ describe('Настройки сервера: язык описаний', () => {
   it('is the server\'s: no interface language (that is the profile\'s)', async () => {
     stub(base)
     renderSettings('library')
-    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Медиатека', level: 2 })).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup', { name: 'Язык интерфейса' })).not.toBeInTheDocument()
     expect(screen.queryByText('Язык интерфейса')).not.toBeInTheDocument()
   })
@@ -134,7 +147,7 @@ describe('Настройки сервера: язык описаний', () => {
   it('«Язык описаний медиатеки» shows only when the server has it and saves metadataLanguage', async () => {
     stub(base)
     const { unmount } = renderSettings('library')
-    await screen.findByRole('list', { name: 'Мои языки' })
+    await screen.findByText('Пересканировать медиатеку')
     expect(screen.queryByRole('radiogroup', { name: 'Язык описаний медиатеки' })).not.toBeInTheDocument()
     unmount()
     vi.unstubAllGlobals()

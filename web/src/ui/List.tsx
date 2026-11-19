@@ -10,8 +10,10 @@
 // On a phone a plain row (none of these) keeps its text at least
 // --row-text-min wide: a control that would squeeze it goes under it.
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
-// Settings row with a chevron: the whole row is the button.
+// Settings row with a chevron: the whole row is the button — or, with `to`,
+// a link to an address of the app (a list's level: Back returns to it).
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 import { Icon } from '../components/Icon'
 import { SettingsIcon, type SettingsGlyph, type SettingsTint } from './SettingsIcon'
 import styles from './List.module.css'
@@ -78,24 +80,37 @@ export interface ListLinkRowProps {
   icon?: SettingsGlyph
   /** The tile's colour, a palette name. */
   tint?: SettingsTint
-  onOpen: () => void
+  /** Something else before the text in place of the tile (a channel's logo). */
+  leading?: ReactNode
+  onOpen?: () => void
+  /** The row is a link to this address of the app (no onOpen needed). */
+  to?: string
   className?: string
 }
 
-export function ListLinkRow({ label, hint, value, icon, tint, onOpen, className }: ListLinkRowProps) {
+export function ListLinkRow({ label, hint, value, icon, tint, leading, onOpen, to, className }: ListLinkRowProps) {
+  const inner = (
+    <>
+      {icon ? <SettingsIcon glyph={icon} tint={tint ?? 'gray'} /> : leading}
+      <span className={styles.text}>
+        <span className={styles.label}>{label}</span>
+        {hint && <span className={styles.hint}>{hint}</span>}
+      </span>
+      {value != null && value !== '' && <span className={styles.value}>{value}</span>}
+      <Icon name="chevronRight" size={16} className={styles.chevron} />
+    </>
+  )
   return (
     <li className={[styles.row, styles.link, className].filter(Boolean).join(' ')}>
-      <button type="button" className={styles.linkButton} onClick={onOpen}>
-        {icon && (
-          <SettingsIcon glyph={icon} tint={tint ?? 'gray'} />
-        )}
-        <span className={styles.text}>
-          <span className={styles.label}>{label}</span>
-          {hint && <span className={styles.hint}>{hint}</span>}
-        </span>
-        {value != null && value !== '' && <span className={styles.value}>{value}</span>}
-        <Icon name="chevronRight" size={16} className={styles.chevron} />
-      </button>
+      {to !== undefined ? (
+        <Link to={to} className={styles.linkButton} onClick={onOpen}>
+          {inner}
+        </Link>
+      ) : (
+        <button type="button" className={styles.linkButton} onClick={onOpen}>
+          {inner}
+        </button>
+      )}
     </li>
   )
 }

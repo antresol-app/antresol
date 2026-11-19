@@ -64,9 +64,10 @@ describe('«Расширения»', () => {
     open()
     expect(await screen.findByText('Привет')).toBeInTheDocument()
     expect(screen.getByText('Заметки')).toBeInTheDocument()
-    expect(screen.getByText(/Версия 1\.0\.0 · Работает/)).toBeInTheDocument()
+    // a newer release right in the version line, «Обновить» beside it
+    expect(screen.getByText('Версия 1.0.0 → 1.2.0')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Обновить «Привет»' })).toBeInTheDocument()
     expect(screen.getByText(/Версия 0\.3\.1 · Выключено/)).toBeInTheDocument()
-    expect(screen.getByText('Доступно обновление 1.2.0')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Привет' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('switch', { name: 'Заметки' })).toHaveAttribute('aria-checked', 'false')
   })
@@ -150,7 +151,7 @@ describe('«Расширения»', () => {
     await userEvent.click(within(sheet).getByRole('button', { name: 'Обновить' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Обновить «Привет»' })).toBeNull())
     await waitFor(() => expect(screen.getByText(/Версия 1\.2\.0/)).toBeInTheDocument())
-    expect(screen.queryByText('Доступно обновление 1.2.0')).toBeNull()
+    expect(screen.queryByText(/→ 1\.2\.0/)).toBeNull()
     expect(calls.find((c) => c.url === '/api/addons/hello/update' && c.method === 'POST')?.body).toEqual({ version: '1.2.0' })
     await waitFor(() => expect(reload).toHaveBeenCalled())
   })
@@ -287,7 +288,22 @@ describe('«Расширения»: update checks', () => {
     expect(await screen.findByText('Не удалось проверить обновления: Нет связи с GitHub')).toBeInTheDocument()
     failed = false
     await userEvent.click(screen.getByRole('button', { name: 'Проверить «Заметки» снова' }))
-    expect(await screen.findByText('Доступно обновление 0.4.0')).toBeInTheDocument()
+    expect(await screen.findByText('Версия 0.3.1 → 0.4.0')).toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/addons?fresh=1')).toBe(true)
+  })
+
+  it('«Проверить обновления» asks GitHub again for every addon', async () => {
+    let fresh = false
+    const calls = serve((c) =>
+      c.url.startsWith('/api/addons') && c.method === 'GET' && !c.url.includes('/log')
+        ? json([fresh ? { ...notes, update: '0.4.0', updateState: '' } : { ...notes, updateState: '' }])
+        : undefined,
+    )
+    open()
+    expect(await screen.findByText(/Версия 0\.3\.1 · Выключено/)).toBeInTheDocument()
+    fresh = true
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить обновления' }))
+    expect(await screen.findByText('Версия 0.3.1 → 0.4.0')).toBeInTheDocument()
     expect(calls.some((c) => c.url === '/api/addons?fresh=1')).toBe(true)
   })
 })

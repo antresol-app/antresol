@@ -25,6 +25,7 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
+import { PublicAddressSection } from './PublicAddressSettings'
 import { StorageSection } from './StorageSettings'
 import { TelegramSection } from './TelegramSettings'
 import { TranscodingSection } from './TranscodingSettings'
@@ -44,11 +45,11 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
 }
 
 /** The screens of «Настройки сервера», in their order in «Управление» (Manage.tsx: MANAGE_SECTIONS). */
-export type SettingsGroup = 'library' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'kindle' | 'ai' | 'accounts'
+export type SettingsGroup = 'library' | 'watching' | 'processing' | 'music' | 'subtitles' | 'kindle' | 'ai' | 'accounts' | 'address'
 
 interface GroupInfo {
   id: SettingsGroup
-  label: 'settings.group.library' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai' | 'acct.section'
+  label: 'settings.group.library' | 'settings.watching' | 'settings.group.processing' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai' | 'acct.section' | 'settings.group.address'
 }
 
 /** The groups of the page. */
@@ -56,12 +57,13 @@ export function settingsGroups(): GroupInfo[] {
   return [
     { id: 'library', label: 'settings.group.library' },
     { id: 'watching', label: 'settings.watching' },
-    { id: 'transcoding', label: 'settings.group.transcoding' },
+    { id: 'processing', label: 'settings.group.processing' },
     { id: 'music', label: 'common.music' },
     { id: 'subtitles', label: 'common.subtitles' },
     { id: 'kindle', label: 'settings.mailGroup' },
     { id: 'ai', label: 'settings.group.ai' },
     { id: 'accounts', label: 'acct.section' },
+    { id: 'address', label: 'settings.group.address' },
   ]
 }
 
@@ -152,6 +154,8 @@ export function Settings() {
   const languages = values.languages?.length ? values.languages : DEFAULT_LANGS
   const mine = languages.map((c) => ({ value: c, label: langLabel(c) }))
   const groups = settingsGroups()
+  // «Перекодирование» became part of «Обработка»
+  if ((group as string) === 'transcoding') return <Navigate to="/manage/settings/processing" replace />
   const current = groups.find((g) => g.id === group)
   if (!current) {
     // the groups are rows of «Управление» (Manage.tsx), not a list of their own:
@@ -194,28 +198,6 @@ export function Settings() {
         </GroupedSection>
       )}
 
-      {at('library') && (
-      <GroupedSection title={t('settings.languages')}>
-        <ListRow
-          wide
-          label={t('settings.myLanguages')}
-          hint={t('settings.myLanguages.hint')}
-          id="my-langs"
-        >
-          <RankedList
-            labelledBy="my-langs"
-            items={languages}
-            itemLabel={(c) => langLabel(c as LangCode)}
-            min={1}
-            onChange={(next) => change(withLanguages(values, next as LangCode[]))}
-            choices={() => langChoices(languages)}
-            onAdd={(c) => change(withLanguages(values, [...languages, c as LangCode]))}
-            addLabel={t('comp.langs.add')}
-          />
-        </ListRow>
-      </GroupedSection>
-      )}
-
       {at('watching') && (
       <GroupedSection>
         <ListRow
@@ -235,19 +217,28 @@ export function Settings() {
             onChange={(v) => change({ remoteQuality: v as Values['remoteQuality'] })}
           />
         </ListRow>
-        <ListRow label={t('settings.trickplay')} hint={t('settings.trickplay.hint')}>
-          <Toggle label={t('settings.trickplay')} checked={values.trickplay ?? true} onChange={(on) => change({ trickplay: on })} />
+      </GroupedSection>
+      )}
+
+      {at('watching') && (
+      <GroupedSection title={t('settings.languages')}>
+        <ListRow
+          wide
+          label={t('settings.myLanguages')}
+          hint={t('settings.myLanguages.hint')}
+          id="my-langs"
+        >
+          <RankedList
+            labelledBy="my-langs"
+            items={languages}
+            itemLabel={(c) => langLabel(c as LangCode)}
+            min={1}
+            onChange={(next) => change(withLanguages(values, next as LangCode[]))}
+            choices={() => langChoices(languages)}
+            onAdd={(c) => change(withLanguages(values, [...languages, c as LangCode]))}
+            addLabel={t('comp.langs.add')}
+          />
         </ListRow>
-        {(values.trickplay ?? true) && (
-          <ListRow stack label={t('settings.trickplayBudget')} hint={t('settings.trickplayBudget.hint')}>
-            <SegmentedControl
-              label={t('settings.trickplayBudget')}
-              segments={TRICKPLAY_BUDGETS.map((gb) => ({ value: String(gb), label: t('settings.trickplayBudget.gb', { n: gb }) }))}
-              value={String(values.trickplayBudgetGB ?? 10)}
-              onChange={(v) => change({ trickplayBudgetGB: Number(v) })}
-            />
-          </ListRow>
-        )}
         {languages.includes('ru') && (
           <ListRow
             wide
@@ -311,13 +302,33 @@ export function Settings() {
       )}
       {at('kindle') && <TelegramSection />}
 
-      {at('transcoding') && <TranscodingSection />}
+      {at('processing') && <TranscodingSection title={t('settings.group.transcoding')} />}
+
+      {at('processing') && (
+        <GroupedSection title={t('settings.trickplayGroup')}>
+          <ListRow label={t('settings.trickplay')} hint={t('settings.trickplay.hint')}>
+            <Toggle label={t('settings.trickplay')} checked={values.trickplay ?? true} onChange={(on) => change({ trickplay: on })} />
+          </ListRow>
+          {(values.trickplay ?? true) && (
+            <ListRow stack label={t('settings.trickplayBudget')} hint={t('settings.trickplayBudget.hint')}>
+              <SegmentedControl
+                label={t('settings.trickplayBudget')}
+                segments={TRICKPLAY_BUDGETS.map((gb) => ({ value: String(gb), label: t('settings.trickplayBudget.gb', { n: gb }) }))}
+                value={String(values.trickplayBudgetGB ?? 10)}
+                onChange={(v) => change({ trickplayBudgetGB: Number(v) })}
+              />
+            </ListRow>
+          )}
+        </GroupedSection>
+      )}
 
       {at('ai') && <AISettingsSection ai={values.ai} keySet={values.aiKeySet ?? false} fromEnv={values.aiFromEnv} onChange={(ai) => change({ ai })} />}
 
-      {at('library') && <VocleanSection />}
+      {at('processing') && <VocleanSection />}
 
       {at('accounts') && <AccountsSection />}
+
+      {at('address') && <PublicAddressSection values={values} onChange={(patch) => change(patch)} />}
 
       {at('library') && <StorageSection />}
 

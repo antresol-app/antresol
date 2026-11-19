@@ -1,6 +1,7 @@
 // Главная: featured hero carousel and shelves («Продолжить», «Слушали
 // недавно» (square tiles), «Читаю сейчас», «Недавно добавленные фильмы»,
-// «Новые серии», «Хочу посмотреть») in the server's order. Refreshes itself
+// «Новые серии», «Хочу посмотреть») in the server's order, and «Скоро
+// выйдет» (the calendar's next days, UpcomingShelf). Refreshes itself
 // when the library changes. In «Моя медиатека» the hero and the «recently
 // added» shelves keep the profile's own titles (the others are its own
 // anyway); the picker is in the profile menu and on the section pages.
@@ -18,6 +19,7 @@ import { MineEmpty } from '../components/LibraryScopeMenu'
 import { ScreenTimeChip } from '../components/ScreenTimeChip'
 import { Shelf } from '../components/Shelf'
 import { OnAirShelf } from './tv/OnAirShelf'
+import { UpcomingShelf } from './UpcomingShelf'
 import { answerSlot, forgetAnswer, lastAnswer, rememberAnswer } from '../state/lastAnswer'
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingCards, withPending } from '../state/pendingCards'
@@ -151,6 +153,9 @@ export function Home() {
     )
   }
 
+  // «Скоро выйдет» after «Вышло новое», else after the first shelf
+  const upcomingAt = Math.max(0, filled.findIndex((s) => s.id === 'tracked-new'))
+
   return (
     <div className={styles.home}>
       <h1 className="visually-hidden">{t('common.home')}</h1>
@@ -170,8 +175,10 @@ export function Home() {
             />
             {/* the channels on air after the first shelf («Продолжить» when there is one) */}
             {i === 0 && <OnAirShelf />}
+            {i === upcomingAt && <UpcomingShelf />}
           </Fragment>
         ))}
+        {filled.length === 0 && <UpcomingShelf />}
       </div>
     </div>
   )

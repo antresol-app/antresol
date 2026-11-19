@@ -29,10 +29,10 @@ export function permText(d: DirCheck, t: T): string {
   return t('storage.perm.denied')
 }
 
-/** Every path the write test is reported for, with its label. */
-function checked(view: StorageView, t: T): { key: string; label: string; path: string; d: DirCheck }[] {
+/** Every path the write test is reported for, with its label (`folders`: the library's folders too). */
+function checked(view: StorageView, t: T, folders = true): { key: string; label: string; path: string; d: DirCheck }[] {
   const rows = [{ key: 'root', label: t('storage.perm.root'), path: view.root.path, d: view.root }]
-  for (const k of FOLDER_KINDS) {
+  for (const k of folders ? FOLDER_KINDS : []) {
     // every folder of the kind: each is written to (a kind may have several)
     for (const f of view.folders.filter((x) => x.kind === k)) rows.push({ key: `${k}:${f.abs}`, label: t(`storage.kind.${k}`), path: f.abs, d: f })
   }
@@ -100,10 +100,16 @@ function Fix({ view }: { view: StorageView }) {
   )
 }
 
-export function StoragePerms({ view, title, footer }: { view: StorageView; title?: string; footer?: string }) {
+/**
+ * `libraryFolders` false: the library's folders are listed above with their
+ * status in their own rows (StorageFolders: «Запись работает» or why not),
+ * so only the media folder and the transcoding folder get a row here; the
+ * fix still covers them all.
+ */
+export function StoragePerms({ view, title, footer, libraryFolders = true }: { view: StorageView; title?: string; footer?: string; libraryFolders?: boolean }) {
   const t = useT()
-  const rows = checked(view, t)
-  const bad = rows.some((r) => hasProblem(r.d))
+  const rows = checked(view, t, libraryFolders)
+  const bad = checked(view, t).some((r) => hasProblem(r.d))
   // no media folder: the volume is missing, and what is below it cannot be fixed by an owner
   const rootGone = view.root.status === 'missing' || view.root.status === 'notdir'
   return (

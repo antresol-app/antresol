@@ -52,14 +52,14 @@ for (const width of [320, 390, 445, 1440]) {
   })
 }
 
-// «Перекодирование» says the same reason and the fix in full: the group_add
+// «Обработка → Перекодирование» says the same reason and the fix in full: the group_add
 // lines with the node's group and ffmpeg's own words.
 for (const width of [390, 1440]) {
   test(`«Перекодирование» at ${width} pt: the reason, its fix and ffmpeg's words`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1100 })
     await setupAdmin(page.request)
     await noPermission(page)
-    await page.goto('/manage/settings/transcoding')
+    await page.goto('/manage/settings/processing')
     await expect(page.getByText(/принадлежит группе 105/)).toBeVisible()
     await expect(page.getByText(detail)).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBe(width)

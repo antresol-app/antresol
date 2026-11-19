@@ -49,7 +49,7 @@ for (const width of [375, 1440]) {
   test(`round 5 editor at ${width}: lineup, search, folders, drag, logo — inside the window`, async ({ browser, browserName, vaultURL }) => {
     test.skip(browserName !== 'chromium' && width < 700, 'mobile Chromium: the phone layout')
     const page = await open(browser, vaultURL, width)
-    await page.goto('/tv/manage')
+    await page.goto('/manage/channels')
     // the list row shows the channel's logo
     await expect(page.locator('[data-channel-logo] img').first()).toBeVisible()
     await page.getByRole('button', { name: 'Кино', exact: true }).click()

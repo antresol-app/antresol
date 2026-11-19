@@ -55,6 +55,7 @@ import (
 	"github.com/antresol-app/antresol/internal/opds"
 	"github.com/antresol-app/antresol/internal/playlistimport"
 	"github.com/antresol-app/antresol/internal/progress"
+	"github.com/antresol-app/antresol/internal/publicurl"
 	"github.com/antresol-app/antresol/internal/releaseprefs"
 	"github.com/antresol-app/antresol/internal/screentime"
 	"github.com/antresol-app/antresol/internal/segments"
@@ -261,8 +262,11 @@ func run() error {
 	var trickWorker *trickplay.Worker // set below; Kick is nil-safe
 	var chans *channels.Service       // set below
 	metaLang := ""
+	// the public address: VAULT_PUBLIC_URL, else «Адрес сервера» as saved
+	publicAddr := publicurl.New(cfg.PublicURL)
 	applySettings := func(s api.AppSettings) {
 		ext.applySettings(s)
+		publicAddr.SetSaved(s.PublicURL)
 		// «Превью при перемотке» turned on: the queue starts now
 		if s.Trickplay {
 			trickWorker.Kick()
@@ -282,6 +286,8 @@ func run() error {
 	} else {
 		applySettings(saved)
 	}
+	// what reads it once at startup (discovery's offer to the apps) gets the one in force
+	cfg.PublicURL = publicAddr.Get()
 
 	// File browser.
 	// a library-only server: no disk fill level (the demo's disk is
@@ -350,7 +356,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("notify secret: %w", err)
 	}
-	notifier := &notify.Service{DB: database, Users: users, Secret: notifySecret, PublicURL: cfg.PublicURL,
+	notifier := &notify.Service{DB: database, Users: users, Secret: notifySecret, PublicURLOf: publicAddr.Get,
 		Mail: api.NotifyMail(func(ctx context.Context) (api.AppSettings, error) {
 			return api.LoadAppSettings(ctx, database, settingsDefaults)
 		}),
@@ -476,7 +482,7 @@ func run() error {
 		}
 		return nil
 	}, slog.Default())
-	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, names, cfg.PublicURL)
+	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, names, publicAddr.Get)
 	if err != nil {
 		return err
 	}
@@ -530,7 +536,7 @@ func run() error {
 		Library:   repo, Progress: progStore, Jobs: jobs, HLS: hls, Tracking: trackSvc,
 		AudioTranscoder: audioTr, DeviceCopies: deviceCopies,
 		Music: musicStore, ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),
-		DataDir: cfg.DataDir, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe, PublicURL: cfg.PublicURL,
+		DataDir: cfg.DataDir, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe, PublicURL: cfg.PublicURL, PublicAddress: publicAddr,
 		MediaRoot: cfg.MediaRoot,
 		Files:     fileSvc,
 		Events:    bus,
@@ -547,6 +553,14 @@ func run() error {
 		IPTV:         cfg.IPTV,
 		Accounts:     accts.routes,
 		Voclean:      vocWorker,
+		// «Задачи»: the background workers' progress
+		Background: []api.BackgroundTask{
+			{ID: "trickplay", Progress: trickWorker.Progress.Snapshot},
+			{ID: "segments", Progress: segWorker.Progress.Snapshot},
+			{ID: "loudness", Progress: loudWorker.Progress.Snapshot},
+		},
+		// «Состояние → Сеть»: the services the server reaches out to
+		NetTargets: netTargets(cfg),
 		Storage: &api.StorageInfo{Env: envFolders, TranscodeDir: cfg.TranscodeDir, ConfigDir: cfg.DataDir,
 			Private: []string{cfg.ImportDir, cfg.AddonsDir},
 			Offline: storageOffline(cfg), Restart: restartFunc(restart),
@@ -994,7 +1008,7 @@ func skipManaged(users *auth.Store, f func(ctx context.Context, uid, itemID int6
 // public shelf widget and the profile's export), and subscribes the sync to the
 // tracking store's mark changes and the progress store's watched changes.
 func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Store, trackSvc *tracking.Service, tm *tmdb.Client,
-	repo *library.Repo, prog *progress.Store, names *booknames.Resolver, publicURL string) (*accountsWiring, error) {
+	repo *library.Repo, prog *progress.Store, names *booknames.Resolver, publicURL func() string) (*accountsWiring, error) {
 	keyHex, err := auth.LoadOrCreateSetting(ctx, database, "accounts_token_key", 32)
 	if err != nil {
 		return nil, err
@@ -1013,7 +1027,7 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 	store := &accounts.Store{DB: database, Key: key}
 	syncer := &accounts.Syncer{Accounts: store, Tracking: accountTracker{trackStore},
 		Remote: shikimoriRemote{shiki.c}, Map: amap, Kick: trackSvc.Kick, Log: log, Writer: shiki,
-		OAuth: &accounts.OAuth{Store: store, PublicURL: publicURL,
+		OAuth: &accounts.OAuth{Store: store, PublicURLOf: publicURL,
 			EnvClientID: os.Getenv("VAULT_SHIKIMORI_CLIENT_ID"), EnvClientSecret: os.Getenv("VAULT_SHIKIMORI_CLIENT_SECRET")},
 		Watched: func(ctx context.Context, uid int64, ref accounts.TitleRef) (map[[2]int]bool, error) {
 			w := trackSvc.WatchedBy()

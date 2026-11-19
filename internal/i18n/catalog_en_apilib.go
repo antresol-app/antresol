@@ -4,6 +4,9 @@ package i18n
 // badges, playback, books, comics, music, images, devices).
 func init() {
 	Register(EN, map[string]string{
+		// «Адрес сервера» (settings_handlers.go)
+		"Адрес сервера — ссылка вида https://media.example.org": "The server address is a link like https://media.example.org",
+
 		// shelves
 		"shelf" + ctxSep + "Продолжить": "Continue Watching",
 		"Слушали недавно":               "Recently Played",

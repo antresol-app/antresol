@@ -1,6 +1,7 @@
 // The wide screen's details pane beside the list (TiviMate): the channel
 // the pointer or the focus is on — the programme's still, what it is, how
-// far it is, its description, «Смотреть», the star, and what follows.
+// far it is, its description, «Смотреть», the star, and what follows (the
+// description and what follows from the channel's guide: the list is brief).
 import { useEffect, useState } from 'react'
 import { getChannelGuide, type Channel, type ChannelProgram } from '../../api/channels'
 import { useT } from '../../i18n'
@@ -29,6 +30,8 @@ export function ChannelPreview({ channel: c, now, to, onFavorite }: { channel: C
     }
   }, [c.id])
   const p = c.now && isOnAir(c.now, now) ? c.now : c.next && isOnAir(c.next, now) ? c.next : c.now
+  // the description: the guide's copy of the programme (the list leaves it out)
+  const overview = (p && later?.find((x) => (x.id && x.id === p.id) || x.start === p.start)?.overview) || p?.overview
   const upcoming = (later ?? (c.next ? [c.next] : [])).filter((x) => Date.parse(x.start) >= (p ? Date.parse(p.end) - 1000 : now)).slice(0, 4)
   const fav = Boolean(c.favorite)
   const facts = p ? [p.year, ...(p.genres ?? []).slice(0, 2), p.rating].filter(Boolean).join(' · ') : ''
@@ -38,7 +41,7 @@ export function ChannelPreview({ channel: c, now, to, onFavorite }: { channel: C
       <div className={styles.previewBody}>
         <p className={styles.previewChannel}>
           <span className={styles.previewNum}>{c.number}</span>
-          <ChannelLogo url={c.logoUrl} size="sm" />
+          <ChannelLogo url={c.logoUrl} fallback={c.logoAlt} name={c.name} size="sm" />
           {c.name}
         </p>
         <h2 className={styles.previewTitle}>{p ? p.title : t('tv.nothing')}</h2>
@@ -58,7 +61,7 @@ export function ChannelPreview({ channel: c, now, to, onFavorite }: { channel: C
           </ButtonLink>
           <IconButton icon={fav ? 'starFill' : 'star'} label={fav ? t('tv.favRemove') : t('tv.favAdd')} aria-pressed={fav} onClick={() => onFavorite(!fav)} />
         </div>
-        {p?.overview && <p className={styles.previewOverview}>{p.overview}</p>}
+        {overview && <p className={styles.previewOverview}>{overview}</p>}
         {upcoming.length > 0 && (
           <section className={styles.previewNext}>
             <h3 className={styles.previewNextTitle}>{t('tv.next')}</h3>

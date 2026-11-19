@@ -120,6 +120,10 @@ export interface Channel {
   favorite?: boolean;
   /** The uploaded logo ("/api/channels/{id}/logo.png?v=…"); absent: none (show number and name). */
   logoUrl?: string;
+  /** An external channel's guide icon when logoUrl is another one: shown when that one does not load. */
+  logoAlt?: string;
+  /** The logo was found by the server (a franchise's or a series' title logo). */
+  logoAuto?: boolean;
   /** Only for a channel the profile may edit. */
   rules?: ChannelRules;
   /** The editor's list: rules.picks described in order (only where the profile may edit). */
@@ -154,6 +158,8 @@ export interface ChannelList {
   canCreate: boolean;
   /** Every category of the list once, in the filter's order (older servers: absent). */
   categories?: ChannelCategory[];
+  /** The profile lists its starred channels first (older servers: absent, number order). */
+  favoritesFirst?: boolean;
   /** The manage list only: the deleted automatic channels this profile may give back. */
   removed?: RemovedChannel[];
 }
@@ -179,6 +185,8 @@ export interface ChannelEPG {
   category: string;
   favorite?: boolean;
   logoUrl?: string;
+  /** The guide icon when logoUrl is another one (see Channel.logoAlt). */
+  logoAlt?: string;
   programs: ChannelProgram[];
   categories?: string[];
 }
@@ -279,13 +287,30 @@ export interface ChannelInput {
   rules: ChannelRules;
 }
 
-export const getChannels = (signal?: AbortSignal, manage = false) =>
+/**
+ * The channel list. `brief`: now and next without their descriptions and
+ * tracks (a big playlist's list is thousands of rows; the details pane and
+ * the player read those from the channel's guide).
+ */
+export const getChannels = (signal?: AbortSignal, manage = false, brief = false) =>
   request<ChannelList>(
     "GET",
-    `/api/channels${qs({ manage: manage ? 1 : undefined })}`,
+    `/api/channels${qs({ manage: manage ? 1 : undefined, brief: brief ? 1 : undefined })}`,
     undefined,
     signal,
   );
+
+/** The profile's own choices for its channel list. */
+export interface ChannelPrefs {
+  /** The starred channels stand at the top of the list (default on). */
+  favoritesFirst: boolean;
+}
+
+export const getChannelPrefs = (signal?: AbortSignal) =>
+  request<ChannelPrefs>("GET", "/api/channels/prefs", undefined, signal);
+
+export const setChannelPrefs = (p: ChannelPrefs) =>
+  request<ChannelPrefs>("PUT", "/api/channels/prefs", p);
 
 export const getChannelGuide = (id: number, hours = 12, signal?: AbortSignal) =>
   request<ChannelGuide>(

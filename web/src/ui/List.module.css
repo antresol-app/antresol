@@ -33,6 +33,13 @@
   font: var(--t-footnote);
   color: var(--label-2);
 }
+/* a link in the footnote (the documentation, where a thing is set) reads as one, as in iOS Settings */
+.foot a {
+  color: var(--accent);
+}
+.foot a:hover {
+  text-decoration: underline;
+}
 
 /* A row: optional leading media, the label and its hint, the control on
    the trailing edge — one minimum height and one padding for every row. */
@@ -116,6 +123,8 @@
   padding: 0;
 }
 .linkButton {
+  box-sizing: border-box;
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: var(--s-3);

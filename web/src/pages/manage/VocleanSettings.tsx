@@ -1,15 +1,17 @@
-// «Настройки сервера → Медиатека → Очищенные озвучки»: how many voice-overs
-// are cleaned, waiting, failed or not eligible (updated while the page is
-// open), «Обработать всю медиатеку» (the backlog runs even while something
+// «Настройки сервера → Обработка → Очищенные озвучки» (what the server makes
+// of the files, not what the library holds): «Обработать всю медиатеку» (the backlog runs even while something
 // plays, at the lowest priority) and «Перепроверить неподходящие» (the not
-// eligible and given-up tracks measured again). Its own endpoint
+// eligible and given-up tracks measured again). How many are cleaned,
+// waiting, failed or not eligible is in «Задачи» with the other background
+// work (pages/manage/Tasks.tsx); a row leads there. Its own endpoint
 // (/api/admin/voclean), not the settings object.
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { errorText, getVoclean, setVocleanBackfill } from '../../api/client'
 import type { VocleanStatus } from '../../api/types'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
-import { GroupedSection, ListRow } from '../../ui/List'
+import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import { Toggle } from '../../ui/Toggle'
 import m from './Manage.module.css'
 
@@ -18,6 +20,7 @@ export const VOCLEAN_POLL_MS = 10_000
 
 export function VocleanSection() {
   const t = useT()
+  const navigate = useNavigate()
   const [st, setSt] = useState<VocleanStatus | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<'' | 'backfill' | 'recheck'>('')
@@ -72,13 +75,10 @@ export function VocleanSection() {
 
   return (
     <GroupedSection title={t('settings.voclean.group')} footer={t('settings.voclean.footer')}>
-      <ListRow
-        label={t('settings.voclean.progress')}
-        status={
-          error ||
-          t('settings.voclean.counts', { done: st.done, queued: st.queued, failed: st.failed, notEligible: st.notEligible })
-        }
-      />
+      {error && (
+        <ListRow label={t('settings.voclean.group')} status={<span className={m.problem}>{error}</span>} />
+      )}
+      <ListLinkRow label={t('settings.voclean.progress')} hint={t('settings.voclean.progressInTasks')} icon="updates" tint="orange" onOpen={() => navigate('/manage/tasks')} />
       <ListRow label={t('settings.voclean.backfill')} hint={t('settings.voclean.backfill.hint')}>
         <Toggle
           label={t('settings.voclean.backfill')}

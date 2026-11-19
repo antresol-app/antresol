@@ -33,6 +33,7 @@ import (
 	"github.com/antresol-app/antresol/internal/notify"
 	"github.com/antresol-app/antresol/internal/playlistimport"
 	"github.com/antresol-app/antresol/internal/progress"
+	"github.com/antresol-app/antresol/internal/publicurl"
 	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/go-chi/chi/v5"
 )
@@ -130,6 +131,8 @@ type addonsAPI struct {
 	// maxHeight is the user header's remote quality cap for a request
 	// (remoteMaxHeight; nil: none)
 	maxHeight func(*http.Request) int
+	// public: the address in force (nil: info's PublicURL as built)
+	public *publicurl.Address
 }
 
 func newAddonsAPI(deps Deps) *addonsAPI {
@@ -137,6 +140,7 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 		refs: deps.AddonRefs, images: deps.Images, db: deps.DB, settings: deps.SettingsDefaults, meta: deps.Metadata, holds: deps.AddonHolds,
 		inputs: deps.AddonInputs, notify: deps.Notify, imports: deps.PlaylistImport}
 	a.maxHeight = func(r *http.Request) int { return remoteMaxHeight(&deps, r) }
+	a.public = deps.PublicAddress
 	if deps.Tracking != nil && deps.Tracking.Store != nil {
 		a.trackStore, a.trackKick = deps.Tracking.Store, deps.Tracking.Kick
 	}
@@ -176,6 +180,16 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 	}
 	if src, ok := deps.Addons.(addonStatusSource); ok {
 		src.OnStatus(a.pools.statusChanged)
+		// An open tab lists only the running addons' web parts
+		// (GET /api/addons/web): one that was still starting when the tab
+		// loaded (a server restart after an update) or that came back after
+		// a crash reaches the tab through this event, not a page reload.
+		if a.bus != nil {
+			bus := a.bus
+			src.OnStatus(func(id string, st addons.Status) {
+				bus.Publish(events.Event{Type: events.AddonsChanged, Data: map[string]string{"id": id, "status": string(st)}})
+			})
+		}
 	}
 	return a
 }
@@ -288,6 +302,7 @@ func mountAddons(r chi.Router, a *addonsAPI) {
 	r.Group(func(r chi.Router) {
 		r.Use(addonsAdminOnly)
 		r.Get("/api/addons", a.list)
+		r.Get("/api/addons/helpers", a.helpers) // «Состояние»: the helper services answer
 		r.Post("/api/addons/preview", a.preview)
 		r.Post("/api/addons", a.install)
 		r.Post("/api/addons/{id}/enable", a.setEnabled(true))
@@ -896,6 +911,9 @@ func (a *addonsAPI) coreInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	info := a.info
 	info.ID, info.Version = in.ID, in.Version
+	if a.public != nil {
+		info.PublicURL = a.public.Get() // saved while the server runs: the addon asks again
+	}
 	info.FileRoots = a.fileRoots()
 	info.MissingRoots = a.missingRoots()
 	writeJSON(w, http.StatusOK, info)

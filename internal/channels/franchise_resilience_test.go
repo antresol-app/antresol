@@ -536,3 +536,36 @@ func TestFranchiseStaleFactsServeWhenWikidataDown(t *testing.T) {
 		t.Fatalf("star wars %+v", sw)
 	}
 }
+
+// Wikidata failing on a pass (19.11: every pass of a big library failed on
+// a cut answer, silently, and the pass still counted as the library's
+// answer): the admin sees why and the next pass asks again, without a
+// change in the library, and the facts it then gets are used.
+func TestFranchiseWikidataFailureRetried(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	l, tm := starWars(f)
+	facts := swFacts(l)
+	facts.err = fmt.Errorf("cut answer")
+	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: facts}
+	if ran, err := fr.Pass(ctx, false); err != nil || !ran {
+		t.Fatalf("ran %v %v", ran, err)
+	}
+	if st := fr.Status(ctx); !strings.Contains(st.Error, "Wikidata") {
+		t.Fatalf("status %+v", st)
+	}
+	before := franchisesOf(t, f.st)["c10"]
+	facts.err = nil
+	if ran, err := fr.Pass(ctx, false); err != nil || !ran {
+		t.Fatalf("second pass ran %v %v", ran, err)
+	}
+	if st := fr.Status(ctx); st.Error != "" {
+		t.Fatalf("status after %+v", st)
+	}
+	if after := franchisesOf(t, f.st)["c10"]; len(after.Items) <= len(before.Items) {
+		t.Fatalf("Wikidata's titles did not join: %v → %v", before.Items, after.Items)
+	}
+	if ran, _ := fr.Pass(ctx, false); ran {
+		t.Fatal("a clean pass ran again")
+	}
+}

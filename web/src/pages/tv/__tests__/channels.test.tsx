@@ -5,6 +5,7 @@ import type { Channel, ChannelTrack } from '../../../api/channels'
 import { rulesSummary } from '../TvManage'
 import { ChannelCard } from '../ChannelCard'
 import { ChannelRow } from '../ChannelRow'
+import { channelInitials } from '../ChannelLogo'
 import {
   applyFilter,
   categoryList,
@@ -41,6 +42,17 @@ const ms = (hhmm: string) => Date.parse(at(hhmm))
 describe('the one numbered list', () => {
   const list = [ch(1, 40, 'Б'), ch(2, 10, 'А', { favorite: true }), ch(3, 5, 'Б'), ch(4, 12, 'А')]
 
+  it('favourites first (the profile\'s choice): starred on top in «Все» and in a category, each part in number order; zapping follows it', () => {
+    const l = withFavorite(list, 1, true)
+    expect(applyFilter(l, { kind: 'all' }, true).map((c) => c.number)).toEqual([10, 40, 5, 12])
+    expect(applyFilter(l, { kind: 'cat', id: 'group:Б' }, true).map((c) => c.number)).toEqual([40, 5])
+    expect(applyFilter(l, { kind: 'fav' }, true).map((c) => c.number)).toEqual([10, 40])
+    expect(applyFilter(l, { kind: 'all' }, false).map((c) => c.number)).toEqual([5, 10, 12, 40])
+    // from the last starred one the next is the first of the rest
+    expect(zapTarget(l, 1, 1, undefined, true)?.number).toBe(5)
+    expect(zapTarget(l, 4, 1, undefined, true)?.number).toBe(10)
+  })
+
   it('keeps number order under every filter; themes come in the order of their first channel', () => {
     expect(applyFilter(list, { kind: 'all' }).map((c) => c.number)).toEqual([5, 10, 12, 40])
     expect(applyFilter(list, { kind: 'cat', id: 'group:А' }).map((c) => c.number)).toEqual([10, 12])
@@ -55,7 +67,9 @@ describe('the one numbered list', () => {
     expect(parseFilter('k:ai:news')).toEqual({ kind: 'cat', id: 'ai:news' })
     expect(parseFilter(null)).toEqual({ kind: 'all' })
     expect(filterParam({ kind: 'cat', id: 'group:А' })).toBe('k:group:А')
-    expect(filterParam({ kind: 'all' })).toBe('')
+    // «Все» has its own address: a big list's /tv without ?f is the list of its categories
+    expect(filterParam({ kind: 'all' })).toBe('all')
+    expect(parseFilter('all')).toEqual({ kind: 'all' })
     expect(validFilter(list, { kind: 'cat', id: 'group:В' })).toEqual({ kind: 'all' })
   })
 
@@ -262,7 +276,7 @@ describe('the rows', () => {
     expect(rulesSummary({ titles: [1, 2, 3], order: 'ordered' })).toBe('3 названия · По порядку')
   })
 
-  it('a row: number, still, name, what is on, a thin bar — and the star turns it', () => {
+  it('a row: number, logo or initials, name, what is on, a thin bar — and the star turns it', () => {
     const now = ms('12:35')
     const c = ch(4, 7, 'Кино', {
       now: { itemId: 9, title: 'Фильм', subtitle: 'S1 E2', start: at('12:00'), end: at('13:00') },
@@ -285,26 +299,39 @@ describe('the rows', () => {
     expect(document.querySelectorAll('[aria-hidden="true"][data-tone]').length).toBe(1)
     // the last channel: the row is marked (its number in the accent), no «Последний» word cutting the name
     expect(screen.queryByText('Последний')).toBeNull()
-    expect(document.querySelector('li[data-last]')).not.toBeNull()
+    expect(document.querySelector('[data-last]')).not.toBeNull()
     // no gradient tile: no channel name drawn on the picture
     expect(document.querySelector('[style*="grad"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'В избранное' }))
-    expect(onFavorite).toHaveBeenCalledWith(true)
+    expect(onFavorite).toHaveBeenCalledWith(4, true)
   })
 
-  it('a logo beside the name; a row without one keeps the slot when the list has logos', () => {
+  it('one row shape: a logo or the initials always, the picture only when the programme has one', () => {
     const now = ms('12:35')
+    const prog = { itemId: 9, title: 'Фильм', start: at('12:00'), end: at('13:00') }
     render(
       <MemoryRouter>
         <ul>
-          <ChannelRow channel={ch(1, 1, 'Кино', { logoUrl: '/api/channels/1/logo.png?v=2' })} now={now} to="/tv/1" logoSlot onFavorite={() => {}} />
-          <ChannelRow channel={ch(2, 2, 'Кино')} now={now} to="/tv/2" logoSlot onFavorite={() => {}} />
-          <ChannelRow channel={ch(3, 3, 'Кино')} now={now} to="/tv/3" onFavorite={() => {}} />
+          <ChannelRow channel={ch(1, 1, 'Кино', { logoUrl: '/api/channels/1/logo.png?v=2', now: { ...prog, backdrop: 'b1' } })} now={now} to="/tv/1" onFavorite={() => {}} />
+          <ChannelRow channel={{ ...ch(2, 2, 'Кино', { now: prog }), name: 'Первый канал HD' }} now={now} to="/tv/2" onFavorite={() => {}} />
         </ul>
       </MemoryRouter>,
     )
     expect(document.querySelector('[data-channel-logo] img')?.getAttribute('src')).toBe('/api/channels/1/logo.png?v=2')
-    expect(document.querySelectorAll('[data-logo-slot]')).toHaveLength(1)
+    expect([...document.querySelectorAll('[data-channel-initials]')].map((e) => e.textContent)).toEqual(['ПК'])
+    // no empty grey box where a programme has no picture
+    expect(document.querySelectorAll('[data-art-placeholder]')).toHaveLength(0)
+    expect(document.querySelectorAll('img').length).toBe(2) // the logo and the first row's picture
+  })
+
+  it("a channel's initials leave out the playlist's quality marks", () => {
+    expect(channelInitials('Первый канал HD')).toBe('ПК')
+    expect(channelInitials('.black HD')).toBe('B')
+    expect(channelInitials('#dabeiTV HD DE')).toBe('DD')
+    expect(channelInitials('&Pictures HD IN')).toBe('PI')
+    expect(channelInitials('Хоббит')).toBe('Х')
+    expect(channelInitials('1+1')).toBe('1')
+    expect(channelInitials('  ')).toBe('?')
   })
 
   it('a home card shows the programme still and its progress, never a logo tile', () => {

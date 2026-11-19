@@ -1,43 +1,54 @@
-/* «Календарь»: a title, the week/month switch with its arrows, then a
-   grouped list per day. */
+/* «Календарь»: a title, the week/month switch with «Сегодня» and the
+   arrows; then a row of covers per day (Неделя), or the month as a seven-
+   column calendar with the picked day's covers under it (Месяц). One
+   centred column (--column-max), as «Поиск». */
 .page {
   min-height: 100dvh;
-  padding: calc(var(--nav-height) + var(--s-4)) var(--gutter) var(--page-end);
-}
-.column {
-  max-width: 720px;
+  max-width: calc(var(--column-max) + 2 * var(--gutter));
   margin: 0 auto;
+  padding: calc(var(--nav-height) + var(--s-6)) var(--gutter) var(--page-end);
+}
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-6);
+  margin-bottom: var(--s-6);
 }
 .title {
-  font: var(--t-title-1);
-  letter-spacing: var(--track-display);
-  margin-bottom: var(--s-3);
+  font: var(--t-large-title);
+  letter-spacing: var(--track-tight);
 }
 .bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2h);
+  gap: var(--s-2h) var(--s-4);
   flex-wrap: wrap;
-  margin-bottom: var(--s-4);
 }
 .range {
-  font: var(--t-subhead);
-  color: var(--label-2);
-  flex: 1;
-  text-align: center;
+  font: var(--t-headline);
   min-width: 10ch;
+  text-align: center;
+}
+.range::first-letter {
+  text-transform: uppercase;
 }
 .nav {
   display: flex;
   align-items: center;
   gap: var(--s-2);
 }
-.days {
+
+/* the rows start at the column's edge (shelves pad themselves with the
+   gutter, which the column already has) */
+.rails {
+  --gutter: 0px;
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
+  gap: var(--section-gap);
 }
+
 .empty,
 .problem {
   padding: var(--s-5) var(--s-4);
@@ -47,10 +58,210 @@
   background: var(--fill-4);
   border: 1px solid var(--glass-border);
 }
-.link {
-  color: inherit;
-  text-decoration: none;
+.empty {
+  margin-top: var(--s-6);
 }
-.link:hover {
-  text-decoration: underline;
+.dayEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  color: var(--label-2);
+  font: var(--t-subhead);
+}
+.dayEmptyTitle {
+  font: var(--t-title-2);
+  letter-spacing: var(--track-display);
+  color: var(--label);
+}
+
+/* --- Месяц --- */
+.month {
+  margin-bottom: var(--section-gap);
+}
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.weekdays {
+  margin-bottom: var(--s-2);
+}
+.weekdays > span {
+  font: var(--t-caption);
+  color: var(--label-2);
+  text-transform: uppercase;
+  text-align: center;
+}
+.grid {
+  gap: 1px;
+  border-radius: var(--r-group);
+  overflow: hidden;
+  /* the gaps between the cells draw the lines */
+  background: var(--separator);
+  border: 1px solid var(--surface-grouped-border);
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-1h);
+  min-height: 132px;
+  min-width: 0;
+  padding: var(--s-2);
+  border: 0;
+  background: var(--surface-grouped);
+  color: var(--label);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--d-fast) var(--ease-out);
+}
+.cell:hover {
+  background: var(--surface-grouped-hover);
+}
+.cell:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.selected,
+.selected:hover {
+  background: var(--surface-grouped-hover);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.num {
+  display: inline-grid;
+  place-items: center;
+  align-self: flex-start;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 var(--s-1);
+  border-radius: var(--r-pill);
+  font: var(--t-subhead-em);
+  font-variant-numeric: tabular-nums;
+}
+.other .num {
+  color: var(--label-3);
+}
+.other .items {
+  opacity: 0.45;
+}
+.today .num {
+  background: var(--accent);
+  color: #fff;
+}
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1h);
+  min-width: 0;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.thumb {
+  flex: none;
+  width: 24px;
+  aspect-ratio: 2 / 3;
+  height: auto;
+  border-radius: var(--r-xs);
+  object-fit: cover;
+  background: var(--fill-2);
+}
+.itemText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.itemName,
+.itemEp {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.itemName {
+  font: var(--t-footnote-em);
+}
+.itemEp {
+  font: var(--t-caption);
+  color: var(--label-2);
+}
+.more {
+  font: var(--t-caption);
+  color: var(--label-2);
+}
+.narrowOnly {
+  display: none;
+}
+.wideHidden {
+  display: none;
+}
+
+/* a narrow cell: covers only, side by side under the number */
+@media (max-width: 899px) {
+  .cell {
+    min-height: 84px;
+    padding: var(--s-1h);
+    align-items: center;
+  }
+  .num {
+    align-self: center;
+  }
+  .items {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+  }
+  .itemText {
+    display: none;
+  }
+  .thumb {
+    width: 20px;
+  }
+  .wideHidden {
+    display: flex;
+  }
+  .narrowHidden {
+    display: none;
+  }
+  .wideOnly {
+    display: none;
+  }
+  .narrowOnly {
+    display: inline;
+  }
+}
+@media (max-width: 699px) {
+  .page {
+    padding-top: var(--page-top);
+  }
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: var(--s-4);
+  }
+  .bar {
+    justify-content: space-between;
+  }
+  .range {
+    order: -1;
+    flex-basis: 100%;
+    text-align: left;
+  }
+  .cell {
+    min-height: 64px;
+    padding: var(--s-1) 2px;
+    gap: var(--s-1);
+  }
+  .num {
+    min-width: 24px;
+    height: 24px;
+    font: var(--t-footnote-em);
+  }
+  .thumb {
+    width: 16px;
+  }
 }

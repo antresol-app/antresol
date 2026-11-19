@@ -89,3 +89,8 @@
   font: var(--t-footnote);
   color: var(--warning);
 }
+
+/* «Задать адрес сервера» in the hint: where the address is set */
+.hint a {
+  color: var(--accent);
+}

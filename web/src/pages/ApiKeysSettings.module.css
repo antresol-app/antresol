@@ -1,0 +1,78 @@
+/* «Ключи API и ИИ» (ApiKeysSettings.tsx): the keys' rows, the connect panel, the sheets' bodies. */
+.name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.hint {
+  font: var(--t-footnote);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+.muted {
+  color: var(--label-2);
+}
+.event {
+  font: var(--t-footnote);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--label);
+  overflow-wrap: anywhere;
+}
+.panel {
+  padding: var(--s-3);
+}
+.snippets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.caption {
+  margin-top: var(--s-1);
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.caption:first-child {
+  margin-top: 0;
+}
+.body:focus {
+  outline: none;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-4);
+  text-align: left;
+}
+.scopeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: var(--control-h-md);
+}
+.scopeLabel {
+  font: var(--t-callout);
+  color: var(--label);
+}
+.note {
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.error {
+  padding: 0 var(--s-1);
+  font: var(--t-footnote);
+  color: var(--destructive-text);
+}
+.retry {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2h);
+}
+.retry .error {
+  flex: 1;
+}

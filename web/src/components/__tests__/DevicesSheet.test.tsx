@@ -47,6 +47,7 @@ beforeEach(() => {
         if (method === 'POST') return new Response(JSON.stringify({ password: 'abcd-efgh-ijkl-mnop' }), { status: 200 })
         return new Response(JSON.stringify({ exists: false, createdAt: null }), { status: 200 })
       }
+      if (url === '/api/managed-accounts') return new Response(JSON.stringify({ items: managed }), { status: 200 })
       if (url.startsWith('/api/me/managed')) {
         if (method === 'POST' && url === '/api/me/managed') {
           const a = { id: 60, name: (bodies[`POST ${url}`] as { name: string }).name, avatar: 'grad-1', devices: [] }
@@ -78,8 +79,11 @@ describe('DevicesSheet', () => {
     expect(await within(sheet).findByText('iPhone Маши')).toBeInTheDocument()
     expect(within(sheet).getByText('MacBook')).toBeInTheDocument()
     expect(within(sheet).getByText('Antresol 1.0 · iPhone17,1 · Последний вход: 25 октября')).toBeInTheDocument()
-    expect(within(sheet).getByRole('heading', { name: /Маша/ })).toBeInTheDocument()
+    // the profile's own list: no heading of whose it is
+    expect(within(sheet).queryByRole('heading', { name: /Маша/ })).not.toBeInTheDocument()
     expect(within(sheet).getAllByText('Это устройство')).toHaveLength(1)
+    expect(calls).toContain('GET /api/me/devices')
+    expect(calls.some((c) => c.includes('/api/admin/'))).toBe(false)
   })
 
   it('signs a device out after confirmation', async () => {
@@ -115,16 +119,23 @@ describe('DevicesSheet', () => {
     expect(await within(sheet).findByText('Safari · iPhone')).toBeInTheDocument()
   })
 
-  it('groups an admin’s list by profile, this device’s profile first', async () => {
+  it('the server’s list (all): every profile’s, by profile, this device’s profile first, on the admin endpoints', async () => {
     const grandpa: Device = { ...mac, id: 20, name: 'iPad', userId: 2, userName: 'Дед', userAvatar: 'grad-5' }
     devices = [grandpa, phone, mac]
-    render(<DevicesSheet onClose={() => {}} />)
-    const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+    render(<DevicesSheet all onClose={() => {}} />)
+    const sheet = await screen.findByRole('dialog', { name: 'Устройства всех профилей' })
     await within(sheet).findByText('iPad')
     expect(within(sheet).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['ММаша', 'ДДед', 'Отдельные истории'])
     const section = within(sheet).getByRole('heading', { name: /Дед/ }).closest('section') as HTMLElement
     expect(within(section).getByText('iPad')).toBeInTheDocument()
     expect(within(section).queryByText('MacBook')).not.toBeInTheDocument()
+    expect(calls).toContain('GET /api/admin/devices')
+    expect(calls).toContain('GET /api/managed-accounts')
+    // signing out and switching go to the admin endpoints too
+    fireEvent.click(within(section).getByRole('button', { name: 'Выйти на устройстве: iPad' }))
+    const confirm = await screen.findByRole('alertdialog', { name: 'Выйти на «iPad»?' })
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Выйти' }))
+    await waitFor(() => expect(calls).toContain('DELETE /api/admin/devices/20'))
   })
 
   it('switches a device to a separate history and back, moving it into the profile', async () => {

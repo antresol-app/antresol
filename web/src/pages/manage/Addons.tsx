@@ -1,8 +1,8 @@
-// «Расширения» (admin): the installed addons — name, description, version,
-// state, «Доступно обновление X» — each with its switch, «Обновить» when
+// «Расширения» (admin): the installed addons — name, description, version
+// («Версия 0.4.9 → 0.5.0» when there is a newer release), state — each with its switch, «Обновить» when
 // there is a newer release, and «⋯» with «Журнал» and «Удалить» (after a
 // confirmation, «Удалить и данные» optional). «Добавить расширение» takes
-// a GitHub link, shows what the release is and asks for (with the warning:
+// a GitHub link («Проверить обновления» asks GitHub again at once), shows what the release is and asks for (with the warning:
 // an addon runs with the server's rights) and installs that very release;
 // «Обновить» shows the new release the same way first. Every change loads
 // this tab's addons again, so their tiles, actions and pages come and go
@@ -24,6 +24,7 @@ import {
   updateAddon,
 } from "../../api/client";
 import type { AddonInfo, AddonPreview } from "../../api/types";
+import { useAddonWebFailure } from "../../addons/registry";
 import { Icon } from "../../components/Icon";
 import { t as tr, useT, type Key } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -51,6 +52,21 @@ export function reloadSlots() {
   void import("../../addons/loader")
     .then((l) => l.reloadAddons())
     .catch((e: unknown) => console.warn("antresol: addon reload failed", e));
+}
+
+/** Its web part did not run in this tab (addons/loader.ts): said on its row instead of only in the console. */
+function WebFailure({ id }: { id: string }) {
+  const t = useT();
+  const why = useAddonWebFailure(id);
+  if (!why) return null;
+  return (
+    <>
+      <br />
+      <span className={styles.pinFailed} role="status">
+        {t("addons.webFailed", { reason: why })}
+      </span>
+    </>
+  );
 }
 
 /** A permission in words; an unknown one as the addon named it. */
@@ -183,6 +199,16 @@ export function Addons() {
           <p className={m.subtitle}>{t("addons.subtitle")}</p>
         </div>
         <div className={m.headerActions}>
+          {list.some((a) => !a.pinned) && (
+            <Button
+              variant="secondary"
+              icon="restart"
+              loading={state.status === "ready" && list.some((a) => a.updateState === "checking")}
+              onClick={() => load(true, true)}
+            >
+              {t("addons.checkUpdates")}
+            </Button>
+          )}
           <Button icon="plus" onClick={() => setAdding(true)}>
             {t("addons.add")}
           </Button>
@@ -231,8 +257,16 @@ export function Addons() {
               hint={a.description || undefined}
               status={
                 <>
-                  {t("addons.version", { version: a.version })} ·{" "}
-                  {t(`addons.status.${a.status}` as Key)}
+                  {/* a newer release right in the version: «Версия 0.4.9 → 0.5.0», with «Обновить» beside */}
+                  {a.update && !a.pinned ? (
+                    <span className={styles.update}>
+                      {t("addons.versionUpdate", { version: a.version, update: a.update })}
+                    </span>
+                  ) : (
+                    t("addons.version", { version: a.version })
+                  )}{" "}
+                  · {t(`addons.status.${a.status}` as Key)}
+                  {a.enabled && a.status === "running" && <WebFailure id={a.id} />}
                   {a.pinned && (
                     <>
                       <br />
@@ -243,14 +277,6 @@ export function Addons() {
                           <span className={styles.pinFailed}>{t("addons.pinFailed")}</span>
                         </>
                       )}
-                    </>
-                  )}
-                  {a.update && !a.pinned && (
-                    <>
-                      <br />
-                      <span className={styles.update}>
-                        {t("addons.updateAvailable", { version: a.update })}
-                      </span>
                     </>
                   )}
                   {!a.update && !a.pinned && a.updateState === "checking" && (

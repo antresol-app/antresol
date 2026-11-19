@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -162,5 +163,32 @@ func TestTitleFactsAnchorsRecorded(t *testing.T) {
 	}
 	if movies[11].Version != FactsVersion {
 		t.Errorf("version %d", movies[11].Version)
+	}
+}
+
+// Claims are read ten items at a time: fifty films' claims overran the
+// answer limit and every franchise pass of a big library failed on the
+// cut JSON (19.11). Labels still go fifty at a time.
+func TestEntitiesClaimsBatch(t *testing.T) {
+	var sizes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		sizes = append(sizes, q.Get("props")+":"+strconv.Itoa(len(strings.Split(q.Get("ids"), "|"))))
+		w.Write([]byte(`{"entities":{}}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Limiter: &metadata.Limiter{}}
+	ids := make([]string, 25)
+	for i := range ids {
+		ids[i] = "Q" + strconv.Itoa(i+1)
+	}
+	if _, err := c.entities(context.Background(), ids, "claims"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.entities(context.Background(), ids, "labels"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"claims:10", "claims:10", "claims:5", "labels:25"}; !slices.Equal(sizes, want) {
+		t.Fatalf("batches %v, want %v", sizes, want)
 	}
 }

@@ -72,7 +72,7 @@ vi.mock('mpegts.js', () => {
   }
 })
 
-import { LivePlayer } from '../LivePlayer'
+import { LivePlayer, liveTiming } from '../LivePlayer'
 
 const iso = (m: number) => new Date(Date.now() + m * 60_000).toISOString()
 const ext = (id: number, number: number, stream: object) => ({
@@ -133,10 +133,11 @@ describe('an external channel in the web player', () => {
     open(100)
     await waitFor(() => expect(hlsLog.loaded).toEqual(['https://a.example.test/live.m3u8']))
     expect(calls.some((c) => c.url.startsWith('/api/channels/live/'))).toBe(false)
-    const hls = hlsLog.instances[0]!
-    await act(async () => hls.fire('hlsError', { fatal: true, type: 'networkError' }))
-    expect(hlsLog.loaded).toEqual(['https://a.example.test/live.m3u8', 'https://b.example.test/live.m3u8'])
-    await act(async () => hls.fire('hlsError', { fatal: true, type: 'networkError' }))
+    await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['https://a.example.test/live.m3u8', 'https://b.example.test/live.m3u8']))
+    // each attempt has its own engine
+    expect(hlsLog.instances).toHaveLength(2)
+    await act(async () => hlsLog.instances[1]!.fire('hlsError', { fatal: true, type: 'networkError' }))
     expect(await screen.findByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeInTheDocument()
     await new Promise((r) => setTimeout(r, 50))
     expect(hlsLog.loaded).toHaveLength(2)
@@ -163,8 +164,52 @@ describe('an external channel in the web player', () => {
     open(103)
     await waitFor(() => expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8']))
     await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
-    expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8', '/api/channels/live/ext/103/0/relay'])
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8', '/api/channels/live/ext/103/0/relay']))
     expect(screen.queryByText('Этот канал открывается в приложении Antresol или в IPTV-плеере')).toBeNull()
+  })
+
+  // reported: the stream plays, and «открывается в приложении…» covers it
+  // anyway, ~10 s in. The direct attempt failed (no CORS), the relay plays; then an
+  // error arrives — a late one of the abandoned direct attempt, or the relay's
+  // own mid-stream hiccup (a playlist reload that failed) while the buffer still
+  // plays. Neither is «nothing plays»: no message; when the picture really stops,
+  // the same stream is started again once, and the message shows only when that
+  // fails too — and goes again as soon as the picture moves.
+  it('never says «opens in the apps» over a picture that plays (the race of a late error)', async () => {
+    liveTiming.stallMs = 300
+    const msg = 'Этот канал открывается в приложении Antresol или в IPTV-плеере'
+    const { container } = open(103)
+    const video = container.querySelector('video')!
+    let time = 0
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => false })
+    Object.defineProperty(video, 'currentTime', { configurable: true, get: () => time, set: () => {} })
+    const tick = () => act(async () => {
+      time += 0.25
+      fireEvent.timeUpdate(video)
+    })
+    await waitFor(() => expect(hlsLog.instances).toHaveLength(1))
+    await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    await waitFor(() => expect(hlsLog.instances).toHaveLength(2)) // the relay
+    await tick()
+    await tick()
+    // the abandoned direct attempt reports late: nothing changes
+    await act(async () => hlsLog.instances[0]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    // the relay's own error while its buffer still plays: nothing said, nothing restarted
+    await act(async () => hlsLog.instances[1]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    await tick()
+    expect(screen.queryByText(msg)).toBeNull()
+    expect(hlsLog.loaded).toHaveLength(2)
+    // the picture stops: the relay is started again, once — still no message
+    await waitFor(() => expect(hlsLog.loaded).toEqual(['https://e.example.test/live.m3u8', '/api/channels/live/ext/103/0/relay', '/api/channels/live/ext/103/0/relay']), { timeout: 3000 })
+    expect(screen.queryByText(msg)).toBeNull()
+    // that fails too, nothing moves: now nothing plays, and it says so
+    await act(async () => hlsLog.instances[2]!.fire('hlsError', { fatal: true, type: 'networkError' }))
+    expect(await screen.findByText(msg)).toBeInTheDocument()
+    // and the moment the picture moves again, the message goes
+    await tick()
+    await tick()
+    await waitFor(() => expect(screen.queryByText(msg)).toBeNull())
+    liveTiming.stallMs = 4000
   })
 
   // mpegts.js gets an absolute URL: its loader runs in a worker

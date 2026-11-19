@@ -349,6 +349,18 @@ const paths = {
       <path d="M12 7.5V12l3 2" />
     </>
   ),
+  // a page of a calendar: two rings over the top, the header line, a few days
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+      <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+      <circle cx="8" cy="13.5" r="0.6" fill="currentColor" />
+      <circle cx="12" cy="13.5" r="0.6" fill="currentColor" />
+      <circle cx="16" cy="13.5" r="0.6" fill="currentColor" />
+      <circle cx="8" cy="17" r="0.6" fill="currentColor" />
+      <circle cx="12" cy="17" r="0.6" fill="currentColor" />
+    </>
+  ),
   arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
   returnArrow: <path d="M9 14.5 4.5 10 9 5.5M4.5 10h10a5 5 0 0 1 0 10H12" />,
   arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,

@@ -1,10 +1,16 @@
-# Installing Antresol Server
+# Install
 
-The short version is in the [README](https://github.com/antresol-app/antresol/blob/main/README.md#quick-start). This page has the details.
+Antresol runs in Docker on any Linux computer or NAS. Installing takes about ten minutes.
+
+**You need**
+
+- Linux with Docker and Docker Compose.
+- A folder with your films, series, music or books.
+- A free [TMDB](https://www.themoviedb.org/settings/api) API key, for posters and descriptions.
 
 ## Media folders
 
-You need a Linux host with Docker and Compose, and your media in one folder:
+Put your files in one folder, one subfolder per kind of media:
 
 ```
 /srv/media/
@@ -17,156 +23,50 @@ You need a Linux host with Docker and Compose, and your media in one folder:
     manga/       Series/Volume 01.cbz
 ```
 
-Your folders may have other names: pick them in the first-run wizard (below)
-or set them in `.env` ([configuration.md](configuration.md#media-folders)).
+If your folders already have other names, don't rename anything: on the first run you pick
+which is which. More in [Folders and files](library.html).
 
-## First setup
+## Download compose.yml and .env
 
-After you create the administrator, a short wizard walks through what the
-server needs. Every step can be skipped, and the same checks stay in
-Settings → Server (Library & Languages → Server folders, Transcoding), so nothing has to
-be done in one sitting:
+```sh
+mkdir ~/antresol && cd ~/antresol
+curl -fsSLO https://raw.githubusercontent.com/antresol-app/antresol/main/compose.yml
+curl -fsSL https://raw.githubusercontent.com/antresol-app/antresol/main/.env.example -o .env
+```
 
-1. **Media folders.** What the server sees under `/media`, with the number of
-   entries in each folder, and the status of each library folder: found,
-   missing («Create» makes it) or not writable. When your folders are named
-   differently from the defaults, say which one is which: an empty default
-   folder beside a folder with files in it is shown as empty, with the folder
-   that has the files offered. A pick is stored in the server's settings and
-   used instead of the `*_DIR` variables (a reset goes back to them); the
-   server restarts for a few seconds to apply it. A folder must be inside the
-   media folder (a link that leads out of it is refused) and not inside
-   another library's folder. While the library has files but the media disk
-   looks unmounted, «Create» is not offered: a folder made on the empty mount
-   point would make it look like the real disk, and the next scan would hide
-   the library.
-2. **Write access.** The server makes and removes a test file in the media
-   folder, each library folder and the transcoding folder. When it cannot,
-   the page says which user the server runs as and gives the fix to copy: a
-   `chown` command, or `user: "<uid>:<gid>"` for the compose file.
-3. **Graphics card.** The hardware status line, with what to uncomment in
-   `compose.yml` when no GPU was passed to the container.
+## Fill in .env
 
-«Done» starts the first library scan.
+Open `.env` (for example `nano .env`) and set three lines:
 
-## Notes
+```sh
+MEDIA_DIR=/srv/media          # the media folder on this computer
+VAULT_TMDB_KEY=your-tmdb-key
+TZ=Europe/Berlin              # your time zone
+```
 
-- **Paths.** `MEDIA_DIR` is the only host path. The server runs inside the
-  container and sees your media at `/media`; the `*_DIR` names are relative
-  to it. Do not set `VAULT_MEDIA_ROOT`, `VAULT_MOVIES_DIR` or
-  `VAULT_TRANSCODE_DIR` to host paths such as `/tank/media/...`: the
-  container has no such folder (`stat ...: no such file or directory`,
-  `mkdir ...: permission denied`). Missing folders inside it are created
-  empty: all of them on a new install, and music and book folders later too.
-- The container runs as uid/gid 1000 and needs to write to the media folder
-  (subtitles it fetches, temporary transcode files in `tmp/antresol-hls`).
-  If your files belong to another user, give uid 1000 write access or add
-  `user: "<uid>:<gid>"` to the service (the volume `antresol-config` then needs
-  the same owner). The first-run wizard and Settings → Server → Library & Languages test
-  this for real and print the exact command. Settings and the database live in
-  the `antresol-config` volume.
-- **Temporary files on another disk.** Playback segments, live TV and
-  offline copies go to `tmp/antresol-hls` inside the media folder. To keep
-  them elsewhere, for example on a separate disk mounted at `/scratch`, put
-  a `compose.override.yml` next to `compose.yml`; `docker compose up -d`
-  reads both:
+Leave the rest as it is. The full list is in [All .env settings](configuration.html).
 
-  ```yaml
-  services:
-    antresol:
-      environment:
-        VAULT_TRANSCODE_DIR: /transcode
-      volumes:
-        - /scratch/antresol-hls:/transcode
-  ```
+## Start
 
-  Create the folder first and give uid 1000 write access to it: a folder
-  Docker creates by itself belongs to root, and the server cannot write
-  there. Setting `VAULT_TRANSCODE_DIR` in `.env` alone does not work with
-  this `compose.yml`, which sets it itself and mounts nothing else.
-- Without a GPU passed to the container, it transcodes on the CPU; see
-  [Hardware transcoding](hardware-transcoding.md).
-- Outside your home network, put Antresol behind a reverse proxy with HTTPS
-  and set `VAULT_TRUSTED_PROXIES` to the proxy's address. The log line
-  `request from <ip> carries X-Forwarded-For ... does not list it` shows the
-  address to put there. A profile without a password can sign in only from
-  the home network.
-- **Finding the server.** The apps look for servers on the home network
-  by themselves: by mDNS / Bonjour (`_antresol._tcp`)
-  and by a UDP probe on port 8420 (`VAULT_DISCOVERY_PORT`). A browser at
-  home opens it as **http://antresol.local:8420**, no IP address needed: the
-  server claims that name by mDNS, and a server on another computer of the
-  same network takes `antresol-2.local` (and so on) when this one already
-  holds it. «About This Server» in the profile menu shows the name this
-  server got. `VAULT_SERVER_NAME` is the name the
-  apps list (default `Antresol`); `VAULT_DISCOVERY=off` turns both off,
-  `VAULT_MDNS=off` mDNS (and the name) alone. On a TV, sign in by scanning
-  its QR code with the phone app or the phone's camera (the page `/pair`).
-- **mDNS and Docker networks.** The server runs on the compose project's
-  own (bridge) network, where an addon's helper service is found by its
-  service name. Multicast does not leave that network, so `compose.yml` has
-  a second, tiny service for the home network: `antresol-mdns`, the same
-  image started as `mdns-announce`. It runs on the host's network, opens
-  only UDP 5353 (beside the host's own Avahi or mDNSResponder), reads no
-  settings and no secrets, and announces `antresol.local` and
-  `_antresol._tcp` with the host's addresses and the port published for the
-  server. The two share the small volume `antresol-announce`: the server
-  writes who it is there, the announcer writes back the name it holds, and
-  «About This Server» shows it. When the announcer is stopped, its name and
-  records go within a minute and «About This Server» says so; when the
-  server is stopped, the announcer withdraws them. Keep the announcer's port
-  right: publish another host port only through `HTTP_PORT` in `.env`,
-  which sets both (the announcer warns in its log when the server does not
-  answer on the port it announces) and moves the UDP port of the apps'
-  probe with them. Two servers on different computers of one network: the
-  second announcer takes `antresol-2.local`, as a second server on the host
-  network would. Two stacks on one computer (each in its own folder, with
-  its own `container_name`s and `HTTP_PORT=8421` in the second `.env`)
-  share `antresol.local`: it is one address for both, and each is opened by
-  its own port, `http://antresol.local:8421`; «About This Server» shows
-  each its own. The apps' UDP probe asks port 8420 only, so the second one
-  is found by mDNS, not by the probe. Podman (rootful or rootless) works
-  the same way.
-- **Docker Desktop (macOS, Windows), WSL 2, Podman machine.** Containers run
-  in a virtual machine there, and even the host network is the machine's,
-  not your home network: `antresol.local` and the apps' automatic search do
-  not work. The server and the announcer notice it, say so in the log and in
-  «About This Server», and claim nothing. Open the server by the computer's
-  IP address (`http://<IP>:8420`), or run the server binary on the computer
-  itself.
-- **Without the announcer.** Running the server with `network_mode: host`
-  (and no `ports:`) makes it claim the name itself; the announcer then stays
-  quiet. The cost: the server's ports are the host's own (8420 must be free
-  there), and a helper service of an addon is no longer reachable by its
-  service name: give the addon the helper's address, with the helper
-  publishing its port on `127.0.0.1`. Or let the host's own Avahi publish
-  the name: a line `<host LAN IP> antresol.local` in `/etc/avahi/hosts`.
-  Windows 10+, macOS, iOS and Linux with Avahi resolve `.local` names;
-  Android only from version 12, and not in every browser.
-- Every setting is an environment variable and can go in `.env`: see
-  [configuration.md](configuration.md); [build-tags.md](build-tags.md)
-  explains the build.
+```sh
+docker compose up -d
+```
 
-## Addons that need a helper service
+Open `http://antresol.local:8420` or `http://<computer's IP>:8420` in a browser and choose the
+administrator's name and password.
 
-Some addons need a program of their own next to the server (for example a
-service that gets past a site's bot check). The addon's manifest declares it,
-and its settings page says when it is missing and shows the block to add:
+![First run: creating the administrator](images/guide/en/welcome.png)
 
-1. Paste the block under `services:` in `compose.yml`, next to `antresol`.
-   It has no `ports:`: the helper stays on the project's own network, and
-   nothing outside the host can reach it.
-2. Run `docker compose up -d`.
+The [first setup](first-setup.html) opens next.
 
-The addon finds the helper by its service name within half a minute; there is
-no address to enter and no restart. The server's addon list names the
-helpers each addon declares (`helpers` in `GET /api/addons`).
+## Graphics card
 
-If the same service already runs elsewhere on your network, give the addon
-its address instead (its settings page or its `ANTRESOL_<ID>_*` variable):
-an address you give always wins, and the helper is not looked for. With the
-server outside Docker, use that address too: a compose service name resolves
-only inside the compose project.
+If the computer has an Intel, AMD or NVIDIA graphics card, uncomment its lines in `compose.yml`
+and run `docker compose up -d`. Details: [Hardware transcoding](hardware-transcoding.html).
 
-Upgrade notes for each version are in its
-[release notes](https://github.com/antresol-app/antresol/releases).
+## Next
+
+- [First setup](first-setup.html): folders, permissions, family profiles.
+- [Apps](apps.html): phones, tablets and TVs.
+- [Public address](public-address.html): reaching the server from the internet.
+- [Troubleshooting](troubleshooting.html): if something did not start.

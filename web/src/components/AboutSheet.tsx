@@ -1,9 +1,10 @@
 // «О сервере» (profile menu): the server's version, its licence and texts,
-// the source offer (AGPL §13; no link when the server gives none), the
+// the documentation, the source offer (AGPL §13; the public repository when
+// the server gives none), the
 // address to open on the home network (antresol.local, when the server
 // holds that name; why not, when it cannot) and the TMDB notice its terms
 // ask for.
-import { APP_NAME } from '../brand'
+import { APP_NAME, DOCS_URL, REPO_URL } from '../brand'
 import { useEffect, useState } from 'react'
 import { getLocalName, getTranscoding } from '../api/client'
 import type { About, LocalName, TranscodingView } from '../api/types'
@@ -92,7 +93,9 @@ export function AboutSheet({ onClose }: { onClose: () => void }) {
           </GroupedSection>
         )}
         <GroupedSection footer={t('comp.about.tmdb')}>
-          {source && <ListRow label={link(source, t('comp.about.source'))} />}
+          {/* how to set up, connect and update it: the documentation; the code and its issues, when the build names no source of its own */}
+          <ListRow label={link(DOCS_URL, t('comp.about.docs'))} />
+          <ListRow label={link(source || REPO_URL, t(source ? 'comp.about.source' : 'comp.about.repo'))} />
           <ListRow label={link('/api/about/license', t('comp.about.licenseText'))} />
           <ListRow label={link('/api/about/third-party', t('comp.about.thirdParty'))} />
         </GroupedSection>

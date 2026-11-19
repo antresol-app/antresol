@@ -212,7 +212,22 @@ describe('ShikimoriAdmin', () => {
 
   it('read-only when from env', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ clientId: 'env-id', hasSecret: true, fromEnv: true, redirectUri: '', scope: 'user_rates' })))
-    render(<ShikimoriAdmin />)
+    render(
+      <MemoryRouter>
+        <ShikimoriAdmin />
+      </MemoryRouter>,
+    )
     expect(await screen.findByLabelText('Client ID')).toHaveAttribute('readonly')
+  })
+
+  it('no server address yet: says why and leads to where it is set', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ clientId: '', hasSecret: false, fromEnv: false, redirectUri: '', scope: 'user_rates' })))
+    render(
+      <MemoryRouter>
+        <ShikimoriAdmin />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText(/строится из внешнего адреса сервера/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Задать адрес сервера' })).toHaveAttribute('href', '/manage/settings/address')
   })
 })

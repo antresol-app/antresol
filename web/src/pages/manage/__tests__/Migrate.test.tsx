@@ -424,3 +424,85 @@ describe('Migrate with addons', () => {
     expect(screen.getByText('Просмотренное и «Избранное»')).toBeTruthy()
   })
 })
+
+describe('Migrate over the media servers\' API', () => {
+  const offline = (connected: boolean): MigrateStatus => ({
+    sources: [
+      {
+        id: 'jellyfin',
+        name: 'Jellyfin',
+        found: connected,
+        path: connected ? 'http://jellyfin:8096' : '/import/jellyfin/jellyfin.db',
+        detail: connected ? '1 пользователь, 2 отметки' : 'Не подключён — укажите адрес и ключ ниже (или смонтируйте /import/jellyfin/jellyfin.db)',
+        error: '',
+        connect: { kind: 'apikeyOrLogin', url: connected ? 'http://jellyfin:8096' : '', hasSecret: connected, connected, mounted: false },
+      },
+      {
+        id: 'kavita',
+        name: 'Kavita',
+        found: true,
+        path: '/import/kavita/kavita.db',
+        detail: '1 пользователь, 3 отметки',
+        error: '',
+        connect: { kind: 'apikey', url: '', hasSecret: false, connected: false, mounted: true },
+      },
+    ],
+    leftovers: [],
+    users: connected ? [{ source: 'jellyfin', sourceId: 'U1', sourceName: 'Александр', vaultUserId: 1, rows: 2 }] : [],
+    profiles: [{ id: 1, name: 'Александр' }],
+    running: null,
+    libraryReady: { ok: true, reason: '' },
+  })
+
+  it('opens the connection form on a card whose file is not mounted; «Подключить» chooses the service and its users', async () => {
+    let connected = false
+    const posted: { url: string; body: unknown }[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (u, init) => {
+      const url = new URL(String(u), 'http://x').pathname
+      if (url.endsWith('/reports')) return json([])
+      if (url.endsWith('/connect') && init?.method === 'POST') {
+        posted.push({ url, body: JSON.parse(String(init.body)) })
+        connected = true
+        return json({ detail: '1 пользователь, 2 отметки', connect: offline(true).sources[0]!.connect })
+      }
+      return json(offline(connected))
+    })
+    render(
+      <MemoryRouter>
+        <Migrate />
+      </MemoryRouter>,
+    )
+    const form = await screen.findByRole('form', { name: 'Подключение к Jellyfin' })
+    expect(screen.getByText(/Не подключён — укажите адрес и ключ ниже/)).toBeTruthy()
+    // the mounted Kavita reads its file, the network one click away
+    expect(screen.getByRole('button', { name: 'Подключить по сети' })).toBeTruthy()
+    const submit = within(form).getByRole('button', { name: 'Подключить' })
+    expect(submit).toHaveProperty('disabled', true)
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.change(within(form).getByLabelText('Адрес'), { target: { value: 'http://jellyfin:8096/' } })
+    fireEvent.change(within(form).getByLabelText('API-ключ'), { target: { value: 'k-123' } })
+    expect(submit).toHaveProperty('disabled', false)
+    fireEvent.click(submit)
+    expect(await screen.findByText('Подключён по адресу http://jellyfin:8096')).toBeTruthy()
+    expect(posted).toEqual([{ url: '/api/migrate/sources/jellyfin/connect', body: { url: 'http://jellyfin:8096/', apiKey: 'k-123' } }])
+    expect(screen.getByText('Подключён · 1 пользователь, 2 отметки')).toBeTruthy()
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /Jellyfin/ })).toHaveProperty('checked', true))
+    expect(screen.getByRole('checkbox', { name: /Kavita/ })).toHaveProperty('checked', true)
+    expect(screen.getByRole('list', { name: 'Профили' }).textContent).toContain('Александр')
+  })
+
+  it('signs in to Jellyfin with a user name and a password', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (u) => json(String(u).endsWith('/reports') ? [] : offline(false)))
+    render(
+      <MemoryRouter>
+        <Migrate />
+      </MemoryRouter>,
+    )
+    const form = await screen.findByRole('form', { name: 'Подключение к Jellyfin' })
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.click(within(form).getByRole('radio', { name: 'Имя и пароль' }))
+    expect(within(form).getByLabelText('Имя пользователя')).toBeTruthy()
+    expect(within(form).getByLabelText('Пароль')).toBeTruthy()
+    expect(within(form).queryByLabelText('API-ключ')).toBeNull()
+  })
+})

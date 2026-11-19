@@ -55,7 +55,7 @@ describe('Настройки сервера: Аккаунты и синхрон�
   it('is no longer under «Медиатека»', async () => {
     stub()
     renderSettings('library')
-    expect(await screen.findByRole('heading', { name: 'Медиатека и языки', level: 2 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Медиатека', level: 2 })).toBeInTheDocument()
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/settings', expect.anything()))
     expect(screen.queryByLabelText('Client ID')).toBeNull()
     expect(screen.queryByText('Приложение Shikimori')).toBeNull()

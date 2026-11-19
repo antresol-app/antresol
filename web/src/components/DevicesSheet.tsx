@@ -1,5 +1,7 @@
 // «Устройства»: the Vault app on iPhone, iPad and Mac and the browsers
-// signed in to this profile (an admin: to every profile, by profile). Each one can be signed out from here (its
+// signed in to this profile — the profile's own, an admin's too. `all` (an
+// admin, from «Профили»): every profile's, by profile, the server's list,
+// with every profile's separate histories. Each one can be signed out from here (its
 // session ends, with the media keys it asked for, e.g. for AirPlay; it is
 // asked to sign in again). «Отдельная история на этом устройстве» switches
 // a device to a history of its own (a managed account, listed below in
@@ -23,6 +25,8 @@ import styles from './DevicesSheet.module.css'
 
 export interface DevicesSheetProps {
   onClose: () => void
+  /** Every profile's devices and separate histories (an admin's server list, «Профили»); else the profile's own. */
+  all?: boolean
 }
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Device[]; managed: ManagedAccount[] }
@@ -63,7 +67,7 @@ function groups(items: Device[]): Group[] {
   return [...by.values()].sort((a, b) => Number(b.userId === mine) - Number(a.userId === mine))
 }
 
-export function DevicesSheet({ onClose }: DevicesSheetProps) {
+export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
   const t = useT()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [confirm, setConfirm] = useState<Device | null>(null)
@@ -76,17 +80,17 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
   const load = useCallback((soft = false) => {
     let live = true
     if (!soft) setState({ status: 'loading' })
-    // an admin sees every profile's managed accounts; an older server has
-    // none: the devices alone; a kid has no list of them
+    // the server's list has every profile's managed accounts, a profile's
+    // its own; an older server has none: the devices alone; a kid has no list of them
     const user = session.get().user
-    const managed = user?.isKid ? Promise.resolve({ items: [] as ManagedAccount[] }) : user?.isAdmin ? getAllManagedAccounts() : getManagedAccounts()
-    Promise.all([getDevices(), managed.catch(() => ({ items: [] as ManagedAccount[] }))])
+    const managed = user?.isKid ? Promise.resolve({ items: [] as ManagedAccount[] }) : all ? getAllManagedAccounts() : getManagedAccounts()
+    Promise.all([getDevices(all), managed.catch(() => ({ items: [] as ManagedAccount[] }))])
       .then(([r, m]) => live && setState({ status: 'ready', items: r.items, managed: m.items }))
       .catch((e: unknown) => live && (soft ? setError(errText(e)) : setState({ status: 'error', message: errText(e) })))
     return () => {
       live = false
     }
-  }, [])
+  }, [all])
   useEffect(() => load(), [load])
   const reload = useCallback(() => void load(true), [load])
 
@@ -94,7 +98,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
     setConfirm(null)
     setBusy(true)
     setError('')
-    revokeDevice(d.id)
+    revokeDevice(d.id, all)
       .then(() => setState((s) => (s.status === 'ready' ? { ...s, items: s.items.filter((x) => x.id !== d.id) } : s)))
       .catch((e: unknown) => setError(errText(e)))
       .finally(() => setBusy(false))
@@ -105,7 +109,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
     setTurnOff(null)
     setBusy(true)
     setError('')
-    setDeviceHistory(d.id, body)
+    setDeviceHistory(d.id, body, all)
       .then((r) => {
         // the profile menu shows this device's history
         if (d.current && d.userId) session.updateUser({ id: d.userId, deviceHistory: r.history })
@@ -118,7 +122,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
   return (
     <>
       <Sheet
-        title={t('comp.devices.title')}
+        title={all ? t('comp.devices.allTitle') : t('comp.devices.title')}
         role="dialog"
         size="wide"
         dismissOnOutside
@@ -144,11 +148,14 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
               <GroupedSection
                 key={g.userId}
                 id={`devices-${g.userId}`}
+                // the profile's own list is one profile's: no heading of whose
                 title={
-                  <span className={styles.profile}>
-                    <Avatar name={g.userName} avatar={g.userAvatar} photo={g.userPhoto} size={22} />
-                    {g.userName}
-                  </span>
+                  all ? (
+                    <span className={styles.profile}>
+                      <Avatar name={g.userName} avatar={g.userAvatar} photo={g.userPhoto} size={22} />
+                      {g.userName}
+                    </span>
+                  ) : undefined
                 }
               >
                 {g.items.map((d) => (

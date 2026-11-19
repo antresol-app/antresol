@@ -1,9 +1,20 @@
+---
+title: Документация
+---
+
 # Документация
 
-- [Установка](install.html): Docker Compose, папки с медиа, права, временные файлы, обратный прокси, поиск сервера в сети.
-- [Конфигурация](configuration.html): все параметры `.env` и почта.
-- [Перекодирование на видеокарте](hardware-transcoding.html): видеокарты Intel, AMD и NVIDIA.
-- [Как добавить язык](translating.html): перевод интерфейса, сервера и расширений.
-- [Приложения](apps.html): Android, Android TV, iPhone, iPad, Mac и Apple TV.
-- [Расширения](../addons/contract.html): контракт, который выполняет расширение (на английском).
-- [Теги сборки](../build-tags.html): как собрать сервер самостоятельно (на английском).
+Короткие инструкции по задачам. Начните с [установки](install.html).
+
+{% for section in site.data.guide.ru %}
+## {{ section.title }}
+{% for p in section.pages %}
+- [{{ p.title }}]({{ p.url }})
+{%- endfor %}
+{% endfor %}
+
+## Для разработчиков
+
+- [Как добавить язык](translating.html)
+- [Контракт расширений](../addons/contract.html) (на английском)
+- [Теги сборки](../build-tags.html) (на английском)

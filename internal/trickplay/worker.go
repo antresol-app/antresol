@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/bgtask"
 	"github.com/antresol-app/antresol/internal/media"
 )
 
@@ -77,6 +78,10 @@ type Worker struct {
 	// read (tests).
 	Frame  func(ctx context.Context, path string, atSec float64, w, h int) ([]byte, error)
 	Linear func(ctx context.Context, dir, key string, durSec float64, w, h int, path string) (Index, error)
+
+	// Progress: the files with previews of those that get them unasked
+	// («Задачи»), updated as a pass goes.
+	Progress bgtask.Tracker
 
 	once     sync.Once
 	kick     chan struct{}
@@ -348,13 +353,19 @@ func (w *Worker) due(c candidate) bool {
 // deletes them all; while the media disk is offline it does nothing.
 func (w *Worker) Pass(ctx context.Context) error {
 	w.init()
-	if w.Dir == "" || w.DB == nil || w.offline() {
+	if w.Dir == "" || w.DB == nil {
+		return nil
+	}
+	if w.offline() {
+		w.Progress.SetState(bgtask.StateOffline)
 		return nil
 	}
 	if on, _ := w.settings(ctx); !on {
 		w.clear()
+		w.Progress.SetState(bgtask.StateOff)
 		return nil
 	}
+	defer func() { w.Progress.End(w.now()) }()
 	if err := os.MkdirAll(w.Dir, 0o755); err != nil {
 		return err
 	}
@@ -373,6 +384,7 @@ func (w *Worker) Pass(ctx context.Context) error {
 		on, budget := w.settings(ctx)
 		if !on {
 			w.clear()
+			w.Progress.SetState(bgtask.StateOff)
 			return nil
 		}
 		if w.prunedAt.IsZero() || w.now().Sub(w.prunedAt) >= pruneEvery {
@@ -388,6 +400,10 @@ func (w *Worker) Pass(ctx context.Context) error {
 				return err
 			}
 			pos, gen, stale = 0, g, false
+			w.Progress.Begin(w.coverage(list))
+			if full {
+				w.Progress.SetState(bgtask.StateFull)
+			}
 		}
 		var next *candidate
 		for ; pos < len(list); pos++ {
@@ -407,6 +423,7 @@ func (w *Worker) Pass(ctx context.Context) error {
 					w.log().Info("trickplay: the previews have used their space; more only for what is played", "budget", budget)
 				}
 				full = true
+				w.Progress.SetState(bgtask.StateFull)
 				continue
 			}
 			next = c
@@ -438,7 +455,24 @@ func (w *Worker) Pass(ctx context.Context) error {
 			continue
 		}
 		w.fit(budget, next.key())
+		w.Progress.Add(1)
 	}
+}
+
+// coverage counts the files of list that get previews unasked (not one
+// sharing its title) and those of them with nothing to do now: previews
+// made, or failed and waiting for their retry.
+func (w *Worker) coverage(list []candidate) (done, total int) {
+	for _, c := range list {
+		if c.Shared {
+			continue
+		}
+		total++
+		if !w.due(c) {
+			done++
+		}
+	}
+	return done, total
 }
 
 // wait holds until nothing plays.

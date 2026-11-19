@@ -6,6 +6,7 @@ import (
 	"github.com/antresol-app/antresol/internal/version"
 	"log/slog"
 
+	"github.com/antresol-app/antresol/internal/api"
 	"github.com/antresol-app/antresol/internal/config"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata"
@@ -127,4 +128,21 @@ func buildRatings(cfg config.Config, database *sql.DB, wd *wikidata.Client, log 
 		return nil
 	}
 	return s
+}
+
+// netTargets are the services «Состояние» checks the server reaches: the
+// releases (updates of the server and its addons) and each metadata
+// source this server uses.
+func netTargets(cfg config.Config) []api.NetTarget {
+	out := []api.NetTarget{{ID: "github", Name: "GitHub", URL: "https://api.github.com"}}
+	if cfg.TMDBKey != "" {
+		out = append(out, api.NetTarget{ID: "tmdb", Name: "TMDB", URL: cfg.TMDBBaseURL})
+	}
+	if u := source(cfg.MusicBrainzURL); u != "" {
+		out = append(out, api.NetTarget{ID: "musicbrainz", Name: "MusicBrainz", URL: u})
+	}
+	if u := source(cfg.OpenSubtitlesURL); u != "" && cfg.OpenSubtitlesKey != "" {
+		out = append(out, api.NetTarget{ID: "opensubtitles", Name: "OpenSubtitles", URL: u})
+	}
+	return out
 }

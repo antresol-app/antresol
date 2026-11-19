@@ -274,6 +274,25 @@ function rememberFullWindow(id: string, routes: AddonRoute[] | undefined) {
   }
 }
 
+// The addons whose web part the loader could not run this time, with why
+// («Расширения» says it on the addon's row: an addon that runs on the server
+// but adds nothing to the app is not silent).
+const webFailures = new Map<string, string>()
+
+/** The loader's verdict on addon `id`'s web part: why it failed, or null (it ran). */
+export function setAddonWebFailure(id: string, why: string | null) {
+  if ((webFailures.get(id) ?? null) === why) return
+  if (why === null) webFailures.delete(id)
+  else webFailures.set(id, why)
+  changed()
+}
+
+/** Why addon `id`'s web part did not run in this tab (undefined: it ran, or was not tried). */
+export function useAddonWebFailure(id: string): string | undefined {
+  useSyncExternalStore(subscribe, snapshot, snapshot)
+  return webFailures.get(id)
+}
+
 /** Called by an addon's bundle (as soon as it loads): its contributions; a second call replaces the first. */
 export function registerAddon(id: string, c: AddonContributions): void {
   const routes = c.routes?.filter((r) => {
@@ -289,6 +308,8 @@ export function registerAddon(id: string, c: AddonContributions): void {
 /** The addons of the signed-in profile (from /api/addons/web); the others stay out of the slots. */
 export function setActiveAddons(ids: readonly string[]) {
   active = new Set(ids)
+  // an addon no longer listed is not tried: its old verdict goes
+  for (const id of webFailures.keys()) if (!active.has(id)) webFailures.delete(id)
   changed()
 }
 
@@ -363,6 +384,7 @@ export function useContributions<K extends Slot>(k: K): Contribution<K>[] {
 
 export function resetAddonsForTests() {
   registered.clear()
+  webFailures.clear()
   active = null
   isAdmin = false
   loading = false

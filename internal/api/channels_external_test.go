@@ -83,7 +83,7 @@ func TestListMergesExternalWithNumbersAndStream(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	l = e.list(e.admin)
-	if l.LastChannel == nil || *l.LastChannel != n1.ID || !l.Channels[1].Favorite {
+	if l.LastChannel == nil || *l.LastChannel != n1.ID || l.Channels[0].ID != n1.ID || !l.Channels[0].Favorite { // starred: first (channel_prefs)
 		t.Fatalf("fav/last %+v", l)
 	}
 	// manage: own channels only; the live encoder never serves it
@@ -253,4 +253,61 @@ func TestIPTVXMLTVIncludesExternal(t *testing.T) {
 		t.Fatalf("logo %d", r.Code)
 	}
 	_ = channels.ExternalTvgID
+}
+
+// «Избранные каналы первыми» (channel_prefs): on by default the starred
+// channels head the list and the guide grid in number order, the rest
+// follow in number order; off, the list is in number order only.
+func TestFavoritesFirstOrder(t *testing.T) {
+	e := newTVEnv(t)
+	m1, _ := e.movie("Один", "12+", "a")
+	e.withDuration()
+	e.do("POST", "/api/channels", `{"name":"Свой","rules":{"titles":[`+itoa(m1)+`]}}`, e.admin)
+	e.addSource("П")
+	l := e.list(e.admin)
+	if len(l.Channels) != 4 {
+		t.Fatalf("list %+v", l.Channels)
+	}
+	for _, c := range []channelJSON{l.Channels[3], l.Channels[2]} {
+		if w := e.do("PUT", "/api/channels/"+itoa(c.ID)+"/favorite", "", e.admin); w.Code != 204 {
+			t.Fatal(w.Code)
+		}
+	}
+	numbers := func(path string) string {
+		w := e.do("GET", path, "", e.admin)
+		var a struct {
+			Channels       []struct{ Number int }
+			FavoritesFirst *bool
+		}
+		json.Unmarshal(w.Body.Bytes(), &a)
+		var out []string
+		for _, c := range a.Channels {
+			out = append(out, fmt.Sprint(c.Number))
+		}
+		if strings.HasPrefix(path, "/api/channels?") && a.FavoritesFirst == nil {
+			t.Fatalf("%s: no favoritesFirst", path)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := numbers("/api/channels?brief=1"); got != "3,4,1,2" {
+		t.Fatalf("favourites first: %s", got)
+	}
+	if got := numbers("/api/channels/epg"); got != "3,4,1,2" {
+		t.Fatalf("grid favourites first: %s", got)
+	}
+	if w := e.do("GET", "/api/channels/prefs", "", e.admin); w.Code != 200 || !strings.Contains(w.Body.String(), `"favoritesFirst":true`) {
+		t.Fatalf("prefs %d %s", w.Code, w.Body)
+	}
+	if w := e.do("PUT", "/api/channels/prefs", `{"favoritesFirst":false}`, e.admin); w.Code != 200 {
+		t.Fatalf("set prefs %d %s", w.Code, w.Body)
+	}
+	if got := numbers("/api/channels?brief=1"); got != "1,2,3,4" {
+		t.Fatalf("number order: %s", got)
+	}
+	// another profile's choice is its own
+	other := e.login(`{"name":"Другой"}`)
+	w := e.do("GET", "/api/channels/prefs", "", other)
+	if !strings.Contains(w.Body.String(), `"favoritesFirst":true`) {
+		t.Fatalf("other's prefs %s", w.Body)
+	}
 }

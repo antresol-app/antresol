@@ -29,8 +29,11 @@ var adminEvents = map[string]bool{
 // request.changed (a kid's request made or answered) reaches the admins
 // and the kid whose request it is only; an addon's events
 // (addon.<id>.<name>) never reach kids, and addon.<id>.admin.<name>
-// reaches admins only.
+// reaches admins only; addons.changed never reaches kids.
 func eventVisible(u auth.User, typ string, data any) bool {
+	if typ == events.AddonsChanged {
+		return !u.IsKid // kids load no addons
+	}
 	if rest, ok := strings.CutPrefix(typ, "addon."); ok {
 		_, name, _ := strings.Cut(rest, ".")
 		return !u.IsKid && (u.IsAdmin || !strings.HasPrefix(name, "admin."))

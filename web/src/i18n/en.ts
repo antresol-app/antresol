@@ -22,6 +22,7 @@ import episodes from './en/episodes'
 import addons from './en/addons'
 import pairing from './en/pairing'
 import setupWizard from './en/setupWizard'
+import apiKeys from './en/apiKeys'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -45,5 +46,6 @@ export const en: EnOf<typeof ru> = {
   ...addons,
   ...pairing,
   ...setupWizard,
+  ...apiKeys,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

@@ -1,9 +1,9 @@
 // Loads the web bundles of the signed-in profile's addons (GET /api/addons/web).
 // A bundle registers itself (registerAddon) when it runs; one that fails or
 // hangs is skipped with a warning, never taking the app down.
-import { listenEvent } from '../api/events'
+import { listenEvent, onEvents } from '../api/events'
 import { request } from '../api/client'
-import { contributionsOf, setActiveAddons, setAddonUser, setAddonsLoading, setAddonsSettled } from './registry'
+import { contributionsOf, setActiveAddons, setAddonUser, setAddonWebFailure, setAddonsLoading, setAddonsSettled } from './registry'
 
 type WebAddon = { id: string; entry: string; style?: string }
 type Profile = { id: number; isAdmin: boolean; isKid?: boolean; addons?: boolean }
@@ -42,6 +42,13 @@ let loadedFor: number | null = null
 let pending: Promise<void> | null = null
 // the profile the last load was for (reloadAddons loads for it again)
 let current: Profile | null = null
+/** The addons whose web part did not load this time (id → why), for «Состояние». */
+const webFailed = new Map<string, string>()
+
+/** The addons whose web part did not load (id → the error's words). */
+export function addonWebFailures(): ReadonlyMap<string, string> {
+  return webFailed
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -92,10 +99,21 @@ async function load(user: Profile, fresh: boolean) {
     list.map(async (a) => {
       try {
         await withTimeout(importer.load(a.entry), TIMEOUT_MS)
+        webFailed.delete(a.id)
       } catch (e) {
         console.warn(`antresol: addon ${a.id} did not load`, e)
+        webFailed.set(a.id, e instanceof Error ? e.message : String(e))
+        // said on its row of «Расширения», not only in the console
+        setAddonWebFailure(a.id, e instanceof Error ? e.message : String(e))
         return
       }
+      // a bundle that ran but never called register() contributes nothing either
+      if (!contributionsOf(a.id)) {
+        console.warn(`antresol: addon ${a.id}: its bundle did not register`)
+        setAddonWebFailure(a.id, 'did not register')
+        return
+      }
+      setAddonWebFailure(a.id, null)
       for (const name of contributionsOf(a.id)?.events ?? []) {
         listenEvent(`addon.${a.id}.${name}`)
         if (admin) listenEvent(`addon.${a.id}.admin.${name}`)
@@ -117,9 +135,29 @@ function start(user: Profile, fresh: boolean): Promise<void> {
   return run
 }
 
+// An addon's status changed on the server (addons.changed), or the event
+// stream connected again after the server was away (a restart: what it said
+// meanwhile is lost): the list is asked again. GET /api/addons/web lists the
+// running addons only, so one still starting when the tab loaded (the page
+// reloads itself as soon as an updated server answers, before a slower addon
+// is up) or one back after a crash joins the slots here, not after a manual
+// reload. Several changes in a row make one reload.
+let unlisten: (() => void) | null = null
+let soon: ReturnType<typeof setTimeout> | undefined
+const RELOAD_DELAY_MS = 300
+
+function follow() {
+  if (unlisten) return
+  unlisten = onEvents(() => {
+    clearTimeout(soon)
+    soon = setTimeout(() => void reloadAddons(), RELOAD_DELAY_MS)
+  }, ['addons.changed', 'open'])
+}
+
 /** Loads the addons of `user`; once per profile (a second call for the same one waits for the first). */
 export function initAddons(user: Profile): Promise<void> {
   if (loadedFor === user.id && pending) return pending
+  if (!user.isKid && user.addons !== false) follow()
   return start(user, true)
 }
 
@@ -139,8 +177,12 @@ export function reloadAddons(): Promise<void> {
 }
 
 export function resetLoaderForTests() {
+  unlisten?.()
+  unlisten = null
+  clearTimeout(soon)
   for (const link of document.head.querySelectorAll('link[data-addon]')) link.remove()
   loadedFor = null
   pending = null
   current = null
+  webFailed.clear()
 }

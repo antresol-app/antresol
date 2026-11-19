@@ -1,0 +1,61 @@
+# The guide's contents: the sidebar of every page (_layouts/default.html) and
+# the contents page (docs.md, ru/docs.md). Paths are relative to the language's
+# home ("/" or "/ru/").
+ru:
+  - title: "Начало"
+    pages:
+      - { url: "install.html", title: "Установка" }
+      - { url: "first-setup.html", title: "Первая настройка" }
+  - title: "Медиатека"
+    pages:
+      - { url: "library.html", title: "Папки и файлы" }
+      - { url: "migrate.html", title: "Переезд с Jellyfin, Kavita, ABS" }
+  - title: "Просмотр"
+    pages:
+      - { url: "apps.html", title: "Приложения и вход на ТВ" }
+      - { url: "hardware-transcoding.html", title: "Перекодирование на видеокарте" }
+      - { url: "tv.html", title: "ТВ-каналы и IPTV" }
+  - title: "Расширения"
+    pages:
+      - { url: "addons.html", title: "Установка расширений" }
+      - { url: "addon-services.html", title: "Вспомогательные службы" }
+  - title: "Аккаунты и почта"
+    pages:
+      - { url: "accounts.html", title: "Shikimori, MyShows, Goodreads" }
+      - { url: "mail.html", title: "Почта, Kindle и Telegram" }
+  - title: "Сервер"
+    pages:
+      - { url: "public-address.html", title: "Публичный адрес и доступ извне" }
+      - { url: "updates.html", title: "Состояние и обновления" }
+      - { url: "api-and-mcp.html", title: "Ключи API и ИИ-помощники (MCP)" }
+      - { url: "troubleshooting.html", title: "Решение проблем" }
+      - { url: "configuration.html", title: "Все параметры .env" }
+en:
+  - title: "Getting started"
+    pages:
+      - { url: "install.html", title: "Install" }
+      - { url: "first-setup.html", title: "First setup" }
+  - title: "Library"
+    pages:
+      - { url: "library.html", title: "Folders and files" }
+      - { url: "migrate.html", title: "Moving from Jellyfin, Kavita, ABS" }
+  - title: "Watching"
+    pages:
+      - { url: "apps.html", title: "Apps and TV sign-in" }
+      - { url: "hardware-transcoding.html", title: "Hardware transcoding" }
+      - { url: "tv.html", title: "TV channels and IPTV" }
+  - title: "Extensions"
+    pages:
+      - { url: "addons.html", title: "Installing extensions" }
+      - { url: "addon-services.html", title: "Helper services" }
+  - title: "Accounts and mail"
+    pages:
+      - { url: "accounts.html", title: "Shikimori, MyShows, Goodreads" }
+      - { url: "mail.html", title: "Mail, Kindle and Telegram" }
+  - title: "Server"
+    pages:
+      - { url: "public-address.html", title: "Public address and remote access" }
+      - { url: "updates.html", title: "Health and updates" }
+      - { url: "api-and-mcp.html", title: "API keys and AI assistants (MCP)" }
+      - { url: "troubleshooting.html", title: "Troubleshooting" }
+      - { url: "configuration.html", title: "All .env settings" }

@@ -37,9 +37,11 @@ export interface GuideProps {
   playerTo: (id: number) => string
   /** The channels' logos as the list knows them (an EPG window may leave them out). */
   logos?: Record<number, string | undefined>
+  /** The profile's starred channels first (as the list). */
+  favFirst?: boolean
 }
 
-export function Guide({ filter, favorites, onFavorite, playerTo, logos }: GuideProps) {
+export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst }: GuideProps) {
   const t = useT()
   const compact = useIsCompact()
   const navigate = useNavigate()
@@ -84,11 +86,11 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos }: GuideP
   const width = ((end - origin) / MIN) * ppm
   const rows = useMemo(() => {
     const list = (data?.channels ?? []).map((c) => ({ ...c, favorite: favorites[c.id] ?? c.favorite }))
-    return applyFilter(list, filter).map((c) => ({
+    return applyFilter(list, filter, favFirst).map((c) => ({
       channel: c,
       programs: c.programs.filter((p) => Date.parse(p.end) > origin && Date.parse(p.start) < end),
     }))
-  }, [data, favorites, filter, origin, end])
+  }, [data, favorites, filter, origin, end, favFirst])
   // a logo in any row: the rows without one keep its slot (the names line up)
   const anyLogo = rows.some((r) => r.channel.logoUrl ?? logos?.[r.channel.id])
 
@@ -218,7 +220,7 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos }: GuideP
               <div key={c.id} className={styles.row} role="row">
                 <div className={styles.chan} role="rowheader">
                   <span className={styles.chanNum}>{c.number}</span>
-                  {anyLogo && <ChannelLogo url={c.logoUrl ?? logos?.[c.id]} size={compact ? 'xs' : 'sm'} reserve />}
+                  {anyLogo && <ChannelLogo url={c.logoUrl ?? logos?.[c.id]} fallback={c.logoAlt} name={c.name} size={compact ? 'xs' : 'sm'} />}
                   <span className={styles.chanName} title={c.name}>
                     {c.name}
                   </span>

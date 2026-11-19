@@ -13,6 +13,7 @@ const (
 	MigrateProgress = "migrate.progress" // data: «Переезд» finished a source ({reportId, source, done, total, counts, finished}); admins only
 	ImportProgress  = "import.progress"  // data: a library import's progress ({jobId, status, progress}); admins only
 	RequestChanged  = "request.changed"  // data: a kid's request was made or decided ({id, userId}): the kid and admins reload
+	AddonsChanged   = "addons.changed"   // data: an addon's status changed ({id, status}): the app loads its addons' web parts again; never to kids
 )
 
 // Event is one message. Data is marshalled to JSON by the SSE handler.

@@ -92,7 +92,7 @@ const FilesRoute = () => (
 // «Управление» (admins): one chunk with the library's sections.
 // A section inside «Управление» (same chunk) draws at once once «Управление» is in (lazyChunk).
 const manage = chunk(() => import('../pages/manage'))
-const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import' | 'Addons' | 'Updates') => {
+const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 'Requests' | 'Migrate' | 'Import' | 'Addons' | 'Health' | 'Tasks') => {
   const C = lazyFrom(manage, (m) => m[name])
   return (
     <ChunkBoundary>
@@ -101,6 +101,21 @@ const section = (name: 'Manage' | 'Files' | 'Stats' | 'Profiles' | 'Settings' | 
       </Suspense>
     </ChunkBoundary>
   )
+}
+
+// «Управление каналами»: an admin's are in «Настройки» (/manage/channels,
+// the old address leads there, «Новый канал» too); a profile that is not an
+// admin manages its own channels from «ТВ».
+const tvManageOwn = page(tv, (m) => m.TvManage)
+function TvManageRoute() {
+  const { user } = useSession()
+  const { search } = useLocation()
+  if (user?.isAdmin) return <Navigate to={`/manage/channels${search}`} replace />
+  return tvManageOwn
+}
+function ToManageChannels() {
+  const { pathname, search } = useLocation()
+  return <Navigate to={pathname.replace(/^\/tv\/manage/, '/manage/channels') + search} replace />
 }
 
 // An addon's page (/addons/<id>/<path>, not for kids): its own small chunk.
@@ -121,6 +136,7 @@ const MyRequests = lazy(() => import('../pages/MyRequests'))
 const ProfileSettings = lazy(() => import('../pages/ProfileSettings'))
 // its «Аккаунты и синхронизация» (every adult profile; a kid is sent back to the settings)
 const AccountsSettings = lazy(() => import('../pages/AccountsSettings'))
+const ApiKeysSettings = lazy(() => import('../pages/ApiKeysSettings'))
 // «Вход на телевизоре» (/pair?code=…, the TV's QR code)
 const Pair = lazy(() => import('../pages/Pair'))
 
@@ -230,6 +246,14 @@ export const routes: RouteObject[] = [
             ),
           },
           {
+            path: 'settings/api-keys',
+            element: (
+              <ChunkBoundary>
+                <ApiKeysSettings />
+              </ChunkBoundary>
+            ),
+          },
+          {
             path: 'pair',
             element: (
               <ChunkBoundary>
@@ -287,7 +311,8 @@ export const routes: RouteObject[] = [
             element: <NoKids />,
             children: [
               { path: 'files/*', element: <FilesRoute /> },
-              { path: 'tv/manage', element: page(tv, (m) => m.TvManage) },
+              // an admin's channels are managed in «Настройки» (/manage/channels)
+              { path: 'tv/manage', element: <TvManageRoute /> },
               // the server lists an addon for the profiles it is for (admins, or
               // adults too); a fullWindow route covers the window like the
               // players above (the shell draws none of itself: useFullWindowAddon)
@@ -297,9 +322,8 @@ export const routes: RouteObject[] = [
           {
             element: <AdminOnly />,
             children: [
-              { path: 'tv/manage/sources', element: page(tv, (m) => m.SourcesPage) },
-              { path: 'tv/manage/sources/:id', element: page(tv, (m) => m.SourceChannels) },
-              { path: 'tv/manage/franchises', element: page(tv, (m) => m.FranchisesPage) },
+              // the old addresses of the admin's channel pages
+              { path: 'tv/manage/*', element: <ToManageChannels /> },
               {
                 path: 'manage',
                 element: section('Manage'),
@@ -312,7 +336,14 @@ export const routes: RouteObject[] = [
                   { path: 'migrate', element: section('Migrate') },
                   { path: 'import', element: section('Import') },
                   { path: 'addons', element: section('Addons') },
-                  { path: 'updates', element: section('Updates') },
+                  { path: 'channels', element: page(tv, (m) => m.TvManage) },
+                  { path: 'channels/sources', element: page(tv, (m) => m.SourcesPage) },
+                  { path: 'channels/sources/:id', element: page(tv, (m) => m.SourceChannels) },
+                  { path: 'channels/franchises', element: page(tv, (m) => m.FranchisesPage) },
+                  { path: 'health', element: section('Health') },
+                  { path: 'tasks', element: section('Tasks') },
+                  // «Обновления» became part of «Состояние»
+                  { path: 'updates', element: <Navigate to="/manage/health" replace /> },
                 ],
               },
             ],

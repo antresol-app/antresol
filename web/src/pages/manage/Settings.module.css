@@ -64,6 +64,13 @@
   }
 }
 
+/* Shikimori without the server's address: why, and the way to set it */
+.noUrl {
+  margin: 0;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+
 /* «ИИ-помощник»: the address, the model and the key */
 .aiFields {
   display: grid;

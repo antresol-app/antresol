@@ -14,6 +14,7 @@ import { locale, useT, type TFunction } from '../../../i18n'
 import { ago } from '../../../state/format'
 import { Badge } from '../../../ui/Badge'
 import { Button, ButtonLink } from '../../../ui/Button'
+import { useChannelsFrame } from '../manageBase'
 import { GroupedSection, ListRow } from '../../../ui/List'
 import { Notice } from '../../../ui/Notice'
 import { Toast } from '../../../ui/Toast'
@@ -64,6 +65,8 @@ export function DropNotice({ s, busy, onConfirm, onKeep, as }: { s: Source; busy
 export function SourcesPage() {
   const t = useT()
   const navigate = useNavigate()
+  const frame = useChannelsFrame()
+  const Title = frame.embedded ? 'h2' : 'h1'
   const [sources, setSources] = useState<Source[] | null>(null)
   const [xtream, setXtream] = useState(false)
   const [sets, setSets] = useState<ChannelSet[]>([])
@@ -116,13 +119,13 @@ export function SourcesPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.column}>
-        <ButtonLink to="/tv/manage" variant="plain" size="small" icon="chevronLeft" className={styles.back}>
+    <div className={frame.page(styles.page)}>
+      <div className={frame.column(styles.column)}>
+        <ButtonLink to={frame.base} variant="plain" size="small" icon="chevronLeft" className={styles.back}>
           {t('iptv.back')}
         </ButtonLink>
-        <header className={styles.header}>
-          <h1 className={styles.title}>{t('iptv.title')}</h1>
+        <header className={frame.header(styles.header)}>
+          <Title className={frame.title(styles.title)}>{t('iptv.title')}</Title>
           <Button icon="plus" onClick={() => setAdding(true)}>
             {t('iptv.add')}
           </Button>
@@ -185,7 +188,7 @@ export function SourcesPage() {
             setAdding(false)
             const r = await refreshSource(s.id).catch(() => null)
             if (r) setToast(refreshSummary(t, r))
-            navigate(`/tv/manage/sources/${s.id}`)
+            navigate(`${frame.base}/sources/${s.id}`)
           }}
         />
       )}
@@ -196,6 +199,7 @@ export function SourcesPage() {
 
 function SourceRow({ s, busy, onConfirm, onKeep }: { s: Source; busy?: string; onConfirm: () => void; onKeep: () => void }) {
   const t = useT()
+  const frame = useChannelsFrame()
   const c = s.counts
   return (
     <>
@@ -208,7 +212,7 @@ function SourceRow({ s, busy, onConfirm, onKeep }: { s: Source; busy?: string; o
         }
         label={
           <span className={styles.nameLine}>
-            <Link to={`/tv/manage/sources/${s.id}`} className={styles.rowLink}>
+            <Link to={`${frame.base}/sources/${s.id}`} className={styles.rowLink}>
               {s.name}
             </Link>
             {c.new > 0 && (

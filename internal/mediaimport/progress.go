@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -32,6 +33,11 @@ type ProgressOptions struct {
 	// («Не переносить»).
 	UserMap map[string]int64
 	DryRun  bool
+	// Remotes are the connections kept on the page, by source id: a source
+	// with one is read over its API, its database file is not. HTTP is the
+	// client for them (nil: the default, see remoteHTTP).
+	Remotes map[string]Remote
+	HTTP    *http.Client
 }
 
 // LibraryLookup is the part of *library.Repo the progress importers use.
@@ -83,27 +89,26 @@ var (
 	snapshotDB    = runkit.SnapshotDB
 )
 
-// openProgressDB opens app's database for an importer; a missing one is a
-// skipped line, an unreadable one a failed line (nil returned for both).
-func openProgressDB(o ProgressOptions, source, app, path string, rep *Report) *srcDB {
-	d, err := snapshotDB(o.Tmp, path)
-	if errors.Is(err, errNoSourceDB) {
+// loadFailed adds the line of a source an importer could not read: a
+// missing database is skipped; an API problem fails with its own text; an
+// unreadable database (a snapshot that failed, tables not as expected)
+// fails. It returns ctx's error, else nil.
+func loadFailed(ctx context.Context, source, app string, rep *Report, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	var re *RemoteError
+	switch {
+	case errors.Is(err, errNoSourceDB):
 		rep.Add(Line{Source: source, Kind: "progress", Name: app, Status: StatusSkipped, Reason: fmt.Sprintf("%s не найден", app)})
-		return nil
-	}
-	if err != nil {
-		impLog().Warn("snapshot", "app", app, "file", path, "err", err)
+	case errors.As(err, &re):
+		impLog().Warn("api", "app", app, "err", err)
+		rep.Add(Line{Source: source, Kind: "progress", Name: app, Status: StatusFailed, Reason: re.Msg})
+	default:
+		impLog().Warn("read", "app", app, "err", err)
 		rep.Add(Line{Source: source, Kind: "progress", Name: app, Status: StatusFailed, Reason: fmt.Sprintf("Не удалось прочитать базу %s", app)})
-		return nil
 	}
-	return d
-}
-
-// progressReadFailed reports a database whose tables are not what was
-// expected.
-func progressReadFailed(source, app string, rep *Report, err error) {
-	impLog().Warn("read", "app", app, "err", err)
-	rep.Add(Line{Source: source, Kind: "progress", Name: app, Status: StatusFailed, Reason: fmt.Sprintf("Не удалось прочитать базу %s", app)})
+	return nil
 }
 
 // record is one position of a source user to carry over.

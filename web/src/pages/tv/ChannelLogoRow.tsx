@@ -33,9 +33,11 @@ export interface ChannelLogoRowProps {
   /** A new channel's file to upload once it is created. */
   pending: File | null
   onPending: (f: File | null) => void
+  /** The logo now was found by the server, not uploaded. */
+  auto?: boolean
 }
 
-export function ChannelLogoRow({ channelId, url, onChanged, pending, onPending }: ChannelLogoRowProps) {
+export function ChannelLogoRow({ channelId, url, onChanged, pending, onPending, auto }: ChannelLogoRowProps) {
   const t = useT()
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<'upload' | 'remove' | null>(null)
@@ -99,7 +101,7 @@ export function ChannelLogoRow({ channelId, url, onChanged, pending, onPending }
     <ListRow
       label={t('tv.logo.title')}
       stack
-      hint={error ? <span className={styles.formErrorInline} role="alert">{error}</span> : t('tv.logo.hint')}
+      hint={error ? <span className={styles.formErrorInline} role="alert">{error}</span> : auto && url && !pending ? t('tv.logo.autoHint') : t('tv.logo.hint')}
       status={said || undefined}
       leading={
         shown ? (

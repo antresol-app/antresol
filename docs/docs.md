@@ -4,11 +4,17 @@ title: Documentation
 
 # Documentation
 
-- [Install](install.html): Docker Compose, media folders, permissions, temporary files, reverse proxy, finding the server on your network.
-- [Configuration](configuration.html): every setting of `.env`, and e-mail.
-- [Hardware transcoding](hardware-transcoding.html): Intel, AMD and NVIDIA GPUs.
-- [Translating Antresol](translating.html): add your language.
-- [Addons](addons/contract.html): the contract an addon implements.
-- [Build tags](build-tags.html): building the server yourself.
+Short, task-based guides. Start with [Install](install.html).
 
-[На русском](ru/docs.html): установка, конфигурация, аппаратное перекодирование, перевод, приложения.
+{% for section in site.data.guide.en %}
+## {{ section.title }}
+{% for p in section.pages %}
+- [{{ p.title }}]({{ p.url }})
+{%- endfor %}
+{% endfor %}
+
+## For developers
+
+- [Translating Antresol](translating.html)
+- [The addon contract](addons/contract.html)
+- [Build tags](build-tags.html)
