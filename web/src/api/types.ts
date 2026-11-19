@@ -1440,8 +1440,9 @@ export interface MigrateSource {
 
 /** A source's API connection as the page sees it (never the key or the password). */
 export interface MigrateConnect {
-  /** apikey: an address and an API key; apikeyOrLogin (Jellyfin): or a user name and a password. */
-  kind: 'apikey' | 'apikeyOrLogin'
+  /** apikey: an address and an API key; apikeyOrLogin (Jellyfin): or a user name and a password;
+   * login (an addon's source): an address, a user name and a password. */
+  kind: 'apikey' | 'apikeyOrLogin' | 'login'
   url: string
   username?: string
   hasSecret: boolean
