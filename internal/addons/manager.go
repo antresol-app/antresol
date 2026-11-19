@@ -39,7 +39,9 @@ type Manager struct {
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex // per addon id: install, update, enable, remove
-	newMu sync.Mutex             // the checks across ids (env prefix, scan kinds) and the row they guard
+	// checkLog: the last update check failure logged per id (logCheck)
+	checkLog map[string]string
+	newMu    sync.Mutex // the checks across ids (env prefix, scan kinds) and the row they guard
 
 	pinMu     sync.Mutex
 	pins      map[string]string // VAULT_ADDONS_PIN: id → version (SetPins)
@@ -581,22 +583,98 @@ func (m *Manager) reconcile(ctx context.Context, in Installed) Installed {
 	return in
 }
 
+// UpdateCheck is what an update check of an installed addon found.
+type UpdateCheck struct {
+	// Version of the newer release that can be installed; "" none.
+	Version string
+	// Pending: the check is still running in the background (GitHub is
+	// slow); asking again later finds its result.
+	Pending bool
+	// NeedsCore: a newer release this server cannot run; Err says which.
+	NeedsCore bool
+	// Err: the check failed, or (NeedsCore) what the newer release needs;
+	// a user message.
+	Err error
+}
+
 // UpdateAvailable returns the version of the source's latest release when
 // it is newer than the installed one.
-// A pinned addon has none: only a new pin changes its version.
 func (m *Manager) UpdateAvailable(ctx context.Context, id string) (string, bool) {
+	c := m.CheckUpdate(ctx, id, false)
+	return c.Version, c.Version != ""
+}
+
+// CheckUpdate checks the source of an installed addon for a newer release.
+// It reuses a recent check unless fresh, and never fails silently: a check
+// that could not finish says why (Err), one still running says so
+// (Pending) and goes on in the background.
+// A pinned addon has none: only a new pin changes its version.
+func (m *Manager) CheckUpdate(ctx context.Context, id string, fresh bool) UpdateCheck {
 	if m.Pinned(id) {
-		return "", false
+		return UpdateCheck{}
 	}
 	in, err := m.Store.Get(ctx, id)
 	if err != nil {
-		return "", false
+		m.logCheck(id, fmt.Errorf("read the addon: %w", err))
+		return UpdateCheck{Err: errRelease}
 	}
-	rel, _, err := m.resolve(ctx, in.Source)
-	if err != nil || rel.Manifest.ID != id || !semverLess(in.Version, rel.Manifest.Version) {
-		return "", false
+	var rel Release
+	if strings.HasPrefix(strings.TrimSpace(in.Source), LocalPrefix) {
+		rel, _, err = m.resolve(ctx, in.Source)
+	} else {
+		var repo Repo
+		if repo, err = ParseRepoURL(in.Source); err == nil {
+			rel, err = m.Resolver.Check(ctx, repo, fresh)
+		}
 	}
-	return rel.Manifest.Version, true
+	var nc NeedsCoreError
+	switch {
+	case errors.Is(err, ErrPending):
+		return UpdateCheck{Pending: true}
+	case errors.As(err, &nc):
+		if !semverRe.MatchString(in.Version) || !semverLess(in.Version, nc.Version) {
+			return UpdateCheck{}
+		}
+		m.logCheck(id, err)
+		return UpdateCheck{NeedsCore: true, Err: err}
+	case err != nil:
+		m.logCheck(id, fmt.Errorf("source %q: %w", in.Source, err))
+		return UpdateCheck{Err: err}
+	case rel.Manifest.ID != id:
+		m.logCheck(id, fmt.Errorf("the latest release of %s is addon %q", in.Source, rel.Manifest.ID))
+		return UpdateCheck{Err: errIDChanged}
+	case !semverLess(in.Version, rel.Manifest.Version):
+		m.logCheck(id, nil)
+		return UpdateCheck{}
+	}
+	if _, ok := rel.Manifest.PlatformFor(runtime.GOOS, runtime.GOARCH); !ok {
+		err := userError(fmt.Sprintf("Версия %s не поддерживает платформу сервера", rel.Manifest.Version))
+		m.logCheck(id, err)
+		return UpdateCheck{Err: err}
+	}
+	m.logCheck(id, nil)
+	return UpdateCheck{Version: rel.Manifest.Version}
+}
+
+// logCheck logs a failed update check once: the pages poll the list, so
+// the same failure comes back every few seconds.
+func (m *Manager) logCheck(id string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	if m.checkLog[id] == msg {
+		return
+	}
+	if m.checkLog == nil {
+		m.checkLog = map[string]string{}
+	}
+	m.checkLog[id] = msg
+	if err != nil {
+		m.Sup.logger().Printf("addons: update check of %s: %v", id, err)
+	}
 }
 
 // IDForToken returns the addon owning token; the token of an addon that is

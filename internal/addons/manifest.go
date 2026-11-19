@@ -89,10 +89,17 @@ var (
 
 // ParseManifest decodes and validates a manifest. Errors are Russian
 // user messages (translated through internal/i18n).
-func ParseManifest(data []byte) (Manifest, error) {
+func ParseManifest(data []byte) (Manifest, error) { return parseManifest(data, false) }
+
+// parseManifest is ParseManifest; newer lets through what only a newer
+// server knows (fields, a later contract, platforms, permissions, hooks),
+// to tell a release for a newer server from a broken one.
+func parseManifest(data []byte, newer bool) (Manifest, error) {
 	var m Manifest
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
+	if !newer {
+		dec.DisallowUnknownFields()
+	}
 	if err := dec.Decode(&m); err != nil {
 		return Manifest{}, userError("Неверный манифест расширения: не удалось прочитать JSON")
 	}
@@ -111,14 +118,14 @@ func ParseManifest(data []byte) (Manifest, error) {
 	if strings.TrimSpace(m.Name.RU) == "" && strings.TrimSpace(m.Name.EN) == "" {
 		return Manifest{}, userError("Неверный манифест расширения: нет названия")
 	}
-	if m.Contract != ContractVersion {
+	if m.Contract != ContractVersion && !(newer && m.Contract > ContractVersion) {
 		return Manifest{}, userError("Неверный манифест расширения: неподдерживаемая версия контракта")
 	}
 	if len(m.Platforms) == 0 && m.Web == nil {
 		return Manifest{}, userError("Неверный манифест расширения: нет ни платформ, ни веб-части")
 	}
 	for key, p := range m.Platforms {
-		if !knownPlatforms[key] {
+		if !knownPlatforms[key] && !newer {
 			return Manifest{}, userError("Неверный манифест расширения: неизвестная платформа")
 		}
 		if err := checkAsset(p); err != nil {
@@ -132,7 +139,7 @@ func ParseManifest(data []byte) (Manifest, error) {
 	}
 	seen := make(map[string]bool, len(m.Permissions))
 	for _, p := range m.Permissions {
-		if !knownPerms[p] {
+		if !knownPerms[p] && !newer {
 			return Manifest{}, userError("Неверный манифест расширения: неизвестное разрешение")
 		}
 		if seen[p] {
@@ -145,7 +152,7 @@ func ParseManifest(data []byte) (Manifest, error) {
 	}
 	hooks := make(map[string]bool, len(m.Hooks))
 	for _, h := range m.Hooks {
-		if !knownHook(h) {
+		if !knownHook(h) && !newer {
 			return Manifest{}, userError("Неверный манифест расширения: неизвестный хук")
 		}
 		if hooks[h] {

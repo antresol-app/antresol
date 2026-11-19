@@ -36,6 +36,9 @@ export default {
   'updates.addonsEmpty': 'Расширения не установлены.',
   'updates.addonsFailed': 'Не удалось загрузить расширения',
   'updates.addonPinned': 'Закреплено при развёртывании: обновляется вместе с ним',
+  'updates.addonChecking': 'Проверяется…',
+  'updates.addonCheckFailed': 'Не удалось проверить: {reason}',
+  'updates.recheckNamed': 'Проверить «{name}» снова',
   // «Управление → Файлы»
   'mfiles.watchedAgo': 'смотрели {ago}',
   'mfiles.neverWatched': 'ещё не смотрели',

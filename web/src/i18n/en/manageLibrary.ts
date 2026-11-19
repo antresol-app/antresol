@@ -38,6 +38,9 @@ export default {
   'updates.addonsEmpty': 'No extensions installed.',
   'updates.addonsFailed': 'Could not load the extensions',
   'updates.addonPinned': 'Pinned by the deployment: it updates with it',
+  'updates.addonChecking': 'Checking…',
+  'updates.addonCheckFailed': 'Could not check: {reason}',
+  'updates.recheckNamed': 'Check “{name}” Again',
   // «Управление → Файлы»
   'mfiles.watchedAgo': 'watched {ago}',
   'mfiles.neverWatched': 'never watched',

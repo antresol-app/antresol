@@ -18,6 +18,10 @@
 .update {
   color: var(--accent);
 }
+/* an update check that failed, or a newer release for a newer server */
+.checkProblem {
+  color: var(--warning);
+}
 /* a pin that failed at boot */
 .pinFailed {
   color: var(--destructive-text);

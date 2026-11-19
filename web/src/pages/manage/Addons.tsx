@@ -44,6 +44,7 @@ type State =
 
 /** How often an addon that is starting is asked again. */
 const STARTING_POLL_MS = 1000;
+const CHECKING_POLL_MS = 3000;
 
 /** The slots of this tab follow the change (the loader is its own chunk). */
 export function reloadSlots() {
@@ -75,10 +76,10 @@ export function Addons() {
   // A quiet load (the poll) that failed: the list stays as it is and the
   // poll goes on (this counter re-arms it).
   const [pollFailed, setPollFailed] = useState(0);
-  const load = useCallback((quiet = false) => {
+  const load = useCallback((quiet = false, fresh = false) => {
     const mine = ++version.current;
     if (!quiet) setState({ status: "loading" });
-    getAddons().then(
+    getAddons(fresh).then(
       (list) => {
         if (mine === version.current) setState({ status: "ready", list });
       },
@@ -101,7 +102,8 @@ export function Addons() {
     load();
   }, [load]);
   // An addon still starting (an import before it serves, say) is asked
-  // again until it is not; once one runs, its slots load.
+  // again until it is not; once one runs, its slots load. An update check
+  // the server is still running (GitHub slow) is asked again too, slower.
   const starting = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (state.status !== "ready") return;
@@ -109,8 +111,9 @@ export function Addons() {
     const started = [...starting.current].some((id) => !now.has(id));
     starting.current = now;
     if (started) reloadSlots();
-    if (now.size === 0) return;
-    const timer = window.setTimeout(() => load(true), STARTING_POLL_MS);
+    const checking = state.list.some((a) => a.updateState === "checking");
+    if (now.size === 0 && !checking) return;
+    const timer = window.setTimeout(() => load(true), now.size > 0 ? STARTING_POLL_MS : CHECKING_POLL_MS);
     return () => window.clearTimeout(timer);
   }, [state, load, pollFailed]);
 
@@ -250,10 +253,36 @@ export function Addons() {
                       </span>
                     </>
                   )}
+                  {!a.update && !a.pinned && a.updateState === "checking" && (
+                    <>
+                      <br />
+                      <span>{t("addons.updateChecking")}</span>
+                    </>
+                  )}
+                  {!a.update && !a.pinned && (a.updateState === "failed" || a.updateState === "needsCore") && (
+                    <>
+                      <br />
+                      <span className={styles.checkProblem}>
+                        {a.updateState === "needsCore"
+                          ? a.updateError
+                          : t("addons.updateCheckFailed", { reason: a.updateError ?? "" })}
+                      </span>
+                    </>
+                  )}
                 </>
               }
             >
               <div className={styles.controls}>
+                {!a.update && !a.pinned && a.updateState === "failed" && (
+                  <Button
+                    size="small"
+                    variant="secondary"
+                    aria-label={t("updates.recheckNamed", { name: a.name })}
+                    onClick={() => load(true, true)}
+                  >
+                    {t("addons.recheck")}
+                  </Button>
+                )}
                 {a.update && !a.pinned && (
                   <Button
                     size="small"

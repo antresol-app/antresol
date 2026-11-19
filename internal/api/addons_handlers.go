@@ -54,7 +54,10 @@ type addonRuntime interface {
 	Update(ctx context.Context, id, version string) (addons.Installed, error)
 	SetEnabled(ctx context.Context, id string, on bool) error
 	Remove(ctx context.Context, id string, deleteData bool) error
-	UpdateAvailable(ctx context.Context, id string) (string, bool)
+	// CheckUpdate: the addon's newer release, or why the check could not
+	// say (still running, failed, needs a newer server); fresh skips the
+	// reuse of a recent check.
+	CheckUpdate(ctx context.Context, id string, fresh bool) addons.UpdateCheck
 	// Pinned: installed by the deployment (VAULT_ADDONS_PIN); install,
 	// update and remove of it answer 409.
 	Pinned(id string) bool
@@ -454,6 +457,11 @@ type addonItem struct {
 	Enabled     bool          `json:"enabled"`
 	Status      addons.Status `json:"status"`
 	Update      *string       `json:"update"` // a newer release's version, or null
+	// UpdateState says what a null update means: "" (none newer),
+	// "checking" (still asking GitHub), "failed" (UpdateError says why) or
+	// "needsCore" (a newer release needs a newer server: UpdateError).
+	UpdateState string `json:"updateState"`
+	UpdateError string `json:"updateError,omitempty"`
 	// Pinned: installed by the deployment; the admin cannot update or remove it
 	Pinned bool `json:"pinned"`
 	// PinFailed: its pin could not be applied at boot (see the server log);
@@ -479,17 +487,31 @@ func helperViews(hs []addons.Helper) []addonHelper {
 	return out
 }
 
-func (a *addonsAPI) item(ctx context.Context, in addons.Installed, withUpdate bool) addonItem {
+func (a *addonsAPI) item(ctx context.Context, in addons.Installed) addonItem {
 	lang := i18n.FromContext(ctx)
-	it := addonItem{ID: in.ID, Name: localText(lang, in.Manifest.Name), Description: localText(lang, in.Manifest.Description),
+	return addonItem{ID: in.ID, Name: localText(lang, in.Manifest.Name), Description: localText(lang, in.Manifest.Description),
 		Version: in.Version, Source: in.Source, Enabled: in.Enabled, Status: a.rt.Status(in.ID), Pinned: a.rt.Pinned(in.ID), PinFailed: a.rt.PinFailed(in.ID),
 		Helpers: helperViews(in.Manifest.Helpers)}
-	if withUpdate && !it.Pinned {
-		if v, ok := a.rt.UpdateAvailable(ctx, in.ID); ok {
-			it.Update = &v
+}
+
+// setUpdate fills the item's update fields from a check.
+func setUpdate(ctx context.Context, it *addonItem, c addons.UpdateCheck) {
+	switch {
+	case c.Version != "":
+		it.Update = &c.Version
+	case c.Pending:
+		it.UpdateState = "checking"
+	case c.NeedsCore:
+		it.UpdateState = "needsCore"
+		it.UpdateError = i18n.Message(ctx, c.Err)
+	case c.Err != nil:
+		it.UpdateState = "failed"
+		if msg, ok := addons.UserMessage(c.Err); ok {
+			it.UpdateError = i18n.Localize(ctx, msg)
+		} else {
+			it.UpdateError = i18n.Localize(ctx, "Не удалось получить релиз с GitHub")
 		}
 	}
-	return it
 }
 
 func (a *addonsAPI) list(w http.ResponseWriter, r *http.Request) {
@@ -499,15 +521,25 @@ func (a *addonsAPI) list(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "Что-то пошло не так")
 		return
 	}
-	// GitHub may be slow or down: the list does not wait for it long
+	// GitHub may be slow or down: the list waits for the checks (all at
+	// once) a few seconds; one that takes longer goes on in the background
+	// and the item says it is still checking. ?fresh=1 («Проверить снова»)
+	// asks GitHub again instead of reusing a recent check.
+	fresh := r.URL.Query().Get("fresh") == "1"
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	out := make([]addonItem, 0, len(list))
+	out := make([]addonItem, len(list))
 	have := map[string]bool{}
-	for _, in := range list {
-		out = append(out, a.item(ctx, in, true))
+	var wg sync.WaitGroup
+	for i, in := range list {
+		out[i] = a.item(r.Context(), in)
 		have[in.ID] = true
+		if out[i].Pinned {
+			continue
+		}
+		wg.Go(func() { setUpdate(r.Context(), &out[i], a.rt.CheckUpdate(ctx, in.ID, fresh)) })
 	}
+	wg.Wait()
 	// a pin that failed on a first install has no row: listed all the same
 	for _, p := range a.rt.FailedPins() {
 		if !have[p.ID] {
@@ -565,7 +597,7 @@ func (a *addonsAPI) install(w http.ResponseWriter, r *http.Request) {
 		addonErr(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.item(r.Context(), in, false))
+	writeJSON(w, http.StatusOK, a.item(r.Context(), in))
 }
 
 func (a *addonsAPI) update(w http.ResponseWriter, r *http.Request) {
@@ -584,7 +616,7 @@ func (a *addonsAPI) update(w http.ResponseWriter, r *http.Request) {
 		addonErr(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.item(r.Context(), in, false))
+	writeJSON(w, http.StatusOK, a.item(r.Context(), in))
 }
 
 func (a *addonsAPI) setEnabled(on bool) http.HandlerFunc {
@@ -599,7 +631,7 @@ func (a *addonsAPI) setEnabled(on bool) http.HandlerFunc {
 			addonErr(w, r, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, a.item(r.Context(), in, false))
+		writeJSON(w, http.StatusOK, a.item(r.Context(), in))
 	}
 }
 

@@ -174,11 +174,11 @@ func (f *fakeAddons) Remove(_ context.Context, id string, data bool) error {
 	return f.refusePinned(id)
 }
 
-func (f *fakeAddons) UpdateAvailable(_ context.Context, id string) (string, bool) {
+func (f *fakeAddons) CheckUpdate(_ context.Context, id string, _ bool) addons.UpdateCheck {
 	if id == "hello" {
-		return "1.1.0", true
+		return addons.UpdateCheck{Version: "1.1.0"}
 	}
-	return "", false
+	return addons.UpdateCheck{}
 }
 
 // echo is a fake addon process on a Unix socket.

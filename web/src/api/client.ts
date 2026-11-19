@@ -814,7 +814,8 @@ export const putShikimoriAdmin = (clientId: string, clientSecret: string) => req
 
 // --- «Расширения» (addons; admin) ---
 const addonPath = (id: string) => `/api/addons/${encodeURIComponent(id)}`
-export const getAddons = () => request<AddonInfo[]>('GET', '/api/addons')
+/** fresh: ask GitHub again instead of reusing the server's recent update check («Проверить снова»). */
+export const getAddons = (fresh = false) => request<AddonInfo[]>('GET', fresh ? '/api/addons?fresh=1' : '/api/addons')
 export const previewAddon = (url: string) => request<AddonPreview>('POST', '/api/addons/preview', { url })
 /** `version`: the previewed release; the server refuses another one. */
 export const installAddon = (url: string, version: string) => request<AddonInfo>('POST', '/api/addons', { url, version })

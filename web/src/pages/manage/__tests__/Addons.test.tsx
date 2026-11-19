@@ -269,3 +269,25 @@ describe('«Расширения»', () => {
     expect(screen.queryByText(/Запускается/)).not.toBeInTheDocument()
   }, 10_000)
 })
+
+describe('«Расширения»: update checks', () => {
+  beforeEach(() => {
+    vi.spyOn(loader, 'reloadAddons').mockResolvedValue(undefined)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('says why a check failed and checks again fresh', async () => {
+    let failed = true
+    const calls = serve((c) =>
+      c.url.startsWith('/api/addons') && c.method === 'GET' && !c.url.includes('/log')
+        ? json([failed ? { ...notes, updateState: 'failed', updateError: 'Нет связи с GitHub' } : { ...notes, update: '0.4.0', updateState: '' }])
+        : undefined,
+    )
+    open()
+    expect(await screen.findByText('Не удалось проверить обновления: Нет связи с GitHub')).toBeInTheDocument()
+    failed = false
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить «Заметки» снова' }))
+    expect(await screen.findByText('Доступно обновление 0.4.0')).toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/addons?fresh=1')).toBe(true)
+  })
+})

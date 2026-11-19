@@ -1918,6 +1918,12 @@ export interface AddonInfo {
   status: AddonStatus
   /** A newer release's version, or null. */
   update: string | null
+  /** What a null `update` means: '' none newer, 'checking' the server is
+   * still asking GitHub (ask again shortly), 'failed' the check failed
+   * (`updateError` says why), 'needsCore' a newer release needs a newer
+   * server (`updateError`). Missing from older servers. */
+  updateState?: '' | 'checking' | 'failed' | 'needsCore'
+  updateError?: string
   /** Installed by the deployment (VAULT_ADDONS_PIN): it cannot be
    * updated or removed here, only switched. Missing from older servers. */
   pinned?: boolean

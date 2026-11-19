@@ -71,13 +71,23 @@ The asset names are free; the manifest names them. Rules for every archive:
 - At most **100 000** entries per archive.
 
 The server takes the repository's latest release through the GitHub API
-(anonymous, cached for 10 minutes), downloads the asset for its own OS and
+(anonymous; an install reuses one fetched in the last 10 minutes), downloads the asset for its own OS and
 architecture, checks it and unpacks it. The admin first sees that release
 (name, version, permissions, the warning) and installs **that version**:
 `POST /api/addons {"url", "version"}` and `POST /api/addons/<id>/update
 {"version"}` refuse when the latest release is another one by then
 («Релиз расширения изменился после просмотра…»), so nothing the admin has not
 seen gets installed.
+
+The update check behind `GET /api/addons` fetches in the background (one
+fetch per repository, 90 s per try, 3 tries) and keeps the answer for hours
+(a failure for 2 minutes, GitHub's rate limit until its reset); `?fresh=1`
+asks GitHub again. Each item says what a `null` `update` means in
+`updateState`: `""` nothing newer, `"checking"` still fetching (ask again),
+`"failed"` (`updateError` says why) or `"needsCore"` (the latest release's
+manifest is of a later contract, field, permission or hook: `updateError`
+names its version). A download that sends nothing for 60 s is resumed (a
+`Range` request), up to 5 tries.
 
 ```
 $VAULT_DATA_DIR/addons/<id>/<version>/bin/addon   the platform archive
