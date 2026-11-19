@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/antresol-app/antresol/internal/addons"
@@ -15,9 +17,9 @@ func TestAddonHelpersHealth(t *testing.T) {
 	old := probeHelper
 	t.Cleanup(func() { probeHelper = old })
 	var asked []string
-	probeHelper = func(_ context.Context, h addons.Helper) error {
-		asked = append(asked, h.Name)
-		return errors.New("dial tcp: lookup cache-svc: no such host")
+	probeHelper = func(_ context.Context, base string, h addons.Helper) error {
+		asked = append(asked, base)
+		return &net.DNSError{Err: "no such host", Name: h.Name, IsNotFound: true}
 	}
 	e := newAddonEnv(t)
 	if w := e.do("GET", "/api/addons/helpers", "", e.user); w.Code != 403 {
@@ -28,15 +30,37 @@ func TestAddonHelpersHealth(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(out) != 1 || out[0].Addon != "lib" || out[0].Name != "cache-svc" || out[0].Address != "http://cache-svc:8191" || out[0].OK || out[0].Error == "" {
+	if len(out) != 1 || out[0].Addon != "lib" || out[0].Name != "cache-svc" || out[0].Address != "http://cache-svc:8191" || out[0].OK || out[0].Problem != "dns" || out[0].Custom {
 		t.Fatalf("%s", w.Body)
 	}
-	if len(asked) != 1 {
+	if len(asked) != 1 || asked[0] != "http://cache-svc:8191" {
 		t.Fatalf("asked %v", asked)
 	}
-	probeHelper = func(context.Context, addons.Helper) error { return nil }
+	probeHelper = func(context.Context, string, addons.Helper) error { return nil }
 	w = e.do("GET", "/api/addons/helpers", "", e.admin)
 	if json.Unmarshal(w.Body.Bytes(), &out) != nil || !out[0].OK {
 		t.Fatalf("%s", w.Body)
+	}
+
+	// the admin's own address (as the addon reads it): asked instead, never shown
+	t.Setenv("ANTRESOL_LIB_CACHE_SVC_URL", "http://user:pw@10.0.0.9:8191/")
+	asked = nil
+	probeHelper = func(_ context.Context, base string, _ addons.Helper) error {
+		asked = append(asked, base)
+		return errors.New("dial tcp 10.0.0.9:8191: connect: connection refused")
+	}
+	w = e.do("GET", "/api/addons/helpers", "", e.admin)
+	out = nil
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil || !out[0].Custom || out[0].Address != "" || out[0].Problem != "refused" || out[0].Error != "" ||
+		strings.Contains(w.Body.String(), "pw@") || len(asked) != 1 || asked[0] != "http://user:pw@10.0.0.9:8191/" {
+		t.Fatalf("custom: %s asked %v", w.Body, asked)
+	}
+
+	// at its own address any HTTP answer is up (the service's root may say 404)
+	probeHelper = func(context.Context, string, addons.Helper) error { return statusErr(404) }
+	w = e.do("GET", "/api/addons/helpers", "", e.admin)
+	out = nil
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil || !out[0].OK {
+		t.Fatalf("custom 404: %s", w.Body)
 	}
 }

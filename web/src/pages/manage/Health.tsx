@@ -195,8 +195,8 @@ export function Health() {
                   key={`${h.addon}:${h.name}`}
                   leading={<SettingsIcon glyph="antenna" tint="cyan" />}
                   label={owner ? `${h.name} · ${owner}` : h.name}
-                  hint={<span className={styles.mono}>{h.address}</span>}
-                  status={<Tone ok={h.ok}>{h.ok ? t('health.helperOk') : t('health.helperDown', { name: h.name, error: h.error ?? '' })}</Tone>}
+                  hint={h.custom ? t('health.helperCustom') : <span className={styles.mono}>{h.address}</span>}
+                  status={<Tone ok={h.ok}>{h.ok ? t('health.helperOk') : helperProblemText(t, h)}</Tone>}
                 />
               )
             })
@@ -336,4 +336,19 @@ function CoreRow({ core }: { core: Load<CoreUpdate> }) {
       )}
     </ListRow>
   )
+}
+
+/** Why a helper does not answer, in the page's words (the raw error only when nothing better is known). */
+function helperProblemText(t: ReturnType<typeof useT>, h: HelperHealth): string {
+  switch (h.problem) {
+    case 'dns':
+      return t('health.helperDns', { name: h.name })
+    case 'refused':
+      return t('health.helperRefused', { name: h.name })
+    case 'timeout':
+      return t('health.helperTimeout', { name: h.name })
+    case 'status':
+      return t('health.helperStatus', { name: h.name })
+  }
+  return t('health.helperDown', { name: h.name, error: h.error ?? '' })
 }

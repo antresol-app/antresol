@@ -950,8 +950,13 @@ export interface TasksView {
 export interface HelperHealth {
   addon: string
   name: string
+  /** Its compose address; '' when `custom` (the admin's own is never shown). */
   address: string
+  /** The admin's own address (ANTRESOL_<ADDON>_<HELPER>_URL) was asked. */
+  custom?: boolean
   ok: boolean
+  /** Why it does not answer. */
+  problem?: 'dns' | 'refused' | 'timeout' | 'status' | 'other'
   error?: string
 }
 
