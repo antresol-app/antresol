@@ -9,6 +9,8 @@ import { MemoryRouter } from 'react-router'
 import { Addons } from '../Addons'
 import * as loader from '../../../addons/loader'
 
+// reloadAddons is called after the render, not with it: reloadSlots() imports
+// the loader chunk first, so every `reload` check below waits for the call.
 const json = (b: unknown, status = 200) =>
   new Response(b === undefined ? null : JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -92,7 +94,7 @@ describe('«Расширения»', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Добавить расширение' })).toBeNull())
     expect(calls.find((c) => c.url === '/api/addons' && c.method === 'POST')?.body).toEqual({ url: 'https://github.com/a/sub', version: '2.0.0' })
     expect(await screen.findByText('Субтитры+')).toBeInTheDocument()
-    expect(reload).toHaveBeenCalled()
+    await waitFor(() => expect(reload).toHaveBeenCalled())
   })
 
   it('a preview that fails says why and installs nothing', async () => {
@@ -117,7 +119,7 @@ describe('«Расширения»', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Привет' }))
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Привет' })).toHaveAttribute('aria-checked', 'false'))
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual(['/api/addons/notes/enable', '/api/addons/hello/disable'])
-    expect(reload).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(2))
   })
 
   it('a switch that fails says why and loads the list again', async () => {
@@ -150,7 +152,7 @@ describe('«Расширения»', () => {
     await waitFor(() => expect(screen.getByText(/Версия 1\.2\.0/)).toBeInTheDocument())
     expect(screen.queryByText('Доступно обновление 1.2.0')).toBeNull()
     expect(calls.find((c) => c.url === '/api/addons/hello/update' && c.method === 'POST')?.body).toEqual({ version: '1.2.0' })
-    expect(reload).toHaveBeenCalled()
+    await waitFor(() => expect(reload).toHaveBeenCalled())
   })
 
   it('removes an addon with its data after the confirmation', async () => {
@@ -164,7 +166,7 @@ describe('«Расширения»', () => {
     await userEvent.click(within(sheet).getByRole('button', { name: 'Удалить' }))
     await waitFor(() => expect(screen.queryByText('Привет')).toBeNull())
     expect(calls.find((c) => c.method === 'DELETE')?.url).toBe('/api/addons/hello?data=1')
-    expect(reload).toHaveBeenCalled()
+    await waitFor(() => expect(reload).toHaveBeenCalled())
   })
 
   it('removing without the switch keeps the data', async () => {
@@ -225,7 +227,7 @@ describe('«Расширения»', () => {
     open()
     expect(await screen.findByText(/Версия 0\.3\.1 · Запускается/)).toBeInTheDocument()
     expect(await screen.findByText(/Версия 0\.3\.1 · Работает/, undefined, { timeout: 5000 })).toBeInTheDocument()
-    expect(reload).toHaveBeenCalled()
+    await waitFor(() => expect(reload).toHaveBeenCalled())
     // running: no more polling
     const after = gets
     await new Promise((r) => setTimeout(r, 1500))

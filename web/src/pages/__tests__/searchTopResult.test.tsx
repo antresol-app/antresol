@@ -221,13 +221,23 @@ describe('«Лучшее совпадение»', () => {
     await session.login(2)
     renderAt('/search?q=группа крови')
     await userEvent.click(within(await best()).getByRole('button', { name: 'Слушать' }))
+    // The album answers at the worst moment: right after the commit that takes
+    // its card off the screen (a MutationObserver runs there, before any passive
+    // effect), where an abort left to a passive clean-up would be too late.
+    const watch = new MutationObserver(() => {
+      const region = screen.queryByRole('region', { name: 'Лучшее совпадение' })
+      if (!region || !within(region).queryByRole('link', { name: 'Кино' })) return
+      watch.disconnect()
+      answerAlbum(json({ card: card(10, 'album', 'Группа крови'), tracks: [song(1, 'Группа крови')] }))
+    })
+    watch.observe(document.body, { childList: true, subtree: true })
     const box = screen.getByRole('searchbox')
     await userEvent.clear(box)
     await userEvent.type(box, 'кино')
     await waitFor(() => expect(within(screen.getByRole('region', { name: 'Лучшее совпадение' })).getByRole('link', { name: 'Кино' })).toBeInTheDocument(), { timeout: 3000 })
+    watch.disconnect()
     // the new card is not busy with the old one's request
     expect(within(screen.getByRole('region', { name: 'Лучшее совпадение' })).getByRole('button', { name: 'Слушать' })).toBeEnabled()
-    answerAlbum(json({ card: card(10, 'album', 'Группа крови'), tracks: [song(1, 'Группа крови')] }))
     await new Promise((r) => setTimeout(r, 50))
     expect(play).not.toHaveBeenCalled()
     expect(screen.queryByText('страница альбома')).not.toBeInTheDocument()

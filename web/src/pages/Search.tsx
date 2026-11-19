@@ -10,7 +10,7 @@
 import { Artwork } from '../ui/Artwork'
 import { TextField } from '../ui/TextField'
 import { APP_NAME } from '../brand'
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { getAlbum, getArtist, getHome, imageUrl, search, errorText } from '../api/client'
 import { SEARCH_SCOPES, type SearchScope } from '../app/sections'
@@ -517,9 +517,12 @@ function TopResult({ card }: { card: Card }) {
   const sub = [kindLabel(card.kind), card.subtitle || (card.year ? String(card.year) : '')].filter(Boolean).join(' · ')
   const action = topAction(card)
   // nothing to play (or the server failed): the item's page has the rest
-  // a card that is gone (another query) neither plays nor navigates
+  // a card that is gone (another query) neither plays nor navigates. A layout
+  // effect's clean-up: it runs in the commit that takes the card off the
+  // screen, where a passive one would wait for a later task, and an answer
+  // landing in that gap would still play
   const pending = useRef<AbortController | null>(null)
-  useEffect(() => () => pending.current?.abort(), [])
+  useLayoutEffect(() => () => pending.current?.abort(), [])
   const listen = () => {
     pending.current?.abort()
     const ac = new AbortController()

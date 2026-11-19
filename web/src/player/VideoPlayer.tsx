@@ -8,7 +8,7 @@
 // own full-window mode — the only full screen an iPhone offers a web page
 // without dropping them. On AirPlay (Safari) they stay on the page: the
 // player says so (see airplay.ts for how the receiver gets the stream).
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getItem, getPlaybackPrefs, imageUrl, setSubtitleOffset } from '../api/client'
 import { queueRemember } from './rememberQueue'
 import type { TrackActionItem } from '../addons/registry'
@@ -251,7 +251,10 @@ export function VideoPlayer({
   // friendly stop at it (the server stops the stream there anyway)
   const kid = Boolean(useSession().user?.isKid)
   const screenGuard = useScreenGuard(kid && !stream, t('player.screen.overFallback'))
-  useEffect(() => {
+  // a layout effect: the stop card and the pause land in the same commit, so
+  // the card is never on screen while the video still plays (and the hold below
+  // is armed) in the gap before a passive effect would run
+  useLayoutEffect(() => {
     const v = videoRef.current
     if (!screenGuard.over || !v) return
     v.pause()

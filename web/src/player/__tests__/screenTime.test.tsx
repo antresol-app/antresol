@@ -68,15 +68,28 @@ describe('VideoPlayer: screen time', () => {
 
   it('stops a kid with the message', async () => {
     await session.login(3)
+    // The play hold is armed in the very commit that puts the card on screen.
+    // A MutationObserver looks right after each commit, before any passive
+    // effect would run: a media key's play at that moment is paused again.
+    let heldAtOnce: boolean | null = null
+    const watch = new MutationObserver(() => {
+      if (heldAtOnce !== null || !screen.queryByRole('alert')) return
+      const calls = pause.mock.calls.length
+      document.querySelector('video')!.dispatchEvent(new Event('play'))
+      heldAtOnce = pause.mock.calls.length > calls
+    })
+    watch.observe(document.body, { childList: true, subtree: true })
     player()
     const alert = await screen.findByRole('alert')
+    watch.disconnect()
     expect(alert).toHaveTextContent('Пора отдохнуть')
     expect(alert).toHaveTextContent('Сейчас нельзя смотреть: с 20:30 до 08:00')
-    expect(pause).toHaveBeenCalled()
-    // nothing plays on: a media key's play is paused again, keys are off
+    expect(heldAtOnce).toBe(true)
+    // (not `expect(pause).toHaveBeenCalled()`: starting a session pauses the
+    // element anyway, so that held with or without the stop)
+    // and it stays: nothing plays on, keys are off
     const calls = pause.mock.calls.length
-    const video = document.querySelector('video')!
-    video.dispatchEvent(new Event('play'))
+    document.querySelector('video')!.dispatchEvent(new Event('play'))
     expect(pause.mock.calls.length).toBeGreaterThan(calls)
   })
 

@@ -115,28 +115,28 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
   const [choice, setChoice] = useState<SourceChoice | null>(null)
   const [season, setSeason] = useState<number | null>(null)
   const [sheet, setSheet] = useState<TitleEpisode | null>(null)
-  const [loaded, setLoaded] = useState(false)
   const loadedRef = useRef(onLoaded)
   loadedRef.current = onLoaded
 
   useEffect(() => {
     const ctl = new AbortController()
     setData(null)
-    setLoaded(false)
-    Promise.all([getTitleEpisodes(kind, tmdbId, ctl.signal), getSourceChoice(kind, tmdbId, ctl.signal).catch(() => null)])
-      .then(([d, c]) => {
+    Promise.all([getTitleEpisodes(kind, tmdbId, ctl.signal), getSourceChoice(kind, tmdbId, ctl.signal).catch(() => null)]).then(
+      ([d, c]) => {
+        if (ctl.signal.aborted) return
         setData(d)
         setChoice(c)
-        setLoaded(true)
-      })
-      .catch(() => !ctl.signal.aborted && setLoaded(true))
+        // told in the same batch as the guide's own state, not from an effect
+        // after it: the page swaps its tile rail for the guide in one commit,
+        // never a frame with both
+        loadedRef.current?.(d && d.episodes.length > 0 ? { episodes: d.episodes, choice: c } : null)
+      },
+      () => !ctl.signal.aborted && loadedRef.current?.(null),
+    )
     return () => ctl.abort()
   }, [kind, tmdbId])
 
   const episodes = data?.episodes ?? NO_EPISODES
-  useEffect(() => {
-    if (loaded) loadedRef.current?.(episodes.length > 0 ? { episodes, choice } : null)
-  }, [loaded, episodes, choice])
   // the guide's context, stable while nothing in it changes (each addon's Host re-runs on a new one)
   const ctx = useMemo<EpisodeCtx>(() => ({ kind, tmdbId, title, poster, episodes, choice }), [kind, tmdbId, title, poster, episodes, choice])
   // the addons' players by source kind (each addon Host draws its own sheets)
@@ -180,6 +180,7 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
   const choose = (ep: TitleEpisode, s: EpisodeSource) => {
     const c = choiceOf(s)
     setChoice(c)
+    loadedRef.current?.({ episodes, choice: c })
     putSourceChoice(kind, tmdbId, c).catch(() => undefined)
     setSheet(null)
     run(ep, s)

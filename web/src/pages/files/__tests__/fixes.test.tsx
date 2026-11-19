@@ -1,5 +1,5 @@
 // Review round 1: keyboard scope, needsConfirm flows, partial moves,
-// reported undo failures, kid gating and a 5000-item folder.
+// reported undo failures and kid gating (the 5000-item folder: listRows.test).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -243,30 +243,4 @@ describe('kid profiles', () => {
     render(<RouterProvider router={router} />)
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
   })
-})
-
-describe('a folder with 5000 items', () => {
-  it('answers arrow keys quickly (memoised rows, stable handlers)', async () => {
-    const many = Array.from({ length: 5000 }, (_, i) => entry(`Файл ${String(i).padStart(4, '0')}.mkv`, { size: i, kind: 'video' }))
-    await renderFiles(admin, mockApi(admin, { 'movies:': listing('movies', '', many) }), '/files/movies', /Файл 0000\.mkv/)
-    fireEvent.click(screen.getByRole('radio', { name: 'Список' }))
-    const grid = await screen.findByRole('treegrid')
-    fireEvent.click(screen.getByRole('row', { name: 'Файл 0000.mkv' }))
-    // Warm up, then time ten presses.
-    act(() => {
-      fireEvent.keyDown(grid, { key: 'ArrowDown' })
-    })
-    const t0 = performance.now()
-    for (let i = 0; i < 10; i++) {
-      act(() => {
-        fireEvent.keyDown(grid, { key: 'ArrowDown' })
-      })
-    }
-    const per = (performance.now() - t0) / 10
-    console.info(`5000 rows: ${per.toFixed(1)} ms per arrow key`)
-    expect(screen.getByRole('row', { name: 'Файл 0011.mkv' })).toHaveAttribute('aria-selected', 'true')
-    // Shared CI runners are slower and noisier than a desktop: this guards against
-    // losing the memoised rows (hundreds of ms per key), not against a few ms.
-    expect(per).toBeLessThan(process.env.CI ? 200 : 50)
-  }, 30_000)
 })
