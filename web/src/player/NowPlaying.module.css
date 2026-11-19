@@ -99,9 +99,15 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 460px);
+  /* one row exactly the height left under the top bar: the deck and the
+     panel are sized from it (100cqh), not from the whole window's vh */
+  grid-template-rows: minmax(0, 1fr);
   justify-content: center;
   align-items: center;
   padding-bottom: clamp(16px, 4vh, 48px);
+  container-type: size;
+  /* the last resort if a row ever grows taller than measured: scroll, not cut */
+  overflow-y: auto;
 }
 .split {
   grid-template-columns: minmax(320px, 440px) minmax(0, 600px);
@@ -113,8 +119,10 @@
   flex-direction: column;
   gap: 18px;
   min-width: 0;
-  /* the title, timeline and controls line up with the cover's edges */
-  width: min(100%, 46vh);
+  /* the title, timeline and controls line up with the cover's edges; the
+     cover takes what the rows under it (--np-rows) leave of the height */
+  --np-rows: 344px;
+  width: min(100%, 46vh, calc(100cqh - var(--np-rows)));
   justify-self: center;
 }
 .artBox {
@@ -352,7 +360,7 @@ a.artist:hover {
 }
 
 .panel {
-  height: min(72vh, 680px);
+  height: min(72vh, 680px, 100cqh);
   min-width: 0;
 }
 
@@ -383,12 +391,14 @@ a.artist:hover {
     min-height: 0;
     align-items: center;
     touch-action: none;
+    container-type: size;
   }
   .top {
     touch-action: none;
   }
+  /* the cover never grows past the room left above the title */
   .art {
-    width: min(100%, 44vh);
+    width: min(100%, 44vh, 100cqh);
   }
   .deckSwap {
     justify-content: flex-start;

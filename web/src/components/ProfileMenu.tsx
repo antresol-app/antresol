@@ -5,11 +5,10 @@
 // with «Сменить профиль» as a round button in the head beside the profile; then the profile's
 // library («Общая медиатека / Моя медиатека», as Photos has it in its View
 // menu besides the toolbar picker).
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import type { User } from '../api/types'
 import { useLibraryScope } from '../state/libraryScope'
 import { usePendingRequests } from '../state/kidRequests'
-import { session } from '../state/session'
 import { useLang, useT } from '../i18n'
 import { addonString } from '../addons/registry'
 import { useProfileMenu } from '../addons/slots'
@@ -36,6 +35,7 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
   const addonEntries = useProfileMenu()
   const library = useLibraryScope()
   const navigate = useNavigate()
+  const location = useLocation()
   // requests waiting for an admin's answer (none where requests are closed)
   const pending = usePendingRequests(user.id, Boolean(user.requests))
 
@@ -43,13 +43,10 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
   // the profile it leaves (as an account switcher has it), not a row among
   // the profile's places
   const switchProfile = () => {
+    // the picker opens over the current session: it ends only when another
+    // profile signs in, and «Отмена» (Back, Escape) returns here still signed in
     if (onSwitchProfile) onSwitchProfile()
-    // The session is cleared locally even if the server can't be reached.
-    else
-      void session
-        .logout()
-        .catch(() => {})
-        .finally(() => navigate('/profiles'))
+    else navigate('/profiles', { state: { from: location.pathname + location.search, switching: true } })
   }
 
   const items: Item[] = [

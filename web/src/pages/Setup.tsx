@@ -59,7 +59,7 @@ export function Setup() {
           <form className={`${styles.card} glass-strong`} onSubmit={(e) => void submit(e)} noValidate>
             <TextField
               label={t('app.setup.name')}
-              autoComplete="name"
+              autoComplete="username"
               autoFocus
               placeholder={t('app.setup.namePlaceholder')}
               value={name}

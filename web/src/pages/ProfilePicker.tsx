@@ -1,6 +1,9 @@
 // «Кто смотрит?» — the Apple TV profile picker. A profile without a password
 // signs in with one click (at home only: from outside it explains why not);
-// a protected one asks for its password in place.
+// a protected one asks for its password in place. Opened while signed in
+// («Сменить профиль»), it is a switcher: the session stays until another
+// profile signs in, and «Отмена», Escape or the current profile's tile
+// return to the page it was opened from.
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { getProfiles, errorText } from '../api/client'
@@ -28,7 +31,8 @@ export function ProfilePicker() {
   const t = useT()
   const location = useLocation()
   const compact = useIsCompact()
-  const { remote } = useSession()
+  const { remote, status, user } = useSession()
+  const switching = status === 'signed-in'
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [selected, setSelected] = useState<Profile | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -48,9 +52,28 @@ export function ProfilePicker() {
   useEffect(fetchProfiles, [])
 
   const done = () => navigate(destination(location.state), { replace: true })
+  // back where «Сменить профиль» was pressed (its history entry when there is one)
+  const cancel = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+    if ((location.state as { switching?: boolean } | null)?.switching && idx > 0) navigate(-1)
+    else done()
+  }
+  useEffect(() => {
+    if (!switching || selected) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) cancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   const choose = async (p: Profile) => {
     setError(null)
+    // the profile already signed in here: nothing to switch
+    if (switching && user?.id === p.id) {
+      cancel()
+      return
+    }
     if (p.hasPassword) {
       setPassword('')
       setSelected(p)
@@ -157,6 +180,11 @@ export function ProfilePicker() {
                 {error}
               </p>
             )}
+            {switching && (
+              <Button variant="secondary" onClick={cancel}>
+                {t('common.cancel')}
+              </Button>
+            )}
             <SourceLink />
           </section>
         ) : (
@@ -176,11 +204,24 @@ export function ProfilePicker() {
               }}
               noValidate
             >
+              {/* the account a password manager saves and fills the password
+                  for: the profile's name (the tile picked it) */}
+              <input
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={selected.name}
+                readOnly
+                tabIndex={-1}
+                aria-hidden
+                className="visually-hidden"
+              />
               <TextField
                 ref={pwRef}
                 label={t('common.password')}
                 hideLabel
                 type="password"
+                name="password"
                 placeholder={t('common.password')}
                 autoComplete="current-password"
                 autoFocus

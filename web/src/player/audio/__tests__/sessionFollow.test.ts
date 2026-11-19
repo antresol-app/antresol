@@ -120,16 +120,17 @@ describe('the engine follows the session', () => {
     fire(active(), 'playing')
     heard(active(), 5)
     calls = []
-    answer = (url) => (url === '/api/books/home' ? new Response('{"error":"Войдите"}', { status: 401 }) : undefined)
+    // the request's 401 is confirmed by /api/me before the device signs out
+    answer = (url) => (url === '/api/books/home' || url === '/api/me' ? new Response('{"error":"Войдите"}', { status: 401 }) : undefined)
 
     let queueWhenOut = -1
     const off = session.subscribe(() => {
       if (session.get().status === 'signed-out') queueWhenOut = audio.get().queue.length
     })
     await request('GET', '/api/books/home').catch(() => {})
+    await vi.waitFor(() => expect(session.get().status).toBe('signed-out'))
     off()
 
-    expect(session.get().status).toBe('signed-out')
     expect(queueWhenOut).toBe(0)
     expect(puts()).toHaveLength(0) // the cookie is gone: nothing goes out under it
     expect(pending()).toEqual([expect.objectContaining({ userId: 1, itemId: 7, positionMs: 65_000 })])

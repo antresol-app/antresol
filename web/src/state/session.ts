@@ -138,8 +138,25 @@ export const session = {
 }
 
 // Expired or revoked session: back to «Кто смотрит?» (the Gate redirects).
+// A 401 of one request is not proof of that (an addon's page or a media
+// key may answer 401 for its own reasons): /api/me decides, and only its
+// 401 signs this device out.
+let checking: Promise<void> | null = null
 api.onUnauthorized(() => {
-  if (state.status === 'signed-in') set({ status: 'signed-out', user: null, remote: state.remote })
+  if (state.status !== 'signed-in' || checking) return
+  const was = state.user?.id
+  checking = api
+    .getMe()
+    .then(
+      () => undefined,
+      (e: unknown) => {
+        if (e instanceof api.ApiError && e.status === 401 && state.status === 'signed-in' && state.user?.id === was)
+          set({ status: 'signed-out', user: null, remote: state.remote })
+      },
+    )
+    .finally(() => {
+      checking = null
+    })
 })
 
 export function useSession(): SessionState {

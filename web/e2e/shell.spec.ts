@@ -37,6 +37,10 @@ test('first run → profile picker → Главная with the scanned library',
   await page.getByRole('menuitem', { name: 'Сменить профиль' }).click()
   await expect(page).toHaveURL(/\/profiles$/)
   await expect(page.getByRole('heading', { name: 'Кто смотрит?' })).toBeVisible()
+  // the switcher keeps the session (its own tile only returns): signed out, the picker signs in
+  await page.request.post('/api/logout')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Кто смотрит?' })).toBeVisible()
 
   // Protected profile: a wrong password is rejected, the right one gets in.
   await page.getByRole('button', { name: new RegExp(ADMIN.name) }).click()

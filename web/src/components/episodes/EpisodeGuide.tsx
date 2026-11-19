@@ -129,7 +129,7 @@ export function EpisodeGuide({ kind, tmdbId, title, poster, initialSeason, onPla
         // told in the same batch as the guide's own state, not from an effect
         // after it: the page swaps its tile rail for the guide in one commit,
         // never a frame with both
-        loadedRef.current?.(d && d.episodes.length > 0 ? { episodes: d.episodes, choice: c } : null)
+        loadedRef.current?.(d && Array.isArray(d.episodes) && d.episodes.length > 0 ? { episodes: d.episodes, choice: c } : null)
       },
       () => !ctl.signal.aborted && loadedRef.current?.(null),
     )

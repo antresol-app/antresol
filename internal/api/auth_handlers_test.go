@@ -394,3 +394,39 @@ func TestAdminResetsAppPassword(t *testing.T) {
 		t.Fatalf("unknown profile: %d", w.Code)
 	}
 }
+
+// «Сменить профиль»: the picker (GET /api/profiles) works while signed in,
+// the old session lives until another profile signs in, and that sign-in
+// ends it. /api/me renews the browser's cookie (a rolling session).
+func TestSwitchProfileReplacesSessionOnlyOnSignIn(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	w := e.do("POST", "/api/users", `{"name":"Маша"}`, admin)
+	var u auth.User
+	json.Unmarshal(w.Body.Bytes(), &u)
+	if pr := e.do("GET", "/api/profiles", "", admin); pr.Code != 200 {
+		t.Fatalf("profiles while signed in: %d", pr.Code)
+	}
+	me := e.do("GET", "/api/me", "", admin)
+	if c := session(me); me.Code != 200 || c == nil || c.Value != admin.Value || c.MaxAge != 400*24*3600 {
+		t.Fatalf("/api/me should renew the cookie: %d %+v", me.Code, c)
+	}
+	// a wrong password keeps the current session
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"bad"}`, admin); w.Code != 401 {
+		t.Fatalf("%d", w.Code)
+	}
+	if e.do("GET", "/api/me", "", admin).Code != 200 {
+		t.Fatal("a failed sign-in ended the current session")
+	}
+	w = e.do("POST", "/api/login", `{"userId":`+itoa(u.ID)+`}`, admin)
+	masha := session(w)
+	if w.Code != 200 || masha == nil {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if e.do("GET", "/api/me", "", admin).Code != 401 {
+		t.Fatal("the replaced session should end")
+	}
+	if me := e.do("GET", "/api/me", "", masha); me.Code != 200 || !strings.Contains(me.Body.String(), "Маша") {
+		t.Fatalf("%d %s", me.Code, me.Body)
+	}
+}

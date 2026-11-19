@@ -201,7 +201,7 @@ test('sleep menu arms 15 minutes', async ({ page }) => {
   await expect(np.getByRole('button', { name: 'Таймер сна' })).toBeVisible()
 })
 
-test('«Сменить профиль» silences the book; the next profile gets no player and no progress', async ({ page }) => {
+test('another profile signing in after «Сменить профиль» silences the book; the next profile gets no player and no progress', async ({ page }) => {
   test.setTimeout(60_000)
   await ready(page)
   expect((await page.request.post('/api/users', { data: { name: 'Маша', avatar: 'grad-3' } })).ok()).toBeTruthy()
@@ -223,10 +223,10 @@ test('«Сменить профиль» silences the book; the next profile gets
     page.evaluate(() =>
       [...document.querySelectorAll<HTMLAudioElement>('audio[data-vault-audio]')].every((a) => a.paused && !a.getAttribute('src')),
     )
-  // silent already on «Кто смотрит?», where no player shows
-  expect(await silent()).toBe(true)
+  // the switcher keeps the session until another profile signs in: silent from then on
   await page.getByRole('button', { name: /^Маша/ }).click()
   await expect(page.getByRole('navigation', { name: 'Разделы' })).toBeVisible()
+  expect(await silent()).toBe(true)
   await expect(page.getByTestId('mini-player')).toHaveCount(0)
   // a ticker save would come within 10 s
   await page.waitForTimeout(11_000)

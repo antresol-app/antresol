@@ -184,7 +184,9 @@ function Gate() {
       <Navigate to="/profiles" replace state={{ from: AUTH_PATHS.includes(pathname) ? '/' : pathname + search }} />
     )
   }
-  return AUTH_PATHS.includes(pathname) ? <Navigate to="/" replace /> : <Outlet />
+  // signed in, «Кто смотрит?» is «Сменить профиль»: the session stays until
+  // another profile signs in, and the picker's «Отмена» returns to the page
+  return pathname === '/welcome' ? <Navigate to="/" replace /> : <Outlet />
 }
 
 /** Kid profiles have no file browser. */
