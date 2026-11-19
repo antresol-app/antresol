@@ -694,6 +694,26 @@ func run() error {
 		chans.SetExtras(x)
 		deps.AddonRelay = relay
 	}
+	if addonMgr != nil && metaSrc.TMDB != nil && chans.Fetcher == nil {
+		// «ТВ» channels with fetching: an addon downloads their programmes
+		// before they air (channels.fetch); after airing the core removes
+		// them as an admin's delete does, then empties them from the
+		// trash (a cycle that only moved files to the trash would fill
+		// the disk all the same)
+		var remove func(ctx context.Context, id int64) error
+		if fileSvc.Items != nil {
+			remove = func(ctx context.Context, id int64) error {
+				res, err := fileSvc.Items.Delete(ctx, id, 0)
+				for _, t := range res.Trashed {
+					if derr := fileSvc.Ops.Delete(ctx, t.ID); derr != nil {
+						log.Printf("channels: emptying %q from the trash: %v", t.Path, derr)
+					}
+				}
+				return err
+			}
+		}
+		chans.SetFetch(&addons.ChannelFetcher{H: holds.Hooks}, channels.TMDBFetchCatalog{C: metaSrc.TMDB}, remove)
+	}
 	notifier.RequestsOpen = deps.RequestsOpen // «Запросы» in the letters wherever requests are open
 	webAPI, player := api.NewRouterWithPlayer(deps)
 	subsonicAPI := &subsonic.Server{Users: users, Library: repo, Music: musicStore, Network: network, Throttle: throttle,

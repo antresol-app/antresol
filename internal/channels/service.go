@@ -64,6 +64,15 @@ type Service struct {
 	// streams of titles outside the library resolved ahead (prefetch)
 	pmu      sync.Mutex
 	prefetch map[entryKey]*prefetched
+
+	// channels with fetching (fetch.go; SetFetch): what fetches, names
+	// the titles' programmes and removes what aired (nil: none)
+	Fetcher      Fetcher
+	FetchCatalog FetchCatalog
+	FetchRemove  func(ctx context.Context, itemID int64) error
+	fetchKick    chan struct{}
+	fmu          sync.Mutex
+	fetchKeep    map[string]bool // the addon's last «keep» answers, by key
 }
 
 // New wires a service on db; live may be nil (no streaming: tests).
@@ -99,7 +108,7 @@ func (s *Service) ModelFor(ctx context.Context, t Tier) *LLM {
 
 func (s *Service) init() {
 	s.once.Do(func() {
-		s.kick, s.warmKick, s.segKick = make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1)
+		s.kick, s.warmKick, s.segKick, s.fetchKick = make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1)
 	})
 }
 
@@ -145,6 +154,11 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	{
 		done := make(chan struct{})
 		go func() { defer close(done); s.segmentsLoop(ctx) }()
+		defer func() { <-done }()
+	}
+	{
+		done := make(chan struct{})
+		go func() { defer close(done); s.fetchLoop(ctx) }()
 		defer func() { <-done }()
 	}
 	t := time.NewTicker(interval)
@@ -331,6 +345,18 @@ func (s *Service) Program(ctx context.Context, ch int64, t time.Time) (Program, 
 		if err != nil {
 			return Program{}, err
 		}
+		if e.FetchID != 0 {
+			// a programme not on disk at its slot (the pass cuts it before
+			// it airs; the server was off, or the fetch came late): the
+			// slot goes to what is available
+			if try >= maxExtraTries {
+				return Program{Entry: e, Skip: true}, nil
+			}
+			if err := s.fetchCutAt(ctx, ch, e.Seq); err != nil {
+				return Program{}, err
+			}
+			continue
+		}
 		if e.ExtraID != 0 {
 			p, ok, err := s.extraProgram(ctx, e)
 			if ok || err != nil {
@@ -411,11 +437,13 @@ type Info struct {
 func (s *Service) Describe(ctx context.Context, ids []int64) (map[int64]Info, error) {
 	out := map[int64]Info{}
 	seen := map[int64]bool{}
-	var uniq, extras []int64
+	var uniq, extras, fetch []int64
 	for _, id := range ids {
 		if !seen[id] {
 			seen[id] = true
-			if id < 0 {
+			if isFetchItem(id) {
+				fetch = append(fetch, -id-fetchItemBase)
+			} else if id < 0 {
 				extras = append(extras, -id)
 			} else {
 				uniq = append(uniq, id)
@@ -423,6 +451,9 @@ func (s *Service) Describe(ctx context.Context, ids []int64) (map[int64]Info, er
 		}
 	}
 	if err := s.describeExtras(ctx, extras, out); err != nil {
+		return nil, err
+	}
+	if err := s.describeFetch(ctx, fetch, out); err != nil {
 		return nil, err
 	}
 	for part := range chunks(uniq, 500) {

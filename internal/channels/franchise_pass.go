@@ -40,7 +40,7 @@ type FranchiseFacts interface {
 
 // Limits of a pass.
 const (
-	franchiseAlgo        = "1" // a new value recomputes every library once
+	franchiseAlgo        = "2" // a new value recomputes every library once (2: franchises from Wikidata's anchors)
 	franchiseEvery       = 6 * time.Hour
 	franchisePassTimeout = 15 * time.Minute
 	franchiseAskTimeout  = 120 * time.Second
@@ -48,7 +48,6 @@ const (
 	franchiseWikiTTL     = 30 * 24 * time.Hour
 	maxFranchiseAsks     = 40 // clusters the model is asked about in a pass
 	maxFranchiseMembers  = 60
-	maxFranchiseCands    = 40
 )
 
 // Franchises works the library's franchises out in the background and
@@ -141,20 +140,18 @@ func (f *Franchises) Status(ctx context.Context) FranchiseStatus {
 
 // libTitle is a library movie or series with a TMDB id.
 type libTitle struct {
-	ID       int64
-	Kind     string
-	TMDB     int
-	Title    string
-	Year     int
-	Keywords []string
+	ID    int64
+	Kind  string
+	TMDB  int
+	Title string
+	Year  int
 }
 
 // titles are the library's movies and series with a TMDB id, one edition
-// of each (the lowest item id); keywords only with meta (reading every
-// title's metadata is what a pass needs, not the check whether to run one).
-func (f *Franchises) titles(ctx context.Context, meta bool) ([]libTitle, error) {
-	rows, err := f.Store.DB.QueryContext(ctx, `SELECT id, kind, tmdb_id, title, year, CASE WHEN ? THEN meta_json ELSE '' END FROM items
-	  WHERE kind IN ('movie','series') AND missing_since IS NULL AND tmdb_id > 0 ORDER BY id`, meta)
+// of each (the lowest item id).
+func (f *Franchises) titles(ctx context.Context) ([]libTitle, error) {
+	rows, err := f.Store.DB.QueryContext(ctx, `SELECT id, kind, tmdb_id, title, year FROM items
+	  WHERE kind IN ('movie','series') AND missing_since IS NULL AND tmdb_id > 0 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +160,7 @@ func (f *Franchises) titles(ctx context.Context, meta bool) ([]libTitle, error) 
 	seen := map[string]bool{}
 	for rows.Next() {
 		var t libTitle
-		var meta string
-		if err := rows.Scan(&t.ID, &t.Kind, &t.TMDB, &t.Title, &t.Year, &meta); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.TMDB, &t.Title, &t.Year); err != nil {
 			return nil, err
 		}
 		k := t.Kind + "/" + strconv.Itoa(t.TMDB)
@@ -172,15 +168,6 @@ func (f *Franchises) titles(ctx context.Context, meta bool) ([]libTitle, error) 
 			continue
 		}
 		seen[k] = true
-		var m struct {
-			Keywords []string `json:"keywords"`
-		}
-		_ = json.Unmarshal([]byte(meta), &m)
-		for _, kw := range m.Keywords {
-			if kw = strings.ToLower(strings.TrimSpace(kw)); kw != "" {
-				t.Keywords = append(t.Keywords, kw)
-			}
-		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -225,7 +212,7 @@ func (f *Franchises) Pass(ctx context.Context, force bool) (ran bool, err error)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	light, err := f.titles(ctx, false)
+	titles, err := f.titles(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -233,27 +220,23 @@ func (f *Franchises) Pass(ctx context.Context, force bool) (ran bool, err error)
 	if f.Model != nil {
 		model = f.Model(ctx)
 	}
-	fp := franchiseFingerprint(light, f.TMDB.Language(), modelID(model))
+	fp := franchiseFingerprint(titles, f.TMDB.Language(), modelID(model))
 	if !force && f.Store.franchiseState(ctx, "fingerprint") == fp && !f.retryDue(ctx) {
 		return false, nil
 	}
 	f.running.Store(true)
 	defer f.running.Store(false)
-	titles, err := f.titles(ctx, true)
-	if err != nil {
-		return false, err
-	}
 	pctx, cancel := context.WithTimeout(ctx, franchisePassTimeout)
 	defer cancel()
 	colls, complete := f.collections(pctx, titles)
+	facts := f.facts(pctx, titles)
+	groups := clusters(titles, colls, facts)
 	var out []Franchise
 	var passErr string
 	var asks map[string]franchiseAsk
 	if model == nil {
-		for _, c := range colls {
-			if len(c.items) >= 2 {
-				out = append(out, c.franchise())
-			}
+		for _, cl := range groups {
+			out = append(out, cl.baseline(""))
 		}
 	} else {
 		prev := map[string]Franchise{}
@@ -262,7 +245,7 @@ func (f *Franchises) Pass(ctx context.Context, force bool) (ran bool, err error)
 				prev[x.Key] = x
 			}
 		}
-		out, passErr, asks = f.withAgent(pctx, model, titles, colls, prev, f.Store.franchiseAsks(ctx), force, complete)
+		out, passErr, asks = f.withAgent(pctx, model, titles, groups, facts, prev, f.Store.franchiseAsks(ctx), force, complete)
 	}
 	if ctx.Err() != nil {
 		return false, ctx.Err()
@@ -297,10 +280,6 @@ type coll struct {
 	name  string
 	items []int64
 	year  int // of its first title in the library
-}
-
-func (c coll) franchise() Franchise {
-	return Franchise{Key: "c" + strconv.Itoa(c.id), Name: c.name, Source: FranchiseTMDB, Items: c.items}
 }
 
 // collections are the TMDB collections of the library's movies (complete:
@@ -393,6 +372,17 @@ func FranchiseName(s string) string {
 	}
 }
 
+// factsCurrent: a cached value of this FactsVersion (a miss, "", is one).
+func factsCurrent(data string) bool {
+	if data == "" {
+		return true
+	}
+	var v struct {
+		V int `json:"v"`
+	}
+	return json.Unmarshal([]byte(data), &v) == nil && v.V >= wikidata.FactsVersion
+}
+
 // facts are Wikidata's facts of the titles by item id, cached in
 // wikidata_facts; Wikidata off or failing: what the cache has, expired or not.
 func (f *Franchises) facts(ctx context.Context, titles []libTitle) map[int64]wikidata.TitleFacts {
@@ -419,7 +409,7 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) map[int64]wik
 			var data string
 			var at int64
 			err := f.Store.DB.QueryRowContext(ctx, `SELECT data, fetched_at FROM wikidata_facts WHERE kind=? AND tmdb_id=?`, wk, t.TMDB).Scan(&data, &at)
-			if err == nil && (at >= fresh || failed) {
+			if err == nil && (at >= fresh && factsCurrent(data) || failed) {
 				var x wikidata.TitleFacts
 				if data != "" && json.Unmarshal([]byte(data), &x) == nil {
 					out[t.ID] = x

@@ -2,8 +2,11 @@ package wikidata
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -64,7 +67,9 @@ func TestTitleFacts(t *testing.T) {
 		strings.Join(b.Follows, ",") != "Q17738" || len(b.Franchise) != 0 {
 		t.Fatalf("b: %+v", b)
 	}
-	if len(*asked) != 3 {
+	// the titles' search and claims, their links' claims (anchors looked
+	// for: this fake has none), the labels
+	if len(*asked) != 4 {
 		t.Fatalf("requests: %q", *asked)
 	}
 }
@@ -76,5 +81,86 @@ func TestTitleFactsKinds(t *testing.T) {
 	}
 	if got, err := c.TitleFacts(context.Background(), "tv", nil, "ru"); err != nil || len(got) != 0 {
 		t.Fatalf("nothing asked: %v %v", got, err)
+	}
+}
+
+// The franchise library of the channels' tests, recorded from the live
+// Wikidata (VAULT_RECORD_WIKIDATA=1): TMDB movie and series ids.
+var (
+	anchorMovies = []int{11, 1891, 1893, 120, 121, 122, 49051, 57158, 1726, 24428, 10195, 953, 27205, 808, 809}
+	anchorTV     = []int{82856, 83867, 84773, 85271, 84958, 68595, 1396}
+)
+
+// anchorSet is the anchors' QIDs of a title.
+func anchorSet(f TitleFacts) []string {
+	var out []string
+	for _, r := range f.Anchors {
+		out = append(out, r.QID)
+	}
+	return out
+}
+
+func TestTitleFactsAnchorsRecorded(t *testing.T) {
+	c := fixtureClient(t)
+	ctx := context.Background()
+	movies, err := c.TitleFacts(ctx, "movie", anchorMovies, "ru")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tv, err := c.TitleFacts(ctx, "tv", anchorTV, "ru")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("VAULT_RECORD_WIKIDATA") == "1" { // the channels' tests replay these facts
+		b, _ := json.MarshalIndent(map[string]map[int]TitleFacts{"movie": movies, "tv": tv}, "", " ")
+		if err := os.WriteFile("../../channels/testdata/franchise-facts.json", append(b, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range anchorMovies {
+		t.Logf("movie %d %s %v", id, movies[id].QID, movies[id].Anchors)
+	}
+	for _, id := range anchorTV {
+		t.Logf("tv %d %s %v", id, tv[id].QID, tv[id].Anchors)
+	}
+	shares := func(a, b TitleFacts) bool {
+		return slices.ContainsFunc(anchorSet(a), func(q string) bool { return slices.Contains(anchorSet(b), q) })
+	}
+	// Star Wars: the films and the series share the franchise item
+	for _, x := range []TitleFacts{movies[1891], movies[1893], tv[82856], tv[83867]} {
+		if !shares(movies[11], x) {
+			t.Errorf("not Star Wars: %+v", x)
+		}
+	}
+	// Middle-earth: the Lord of the Rings, the Hobbit (through their film
+	// series) and the Rings of Power (through the screen adaptations)
+	for _, x := range []TitleFacts{movies[121], movies[122], movies[49051], movies[57158], tv[84773]} {
+		if !shares(movies[120], x) {
+			t.Errorf("not Middle-earth: %+v", x)
+		}
+	}
+	// Marvel Cinematic Universe
+	for _, x := range []TitleFacts{movies[24428], movies[10195], tv[85271], tv[84958]} {
+		if !shares(movies[1726], x) {
+			t.Errorf("not Marvel: %+v", x)
+		}
+	}
+	// unrelated: none shares with another franchise
+	groups := []TitleFacts{movies[11], movies[120], movies[1726], movies[808]}
+	for _, x := range []TitleFacts{movies[953], movies[27205], tv[68595], tv[1396]} {
+		for _, g := range groups {
+			if shares(g, x) {
+				t.Errorf("%s shares an anchor with %s: %v %v", x.QID, g.QID, x.Anchors, g.Anchors)
+			}
+		}
+	}
+	if len(movies[27205].Anchors) != 0 || len(tv[68595].Anchors) != 0 {
+		t.Errorf("anchors of Inception %v, of Planet Earth II %v", movies[27205].Anchors, tv[68595].Anchors)
+	}
+	if a := movies[11].Anchors; len(a) == 0 || a[0].QID != "Q462" || a[0].Rank != RankFranchise || a[0].Label == "" {
+		t.Errorf("Star Wars's first anchor %+v", a)
+	}
+	if movies[11].Version != FactsVersion {
+		t.Errorf("version %d", movies[11].Version)
 	}
 }

@@ -181,6 +181,7 @@ type Episode struct {
 	Overview string
 	Still    string
 	AirDate  string // "2024-02-27"; "" = not announced
+	Runtime  int    // minutes (0 = unknown)
 }
 
 type SeasonDetails struct {
@@ -680,6 +681,7 @@ func (c *Client) Season(ctx context.Context, tvID, n int) (SeasonDetails, error)
 			Overview string `json:"overview"`
 			Still    string `json:"still_path"`
 			AirDate  string `json:"air_date"`
+			Runtime  int    `json:"runtime"`
 		} `json:"episodes"`
 	}
 	if err := c.get(ctx, fmt.Sprintf("/tv/%d/season/%d", tvID, n), url.Values{"language": {c.language(ctx)}}, &raw); err != nil {
@@ -687,7 +689,7 @@ func (c *Client) Season(ctx context.Context, tvID, n int) (SeasonDetails, error)
 	}
 	s := SeasonDetails{Number: raw.Number, AirDate: raw.AirDate}
 	for _, e := range raw.Episodes {
-		s.Episodes = append(s.Episodes, Episode{Number: e.Number, Name: e.Name, Overview: e.Overview, Still: e.Still, AirDate: e.AirDate})
+		s.Episodes = append(s.Episodes, Episode{Number: e.Number, Name: e.Name, Overview: e.Overview, Still: e.Still, AirDate: e.AirDate, Runtime: e.Runtime})
 	}
 	return s, nil
 }

@@ -113,7 +113,9 @@ export function FranchisesPage() {
                       label={
                         <span className={styles.rowName}>
                           <span>{f.name}</span>
-                          <Badge>{f.source === 'ai' ? t('tv.franchises.sourceAI') : t('tv.franchises.sourceTMDB')}</Badge>
+                          <Badge>
+                            {f.source === 'ai' ? t('tv.franchises.sourceAI') : f.source === 'wikidata' ? t('tv.franchises.sourceWikidata') : t('tv.franchises.sourceTMDB')}
+                          </Badge>
                           {f.manual && <Badge tone="accent">{t('tv.franchises.manual')}</Badge>}
                         </span>
                       }

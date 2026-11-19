@@ -3,16 +3,20 @@
 // «Из плейлиста» or «Новая категория…»), number (0: automatic), the switch,
 // its logo, and its guide — what it is bound to now, a search over the
 // guides' channels to bind it by hand, «Отвязать» to give it back to the
-// automatic match. Saving sends only what changed.
+// automatic match. Saving sends only what changed. When the source merges
+// variants: the channel's group of variants (best first), how it was made
+// (the rules, the AI helper, the admin), «Отдельный канал» to take this
+// entry out of it, «Объединить с…» to make it a variant of another channel
+// of the playlist (a search over the list), and back to automatic.
 import { useEffect, useState } from 'react'
 import { ApiError, errorText } from '../../../api/client'
-import { bindEPG, getCategories, patchChannels, searchEPG, unbindEPG, type EPGHit, type SourceChannel } from '../../../api/iptv'
+import { bindEPG, getCategories, patchChannels, searchEPG, setVariant, unbindEPG, type EPGHit, type SourceChannel } from '../../../api/iptv'
 import { Icon } from '../../../components/Icon'
 import { useT } from '../../../i18n'
 import { Badge } from '../../../ui/Badge'
 import { Button } from '../../../ui/Button'
 import { IconButton } from '../../../ui/IconButton'
-import { GroupedSection, ListRow } from '../../../ui/List'
+import { GroupedSection, ListLinkRow, ListRow } from '../../../ui/List'
 import { NumberField } from '../../../ui/NumberField'
 import { Select } from '../../../ui/Select'
 import { Sheet } from '../../../ui/Sheet'
@@ -25,7 +29,22 @@ import styles from './Sources.module.css'
 const PLAYLIST = '\u0000playlist'
 const NEW = '\u0000new'
 
-export function ChannelSheet({ c, onClose, onSaved }: { c: SourceChannel; onClose: () => void; onSaved: (message?: string) => void }) {
+export function ChannelSheet({
+  c,
+  sourceId,
+  all,
+  variantsOn,
+  onClose,
+  onSaved,
+}: {
+  c: SourceChannel
+  sourceId: number
+  /** The source's channels (the merge search). */
+  all: SourceChannel[]
+  variantsOn: boolean
+  onClose: () => void
+  onSaved: (message?: string) => void
+}) {
   const t = useT()
   const [name, setName] = useState(c.name === c.providerName ? '' : c.name)
   const [category, setCategory] = useState(c.category === c.group ? PLAYLIST : c.category)
@@ -36,6 +55,7 @@ export function ChannelSheet({ c, onClose, onSaved }: { c: SourceChannel; onClos
   const [logo, setLogo] = useState<string | undefined>(c.logo || undefined)
   const [pending, setPending] = useState<File | null>(null)
   const [binding, setBinding] = useState(false)
+  const [merging, setMerging] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [numberError, setNumberError] = useState('')
@@ -74,7 +94,22 @@ export function ChannelSheet({ c, onClose, onSaved }: { c: SourceChannel; onClos
     )
   }
 
+  const variantWord = (mode: 'own' | 'with' | 'auto', withMember?: number) => {
+    setBusy(true)
+    setError('')
+    setVariant(sourceId, c.memberId, mode, withMember).then(
+      () => onSaved(t('iptv.sheet.variantSaved', { name: c.providerName })),
+      (e: unknown) => {
+        setBusy(false)
+        setError(errorText(e, t('common.genericError')))
+      },
+    )
+  }
+
   if (binding) return <EPGBindSheet c={c} onBack={() => setBinding(false)} onBound={(m) => onSaved(m)} />
+  if (merging) return <VariantMergeSheet c={c} all={all} onBack={() => setMerging(false)} onChoose={(m) => variantWord('with', m.memberId)} />
+
+  const v = c.variant
 
   return (
     <Sheet
@@ -116,10 +151,79 @@ export function ChannelSheet({ c, onClose, onSaved }: { c: SourceChannel; onClos
           </ListRow>
           <ChannelLogoRow channelId={c.channelId} url={logo} onChanged={setLogo} pending={pending} onPending={setPending} />
         </GroupedSection>
+        {variantsOn && c.present && (
+          <GroupedSection
+            title={t('iptv.sheet.variants')}
+            footer={v?.manual === 'own' ? t('iptv.sheet.variantHow.own') : v?.how ? t(`iptv.sheet.variantHow.${v.how}`) : t('iptv.sheet.variantsNone')}
+          >
+            {v?.members.map((m, i) => (
+              <ListRow
+                key={m.memberId}
+                label={
+                  <span className={styles.nameLine}>
+                    <span>{m.name}</span>
+                    {i === 0 && <Badge tone="accent">{t('iptv.sheet.variantPrimary')}</Badge>}
+                    {m.memberId === c.memberId && <Badge>{t('iptv.sheet.variantThis')}</Badge>}
+                  </span>
+                }
+              />
+            ))}
+            {(v?.members.length ?? 0) > 0 && (
+              <ListRow label={t('iptv.sheet.variantSplit')} hint={t('iptv.sheet.variantSplitHint')}>
+                <Button variant="secondary" size="small" onClick={() => variantWord('own')}>
+                  {t('iptv.sheet.variantSplitAction')}
+                </Button>
+              </ListRow>
+            )}
+            <ListLinkRow label={t('iptv.sheet.variantMerge')} onOpen={() => setMerging(true)} />
+            {v?.manual && (
+              <ListRow label={t('iptv.sheet.variantAuto')} hint={t('iptv.sheet.variantAutoHint')}>
+                <Button variant="secondary" size="small" onClick={() => variantWord('auto')}>
+                  {t('iptv.sheet.variantAutoAction')}
+                </Button>
+              </ListRow>
+            )}
+          </GroupedSection>
+        )}
         {error && (
           <p className={styles.formError} role="alert">
             {error}
           </p>
+        )}
+      </div>
+    </Sheet>
+  )
+}
+
+/** «Объединить с…»: a search over the playlist's other channels; the chosen one's channel gets this entry as a variant. */
+function VariantMergeSheet({ c, all, onBack, onChoose }: { c: SourceChannel; all: SourceChannel[]; onBack: () => void; onChoose: (m: SourceChannel) => void }) {
+  const t = useT()
+  const [q, setQ] = useState('')
+  const needle = q.trim().toLowerCase()
+  const peers = new Set(c.variant?.members.map((m) => m.memberId) ?? [])
+  const hits = needle
+    ? all.filter((x) => x.present && x.memberId !== c.memberId && !peers.has(x.memberId) && (x.providerName + '\n' + x.name).toLowerCase().includes(needle)).slice(0, 30)
+    : []
+  return (
+    <Sheet
+      title={t('iptv.sheet.variantTitle', { name: c.providerName })}
+      message={t('iptv.sheet.variantMergeHint')}
+      role="dialog"
+      size="wide"
+      onCancel={onBack}
+      actions={[{ label: t('iptv.sheet.back'), kind: 'cancel', run: onBack }]}
+    >
+      <div className={styles.form}>
+        <TextField type="search" label={t('iptv.sheet.variantSearch')} hideLabel placeholder={t('iptv.sheet.variantSearch')} value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} autoFocus />
+        {needle && hits.length === 0 && <p className={styles.found}>{t('iptv.table.empty')}</p>}
+        {hits.length > 0 && (
+          <GroupedSection>
+            {hits.map((h) => (
+              <ListRow key={h.memberId} label={h.providerName} hint={[h.name !== h.providerName ? h.name : '', h.group].filter(Boolean).join(' · ')}>
+                <IconButton size="sm" icon="plus" label={t('iptv.sheet.variantChoose', { name: h.providerName })} onClick={() => onChoose(h)} />
+              </ListRow>
+            ))}
+          </GroupedSection>
         )}
       </div>
     </Sheet>

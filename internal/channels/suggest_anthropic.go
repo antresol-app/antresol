@@ -44,8 +44,9 @@ func anthropicBase(raw string) string {
 // goes to System, the rest (the few-shot pairs end on the user's request)
 // stay in order. No temperature and no thinking config: current models
 // reject both; a low effort keeps a short answer quick. The JSON contract
-// is the prompt's (jsonPart reads the object out of the text).
-func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string) (string, error) {
+// is the prompt's (jsonPart reads the object out of the text), or, with a
+// schema, structured outputs' (output_config.format).
+func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string, schema map[string]any) (string, error) {
 	// Only the key of the settings: without one the SDK would take the
 	// host's (ANTHROPIC_API_KEY, a profile on disk), and it would also add
 	// ANTHROPIC_CUSTOM_HEADERS and ANTHROPIC_BASE_URL of the environment.
@@ -62,6 +63,9 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string) (stri
 		Model:        anthropic.Model(l.Model),
 		MaxTokens:    16000,
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow},
+	}
+	if schema != nil {
+		params.OutputConfig.Format = anthropic.JSONOutputFormatParam{Schema: schema}
 	}
 	for _, m := range msgs {
 		block := anthropic.NewTextBlock(m["content"])

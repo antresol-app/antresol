@@ -539,6 +539,53 @@ type ChannelRelease struct {
 	Path  string `json:"path"`
 }
 
+// ChannelFetch is the body of channels.fetch: programmes «ТВ» channels
+// with fetching want on disk before they air (Want), and keys no channel
+// needs any more (Drop). Want is the whole list each time: the addon
+// starts what it does not fetch yet (a download, never a stream), says how
+// each is, and fetches nothing it was not asked for. A dropped key's
+// unfinished download goes with its data; a finished one is only
+// forgotten (the core removes library files itself). Kind is "movie" or
+// "episode"; TMDBID the movie's, or the series' for an episode.
+type ChannelFetch struct {
+	Want []ChannelFetchTitle `json:"want"`
+	Drop []string            `json:"drop,omitempty"`
+}
+
+// ChannelFetchTitle is one programme of ChannelFetch.Want.
+type ChannelFetchTitle struct {
+	Key     string `json:"key"`
+	Kind    string `json:"kind"`
+	TMDBID  int    `json:"tmdbId"`
+	Season  int    `json:"season,omitempty"`
+	Episode int    `json:"episode,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Year    int    `json:"year,omitempty"`
+}
+
+// ChannelFetchAnswer answers channels.fetch: a state per wanted key.
+type ChannelFetchAnswer struct {
+	States []ChannelFetchState `json:"states"`
+}
+
+// ChannelFetchState is the addon's state of one wanted programme: State
+// "searching" | "downloading" | "done" (moved into the library) |
+// "failed" (Error: why, in Russian); Size and Done in bytes (0: not
+// known yet), Rate the download's speed now (bytes a second). Existing:
+// the programme was being downloaded already, not for the channel (the
+// core then never removes it). Keep: the addon keeps the title (followed,
+// pinned): the core does not remove it after it aired.
+type ChannelFetchState struct {
+	Key      string `json:"key"`
+	State    string `json:"state"`
+	Size     int64  `json:"size,omitempty"`
+	Done     int64  `json:"done,omitempty"`
+	Rate     int64  `json:"rate,omitempty"`
+	Existing bool   `json:"existing,omitempty"`
+	Keep     bool   `json:"keep,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
 // DiskUsage answers the disk.usage hook: the addon's segments of the disk
 // meter.
 type DiskUsage struct {

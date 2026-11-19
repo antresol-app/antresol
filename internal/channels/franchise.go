@@ -14,13 +14,15 @@ import (
 // «Франшизы»: the library's titles of one franchise (Star Wars, Harry
 // Potter…) in the franchise's order, the content of a generated franchise
 // channel. Worked out in the background (franchise_pass.go) from TMDB
-// collections and, with a model, by the AI helper; an admin's order
+// collections and Wikidata's franchise items, put in story order by the
+// AI helper when there is a model; an admin's order
 // (FranchiseManual) is kept across recomputes.
 
 // Sources of a franchise.
 const (
-	FranchiseTMDB = "tmdb" // a TMDB collection, release order
-	FranchiseAI   = "ai"   // the model's: titles of the universe added, story order
+	FranchiseTMDB     = "tmdb"     // a TMDB collection, release order
+	FranchiseWikidata = "wikidata" // titles sharing a Wikidata franchise or universe (and collections), release order
+	FranchiseAI       = "ai"       // the evidence's titles in the model's story order
 )
 
 // Franchise is a row of franchises.

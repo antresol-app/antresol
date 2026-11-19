@@ -117,15 +117,49 @@ func (l *LLM) suggest(ctx context.Context, text string, v Vocabulary) (Suggestio
 
 // chat sends the messages and returns the answer's text.
 func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (string, error) {
+	return l.chatFormat(ctx, msgs, asJSON, nil)
+}
+
+// chatFormat is chat with the answer held to a JSON schema (nil: none):
+// Anthropic's structured outputs, an OpenAI-compatible endpoint's strict
+// json_schema response format, Ollama's format schema. An OpenAI-compatible
+// endpoint that refuses the schema (400: a proxy or a model without
+// structured outputs) is asked again for a plain JSON object; the caller
+// validates the answer either way.
+func (l *LLM) chatFormat(ctx context.Context, msgs []map[string]string, asJSON bool, schema map[string]any) (string, error) {
 	if l.anthropic() {
-		return l.chatAnthropic(ctx, msgs)
+		return l.chatAnthropic(ctx, msgs, schema)
 	}
+	if schema != nil && l.openAI() {
+		out, err := l.chatHTTP(ctx, msgs, true, schema)
+		var st httpStatusErr
+		if errors.As(err, &st) && st.code == http.StatusBadRequest {
+			return l.chatHTTP(ctx, msgs, true, nil)
+		}
+		return out, err
+	}
+	return l.chatHTTP(ctx, msgs, asJSON, schema)
+}
+
+// httpStatusErr: an endpoint's answer other than 200 (the provider's
+// words, cut short).
+type httpStatusErr struct {
+	code int
+	text string
+}
+
+func (e httpStatusErr) Error() string { return e.text }
+
+func (l *LLM) chatHTTP(ctx context.Context, msgs []map[string]string, asJSON bool, schema map[string]any) (string, error) {
 	var body map[string]any
 	path := "/api/chat"
 	if l.openAI() {
 		path = "/chat/completions"
 		body = map[string]any{"model": l.Model, "messages": msgs, "temperature": 0}
-		if asJSON {
+		switch {
+		case schema != nil:
+			body["response_format"] = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "answer", "strict": true, "schema": schema}}
+		case asJSON:
 			body["response_format"] = map[string]string{"type": "json_object"}
 		}
 	} else {
@@ -134,7 +168,10 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (
 			opts["num_thread"] = l.Threads
 		}
 		body = map[string]any{"model": l.Model, "messages": msgs, "stream": false, "think": false, "options": opts, "keep_alive": "2m"}
-		if asJSON {
+		switch {
+		case schema != nil:
+			body["format"] = schema
+		case asJSON:
 			body["format"] = "json"
 		}
 	}
@@ -162,7 +199,7 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (
 		if r := []rune(detail); len(r) > 200 {
 			detail = string(r[:200]) + "…"
 		}
-		return "", fmt.Errorf("llm: %s %s", resp.Status, detail)
+		return "", httpStatusErr{code: resp.StatusCode, text: fmt.Sprintf("llm: %s %s", resp.Status, detail)}
 	}
 	var out struct {
 		Message struct {
@@ -193,6 +230,21 @@ func (l *LLM) AskJSON(ctx context.Context, system, user string) (string, error) 
 	ctx, cancel := context.WithTimeout(ctx, l.timeout())
 	defer cancel()
 	out, err := l.chat(ctx, []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, true)
+	if err != nil {
+		return "", err
+	}
+	return jsonPart(out), nil
+}
+
+// AskSchema is AskJSON with the answer held to schema (a JSON Schema
+// object every provider accepts: objects with additionalProperties false
+// and every property required, no numeric or length limits). The answer's
+// text is still the caller's to validate: a provider without structured
+// outputs falls back to a plain JSON object.
+func (l *LLM) AskSchema(ctx context.Context, system, user string, schema map[string]any) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, l.timeout())
+	defer cancel()
+	out, err := l.chatFormat(ctx, []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}}, true, schema)
 	if err != nil {
 		return "", err
 	}

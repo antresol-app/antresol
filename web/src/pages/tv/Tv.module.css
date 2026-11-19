@@ -462,6 +462,15 @@
 .formErrorInline {
   color: var(--destructive-text);
 }
+/* «С докачкой»: a series' season under its search hit: an empty tile, so its
+   name lines up with the series' */
+.fetchSeason {
+  visibility: hidden;
+}
+/* a programme being fetched: its share, at the row's end */
+.fetchProgress {
+  width: calc(var(--s-16) * 1.5);
+}
 /* «Логотип» without one: an empty well as large as the preview */
 .logoWell {
   display: grid;

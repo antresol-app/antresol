@@ -110,7 +110,8 @@ type Service struct {
 	srcMu sync.Mutex // one playlist refresh at a time
 	epgMu sync.Mutex // one guide refresh at a time
 
-	ai aiCache
+	ai       aiCache
+	variants variantCache
 
 	omu     sync.Mutex
 	opening bool
@@ -278,6 +279,9 @@ func (s *Service) RefreshSource(ctx context.Context, id int64, force bool) (Resu
 			res.Hidden++
 		}
 	}
+	if src.PresetVariants {
+		s.kickVariants() // the AI helper's look at the new playlist, after it
+	}
 	return res, nil
 }
 
@@ -410,7 +414,11 @@ func (s *Service) Sync(ctx context.Context) error {
 			bySrcMembers[m.SourceID] = append(bySrcMembers[m.SourceID], m)
 		}
 	}
-	groups := variantRows(bySrcMembers, decided)
+	answers, err := s.variantAnswers(ctx)
+	if err != nil {
+		return err
+	}
+	groups := variantRows(bySrc, bySrcMembers, decided, answers)
 	changed := map[int64]Decision{}
 	for _, m := range ms {
 		d, ok := decided[m.ID]
@@ -429,13 +437,16 @@ func (s *Service) Sync(ctx context.Context) error {
 	return s.syncRows(ctx, bySrc, ms, decided, groups)
 }
 
-// variantRows groups each source's variants of one channel (VariantGroups)
-// and makes the decision of each group: its best shown member stays shown
-// and leads; every other shown member becomes WhyVariant (hidden as a
-// channel of its own, kept as the lead's fallback stream; Visible). A
-// group nobody shows stays as decided. The answer: member ids per group,
-// the lead first, then by rank (one logical row each, syncRows).
-func variantRows(bySrc map[int64][]Member, decided map[int64]Decision) [][]int64 {
+// variantRows groups each source's variants of one channel
+// (planVariants: the rules, the AI helper's answers, the admin's word) and
+// makes the decision of each group: its best shown member stays shown and
+// leads; every other shown member becomes WhyVariant (hidden as a channel
+// of its own, kept as the lead's fallback stream; Visible). A group nobody
+// shows stays as decided. An entry the AI helper called a timeshift copy
+// is hidden as one when the source hides timeshifts and nobody decided
+// otherwise. The answer: member ids per group, the lead first, then by
+// rank (one logical row each, syncRows).
+func variantRows(srcs map[int64]Source, bySrc map[int64][]Member, decided map[int64]Decision, answers map[string][]variantVerdict) [][]int64 {
 	srcIDs := make([]int64, 0, len(bySrc))
 	for id := range bySrc {
 		srcIDs = append(srcIDs, id)
@@ -444,7 +455,16 @@ func variantRows(bySrc map[int64][]Member, decided map[int64]Decision) [][]int64
 	var out [][]int64
 	hidden := false
 	for _, sid := range srcIDs {
-		for _, g := range VariantGroups(bySrc[sid]) {
+		plan := planVariants(bySrc[sid], answers)
+		if srcs[sid].PresetTimeshift {
+			for id := range plan.timeshift {
+				if d := decided[id]; d.Why == WhySourceDefault || d.Why == WhyLanguage {
+					d.Shown, d.Why = &hidden, WhyTimeshift
+					decided[id] = d
+				}
+			}
+		}
+		for _, g := range plan.groups {
 			lead := -1
 			for i, m := range g {
 				if d := decided[m.ID]; d.Shown != nil && *d.Shown {
@@ -589,6 +609,21 @@ func (s *Service) syncRows(ctx context.Context, bySrc map[int64]Source, ms []Mem
 		m := &order[i]
 		if c := m.ChannelID; m.Present && c != 0 && claimed[c][m.SourceID] != 0 && claimed[c][m.SourceID] != grouped[m.ID] {
 			m.ChannelID = 0
+		}
+	}
+	// a group split up (the AI helper or the admin said its entries are
+	// two channels) leaves a row with two entries of one source: the first
+	// keeps it, the others move out
+	kept := map[[2]int64]bool{}
+	for i := range order {
+		m := &order[i]
+		if !m.Present || m.ChannelID == 0 || grouped[m.ID] != 0 {
+			continue
+		}
+		if k := [2]int64{m.ChannelID, m.SourceID}; kept[k] {
+			m.ChannelID = 0
+		} else {
+			kept[k] = true
 		}
 	}
 	rowSrc = map[int64]map[int64]bool{}
@@ -984,6 +1019,7 @@ func (s *Service) Run(ctx context.Context) {
 	for {
 		s.refreshDue(ctx, false)
 		s.Categorize(ctx)
+		s.AskVariants(ctx)
 		select {
 		case <-ctx.Done():
 			return

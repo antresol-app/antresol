@@ -109,6 +109,19 @@ export interface SourceChannel {
   /** Still in the playlist. */
   present: boolean
   new: boolean
+  /** Its group of variants of one channel (absent: none, and no word of the admin on it). */
+  variant?: ChannelVariant
+}
+
+/** How a group of variants was made. */
+export type VariantHow = 'rules' | 'ai' | 'admin'
+
+export interface ChannelVariant {
+  /** The group, best first (the first shown one leads); empty when the admin made it a channel of its own. */
+  members: { memberId: number; name: string }[]
+  how: VariantHow | ''
+  /** The admin's word on this entry: a channel of its own, a variant of another, or none. */
+  manual: 'own' | 'with' | ''
 }
 
 export interface ChannelGroup {
@@ -186,6 +199,9 @@ export const getSourceChannels = (id: number, signal?: AbortSignal) =>
 /** "" category/name: the playlist's; number 0: automatic; reset: back to the playlist's everything. */
 export const patchChannels = (body: { channelIds: number[]; shown?: boolean; category?: string; name?: string; number?: number; reset?: boolean }) =>
   request<{ updated: number }>('PATCH', '/api/tv/channels', body)
+/** The admin's word on an entry's variants: a channel of its own, a variant of another entry's channel, or back to automatic. */
+export const setVariant = (sourceId: number, memberId: number, mode: 'own' | 'with' | 'auto', withMember?: number) =>
+  request<void>('PUT', `/api/tv/sources/${sourceId}/members/${memberId}/variant`, { mode, with: withMember ?? 0 })
 export const patchGroup = (body: { sourceId: number; group: string; shown: boolean }) => request<{ updated: number }>('PATCH', '/api/tv/groups', body)
 /** Shows every channel the source's default hid (a big playlist's); the adult and timeshift presets keep theirs. */
 export const showAllDefault = (sourceId: number) => request<{ updated: number }>('PATCH', '/api/tv/groups', { sourceId, all: true, shown: true })

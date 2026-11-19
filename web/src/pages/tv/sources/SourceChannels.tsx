@@ -410,6 +410,9 @@ export function SourceChannels() {
       {sheet && (
         <ChannelSheet
           c={sheet}
+          sourceId={id}
+          all={list ?? []}
+          variantsOn={source?.presets.variants ?? false}
           onClose={() => setSheet(null)}
           onSaved={(msg) => {
             setSheet(null)

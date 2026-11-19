@@ -10,4 +10,10 @@ type Decision struct {
 	Name   string `json:"name,omitempty"`
 	Number int    `json:"number,omitempty"`
 	Why    string `json:"why,omitempty"`
+	// Variant: the admin's word on the entry's variants (variants_ai.go):
+	// VariantOwn, a channel of its own; VariantWith + another entry's
+	// Ident, a variant of that entry's channel; "": the rules and the AI
+	// helper decide. It is not a decision about showing (ApplyManual
+	// leaves Why alone for it).
+	Variant string `json:"variant,omitempty"`
 }

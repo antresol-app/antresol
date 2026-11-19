@@ -132,6 +132,8 @@ func init() {
 		"Укажите название источника":                               "Enter the source’s name",
 		"Выберите каналы":                                          "Select channels",
 		"Номер задаётся одному каналу":                             "A number is set for one channel at a time",
+		"Канал не найден в этом плейлисте":                         "Channel not found in this playlist",
+		"Канал не может быть вариантом самого себя":                "A channel cannot be a variant of itself",
 		"Набор не найден":                                          "Set not found",
 		"Ссылка не найдена":                                        "Link not found",
 		"Укажите название набора":                                  "Enter the set’s name",
@@ -152,5 +154,11 @@ func init() {
 		"у источника нет адреса":                  "the source has no address",
 		"не удалось расшифровать адрес источника": "the source’s address could not be decrypted",
 		"плейлист не найден":                      "playlist source not found",
+		// channels with fetching (channels/fetch*.go)
+		"Неизвестный фильм или сериал в составе канала": "Unknown movie or series in the channel’s lineup",
+		"Недопустимый объём диска для канала":           "Invalid disk space for the channel",
+		"Недопустимый объём диска для каналов":          "Invalid disk space for the channels",
+		"Недопустимый срок хранения после эфира":        "Invalid time to keep after airing",
+		"Каналы с докачкой настраивает администратор":   "Only an administrator sets up channels that fetch",
 	})
 }

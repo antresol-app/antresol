@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"github.com/antresol-app/antresol/internal/version"
 	"io"
 	"net/http"
@@ -39,6 +40,9 @@ func (f fixtures) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if r.URL.Query().Get("action") == "wbgetentities" {
+			body = trimClaims(f.t, body)
+		}
 		if err := os.WriteFile(name, body, 0o644); err != nil {
 			f.t.Fatal(err)
 		}
@@ -50,6 +54,37 @@ func (f fixtures) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.t.Fatalf("no fixture for %s: %v", r.URL.RawQuery, err)
 	}
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}, Request: r}, nil
+}
+
+// recordedProps are the properties the package reads; a film's item has
+// hundreds of others (cast, awards, box office…), megabytes the fixtures
+// do not keep. Reading a new property means adding it here and recording
+// again.
+var recordedProps = map[string]bool{"P31": true, "P50": true, "P57": true, "P155": true, "P156": true, "P179": true,
+	"P279": true, "P345": true, "P361": true, "P444": true, "P577": true, "P629": true, "P648": true, "P1434": true,
+	"P1476": true, "P4947": true, "P4983": true, "P8345": true}
+
+// trimClaims leaves only recordedProps in a wbgetentities answer.
+func trimClaims(t *testing.T, body []byte) []byte {
+	var raw map[string]any
+	if json.Unmarshal(body, &raw) != nil {
+		return body
+	}
+	ents, _ := raw["entities"].(map[string]any)
+	for _, e := range ents {
+		m, _ := e.(map[string]any)
+		claims, _ := m["claims"].(map[string]any)
+		for p := range claims {
+			if !recordedProps[p] {
+				delete(claims, p)
+			}
+		}
+	}
+	out, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func fixtureClient(t *testing.T) *Client {

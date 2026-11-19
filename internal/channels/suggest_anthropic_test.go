@@ -209,3 +209,46 @@ func TestAnthropicRefusesAnEmptyKey(t *testing.T) {
 		t.Fatalf("%d requests went out without a key", asked)
 	}
 }
+
+// AskSchema holds the answer to the schema with structured outputs
+// (output_config.format), beside the effort.
+func TestAnthropicAskSchema(t *testing.T) {
+	var got map[string]any
+	srv := anthropicServer(t, `{"id":"m","type":"message","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"text","text":"{\"entries\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`, &got)
+	schema := map[string]any{"type": "object", "properties": map[string]any{"entries": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}}},
+		"required": []string{"entries"}, "additionalProperties": false}
+	out, err := anthropicLLM(srv, "sk-test").AskSchema(context.Background(), "sys", "user", schema)
+	if err != nil || out != `{"entries":[]}` {
+		t.Fatalf("answer %q, %v", out, err)
+	}
+	oc, _ := got["output_config"].(map[string]any)
+	f, _ := oc["format"].(map[string]any)
+	if f["type"] != "json_schema" || f["schema"] == nil || oc["effort"] != "low" {
+		t.Errorf("output_config: %v", got["output_config"])
+	}
+}
+
+// An OpenAI-compatible endpoint gets a strict json_schema response format;
+// one that refuses it (400) is asked again for a plain JSON object.
+func TestOpenAIAskSchemaFallsBack(t *testing.T) {
+	var formats []any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		formats = append(formats, body["response_format"])
+		if f, _ := body["response_format"].(map[string]any); f["type"] == "json_schema" {
+			http.Error(w, `{"error":"response_format json_schema not supported"}`, http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"{\"entries\":[]}"}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+	l := &LLM{URL: srv.URL + "/v1", Model: "m"}
+	out, err := l.AskSchema(context.Background(), "sys", "user", map[string]any{"type": "object"})
+	if err != nil || out != `{"entries":[]}` || len(formats) != 2 {
+		t.Fatalf("answer %q, %v, formats %v", out, err, formats)
+	}
+	if f, _ := formats[1].(map[string]any); f["type"] != "json_object" {
+		t.Errorf("fallback format %v", formats[1])
+	}
+}

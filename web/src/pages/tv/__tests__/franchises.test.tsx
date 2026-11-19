@@ -19,6 +19,7 @@ const SAGA = {
   ],
 }
 const PAIR = { key: 'c20', name: 'Пара', source: 'tmdb', manual: false, items: [{ id: 4, kind: 'movie', title: 'А' }, { id: 5, kind: 'movie', title: 'Б' }] }
+const SHARED = { key: 'wQ1', name: 'Общая', source: 'wikidata', manual: false, channelId: 8, items: [{ id: 6, kind: 'movie', title: 'В' }, { id: 7, kind: 'series', title: 'Г' }] }
 
 type Call = { method: string; url: string; body?: unknown }
 let calls: Call[] = []
@@ -33,7 +34,7 @@ beforeEach(() => {
     const method = (init?.method ?? 'GET').toUpperCase()
     calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
     if (method === 'GET' && url === '/api/channels/franchises')
-      return json({ available, status: { running: false, model: 'http://llm|m', at: new Date().toISOString() }, franchises: available ? [SAGA, PAIR] : [] })
+      return json({ available, status: { running: false, model: 'http://llm|m', at: new Date().toISOString() }, franchises: available ? [SAGA, PAIR, SHARED] : [] })
     if (method === 'PUT' || method === 'DELETE') return json(SAGA)
     return json(null, 202)
   })
@@ -53,10 +54,12 @@ describe('«Франшизы»', () => {
     expect(await screen.findByText('Космическая сага')).toBeInTheDocument()
     expect(screen.getByText('ИИ')).toBeInTheDocument()
     expect(screen.getByText('TMDB')).toBeInTheDocument()
+    expect(screen.getByText('Wikidata')).toBeInTheDocument()
     expect(screen.getByText('Свой порядок')).toBeInTheDocument()
     expect(screen.getByText('3 фильма или сериала · есть канал')).toBeInTheDocument()
+    expect(screen.getByText('2 фильма или сериала · есть канал')).toBeInTheDocument()
     expect(screen.getByText('2 фильма или сериала · канала нет — мало для показа')).toBeInTheDocument()
-    expect(screen.getByText(/Порядок и состав уточняет ИИ-помощник/)).toBeInTheDocument()
+    expect(screen.getByText(/Порядок по сюжету расставляет ИИ-помощник/)).toBeInTheDocument()
   })
 
   it('saves the new order with a removed title hidden', async () => {

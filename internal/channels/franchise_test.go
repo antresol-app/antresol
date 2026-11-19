@@ -59,6 +59,7 @@ func (f *fakeFacts) TitleFacts(_ context.Context, kind string, ids []int, _ stri
 	out := map[int]wikidata.TitleFacts{}
 	for _, id := range ids {
 		if x, ok := f.facts[kind][id]; ok {
+			x.Version = wikidata.FactsVersion
 			out[id] = x
 		}
 	}
@@ -277,8 +278,8 @@ func TestFranchisesManualOrderSurvives(t *testing.T) {
 func swFacts(l swLib) *fakeFacts {
 	sw := []wikidata.Ref{{QID: "Q462", Label: "Звёздные войны"}}
 	return &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{
-		"movie": {11: {QID: "Q17738", Franchise: sw, FollowedBy: []string{"Q181795"}}, 1891: {QID: "Q181795", Franchise: sw, Follows: []string{"Q17738"}}},
-		"tv":    {4194: {QID: "Q1", Franchise: sw}},
+		"movie": {11: {QID: "Q17738", Anchors: sw, Franchise: sw, FollowedBy: []string{"Q181795"}}, 1891: {QID: "Q181795", Anchors: sw, Franchise: sw, Follows: []string{"Q17738"}}},
+		"tv":    {4194: {QID: "Q1", Anchors: sw, Franchise: sw}},
 	}}
 }
 
@@ -287,11 +288,11 @@ func TestFranchisesAgent(t *testing.T) {
 	ctx := context.Background()
 	l, tm := starWars(f)
 	m := &fakeModel{answer: func(in agentInput) string {
-		if strings.Contains(in.Collections[0], "Звёздные") {
-			// story order, the clone wars added, an unknown id, IV left out
-			return fmt.Sprintf("```json\n{\"name\":\"Звёздные войны\",\"order\":[%d,%d,%d,999999],\"add\":[%d]}\n```", l.i, l.clone, l.v, l.clone)
+		if strings.Contains(in.Franchise, "Звёздные") {
+			// story order, an unknown id, IV left out, a collection's film dropped (refused)
+			return fmt.Sprintf("```json\n{\"name\":\"Звёздные войны\",\"order\":[%d,%d,%d,999999],\"drop\":[%d]}\n```", l.i, l.clone, l.v, l.v)
 		}
-		return `{"name": "Гарри Поттер", "order": [` + itoa(l.hp1) + `,` + itoa(l.hp2) + `], "add": []}`
+		return `{"name": "Гарри Поттер", "order": [` + itoa(l.hp1) + `,` + itoa(l.hp2) + `], "drop": []}`
 	}}
 	model := m.llm(t)
 	facts := swFacts(l)
@@ -304,22 +305,23 @@ func TestFranchisesAgent(t *testing.T) {
 	if want := []int64{l.iv, l.i, l.clone, l.v}; sw.Source != FranchiseAI || !slices.Equal(sw.Items, want) || sw.Error != "" {
 		t.Fatalf("star wars %+v, want items %v", sw, want)
 	}
-	// what the model was given: members with Wikidata, the series as a candidate by Wikidata
+	// what the model was given: the films and, by Wikidata, the series, in release order
 	var swIn agentInput
 	for _, in := range m.asked {
-		if strings.Contains(in.Collections[0], "Звёздные") {
+		if strings.Contains(in.Franchise, "Звёздные") {
 			swIn = in
 		}
 	}
-	if len(swIn.Members) != 3 || len(swIn.Candidates) != 1 || swIn.Candidates[0].ID != l.clone || swIn.Candidates[0].Evidence != "wikidata" {
+	if len(swIn.Members) != 4 || swIn.Members[3].ID != l.clone || swIn.Members[3].Via != "wikidata" || swIn.Members[0].Via != "collection" ||
+		!slices.Equal(swIn.Anchors, []string{"Звёздные войны"}) {
 		t.Fatalf("input %+v", swIn)
 	}
 	if w := swIn.Members[0].Wikidata; w == nil || !slices.Equal(w.FollowedBy, []int64{l.v}) || w.Franchise[0] != "Звёздные войны" {
 		t.Fatalf("evidence %+v", swIn.Members[0])
 	}
-	for _, c := range swIn.Candidates {
+	for _, c := range swIn.Members {
 		if c.ID == l.lone || c.ID == l.single {
-			t.Fatalf("an unrelated candidate %+v", c)
+			t.Fatalf("an unrelated title %+v", c)
 		}
 	}
 	// the facts are cached; an unchanged input is not asked again
@@ -335,12 +337,51 @@ func TestFranchisesAgent(t *testing.T) {
 	}
 }
 
+// The model may leave out a title only Wikidata brought in; one that
+// leaves fewer than two is refused.
+func TestFranchisesAgentDrops(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	l, tm := starWars(f)
+	drop := l.clone
+	model := (&fakeModel{answer: func(in agentInput) string {
+		return fmt.Sprintf(`{"name":"","order":[%s],"drop":[%d]}`, strings.Join(idsOf(in), ","), drop)
+	}}).llm(t)
+	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: swFacts(l), Model: func(context.Context) *LLM { return model }}
+	fr.Pass(ctx, false)
+	if sw := franchisesOf(t, f.st)["c10"]; !slices.Equal(sw.Items, []int64{l.iv, l.v, l.i}) || sw.Error != "" {
+		t.Fatalf("the series is not dropped: %+v", sw)
+	}
+	// only a series and a film of no collection: dropping one unmakes it
+	g := newFixture(t)
+	film := g.titled(g.movie("Изгой-один", 130, itemOpt{year: 2016}), 330459)
+	s, _ := g.series("Андор", 1, 12, 50, itemOpt{year: 2022})
+	andor := g.titled(s, 83867)
+	sw := []wikidata.Ref{{QID: "Q462", Label: "Звёздные войны"}}
+	drop = andor
+	fr = &Franchises{Store: g.st, TMDB: &fakeCollections{}, Model: func(context.Context) *LLM { return model },
+		Wiki: &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {330459: {QID: "Qr", Anchors: sw}}, "tv": {83867: {QID: "Qa", Anchors: sw}}}}}
+	fr.Pass(ctx, false)
+	got := franchisesOf(t, g.st)["wQ462"]
+	if !slices.Equal(got.Items, []int64{film, andor}) || got.Source != FranchiseWikidata || got.Error == "" {
+		t.Fatalf("a refused answer is not the baseline: %+v", got)
+	}
+}
+
+func idsOf(in agentInput) []string {
+	var ids []string
+	for _, x := range in.Members {
+		ids = append(ids, itoa(x.ID))
+	}
+	return ids
+}
+
 func TestFranchisesAgentFailures(t *testing.T) {
 	for name, answer := range map[string]string{
 		"prose":       "I cannot help with that",
-		"extra field": `{"name":"x","order":[1],"add":[],"why":"..."}`,
-		"made up ids": `{"name":"x","order":[900001,900002,900003],"add":[]}`,
-		"empty":       `{"name":"x","order":[],"add":[]}`,
+		"extra field": `{"name":"x","order":[1],"drop":[],"why":"..."}`,
+		"made up ids": `{"name":"x","order":[900001,900002,900003],"drop":[]}`,
+		"empty":       `{"name":"x","order":[],"drop":[]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t)
@@ -367,11 +408,7 @@ func TestFranchisesWikidataDownStillAsks(t *testing.T) {
 	ctx := context.Background()
 	l, tm := starWars(f)
 	m := &fakeModel{answer: func(in agentInput) string {
-		ids := []string{}
-		for _, x := range in.Members {
-			ids = append(ids, itoa(x.ID))
-		}
-		return `{"name":"","order":[` + strings.Join(ids, ",") + `],"add":[]}`
+		return `{"name":"","order":[` + strings.Join(idsOf(in), ",") + `],"drop":[]}`
 	}}
 	model := m.llm(t)
 	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: &fakeFacts{err: fmt.Errorf("down")}, Model: func(context.Context) *LLM { return model }}
@@ -379,14 +416,12 @@ func TestFranchisesWikidataDownStillAsks(t *testing.T) {
 		t.Fatal(err)
 	}
 	sw := franchisesOf(t, f.st)["c10"]
-	if sw.Source != FranchiseAI || sw.Name != "Звёздные войны" {
+	if sw.Source != FranchiseAI || sw.Name != "Звёздные войны" || !slices.Equal(sw.Items, []int64{l.iv, l.v, l.i}) {
 		t.Fatalf("%+v", sw)
 	}
-	// the series is still a candidate: the collection's name is in its title
-	for _, in := range m.asked {
-		if strings.Contains(in.Collections[0], "Звёздные") && (len(in.Candidates) != 1 || in.Candidates[0].ID != l.clone || in.Candidates[0].Evidence != "title") {
-			t.Fatalf("candidates %+v", in.Candidates)
-		}
+	// no evidence for the series, no guess: a title naming the franchise is not taken in
+	if slices.Contains(sw.Items, l.clone) {
+		t.Fatalf("the series by its title: %v", sw.Items)
 	}
 }
 
@@ -399,22 +434,17 @@ func TestFranchiseClustersMerge(t *testing.T) {
 	av2 := f.titled(f.movie("Мстители: Эра Альтрона", 140, itemOpt{year: 2015}), 99861, "marvel cinematic universe (mcu)")
 	s, _ := f.series("Локи", 1, 6, 50, itemOpt{year: 2021})
 	loki := f.titled(s, 84958, "marvel cinematic universe (mcu)")
-	other := f.titled(f.movie("Другое", 100, itemOpt{year: 2000}), 7, "superhero")
+	// a shared keyword is no evidence
+	f.titled(f.movie("Другое", 100, itemOpt{year: 2000}), 7, "marvel cinematic universe (mcu)", "superhero")
 	f.titled(f.movie("Ещё", 100, itemOpt{year: 2001}), 8, "superhero")
 	tm := &fakeCollections{of: map[int]int{1726: 131292, 10138: 131292, 24428: 86311, 99861: 86311},
 		names: map[int]string{131292: "Железный человек (Коллекция)", 86311: "Мстители (Коллекция)"},
 		parts: map[int][]int{131292: {1726, 10138}, 86311: {24428, 99861}}}
 	mcu := []wikidata.Ref{{QID: "Q642878", Label: "Кинематографическая вселенная Marvel"}}
-	facts := &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {1726: {QID: "Qa", Universe: mcu}, 24428: {QID: "Qb", Universe: mcu}}}}
+	facts := &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {1726: {QID: "Qa", Anchors: mcu}, 24428: {QID: "Qb", Anchors: mcu}},
+		"tv": {84958: {QID: "Qc", Anchors: mcu}}}}
 	m := &fakeModel{answer: func(in agentInput) string {
-		ids := []string{}
-		for _, x := range in.Members {
-			ids = append(ids, itoa(x.ID))
-		}
-		for _, x := range in.Candidates {
-			ids = append(ids, itoa(x.ID))
-		}
-		return `{"name":"Marvel","order":[` + strings.Join(ids, ",") + `],"add":[]}`
+		return `{"name":"Marvel","order":[` + strings.Join(idsOf(in), ",") + `],"drop":[]}`
 	}}
 	model := m.llm(t)
 	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: facts, Model: func(context.Context) *LLM { return model }}
@@ -429,8 +459,15 @@ func TestFranchiseClustersMerge(t *testing.T) {
 	if want := []int64{im, im2, av, av2, loki}; mf.Name != "Marvel" || !slices.Equal(mf.Items, want) {
 		t.Fatalf("marvel %+v, want %v", mf, want)
 	}
-	if c := m.asked[0].Candidates; len(c) != 1 || c[0].Evidence != "keyword" || c[0].ID == other {
-		t.Fatalf("candidates %+v", c)
+	if in := m.asked[0]; len(in.Members) != 5 || in.Members[4].Via != "wikidata" || len(in.Collections) != 2 {
+		t.Fatalf("input %+v", in)
+	}
+	// without the model: the same franchise, release order, Wikidata's name
+	fr.Model = nil
+	fr.Pass(ctx, true)
+	if mf := franchisesOf(t, f.st)["c86311"]; mf.Source != FranchiseWikidata || mf.Name != "Кинематографическая вселенная Marvel" ||
+		!slices.Equal(mf.Items, []int64{im, im2, av, av2, loki}) {
+		t.Fatalf("baseline %+v", mf)
 	}
 }
 

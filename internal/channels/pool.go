@@ -49,6 +49,9 @@ type Prog struct {
 	// TitleID: the movie or series the programme is of (0: UnitID), what
 	// must not be on two channels at once.
 	TitleID int64
+	// FetchID: a programme not on disk yet (channel_fetch; ItemID is then
+	// fetchItem(FetchID), its one part has no file); 0 otherwise.
+	FetchID int64
 }
 
 // Pool is what a channel's rules take: the units (by id) and each unit's
@@ -57,6 +60,12 @@ type Prog struct {
 type Pool struct {
 	Units []Unit
 	Progs map[int64][]Prog
+	// Flat (a channel with fetching): every programme in the channel's
+	// order, what an ordered channel plays instead of the units' in turn;
+	// Fits says whether one may take a slot starting at start (ms): a
+	// programme not on disk only when it will be there in time (nil: all).
+	Flat []Prog
+	Fits func(pr Prog, start int64) bool
 }
 
 // Empty: nothing to play.

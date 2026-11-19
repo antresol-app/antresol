@@ -1,7 +1,6 @@
 package iptv
 
 import (
-	"sort"
 	"strings"
 	"unicode"
 )
@@ -80,6 +79,14 @@ func variantWords(s string) []string {
 // («пример», a regional feed). The base keeps at least one word, so a name
 // that is only a mark («HD») is its own base.
 func VariantName(name string) (base string, rank int) {
+	base, rank, _ = variantParse(name)
+	return base, rank
+}
+
+// variantParse is VariantName and whether a trailing (…) read as a place
+// (a regional feed — or a timeshift or another channel the rules cannot
+// tell from one: the AI helper is asked, variants_ai.go).
+func variantParse(name string) (base string, rank int, regional bool) {
 	w := variantWords(name)
 	quality, bonus := qualPlain, 0
 	for {
@@ -103,6 +110,7 @@ func VariantName(name string) (base string, rank int) {
 				quality, bonus = max(quality, q.quality), bonus+q.bonus
 			} else if regionWords(inner) {
 				bonus -= 5 // a regional feed: the national one leads
+				regional = true
 			} else {
 				goto done
 			}
@@ -130,7 +138,7 @@ done:
 			clean = append(clean, x)
 		}
 	}
-	return strings.Join(clean, " "), quality + bonus
+	return strings.Join(clean, " "), quality + bonus, regional
 }
 
 type markSum struct{ quality, bonus int }
@@ -180,104 +188,10 @@ func variantCandidate(m Member) bool {
 const maxIDShare = 3
 
 // VariantGroups groups a source's present entries into variants of one
-// channel: the same base name (VariantName), or the same tvg-id or guide
-// channel. Each group of two or more is returned best first (rank, then
-// playlist position); entries of no group are left out.
+// channel by the rules alone: the same base name (VariantName), or the same
+// tvg-id or guide channel. Each group of two or more is returned best
+// first (rank, then playlist position); entries of no group are left out.
+// The AI helper's answers and the admin's word come on top (planVariants).
 func VariantGroups(ms []Member) [][]Member {
-	var cand []Member
-	for _, m := range ms {
-		if m.Present && variantCandidate(m) {
-			cand = append(cand, m)
-		}
-	}
-	parent := make([]int, len(cand))
-	for i := range parent {
-		parent[i] = i
-	}
-	var find func(int) int
-	find = func(i int) int {
-		for parent[i] != i {
-			parent[i] = parent[parent[i]]
-			i = parent[i]
-		}
-		return i
-	}
-	union := func(a, b int) {
-		if ra, rb := find(a), find(b); ra != rb {
-			parent[max(ra, rb)] = min(ra, rb)
-		}
-	}
-	bases := make([]string, len(cand))
-	ranks := make([]int, len(cand))
-	byBase := map[string]int{}
-	for i, m := range cand {
-		bases[i], ranks[i] = VariantName(m.Name)
-		if j, ok := byBase[bases[i]]; ok {
-			union(i, j)
-		} else {
-			byBase[bases[i]] = i
-		}
-	}
-	// ids: tvg-id and the guide channel (when it was matched, not only
-	// guessed by a normalised name)
-	joinBy := func(key func(Member) string) {
-		first := map[string]int{}
-		names := map[string]map[string]bool{}
-		for i, m := range cand {
-			k := key(m)
-			if k == "" {
-				continue
-			}
-			if names[k] == nil {
-				names[k] = map[string]bool{}
-			}
-			names[k][bases[i]] = true
-		}
-		for i, m := range cand {
-			k := key(m)
-			if k == "" || len(names[k]) > maxIDShare {
-				continue
-			}
-			if j, ok := first[k]; ok {
-				union(i, j)
-			} else {
-				first[k] = i
-			}
-		}
-	}
-	joinBy(func(m Member) string { return strings.ToLower(strings.TrimSpace(m.TvgID)) })
-	joinBy(func(m Member) string {
-		if m.EPGID == "" || m.EPGHow == "norm-name" {
-			return ""
-		}
-		return m.EPGID
-	})
-	byRoot := map[int][]int{}
-	for i := range cand {
-		r := find(i)
-		byRoot[r] = append(byRoot[r], i)
-	}
-	roots := make([]int, 0, len(byRoot))
-	for r, is := range byRoot {
-		if len(is) > 1 {
-			roots = append(roots, r)
-		}
-	}
-	sort.Ints(roots)
-	out := make([][]Member, 0, len(roots))
-	for _, r := range roots {
-		is := byRoot[r]
-		sort.SliceStable(is, func(a, b int) bool {
-			if ranks[is[a]] != ranks[is[b]] {
-				return ranks[is[a]] > ranks[is[b]]
-			}
-			return cand[is[a]].Position < cand[is[b]].Position
-		})
-		g := make([]Member, len(is))
-		for k, i := range is {
-			g[k] = cand[i]
-		}
-		out = append(out, g)
-	}
-	return out
+	return planVariants(ms, nil).groups
 }

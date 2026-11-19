@@ -3,14 +3,18 @@
 // shows (a selection by kind, genre and decade, or its own ordered list —
 // «Состав канала»: movies, series, episodes, folders), the order, the age
 // limit, whether episodes skip their openings and credits, and whether it
-// is on.
+// is on. An admin may also make a channel «С докачкой» (rules.fetch):
+// titles in order that are fetched before they air (ChannelFetch).
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../../api/client";
 import {
   createChannel,
+  FETCH_DEFAULT_GLOBAL_GB,
   getChannelOptions,
+  setChannelFetchBudget,
   updateChannel,
   type Channel,
+  type ChannelFetchRules,
   type ChannelInput,
   type ChannelOptions,
   type ChannelOrder,
@@ -27,6 +31,7 @@ import { Sheet } from "../../ui/Sheet";
 import { TextField } from "../../ui/TextField";
 import { Toggle } from "../../ui/Toggle";
 import { ChannelExtrasRow } from "./ChannelExtrasRow";
+import { ChannelFetch } from "./ChannelFetch";
 import { ChannelLogoRow } from "./ChannelLogoRow";
 import { ChannelPicks, picksOf } from "./ChannelPicks";
 import { ChannelPrompt } from "./ChannelPrompt";
@@ -44,7 +49,7 @@ const TAGS_CLEARED: TagRules = {
   yearFrom: undefined,
   yearTo: undefined,
 };
-type Content = "rules" | "picks";
+type Content = "rules" | "picks" | "fetch";
 
 export interface ChannelEditorProps {
   /** null: a new channel. */
@@ -76,9 +81,14 @@ export function ChannelEditor({
   );
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [picks, setPicks] = useState<ChannelPick[]>(() => picksOf(r));
-  const [content, setContent] = useState<Content>(
-    picks.length ? "picks" : "rules",
+  const [fetchRules, setFetchRules] = useState<ChannelFetchRules>(
+    () => r.fetch ?? { titles: [] },
   );
+  const [content, setContent] = useState<Content>(
+    r.fetch?.titles?.length ? "fetch" : picks.length ? "picks" : "rules",
+  );
+  // the disk every channel with fetching may take (saved with the channel when changed)
+  const [globalGB, setGlobalGB] = useState(0);
   const [tags, setTags] = useState<TagRules>(() => tagRulesOf(r));
   const [library, setLibrary] = useState(String(r.libraryUser ?? 0));
   const [order, setOrder] = useState<ChannelOrder>(r.order ?? "shuffle");
@@ -97,7 +107,11 @@ export function ChannelEditor({
   useEffect(() => {
     let live = true;
     getChannelOptions().then(
-      (o) => live && setOptions(o),
+      (o) => {
+        if (!live) return;
+        setOptions(o);
+        setGlobalGB(o.fetchGlobalGB ?? FETCH_DEFAULT_GLOBAL_GB);
+      },
       (e: unknown) => live && setError(errorText(e, t("common.loadFailed"))),
     );
     return () => {
@@ -125,7 +139,12 @@ export function ChannelEditor({
     ? library
     : "0";
 
-  const needPicks = content === "picks" && picks.length === 0;
+  const needPicks =
+    (content === "picks" && picks.length === 0) ||
+    (content === "fetch" && fetchRules.titles.length === 0);
+  // «С докачкой» is offered to an admin where the server fetches, and kept on a channel that has it
+  const fetchOffered =
+    me.isAdmin && (!!options?.fetchAvailable || !!r.fetch?.titles?.length);
   const save = async () => {
     // the channel's own rules with the fields of this form replaced: what the
     // form has no field for (notGenres, audioLang, whatever a newer server
@@ -140,10 +159,14 @@ export function ChannelEditor({
       titles: undefined,
       picks: undefined,
       extras: undefined,
+      fetch: undefined,
       ...TAGS_CLEARED,
     };
     if (content === "picks") rules.picks = picks;
-    else {
+    else if (content === "fetch") {
+      rules.fetch = fetchRules;
+      rules.order = "ordered";
+    } else {
       Object.assign(rules, tags);
       rules.extras = extras || undefined;
     }
@@ -158,6 +181,14 @@ export function ChannelEditor({
     setBusy(true);
     setError("");
     try {
+      if (
+        content === "fetch" &&
+        me.isAdmin &&
+        options &&
+        globalGB > 0 &&
+        globalGB !== (options.fetchGlobalGB ?? FETCH_DEFAULT_GLOBAL_GB)
+      )
+        await setChannelFetchBudget(globalGB);
       const saved = channel
         ? await updateChannel(channel.id, body)
         : await createChannel(body);
@@ -223,12 +254,24 @@ export function ChannelEditor({
             segments={[
               { value: "rules", label: t("tv.editor.byRules") },
               { value: "picks", label: t("tv.editor.byTitles") },
+              ...(fetchOffered
+                ? [{ value: "fetch" as const, label: t("tv.editor.byFetch") }]
+                : []),
             ]}
           />
         </ListRow>
       </GroupedSection>
       {content === "rules" ? (
         <ChannelTags options={options} value={tags} onChange={setTags} />
+      ) : content === "fetch" ? (
+        <ChannelFetch
+          value={fetchRules}
+          onChange={setFetchRules}
+          channelId={channel?.id ?? null}
+          globalGB={globalGB}
+          onGlobalGB={setGlobalGB}
+          need={needPicks}
+        />
       ) : (
         <ChannelPicks
           picks={picks}
@@ -318,28 +361,30 @@ export function ChannelEditor({
         {content === "rules" && options?.extrasAvailable && (
           <ChannelExtrasRow checked={extras} onChange={setExtras} />
         )}
-        <ListRow
-          label={t("tv.editor.order")}
-          hint={
-            content === "picks"
-              ? order === "ordered"
-                ? t("tv.picks.orderedHint")
-                : t("tv.picks.shuffleHint")
-              : t("tv.editor.orderHint")
-          }
-          stack
-        >
-          <SegmentedControl
+        {content !== "fetch" && (
+          <ListRow
             label={t("tv.editor.order")}
-            size="small"
-            value={order}
-            onChange={setOrder}
-            segments={[
-              { value: "shuffle", label: t("tv.rules.shuffle") },
-              { value: "ordered", label: t("tv.rules.ordered") },
-            ]}
-          />
-        </ListRow>
+            hint={
+              content === "picks"
+                ? order === "ordered"
+                  ? t("tv.picks.orderedHint")
+                  : t("tv.picks.shuffleHint")
+                : t("tv.editor.orderHint")
+            }
+            stack
+          >
+            <SegmentedControl
+              label={t("tv.editor.order")}
+              size="small"
+              value={order}
+              onChange={setOrder}
+              segments={[
+                { value: "shuffle", label: t("tv.rules.shuffle") },
+                { value: "ordered", label: t("tv.rules.ordered") },
+              ]}
+            />
+          </ListRow>
+        )}
         <ListRow
           label={t("tv.editor.skipSegments")}
           hint={t("tv.editor.skipSegmentsHint")}

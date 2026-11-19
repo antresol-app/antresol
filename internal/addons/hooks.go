@@ -191,6 +191,7 @@ var hookTimeouts = map[string]time.Duration{
 	"channels.candidates": 30 * time.Second,
 	"channels.resolve":    60 * time.Second,
 	"channels.release":    5 * time.Second,
+	"channels.fetch":      15 * time.Second,
 }
 
 // HookTimeout is the hook's own timeout. files.* other than files.plan

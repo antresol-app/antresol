@@ -46,6 +46,7 @@ func mountIPTVAdmin(r chi.Router, a *iptvAdmin) {
 		r.Post("/api/tv/sources/{id}/confirm", a.refreshSource(true))
 		r.Post("/api/tv/sources/{id}/reject", a.rejectDrop)
 		r.Get("/api/tv/sources/{id}/channels", a.sourceChannels)
+		r.Put("/api/tv/sources/{id}/members/{memberId}/variant", a.setVariant)
 		r.Post("/api/tv/epg/{id}/refresh", a.refreshEPG)
 		r.Get("/api/tv/epg/search", a.epgSearch)
 		r.Patch("/api/tv/channels", a.patchChannels)
@@ -86,6 +87,8 @@ const (
 	msgLinksOff       = "IPTV-ссылки выключены на этом сервере"
 	msgExternalEdit   = "Внешний канал меняется в редакторе источников"
 	msgBadLangs       = "Языки — коды ISO 639-1"
+	msgNoMember       = "Канал не найден в этом плейлисте"
+	msgVariantSelf    = "Канал не может быть вариантом самого себя"
 )
 
 // Why codes: what the web localizes (whyText carries the text).
@@ -714,6 +717,23 @@ type memberJSON struct {
 	WhyText      string        `json:"whyText"`
 	Present      bool          `json:"present"`
 	New          bool          `json:"new"`
+	// Variant: the entry's group of variants of one channel (nil: none,
+	// and no word of the admin on it).
+	Variant *memberVariantJSON `json:"variant,omitempty"`
+}
+
+// memberVariantJSON: the group, best first (the first shown one leads),
+// how it was made (rules|ai|admin), and the admin's word on this entry
+// (own|with|"").
+type memberVariantJSON struct {
+	Members []variantPeerJSON `json:"members"`
+	How     string            `json:"how"`
+	Manual  string            `json:"manual"`
+}
+
+type variantPeerJSON struct {
+	MemberID int64  `json:"memberId"`
+	Name     string `json:"name"`
 }
 
 type groupJSON struct {
@@ -748,6 +768,15 @@ func (a *iptvAdmin) sourceChannels(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(qv.Get("limit"))
 	if limit <= 0 || limit > iptv.MaxEntries {
 		limit = iptv.MaxEntries
+	}
+	variants, err := a.svc.Variants(ctx, src, ms)
+	if err != nil {
+		internalErr(w, r, "iptv channels", err)
+		return
+	}
+	byID := make(map[int64]iptv.Member, len(ms))
+	for _, m := range ms {
+		byID[m.ID] = m
 	}
 	first, now := firstImport(ms), time.Now()
 	groups := []groupJSON{}
@@ -794,9 +823,93 @@ func (a *iptvAdmin) sourceChannels(w http.ResponseWriter, r *http.Request) {
 		out = append(out, memberJSON{MemberID: m.ID, ChannelID: m.ChannelID, Name: c.Name, ProviderName: m.Name, TvgID: m.TvgID, Group: m.Group,
 			Logo: m.Logo, Shown: m.Shown, Number: c.Number, NumberManual: c.NumberManual, Category: c.Category,
 			EPG: memberEPGJSON{XMLID: m.EPGID, EPGURLID: m.EPGURLID, How: m.EPGHow, Manual: m.EPGManual},
-			Why: whyCode(m.Why), WhyText: i18n.Localize(ctx, m.Why), Present: m.Present, New: nw})
+			Why: whyCode(m.Why), WhyText: i18n.Localize(ctx, m.Why), Present: m.Present, New: nw,
+			Variant: variantJSON(m, variants[m.ID], byID)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": groups, "channels": out, "total": total})
+}
+
+// variantJSON: an entry's group of variants and the admin's word on it.
+func variantJSON(m iptv.Member, g iptv.VariantInfo, byID map[int64]iptv.Member) *memberVariantJSON {
+	word := ""
+	if m.Manual != nil {
+		switch w := m.Manual.Variant; {
+		case w == iptv.VariantOwn:
+			word = "own"
+		case strings.HasPrefix(w, iptv.VariantWith):
+			word = "with"
+		}
+	}
+	if len(g.Members) == 0 && word == "" {
+		return nil
+	}
+	v := &memberVariantJSON{Members: []variantPeerJSON{}, How: g.How, Manual: word}
+	for _, id := range g.Members {
+		v.Members = append(v.Members, variantPeerJSON{MemberID: id, Name: byID[id].Name})
+	}
+	return v
+}
+
+// PUT /api/tv/sources/{id}/members/{memberId}/variant {mode, with}: the
+// admin's word on an entry's variants — "own" (a channel of its own, never
+// a variant), "with" (a variant of the channel of entry with, of the same
+// playlist), "auto" (the rules and the AI helper decide). 204.
+func (a *iptvAdmin) setVariant(w http.ResponseWriter, r *http.Request) {
+	src, ok := a.sourceParam(w, r)
+	if !ok {
+		return
+	}
+	var b struct {
+		Mode string `json:"mode"`
+		With int64  `json:"with"`
+	}
+	if !decode(w, r, &b) {
+		return
+	}
+	ctx := r.Context()
+	ms, err := a.svc.Store.Members(ctx, src.ID)
+	if err != nil {
+		internalErr(w, r, "iptv variant", err)
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "memberId"), 10, 64)
+	var m, other *iptv.Member
+	for i := range ms {
+		switch ms[i].ID {
+		case id:
+			m = &ms[i]
+		case b.With:
+			other = &ms[i]
+		}
+	}
+	if m == nil {
+		writeErr(w, r, http.StatusNotFound, msgNoMember)
+		return
+	}
+	word := ""
+	switch b.Mode {
+	case "auto":
+	case "own":
+		word = iptv.VariantOwn
+	case "with":
+		if b.With == id {
+			writeErr(w, r, http.StatusBadRequest, msgVariantSelf)
+			return
+		}
+		if other == nil || !other.Present {
+			writeErr(w, r, http.StatusNotFound, msgNoMember)
+			return
+		}
+		word = iptv.VariantWith + other.Ident
+	default:
+		writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+		return
+	}
+	if err := a.svc.SetVariant(ctx, *m, word); err != nil {
+		internalErr(w, r, "iptv variant", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *iptvAdmin) externalRows(ctx context.Context) (map[int64]channels.Channel, error) {

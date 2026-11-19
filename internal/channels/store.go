@@ -73,6 +73,11 @@ type Rules struct {
 	// where its credits start (skip.go); generated series channels have it
 	// on. Movies always play whole.
 	SkipSegments bool `json:"skipSegments,omitempty"`
+	// Fetch: the channel plays these titles in order, the ones not on
+	// disk fetched by an addon before they air and removed after
+	// (fetch.go); when set it is the whole pool (picks, filters and
+	// extras are ignored) and the order is OrderOrdered. Admins only.
+	Fetch *FetchRules `json:"fetch,omitempty"`
 }
 
 // Channel is a row of channels.
@@ -294,6 +299,9 @@ func normalize(c *Channel) error {
 	r.Languages = cleanList(r.Languages, strings.ToLower, 40)
 	r.Keywords = cleanList(r.Keywords, strings.ToLower, 40)
 	if err := normalizePicks(r); err != nil {
+		return err
+	}
+	if err := normalizeFetch(r); err != nil {
 		return err
 	}
 	if c.UserID != 0 {

@@ -97,6 +97,7 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Post("/api/channels/suggest", a.suggest)
 	r.With(auth.RequireAdmin).Post("/api/channels/generate", a.generate)
 	mountFranchises(r, a)
+	mountChannelsFetch(r, a)
 	r.Post("/api/channels", a.create)
 	r.Put("/api/channels/{id}", a.update)
 	r.Delete("/api/channels/{id}", a.remove)
@@ -575,7 +576,11 @@ func (a *channelsAPI) options(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"genres": gs, "decades": ds, "titles": titles, "profiles": profiles,
 		"extrasAvailable": !u.IsKid && a.svc.ExtrasReady(ctx),
 		"countries":       countries, "languages": languages, "keywords": keywords, "yearMin": yearMin, "yearMax": yearMax,
-		"aiAvailable": a.svc.Model(ctx) != nil})
+		"aiAvailable": a.svc.Model(ctx) != nil,
+		// fetchAvailable: «С докачкой» (Rules.Fetch), an admin's, where an
+		// addon fetches and TMDB names the titles
+		"fetchAvailable": u.IsAdmin && !u.IsKid && a.svc.FetchCatalog != nil && a.svc.FetchReady(ctx),
+		"fetchGlobalGB":  a.svc.Store.FetchGlobalGB(ctx)})
 }
 
 type channelBody struct {
@@ -630,6 +635,10 @@ func (a *channelsAPI) create(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &b) {
 		return
 	}
+	if b.Rules.Fetch != nil && !u.IsAdmin {
+		writeErr(w, r, http.StatusForbidden, msgFetchAdmin)
+		return
+	}
 	c := channels.Channel{Enabled: true}
 	b.apply(&c, u)
 	c.NumberManual = c.Number > 0 // only an administrator's body carries one (apply)
@@ -640,6 +649,9 @@ func (a *channelsAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.svc.BuildChannel(r.Context(), c); err != nil {
 		log.Printf("channels: build %d: %v", c.ID, err)
+	}
+	if channels.FetchOn(c.Rules) {
+		a.svc.FetchKick()
 	}
 	writeJSON(w, http.StatusCreated, a.withPicks(r.Context(), a.toJSON(r.Context(), c, viewerOf(u), nil), c))
 }
@@ -685,6 +697,10 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 	if c.Rules.AudioLang == "" {
 		c.Rules.AudioLang = old.Rules.AudioLang
 	}
+	// fetching is the admin's: another profile's edit keeps it as it was
+	if !u.IsAdmin {
+		c.Rules.Fetch = old.Rules.Fetch
+	}
 	// an administrator's edit of a generated channel is kept by the
 	// generator; a number, a logo or showing it again is not
 	if c.AutoKey != "" && channels.Edits(old, c) {
@@ -702,6 +718,9 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 		if err := a.svc.BuildChannel(r.Context(), c); err != nil {
 			log.Printf("channels: build %d: %v", c.ID, err)
 		}
+	}
+	if channels.FetchOn(c.Rules) || channels.FetchOn(old.Rules) {
+		a.svc.FetchKick() // the pass names the titles, asks, or lets go
 	}
 	writeJSON(w, http.StatusOK, a.withPicks(r.Context(), a.toJSON(r.Context(), c, viewerOf(u), nil), c))
 }

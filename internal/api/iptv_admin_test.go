@@ -519,3 +519,58 @@ func TestIPTVLinkRefusesAManagedAccount(t *testing.T) {
 		t.Fatalf("playlist with a managed account's token: %d", w.Code)
 	}
 }
+
+// The editor shows each entry's group of variants and how it was made; the
+// admin makes an entry a channel of its own, or a variant of another, and
+// gives it back to the rules.
+func TestVariantOverride(t *testing.T) {
+	e := newTVEnv(t)
+	src := e.addSource("П")
+	e.p.put("/get.php", "#EXTM3U\n#EXTINF:-1,Кино 1\nhttp://stream.example.test/1.ts\n#EXTINF:-1,Кино 1 HD\nhttp://stream.example.test/2.ts\n"+
+		"#EXTINF:-1,Киносеанс\nhttp://stream.example.test/3.ts\n")
+	if _, err := e.tv.RefreshSource(context.Background(), src.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	by := func() map[string]memberJSON {
+		out := map[string]memberJSON{}
+		for _, m := range e.channels(src.ID, "").Channels {
+			out[m.ProviderName] = m
+		}
+		return out
+	}
+	m := by()
+	if v := m["Кино 1"].Variant; v == nil || v.How != "rules" || len(v.Members) != 2 || v.Members[0].Name != "Кино 1 HD" || v.Manual != "" {
+		t.Fatalf("variant %+v", v)
+	}
+	if m["Киносеанс"].Variant != nil {
+		t.Fatalf("Киносеанс: %+v", m["Киносеанс"].Variant)
+	}
+	put := func(id int64, body string) int {
+		return e.do("PUT", "/api/tv/sources/"+itoa(src.ID)+"/members/"+itoa(id)+"/variant", body, e.admin).Code
+	}
+	if c := put(m["Кино 1"].MemberID, `{"mode":"own"}`); c != 204 {
+		t.Fatalf("own: %d", c)
+	}
+	if c := put(m["Киносеанс"].MemberID, `{"mode":"with","with":`+itoa(m["Кино 1 HD"].MemberID)+`}`); c != 204 {
+		t.Fatalf("with: %d", c)
+	}
+	m = by()
+	if v := m["Кино 1"].Variant; v == nil || v.Manual != "own" || len(v.Members) != 0 || !m["Кино 1"].Shown {
+		t.Errorf("own: %+v shown %v", v, m["Кино 1"].Shown)
+	}
+	if v := m["Киносеанс"].Variant; v == nil || v.Manual != "with" || v.How != "admin" || m["Киносеанс"].ChannelID != m["Кино 1 HD"].ChannelID || m["Киносеанс"].Why != "preset-variant" {
+		t.Errorf("with: %+v", m["Киносеанс"])
+	}
+	if c := put(m["Кино 1"].MemberID, `{"mode":"with","with":`+itoa(m["Кино 1"].MemberID)+`}`); c != 400 {
+		t.Errorf("self: %d", c)
+	}
+	if c := put(999999, `{"mode":"own"}`); c != 404 {
+		t.Errorf("unknown: %d", c)
+	}
+	if c := put(m["Кино 1"].MemberID, `{"mode":"auto"}`); c != 204 {
+		t.Fatalf("auto: %d", c)
+	}
+	if v := by()["Кино 1"].Variant; v == nil || v.Manual != "" || len(v.Members) != 3 {
+		t.Errorf("auto: %+v", v)
+	}
+}

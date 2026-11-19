@@ -40,7 +40,7 @@ var KnownHooks = []string{"files.plan", "files.pause", "files.resume", "files.st
 	"play.progress", "library.pending", "disk.usage", "requests.open", "requests.title", "requests.search", "tracking.titles", "tracking.watched",
 	"notify.interest", "voiceover.origLang", "trailers.fetch", "import.services", "import.stop", "import.resolve", "import.search",
 	"migrate.leftovers", "library.afterScan", "home.continue",
-	"channels.ready", "channels.candidates", "channels.resolve", "channels.release"}
+	"channels.ready", "channels.candidates", "channels.resolve", "channels.release", "channels.fetch"}
 
 // ChannelHooks are the hooks of «ТВ» channels' titles outside the
 // library: a manifest declares all four or none.

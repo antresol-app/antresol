@@ -29,6 +29,9 @@ type Entry struct {
 	// OffsetMs: where in the file the entry starts (an episode's piece
 	// after its cut intro; 0: from the start).
 	OffsetMs int64
+	// FetchID: a programme not on disk yet (channel_fetch, fetch.go); 0
+	// otherwise. Such an entry never plays: it is cut before it airs.
+	FetchID int64
 }
 
 // Builder makes and extends channel schedules.
@@ -117,11 +120,14 @@ func (b *Builder) Build(ctx context.Context, c Channel) error {
 // sees the schedule with the hole).
 func (b *Builder) buildWith(ctx context.Context, c Channel, before func(*sql.Tx, time.Time) error) error {
 	now := b.Store.now()
-	pool, err := b.Catalog.Pool(ctx, c.Rules)
-	if err != nil {
-		return err
+	var pool Pool
+	var err error
+	if FetchOn(c.Rules) {
+		pool, err = b.fetchPool(ctx, c)
+	} else if pool, err = b.Catalog.Pool(ctx, c.Rules); err == nil {
+		pool, err = b.withExtras(ctx, c, pool)
 	}
-	if pool, err = b.withExtras(ctx, c, pool); err != nil {
+	if err != nil {
 		return err
 	}
 	return b.build(ctx, c, pool, now, before)
@@ -153,7 +159,7 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	if start >= until || pool.Empty() {
 		return tx.Commit()
 	}
-	ins, err := tx.PrepareContext(ctx, `INSERT INTO channel_playout (channel_id, seq, start_ms, end_ms, item_id, file_id, unit_id, extra_id, offset_ms) VALUES (?,?,?,?,?,?,?,?,?)`)
+	ins, err := tx.PrepareContext(ctx, `INSERT INTO channel_playout (channel_id, seq, start_ms, end_ms, item_id, file_id, unit_id, extra_id, offset_ms, fetch_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
@@ -164,7 +170,10 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	}
 	seq := h.lastSeq
 	for start < until {
-		prog := p.next(seq+1, start)
+		prog, ok := p.next(seq+1, start)
+		if !ok {
+			break // nothing can take the slot yet (a channel with fetching): the next build goes on
+		}
 		if c.Rules.SkipSegments {
 			if prog, err = skipCut(ctx, tx, prog); err != nil {
 				return err
@@ -173,11 +182,14 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 		for _, part := range prog.Parts {
 			seq++
 			end := start + part.DurationMs
-			var extra any
+			var extra, fetch any
 			if prog.ExtraID != 0 {
 				extra = prog.ExtraID
 			}
-			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, extra, part.OffsetMs); err != nil {
+			if prog.FetchID != 0 {
+				fetch = prog.FetchID
+			}
+			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, extra, part.OffsetMs, fetch); err != nil {
 				return err
 			}
 			start = end
@@ -271,7 +283,9 @@ func (p *picker) nextOf(u int64) Prog {
 
 func newPicker(c Channel, pool Pool, h history) *picker {
 	p := &picker{c: c, pool: pool, h: h}
-	if c.Rules.Order == OrderOrdered {
+	if pool.Flat != nil {
+		p.flat = pool.Flat // a channel with fetching: its own order
+	} else if c.Rules.Order == OrderOrdered {
 		us := append([]Unit(nil), pool.Units...)
 		sort.SliceStable(us, func(i, j int) bool {
 			if len(c.Rules.Picks) > 0 { // picks play in the order they were picked (the pool's)
@@ -294,16 +308,26 @@ func newPicker(c Channel, pool Pool, h history) *picker {
 	return p
 }
 
-func (p *picker) next(seq, start int64) Prog {
-	if p.c.Rules.Order == OrderOrdered { // a marathon keeps its order
+// next is the programme of the slot starting at start; false: none may
+// take it (a channel with fetching whose programmes are not on disk in
+// time).
+func (p *picker) next(seq, start int64) (Prog, bool) {
+	if p.c.Rules.Order == OrderOrdered || p.pool.Flat != nil { // a marathon keeps its order
 		var unit int64
 		if n := len(p.h.recent); n > 0 {
 			unit = p.h.recent[n-1]
 		}
 		i := positionOf(p.flat, unit, p.h.cursor[0]) + 1
-		pr := p.flat[i%len(p.flat)]
-		p.played(pr)
-		return pr
+		// a programme that would not be on disk in time gives the slot to
+		// the next one that is (it comes again on the next round)
+		for k := range len(p.flat) {
+			pr := p.flat[(i+k)%len(p.flat)]
+			if p.pool.Fits == nil || p.pool.Fits(pr, start) {
+				p.played(pr)
+				return pr, true
+			}
+		}
+		return Prog{}, false
 	}
 	recent := map[int64]bool{}
 	for i := len(p.h.recent) - 1; i >= 0 && len(recent) < p.window; i-- {
@@ -341,7 +365,7 @@ func (p *picker) next(seq, start int64) Prog {
 	u := cand[rng.IntN(len(cand))]
 	pr := p.nextOf(u.ID)
 	p.played(pr)
-	return pr
+	return pr, true
 }
 
 // libraryUnits are the library's units of us (not the extras).
@@ -388,7 +412,7 @@ func indexOf(progs []Prog, item int64) int {
 func (s *Store) CutMissing(ctx context.Context, id int64) (bool, error) {
 	var seq sql.NullInt64
 	err := s.DB.QueryRowContext(ctx, `SELECT min(p.seq) FROM channel_playout p LEFT JOIN files f ON f.id=p.file_id AND f.missing_since IS NULL
-	  WHERE p.channel_id=? AND p.end_ms > ? AND f.id IS NULL AND p.extra_id IS NULL`, id, ms(s.now())).Scan(&seq)
+	  WHERE p.channel_id=? AND p.end_ms > ? AND f.id IS NULL AND p.extra_id IS NULL AND p.fetch_id IS NULL`, id, ms(s.now())).Scan(&seq)
 	if err != nil || !seq.Valid {
 		return false, err
 	}
@@ -399,12 +423,12 @@ func (s *Store) CutMissing(ctx context.Context, id int64) (bool, error) {
 // ErrNothing: the channel has nothing scheduled at that time.
 var ErrNothing = errors.New("channels: nothing scheduled")
 
-const entryCols = `seq, start_ms, end_ms, item_id, file_id, unit_id, channel_id, COALESCE(extra_id, 0), offset_ms`
+const entryCols = `seq, start_ms, end_ms, item_id, file_id, unit_id, channel_id, COALESCE(extra_id, 0), offset_ms, COALESCE(fetch_id, 0)`
 
 func scanEntry(r rowScanner) (Entry, error) {
 	var e Entry
 	var st, en int64
-	err := r.Scan(&e.Seq, &st, &en, &e.ItemID, &e.FileID, &e.UnitID, &e.Channel, &e.ExtraID, &e.OffsetMs)
+	err := r.Scan(&e.Seq, &st, &en, &e.ItemID, &e.FileID, &e.UnitID, &e.Channel, &e.ExtraID, &e.OffsetMs, &e.FetchID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return e, ErrNothing
 	}

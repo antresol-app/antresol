@@ -1,0 +1,123 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="russia1" group-title="Эфирные",Россия 1
+http://stream.example.test/live/001.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 1 HD
+http://stream.example.test/live/002.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 1 FHD
+http://stream.example.test/live/003.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 1 +2
+http://stream.example.test/live/004.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 1 +4
+http://stream.example.test/live/005.m3u8
+#EXTINF:-1 group-title="Региональные",Россия 1 (Москва)
+http://stream.example.test/live/006.m3u8
+#EXTINF:-1 group-title="Региональные",Россия 1 Москва
+http://stream.example.test/live/007.m3u8
+#EXTINF:-1 group-title="Региональные",Россия 1 Владивосток
+http://stream.example.test/live/008.m3u8
+#EXTINF:-1 group-title="RU | Latin",Rossiya 1
+http://stream.example.test/live/009.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 24
+http://stream.example.test/live/010.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия 24 HD
+http://stream.example.test/live/011.m3u8
+#EXTINF:-1 group-title="Эфирные",Россия К
+http://stream.example.test/live/012.m3u8
+#EXTINF:-1 tvg-id="perviy" group-title="Эфирные",Первый канал
+http://stream.example.test/live/013.m3u8
+#EXTINF:-1 group-title="Эфирные",Первый канал HD
+http://stream.example.test/live/014.m3u8
+#EXTINF:-1 group-title="Эфирные",Первый канал +4
+http://stream.example.test/live/015.m3u8
+#EXTINF:-1 group-title="Эфирные",Первый канал Европа
+http://stream.example.test/live/016.m3u8
+#EXTINF:-1 group-title="RU | Latin",Pervyi kanal
+http://stream.example.test/live/017.m3u8
+#EXTINF:-1 group-title="Эфирные",НТВ
+http://stream.example.test/live/018.m3u8
+#EXTINF:-1 group-title="Эфирные",НТВ HD
+http://stream.example.test/live/019.m3u8
+#EXTINF:-1 group-title="Эфирные",НТВ Мир
+http://stream.example.test/live/020.m3u8
+#EXTINF:-1 group-title="Сериалы",НТВ Сериал
+http://stream.example.test/live/021.m3u8
+#EXTINF:-1 group-title="Познавательные",НТВ Стиль
+http://stream.example.test/live/022.m3u8
+#EXTINF:-1 group-title="Эфирные",СТС
+http://stream.example.test/live/023.m3u8
+#EXTINF:-1 group-title="Эфирные",СТС HD
+http://stream.example.test/live/024.m3u8
+#EXTINF:-1 group-title="Развлекательные",СТС Love
+http://stream.example.test/live/025.m3u8
+#EXTINF:-1 group-title="Эфирные",ТНТ
+http://stream.example.test/live/026.m3u8
+#EXTINF:-1 group-title="RU | Latin",TNT
+http://stream.example.test/live/027.m3u8
+#EXTINF:-1 group-title="Развлекательные",ТНТ4
+http://stream.example.test/live/028.m3u8
+#EXTINF:-1 group-title="Эфирные",Рен ТВ
+http://stream.example.test/live/029.m3u8
+#EXTINF:-1 group-title="RU | Latin",REN TV
+http://stream.example.test/live/030.m3u8
+#EXTINF:-1 group-title="Спорт",Матч ТВ
+http://stream.example.test/live/031.m3u8
+#EXTINF:-1 group-title="Спорт",Матч ТВ HD
+http://stream.example.test/live/032.m3u8
+#EXTINF:-1 group-title="Спорт",Матч! Премьер
+http://stream.example.test/live/033.m3u8
+#EXTINF:-1 group-title="Спорт",Матч! Футбол 1
+http://stream.example.test/live/034.m3u8
+#EXTINF:-1 group-title="Спорт",Матч! Футбол 2
+http://stream.example.test/live/035.m3u8
+#EXTINF:-1 group-title="Эфирные",Пятница!
+http://stream.example.test/live/036.m3u8
+#EXTINF:-1 group-title="Эфирные",Пятница! HD
+http://stream.example.test/live/037.m3u8
+#EXTINF:-1 group-title="Кино",Дом кино
+http://stream.example.test/live/038.m3u8
+#EXTINF:-1 group-title="Кино",Дом кино Премиум
+http://stream.example.test/live/039.m3u8
+#EXTINF:-1 group-title="Кино",Дом кино Премиум HD
+http://stream.example.test/live/040.m3u8
+#EXTINF:-1 group-title="Детские",Карусель
+http://stream.example.test/live/041.m3u8
+#EXTINF:-1 group-title="Детские",Карусель +3
+http://stream.example.test/live/042.m3u8
+#EXTINF:-1 tvg-id="disney.ru" group-title="Детские",Disney
+http://stream.example.test/live/043.m3u8
+#EXTINF:-1 tvg-id="disney.ru" group-title="Детские",Disney Junior
+http://stream.example.test/live/044.m3u8
+#EXTINF:-1 group-title="Эфирные",Звезда
+http://stream.example.test/live/045.m3u8
+#EXTINF:-1 group-title="Эфирные",Звезда HD orig
+http://stream.example.test/live/046.m3u8
+#EXTINF:-1 group-title="Эфирные",Мир
+http://stream.example.test/live/047.m3u8
+#EXTINF:-1 group-title="Эфирные",Мир 24
+http://stream.example.test/live/048.m3u8
+#EXTINF:-1 group-title="Новости",Euronews
+http://stream.example.test/live/049.m3u8
+#EXTINF:-1 group-title="Новости",Euronews HD
+http://stream.example.test/live/050.m3u8
+#EXTINF:-1 group-title="Познавательные",Discovery Channel
+http://stream.example.test/live/051.m3u8
+#EXTINF:-1 group-title="Познавательные",Viasat History
+http://stream.example.test/live/052.m3u8
+#EXTINF:-1 group-title="Познавательные",Viasat History HD
+http://stream.example.test/live/053.m3u8
+#EXTINF:-1 group-title="Спорт",Eurosport 1
+http://stream.example.test/live/054.m3u8
+#EXTINF:-1 group-title="Спорт",Eurosport 2
+http://stream.example.test/live/055.m3u8
+#EXTINF:-1 group-title="Музыка",Муз-ТВ
+http://stream.example.test/live/056.m3u8
+#EXTINF:-1 group-title="Музыка",Bridge TV
+http://stream.example.test/live/057.m3u8
+#EXTINF:-1 group-title="Эфирные",Домашний
+http://stream.example.test/live/058.m3u8
+#EXTINF:-1 group-title="Эфирные",Спас
+http://stream.example.test/live/059.m3u8
+#EXTINF:-1 group-title="Для взрослых",Кино XXX
+http://stream.example.test/live/060.m3u8
+#EXTINF:-1 group-title="Для взрослых",Кино XXX HD
+http://stream.example.test/live/061.m3u8

@@ -50,10 +50,7 @@ func everyID(in agentInput) string {
 	for _, x := range in.Members {
 		ids = append(ids, itoa(x.ID))
 	}
-	for _, x := range in.Candidates {
-		ids = append(ids, itoa(x.ID))
-	}
-	return `{"name":"","order":[` + strings.Join(ids, ",") + `],"add":[]}`
+	return `{"name":"","order":[` + strings.Join(ids, ",") + `],"drop":[]}`
 }
 
 func enabledFranchiseChannels(t *testing.T, st *Store) map[string]Channel {
@@ -141,9 +138,9 @@ func TestFranchiseClusterMergeCarriesOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	mcu := []wikidata.Ref{{QID: "Q642878", Label: "Кинематографическая вселенная Marvel"}}
-	fr.Wiki = &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {1726: {QID: "Qa", Universe: mcu}, 24428: {QID: "Qb", Universe: mcu}}}}
+	fr.Wiki = &fakeFacts{facts: map[string]map[int]wikidata.TitleFacts{"movie": {1726: {QID: "Qa", Anchors: mcu}, 24428: {QID: "Qb", Anchors: mcu}}}}
 	model := (&fakeModel{answer: func(in agentInput) string {
-		return `{"name":"Marvel","order":[` + itoa(im) + `,` + itoa(im2) + `,` + itoa(av) + `,` + itoa(av2) + `],"add":[]}`
+		return `{"name":"Marvel","order":[` + itoa(im) + `,` + itoa(im2) + `,` + itoa(av) + `,` + itoa(av2) + `],"drop":[]}`
 	}}).llm(t)
 	fr.Model = func(context.Context) *LLM { return model }
 	if _, err := fr.Pass(ctx, false); err != nil {
@@ -292,12 +289,12 @@ func TestFranchiseFailedAskKeepsGoodAnswer(t *testing.T) {
 	l, tm := starWars(f)
 	m := &flakyModel{}
 	model := m.llm(t, func(in agentInput) string {
-		if strings.Contains(in.Collections[0], "Звёздные") {
-			return fmt.Sprintf(`{"name":"Сага","order":[%d,%d,%d,%d],"add":[%d]}`, l.i, l.clone, l.iv, l.v, l.clone)
+		if strings.Contains(in.Franchise, "Звёздные") {
+			return fmt.Sprintf(`{"name":"Сага","order":[%d,%d,%d,%d],"drop":[]}`, l.i, l.clone, l.iv, l.v)
 		}
 		return everyID(in)
 	})
-	fr := &Franchises{Store: f.st, TMDB: tm, Model: func(context.Context) *LLM { return model }}
+	fr := &Franchises{Store: f.st, TMDB: tm, Wiki: swFacts(l), Model: func(context.Context) *LLM { return model }}
 	fr.Pass(ctx, false)
 	want := []int64{l.i, l.clone, l.iv, l.v}
 	if sw := franchisesOf(t, f.st)["c10"]; sw.Source != FranchiseAI || !slices.Equal(sw.Items, want) {
@@ -399,8 +396,8 @@ func TestFranchiseIncompletePassDoesNotAsk(t *testing.T) {
 	l, tm := starWars(f)
 	m := &flakyModel{}
 	model := m.llm(t, func(in agentInput) string {
-		if strings.Contains(in.Collections[0], "Звёздные") {
-			return fmt.Sprintf(`{"name":"Сага","order":[%d,%d,%d],"add":[]}`, l.i, l.v, l.iv)
+		if strings.Contains(in.Franchise, "Звёздные") {
+			return fmt.Sprintf(`{"name":"Сага","order":[%d,%d,%d],"drop":[]}`, l.i, l.v, l.iv)
 		}
 		return everyID(in)
 	})
@@ -434,7 +431,7 @@ func TestFranchiseNamesFit(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 	cl := cluster{colls: []coll{{id: 1, name: "Base", items: []int64{1, 2}}}, members: []int64{1, 2}}
-	name, _, err := validAnswer("{\"name\":\"Star\\nWars\\u0000 x\",\"order\":[1,2],\"add\":[]}", cl)
+	name, _, err := validAnswer("{\"name\":\"Star\\nWars\\u0000 x\",\"order\":[1,2],\"drop\":[]}", cl)
 	if err != nil || name != "Star Wars x" {
 		t.Fatalf("the model's name %q %v", name, err)
 	}

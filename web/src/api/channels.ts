@@ -42,6 +42,8 @@ export interface ChannelRules {
   extras?: boolean;
   /** Episodes play without their recap and intro and end where their credits start (movies play whole). */
   skipSegments?: boolean;
+  /** «С докачкой» (an admin's): these titles in order, the ones not on disk fetched before they air and removed after. */
+  fetch?: ChannelFetchRules;
 }
 
 /** An audio or subtitle rendition of the live stream present in a programme. */
@@ -198,6 +200,10 @@ export interface ChannelOptions {
   yearMax?: number;
   /** «Опишите канал» has a language model behind it (else the words alone). */
   aiAvailable?: boolean;
+  /** An admin may make a channel with fetching (an addon downloads, TMDB names the titles). */
+  fetchAvailable?: boolean;
+  /** The disk every channel with fetching may take together (GB). */
+  fetchGlobalGB?: number;
 }
 
 export interface TagCount {
@@ -377,11 +383,11 @@ export interface FranchiseItem {
   hidden?: boolean;
 }
 
-/** A franchise the franchise channels play (admin): a TMDB collection, or the AI helper's. */
+/** A franchise the franchise channels play (admin): a TMDB collection, titles sharing a Wikidata franchise, or those in the AI helper's story order. */
 export interface Franchise {
   key: string;
   name: string;
-  source: "tmdb" | "ai";
+  source: "tmdb" | "wikidata" | "ai";
   /** Why the AI helper's order is not used. */
   error?: string;
   /** The admin's order is set (it survives recomputes). */
@@ -418,3 +424,81 @@ export const setFranchiseOrder = (key: string, order: number[], hidden: number[]
 
 export const resetFranchiseOrder = (key: string) =>
   request<Franchise>("DELETE", `/api/channels/franchises/${encodeURIComponent(key)}/order`);
+
+/** A title of a channel with fetching: a TMDB movie, or a series (season 0: all of them). */
+export interface ChannelFetchTitle {
+  kind: "movie" | "series";
+  tmdbId: number;
+  season?: number;
+  title?: string;
+  year?: number;
+}
+
+export interface ChannelFetchRules {
+  titles: ChannelFetchTitle[];
+  /** The disk the channel's fetches may take (0 / none: the server's default). */
+  budgetGB?: number;
+  /** How long a fetched programme stays after it aired (0 / none: the default). */
+  graceHours?: number;
+}
+
+/** The server's defaults (channels.DefaultFetch*). */
+export const FETCH_DEFAULT_CHANNEL_GB = 50;
+export const FETCH_DEFAULT_GLOBAL_GB = 200;
+export const FETCH_DEFAULT_GRACE_HOURS = 24;
+
+export type ChannelFetchState = "wanted" | "requested" | "ready" | "library" | "kept" | "removed" | "failed";
+
+export interface ChannelFetchProgramme {
+  kind: "movie" | "episode";
+  title: string;
+  episodeTitle?: string;
+  season?: number;
+  episode?: number;
+  state: ChannelFetchState;
+  size?: number;
+  done?: number;
+  error?: string;
+  /** Its next slot in the schedule (none within the 48 h horizon). */
+  airs?: string;
+}
+
+export interface ChannelFetchUsage {
+  used: number;
+  budget: number;
+}
+
+export interface ChannelFetchStatus {
+  available: boolean;
+  channel: ChannelFetchUsage;
+  global: ChannelFetchUsage;
+  globalGB: number;
+  programmes: ChannelFetchProgramme[];
+}
+
+export interface ChannelFetchFound {
+  kind: "movie" | "series";
+  tmdbId: number;
+  title: string;
+  year?: number;
+  poster?: string;
+}
+
+/** A channel with fetching: its disk use, the budgets and each programme (admins). */
+export const getChannelFetch = (id: number, signal?: AbortSignal) =>
+  request<ChannelFetchStatus>("GET", `/api/channels/${id}/fetch`, undefined, signal).then((r) => ({
+    ...r,
+    programmes: r?.programmes ?? [],
+  }));
+
+/** The disk every channel's fetches may take together (0: the default). */
+export const setChannelFetchBudget = (globalGB: number) =>
+  request<{ globalGB: number }>("PUT", "/api/channels/fetch/budget", { globalGB });
+
+/** Movies and series to add to a channel with fetching (TMDB). */
+export const searchChannelFetch = (q: string, signal?: AbortSignal) =>
+  request<ChannelFetchFound[]>("GET", `/api/channels/fetch/search${qs({ q })}`, undefined, signal).then((r) => r ?? []);
+
+/** A series' seasons (specials left out). */
+export const getChannelFetchSeasons = (tmdbId: number, signal?: AbortSignal) =>
+  request<number[]>("GET", `/api/channels/fetch/seasons${qs({ tmdbId })}`, undefined, signal).then((r) => r ?? []);

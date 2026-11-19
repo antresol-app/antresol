@@ -131,6 +131,23 @@ describe('a source’s page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Привязать к «Новости 24»' }, { timeout: 2000 }))
     await waitFor(() => expect(writes()).toContainEqual({ method: 'PUT', url: '/api/tv/channels/1000/epg', body: { epgUrlId: 1, xmlId: 'news24.example' } }))
   })
+
+  it('shows a channel’s variants and takes the admin’s word on them', async () => {
+    const variant = { members: [{ memberId: 1, name: 'Канал 1 HD' }, { memberId: 2, name: 'Канал 2 HD' }], how: 'ai', manual: '' }
+    channels = CHANNELS.map((c, i) => (i < 2 ? { ...c, variant } : c))
+    at('/tv/manage/sources/1')
+    await screen.findByRole('table')
+    fireEvent.click(screen.getAllByRole('button', { name: /^Программа:/ })[0]!)
+    expect(await screen.findByText('Варианты канала')).toBeTruthy()
+    expect(screen.getByText('Объединены ИИ-помощником: правила не были уверены')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Отделить' }))
+    await waitFor(() => expect(writes()).toContainEqual({ method: 'PUT', url: '/api/tv/sources/1/members/1/variant', body: { mode: 'own', with: 0 } }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Программа:/ })[0]!)
+    fireEvent.click(await screen.findByRole('button', { name: 'Объединить с…' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Канал этого плейлиста' }), { target: { value: 'Канал 30 HD' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Сделать вариантом «Канал 30 HD»' }))
+    await waitFor(() => expect(writes()).toContainEqual({ method: 'PUT', url: '/api/tv/sources/1/members/1/variant', body: { mode: 'with', with: 30 } }))
+  })
 })
 
 describe('the sources page', () => {

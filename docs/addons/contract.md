@@ -168,7 +168,7 @@ it is not installed), and the app shows it as locked.
 | `web` | optional; no web part when absent |
 | `permissions` | any of `events`, `library.read`, `library.write`, `files.holds`, `metadata`, `images`, `play`, `notify`, `users.read`, `tracking`, `imports`, `requests`, `voiceover`, `progress`, each at most once; an unknown or repeated one is refused |
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
-| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
+| `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, `channels.fetch`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
 | `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health" }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
 | `author`, `homepage` | free text, shown before install |
@@ -1399,7 +1399,7 @@ hook has nothing to send).
   10 s, `library.pending` and `disk.usage` 2 s, `tracking.scan:<kind>`
   120 s, `library.afterScan` 60 s, `home.continue` 500 ms, `channels.ready`
   2 s, `channels.candidates` 30 s, `channels.resolve` 60 s,
-  `channels.release` 5 s). The `files.*` hooks of one file operation share the operation's
+  `channels.release` 5 s, `channels.fetch` 15 s). The `files.*` hooks of one file operation share the operation's
   deadline. A hook called on several addons runs on all of them in parallel
   under one deadline; the 200 answers are taken in addon-id order, and
   every addon that gives no 200 (down, failed, refused, timed out, or 204
@@ -1449,6 +1449,7 @@ channels.ready
 channels.candidates
 channels.resolve
 channels.release
+channels.fetch
 ```
 
 ### File hooks
@@ -1709,6 +1710,43 @@ for no profile (no `X-Antresol-User`); the bodies are JSON.
   after 6 h unused, and when the addon's process goes (its stream URLs
   then answer 404): resolve again rather than keeping state across a
   restart.
+
+### «ТВ»: channels with fetching: `channels.fetch`
+
+| Hook | Body → answer | When |
+| --- | --- | --- |
+| `channels.fetch` | `{"want": [ChannelFetchTitle], "drop"?: [key]}` (`ChannelFetch`) → `{"states": [ChannelFetchState]}` (`ChannelFetchAnswer`) | every couple of minutes while a channel with fetching wants programmes on disk, has fetched ones, or drops keys |
+
+A channel with fetching (an admin's «С докачкой») plays its titles in
+order, including programmes not on disk; the server asks one addon to
+download them before they air and removes them from the library after
+they aired (and a grace period), unless someone in the household keeps
+them. This hook is independent of the four above. The first addon in id
+order that is on, running and declares it answers; it runs for no
+profile.
+
+- `ChannelFetchTitle` is `{"key", "kind", "tmdbId", "season"?,
+  "episode"?, "title"?, "year"?}`: `kind` `movie` or `episode` (`tmdbId`
+  then the series'). `key` is the server's, the same for one programme on
+  every channel.
+- `want` is the whole list each time. Start what is not being fetched yet
+  as a download (never a stream: the files must reach the library) and
+  answer at once; a search may run in the background. Do not fetch
+  anything else. A `drop` key is no longer needed: an unfinished download
+  the addon started for it goes with its data, a finished one is only
+  forgotten (the server removes library files itself, through the file
+  hooks like any delete).
+- `ChannelFetchState` is `{"key", "state", "size"?, "done"?, "rate"?,
+  "existing"?, "keep"?, "error"?}`: `state` `searching`, `downloading`,
+  `done` (put into the library) or `failed` (`error`: why, in Russian;
+  the server asks again after 6 h); `size`/`done` bytes, `rate` bytes a
+  second (the server learns the speed from it, for the lead time).
+  `existing`: someone's download of it was already running (the server
+  never removes it). `keep`: the addon keeps the title (followed, pinned):
+  not removed after airing. States for keys not asked about, or of
+  another value, are dropped.
+- The server decides by the library: a programme is on disk once its
+  files are there and probed.
 
 ### `disk.usage`
 
