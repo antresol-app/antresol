@@ -30,7 +30,8 @@ describe('expired session (401)', () => {
     await session.login(1, 'pw')
     expect(session.get().status).toBe('signed-in')
     await expect(getHome()).rejects.toMatchObject({ status: 401 })
-    expect(session.get()).toEqual({ status: 'signed-out', user: null, remote: false })
+    // a 401 asks /api/me first; its 401 is what signs out
+    await vi.waitFor(() => expect(session.get()).toEqual({ status: 'signed-out', user: null, remote: false }))
   })
 
   it('a wrong password on login does not count as an expired session', async () => {
