@@ -300,6 +300,8 @@ func TestAnnouncerFollowsServerFile(t *testing.T) {
 	srv.Name = "Дача"
 	writeShared(dir, serverFile, srv)
 	an.step(ctx)
+	// the new run starts on its own goroutine: wait for it to record itself
+	waitFor(t, func() bool { n, live := f.count(); return n == 2 && live == 1 })
 	if n, live := f.count(); n != 2 || live != 1 || f.got[1].Info.Name != "Дача" {
 		t.Fatalf("after a change: runs %d live %d", n, live)
 	}
