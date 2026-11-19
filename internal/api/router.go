@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/antresol-app/antresol/internal/discovery"
+	"github.com/antresol-app/antresol/internal/extsvc"
 	"github.com/antresol-app/antresol/internal/publicurl"
 	"io/fs"
 	"log"
@@ -185,6 +186,13 @@ type Deps struct {
 	// only plain ones; nil: only the words in the files (tracks then say
 	// hasLyrics only when they have some).
 	Lyrics *lyrics.Client
+
+	// External are «Внешние сервисы» (/api/settings/external): whether
+	// Wikidata, the IMDb ratings, song words and the intro databases are
+	// asked now (nil: their defaults, and the settings are not mounted).
+	// ExternalChanged is told of a service a save turned on or off.
+	External        *extsvc.Switches
+	ExternalChanged func(id extsvc.ID, on bool)
 
 	// Segments are the recap, intro and credits of the library's videos
 	// (segments: of POST /api/play); nil: none.
@@ -520,6 +528,7 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 			r.Use(guard.Require)
 			mountStats(r, newStats(deps, time.Now))
 			mountSettings(r, newSettingsAPI(deps))
+			mountExternal(r, deps)
 			mountUpdates(r, deps.CoreRelease)
 			mountTranscoding(r, deps)
 			mountStorage(r, deps)

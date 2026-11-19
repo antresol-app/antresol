@@ -83,6 +83,18 @@ func addTo(list *[]string, vs ...string) {
 	}
 }
 
+// wikidataOn: w is set and not switched off in the settings
+// (*wikidata.Client's Active, «Внешние сервисы»).
+func wikidataOn(w Wikidata) bool {
+	if w == nil {
+		return false
+	}
+	if a, ok := w.(interface{ Active() bool }); ok {
+		return a.Active()
+	}
+	return true
+}
+
 // Wikidata is the part of *wikidata.Client a lookup uses.
 type Wikidata interface {
 	WorkNames(ctx context.Context, title, author string) ([]wikidata.WorkNames, error)
@@ -149,7 +161,7 @@ func (r *Resolver) Cached(ctx context.Context, b Book) (Names, bool, error) {
 func (r *Resolver) Lookup(ctx context.Context, b Book) (Names, error) {
 	b.Title, b.Author = strings.TrimSpace(b.Title), strings.TrimSpace(b.Author)
 	var n Names
-	if r.Wikidata != nil {
+	if wikidataOn(r.Wikidata) {
 		works, err := r.Wikidata.WorkNames(ctx, b.Title, b.Author)
 		if err := sourceErr(err); err != nil {
 			return Names{}, err

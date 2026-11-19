@@ -7,6 +7,9 @@ func init() {
 		// «Адрес сервера» (settings_handlers.go)
 		"Адрес сервера — ссылка вида https://media.example.org": "The server address is a link like https://media.example.org",
 
+		// «Внешние сервисы» (external_settings.go)
+		"Неизвестный внешний сервис": "Unknown external service",
+
 		// shelves
 		"shelf" + ctxSep + "Продолжить": "Continue Watching",
 		"Слушали недавно":               "Recently Played",

@@ -1,6 +1,7 @@
 // The first-run wizard: what comes after the administrator is created. Media
 // folders (what the server sees, which folder is which kind), write access (a
-// real test, with the fix to copy when it fails), the graphics card, then
+// real test, with the fix to copy when it fails), the graphics card, the
+// external services (every one checked; «Готово» saves the choice), then
 // «Готово» starts the library scan. Every step can be skipped; the same
 // checks stay in «Управление → Настройки сервера». Only reachable while the
 // server says the wizard is pending (see GET /api/setup/wizard), and only for
@@ -9,6 +10,8 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { ApiError, errorText, getTranscoding, probeTranscoding } from '../api/client'
 import { finishSetupWizard, getSetupWizard } from '../api/storage'
+import { EXTERNAL_SERVICES, getExternal, saveExternal, type ExternalServiceId, type ExternalView } from '../api/external'
+import { ExternalServiceRows } from './manage/ExternalServicesSettings'
 import type { TranscodingView } from '../api/types'
 import { GpuHint } from '../components/storage/GpuHint'
 import { RemoveConfirm, StorageFolders } from '../components/storage/StorageFolders'
@@ -22,7 +25,10 @@ import { Notice } from '../ui/Notice'
 import { statusLine } from './manage/TranscodingSettings'
 import styles from './SetupWizard.module.css'
 
-const STEPS = 3
+const STEPS = 4
+
+/** Every service checked: the wizard offers them all (a locked one shows the server's word). */
+const ALL_ON = Object.fromEntries(EXTERNAL_SERVICES.map((id) => [id, true])) as Record<ExternalServiceId, boolean>
 
 /** The graphics card: the status line the settings and «О сервере» show, and the fix when none was passed. */
 function HardwareStep() {
@@ -60,6 +66,19 @@ function HardwareStep() {
   )
 }
 
+/** The external services: a switch each, all on; the choice is saved by «Готово». */
+function ExternalStep({ view, chosen, onChange }: { view: ExternalView | null; chosen: Record<ExternalServiceId, boolean>; onChange: (id: ExternalServiceId, on: boolean) => void }) {
+  const rows = EXTERNAL_SERVICES.map((id) => {
+    const s = view?.services.find((x) => x.id === id)
+    return s?.locked ? { id, on: s.on, locked: true } : { id, on: chosen[id] }
+  })
+  return (
+    <GroupedSection>
+      <ExternalServiceRows rows={rows} onChange={onChange} />
+    </GroupedSection>
+  )
+}
+
 export function SetupWizard() {
   const t = useT()
   const navigate = useNavigate()
@@ -69,6 +88,15 @@ export function SetupWizard() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [asking, setAsking] = useState(false)
+  const [ext, setExt] = useState(ALL_ON)
+  const [extView, setExtView] = useState<ExternalView | null>(null)
+  useEffect(() => {
+    if (step !== 3) return
+    const ac = new AbortController()
+    // which services the server's environment locks (shown, not sent)
+    getExternal(ac.signal).then(setExtView, () => {})
+    return () => ac.abort()
+  }, [step])
 
   useEffect(() => {
     const ac = new AbortController()
@@ -115,6 +143,17 @@ export function SetupWizard() {
       setAsking(false)
       if (!(await storage.save(false, confirm))) return
     }
+    if (step === 3) {
+      setBusy(true)
+      try {
+        const locked = new Set(extView?.services.filter((s) => s.locked).map((s) => s.id))
+        await saveExternal({ services: Object.fromEntries(EXTERNAL_SERVICES.filter((id) => !locked.has(id)).map((id) => [id, ext[id]])) })
+      } catch (e) {
+        setError(errorText(e, t('wizard.failed')))
+        setBusy(false)
+        return
+      }
+    }
     if (step === STEPS - 1) await finish()
     else setStep(step + 1)
   }
@@ -125,8 +164,8 @@ export function SetupWizard() {
     else setStep(step + 1)
   }
 
-  const titles = ['wizard.folders.title', 'wizard.perms.title', 'wizard.hw.title'] as const
-  const leads = ['wizard.folders.lead', 'wizard.perms.lead', 'wizard.hw.lead'] as const
+  const titles = ['wizard.folders.title', 'wizard.perms.title', 'wizard.hw.title', 'wizard.ext.title'] as const
+  const leads = ['wizard.folders.lead', 'wizard.perms.lead', 'wizard.hw.lead', 'wizard.ext.lead'] as const
   const root = storage.view?.root.path ?? '/media'
   const disabled = busy || storage.busy || restarting
   return (
@@ -173,6 +212,7 @@ export function SetupWizard() {
             </>
           )}
           {step === 2 && <HardwareStep />}
+          {step === 3 && <ExternalStep view={extView} chosen={ext} onChange={(id, on) => setExt({ ...ext, [id]: on })} />}
         </div>
 
         {error && (

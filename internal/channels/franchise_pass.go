@@ -38,6 +38,21 @@ type FranchiseFacts interface {
 	TitleFacts(ctx context.Context, kind string, tmdbIDs []int, lang string) (map[int]wikidata.TitleFacts, error)
 }
 
+// switchable is a source the admin turns on and off at run time
+// (*wikidata.Client: «Внешние сервисы»).
+type switchable interface{ Active() bool }
+
+// wikiOn: Wikidata is set and not switched off in the settings.
+func (f *Franchises) wikiOn() bool {
+	if f == nil || f.Wiki == nil {
+		return false
+	}
+	if s, ok := f.Wiki.(switchable); ok {
+		return s.Active()
+	}
+	return true
+}
+
 // Limits of a pass.
 const (
 	franchiseAlgo        = "4" // a new value recomputes every library once (2: franchises from Wikidata's anchors; 3: Wikidata's facts actually read, see wikidata.claimsBatch; 4: facts in small cached batches, firm franchise members)
@@ -397,7 +412,7 @@ func factsCurrent(data string) bool {
 // wikidata_facts; Wikidata off or failing: what the cache has, expired or not.
 func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wikidata.TitleFacts, string) {
 	out := map[int64]wikidata.TitleFacts{}
-	if f.Wiki == nil {
+	if !f.wikiOn() {
 		return out, ""
 	}
 	wikiErr := ""
@@ -488,7 +503,7 @@ type FranchiseEvidence struct {
 
 // Evidence reads FranchiseEvidence from the facts cache (wikidata_facts).
 func (f *Franchises) Evidence(ctx context.Context) (FranchiseEvidence, error) {
-	ev := FranchiseEvidence{Wikidata: f != nil && f.Wiki != nil, Untied: map[int64]bool{}}
+	ev := FranchiseEvidence{Wikidata: f.wikiOn(), Untied: map[int64]bool{}}
 	if f == nil || f.Store == nil {
 		return ev, nil
 	}

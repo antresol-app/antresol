@@ -54,6 +54,24 @@ reset.
 | `VAULT_ANNOUNCE_PORT` | the server's | Announcer only: the HTTP port published for the server on the host. `compose.yml` sets it from `HTTP_PORT`. |
 | `HTTP_PORT` | `8420` | `compose.yml` only: the host port of the web UI and the apps (TCP) and of the apps' UDP probe, for the server and the announcer together. A second stack on the same computer needs another one. |
 
+## External services {#external-services}
+
+Open services the server asks about titles already in the library. They bring nothing into the
+library. Each has a switch in **Settings → Server → External Services**, and the first-run
+wizard lists them all, turned on. A switch applies at once, without a restart. A variable below
+wins over the switch, and the switch then shows it as set on the server.
+
+| Service | Default | Sends | Gives | Variable |
+| --- | --- | --- | --- | --- |
+| Wikidata | on | TMDB and IMDb ids of films and series, book titles | Franchises merged across TMDB collections, Rotten Tomatoes scores, book titles in other languages | `VAULT_WIKIDATA_BASEURL`: `off`, `on` or your own address |
+| IMDb ratings | off | nothing about the library: the server downloads IMDb's shared ratings file once a day | IMDb ratings on title pages. The dataset is for personal, non-commercial use | `VAULT_IMDB_RATINGS_URL`: `off`, `on` or a mirror's address |
+| Song lyrics (LRCLIB) | off | Artist, title, album and length of a track | Lyrics, synced ones too | `VAULT_LRCLIB_URL`: `off`, `on` or your own LRCLIB address |
+| Intros and credits (TheIntroDB, IntroDB) | on | TMDB/IMDb id of a film or series, season and episode | Intro and credits marks before the server's own analysis finds them | `VAULT_SEGMENTS_ONLINE`: `on` or `off` |
+
+IMDb ratings and song lyrics are off until you turn them on, because you accept their terms: the
+IMDb dataset is licensed for personal, non-commercial use, and lyrics belong to their authors.
+A server that never chose shows a one-time notice about this section on **Health**.
+
 ## Subtitles
 
 | Variable | What it does |

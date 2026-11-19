@@ -64,6 +64,18 @@ type Service struct {
 
 var imdbID = regexp.MustCompile(`^tt[0-9]{7,10}$`)
 
+// rtOn: the source is set and not switched off in the settings
+// (*wikidata.Client's Active).
+func rtOn(rt RTSource) bool {
+	if rt == nil {
+		return false
+	}
+	if a, ok := rt.(interface{ Active() bool }); ok {
+		return a.Active()
+	}
+	return true
+}
+
 // ValidID reports whether s looks like an IMDb title id ("tt0111161").
 func ValidID(s string) bool { return imdbID.MatchString(s) }
 
@@ -88,12 +100,12 @@ func (s *Service) Get(ctx context.Context, id string) Ratings {
 	if !ValidID(id) {
 		return out
 	}
-	if s.IMDb != nil {
+	if s.IMDb.Active() {
 		if r, ok := s.IMDb.Lookup(id); ok {
 			out.IMDb = &r
 		}
 	}
-	if s.RT != nil && s.DB != nil {
+	if rtOn(s.RT) && s.DB != nil {
 		if sc, ok := s.rt(ctx, id); ok && (sc.Tomatometer > 0 || sc.Audience > 0) {
 			out.RottenTomatoes = &sc
 		}

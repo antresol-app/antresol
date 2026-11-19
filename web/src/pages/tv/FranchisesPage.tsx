@@ -14,6 +14,7 @@ import { ago } from '../../state/format'
 import { useLoad } from '../../state/useLoad'
 import { Badge } from '../../ui/Badge'
 import { Button, ButtonLink } from '../../ui/Button'
+import { EXTERNAL_PATH } from '../../api/external'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
 import { Sheet } from '../../ui/Sheet'
@@ -108,7 +109,18 @@ export function FranchisesPage() {
             )}
             {status?.incomplete && <Notice tone="accent">{t('tv.franchises.incomplete')}</Notice>}
             {/* why franchises may stay apart: no Wikidata, Wikidata not read for everything yet, no AI helper */}
-            {data.evidence && !data.evidence.wikidata && <Notice tone="warning">{t('tv.franchises.whyNoWikidata')}</Notice>}
+            {data.evidence && !data.evidence.wikidata && (
+              <Notice
+                tone="warning"
+                actions={
+                  <ButtonLink size="small" variant="secondary" to={EXTERNAL_PATH}>
+                    {t('ext.franchises.open')}
+                  </ButtonLink>
+                }
+              >
+                {t('tv.franchises.whyNoWikidata')}
+              </Notice>
+            )}
             {data.evidence?.wikidata && data.evidence.read < data.evidence.titles && !status?.running && (
               <Notice tone="accent">{t('tv.franchises.whyPartial', { read: data.evidence.read, titles: data.evidence.titles })}</Notice>
             )}

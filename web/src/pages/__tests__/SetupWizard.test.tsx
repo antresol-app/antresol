@@ -1,6 +1,7 @@
 // The first-run wizard after the administrator: media folders (what the
 // server sees, which folder is which, «Создать»), write access with the fix
-// to copy, the graphics card, then «Готово» starts the scan. Every step can
+// to copy, the graphics card, the external services (all checked), then
+// «Готово» saves them and starts the scan. Every step can
 // be skipped, and a wizard that is over is not reachable.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
@@ -8,6 +9,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { FOLDER_KINDS, restartTiming, type DirCheck, type FolderKind, type FolderPick, type FolderPicks, type FolderRow, type StorageView } from '../../api/storage'
 import type { TranscodingView } from '../../api/types'
+import type { ExternalView } from '../../api/external'
 import { SetupWizard } from '../SetupWizard'
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
@@ -83,7 +85,10 @@ interface Opts {
   created?: DirCheck
   /** «Готово» is refused: another tab ended the wizard first */
   finish?: 403
+  external?: ExternalView
 }
+
+const EXT = ['wikidata', 'imdb', 'lyrics', 'segments'] as const
 
 function serve(o: Opts = {}) {
   const calls: Call[] = []
@@ -117,6 +122,10 @@ function serve(o: Opts = {}) {
           return json(o.transcoding ?? tc())
         case 'POST /api/settings/transcoding/probe':
           return json(o.transcoding ?? tc())
+        case 'GET /api/settings/external':
+          return json(o.external ?? { services: EXT.map((id) => ({ id, on: id === 'wikidata' || id === 'segments', default: id === 'wikidata' || id === 'segments', locked: false })), chosen: false, notice: true })
+        case 'PUT /api/settings/external':
+          return json({ services: [], chosen: true, notice: false })
         case 'POST /api/setup/wizard/finish':
           return o.finish === 403 ? json({ error: 'Первая настройка уже завершена' }, 403) : json({ pending: false })
       }
@@ -167,7 +176,7 @@ describe('the first-run wizard', () => {
     serve()
     open()
     expect(await screen.findByRole('heading', { name: 'Медиа-папки' })).toBeInTheDocument()
-    expect(screen.getByText('Шаг 1 из 3')).toBeInTheDocument()
+    expect(screen.getByText('Шаг 1 из 4')).toBeInTheDocument()
     // the folders under /media, with their counts
     const root = screen.getByRole('heading', { name: 'Что лежит в /media' }).parentElement!
     expect(within(root).getByText('tv')).toBeInTheDocument()
@@ -212,7 +221,7 @@ describe('the first-run wizard', () => {
     const reread = calls.findIndex((c, i) => i > health && c.path === '/api/settings/storage' && c.method === 'GET')
     expect(health).toBeGreaterThan(calls.findIndex((c) => c.method === 'PUT'))
     expect(reread).toBeGreaterThan(health)
-    expect(screen.getByText('Шаг 2 из 3')).toBeInTheDocument()
+    expect(screen.getByText('Шаг 2 из 4')).toBeInTheDocument()
   })
 
   it('«Далее» with nothing changed saves nothing', async () => {
@@ -317,14 +326,14 @@ describe('the first-run wizard', () => {
     expect(within(screen.getByText('Сериалы').closest('li')!).getByText('Папки пока нет')).toBeInTheDocument()
   })
 
-  it('step 3 shows the hardware status and, with no GPU passed, what to uncomment; «Готово» starts the scan', async () => {
+  it('step 3 shows the hardware status and, with no GPU passed, what to uncomment', async () => {
     const calls = serve({ transcoding: noGpu() })
     open()
     await screen.findByRole('heading', { name: 'Медиа-папки' })
     await userEvent.click(button('Пропустить'))
     await userEvent.click(button('Пропустить'))
     expect(await screen.findByRole('heading', { name: 'Видеокарта' })).toBeInTheDocument()
-    expect(screen.getByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(screen.getByText('Шаг 3 из 4')).toBeInTheDocument()
     expect(await screen.findByText('Процессор: контейнер не видит видеокарту — откройте /dev/dri в compose.yml')).toBeInTheDocument()
     expect(screen.getByText(/Видеокарту в контейнер не передали/)).toBeInTheDocument()
     expect(screen.getByText(/devices:\s+- \/dev\/dri:\/dev\/dri/)).toBeInTheDocument()
@@ -333,9 +342,44 @@ describe('the first-run wizard', () => {
     // «Проверить заново» asks the server to test again
     await userEvent.click(button('Проверить заново'))
     await waitFor(() => expect(calls.some((c) => c.path === '/api/settings/transcoding/probe')).toBe(true))
+    await userEvent.click(button('Далее'))
+    expect(await screen.findByRole('heading', { name: 'Внешние сервисы' })).toBeInTheDocument()
+    expect(finished(calls)).toBe(false)
+  })
+
+  it('step 4 lists the external services, every one checked; «Готово» saves the choice, then starts the scan', async () => {
+    const calls = serve()
+    open()
+    await screen.findByRole('heading', { name: 'Медиа-папки' })
+    for (let i = 0; i < 3; i++) await userEvent.click(button('Пропустить'))
+    expect(await screen.findByRole('heading', { name: 'Внешние сервисы' })).toBeInTheDocument()
+    expect(screen.getByText('Шаг 4 из 4')).toBeInTheDocument()
+    for (const name of ['Wikidata', 'Рейтинги IMDb', 'Тексты песен (LRCLIB)', 'Заставки и титры (TheIntroDB, IntroDB)']) {
+      expect(screen.getByRole('switch', { name })).toHaveAttribute('aria-checked', 'true')
+    }
+    expect(screen.getByRole('link', { name: 'lrclib.net' })).toHaveAttribute('href', 'https://lrclib.net')
+    await userEvent.click(screen.getByRole('switch', { name: 'Тексты песен (LRCLIB)' }))
     await userEvent.click(button('Готово'))
     expect(await screen.findByRole('heading', { name: 'Главная' })).toBeInTheDocument()
-    expect(finished(calls)).toBe(true)
+    const put = calls.find((c) => c.method === 'PUT' && c.path === '/api/settings/external')
+    expect(put?.body).toEqual({ services: { wikidata: true, imdb: true, lyrics: false, segments: true } })
+    expect(calls.indexOf(put!)).toBeLessThan(calls.findIndex((c) => c.path === '/api/setup/wizard/finish'))
+  })
+
+  it('step 4 shows a service the server environment sets as locked, and does not send it', async () => {
+    const calls = serve({
+      external: { services: EXT.map((id) => ({ id, on: id !== 'imdb', default: false, locked: id === 'imdb' })), chosen: false, notice: true },
+    })
+    open()
+    await screen.findByRole('heading', { name: 'Медиа-папки' })
+    for (let i = 0; i < 3; i++) await userEvent.click(button('Пропустить'))
+    const imdb = await screen.findByText('Выключено на сервере (VAULT_IMDB_RATINGS_URL)')
+    expect(imdb).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Рейтинги IMDb' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Рейтинги IMDb' })).toHaveAttribute('aria-checked', 'false')
+    await userEvent.click(button('Готово'))
+    await screen.findByRole('heading', { name: 'Главная' })
+    expect(calls.find((c) => c.method === 'PUT' && c.path === '/api/settings/external')?.body).toEqual({ services: { wikidata: true, lyrics: true, segments: true } })
   })
 
   it('step 3 with a working GPU shows its status and no hint', async () => {
@@ -356,6 +400,8 @@ describe('the first-run wizard', () => {
     await screen.findByRole('heading', { name: 'Права на запись' })
     await userEvent.click(button('Пропустить'))
     await screen.findByRole('heading', { name: 'Видеокарта' })
+    await userEvent.click(button('Пропустить'))
+    await screen.findByRole('heading', { name: 'Внешние сервисы' })
     expect(finished(calls)).toBe(false)
     await userEvent.click(button('Пропустить'))
     expect(await screen.findByRole('heading', { name: 'Главная' })).toBeInTheDocument()

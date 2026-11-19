@@ -97,10 +97,17 @@ type Client struct {
 	// Limit spaces the requests (the background queue: polite to the
 	// public service); nil never waits.
 	Limit *metadata.Limiter
+	// Enabled (nil: always): false is «Внешние сервисы» turning song words
+	// off: the client finds nothing, as a nil one.
+	Enabled func() bool
 
 	mu    sync.Mutex
 	cache map[string]cached
 }
+
+// Active reports whether the client asks LRCLIB now: set, and not
+// switched off.
+func (c *Client) Active() bool { return c != nil && (c.Enabled == nil || c.Enabled()) }
 
 type cached struct {
 	r  *Result
@@ -181,7 +188,7 @@ func (r rec) result() *Result {
 // Find returns lyrics for q, or nil when LRCLIB has none. Errors (network)
 // are not cached.
 func (c *Client) Find(ctx context.Context, q Query) (*Result, error) {
-	if c == nil || strings.TrimSpace(q.Title) == "" {
+	if !c.Active() || strings.TrimSpace(q.Title) == "" {
 		return nil, nil
 	}
 	key := strings.ToLower(fmt.Sprintf("%s|%s|%s|%d", q.Artist, q.Title, q.Album, q.DurationSec))

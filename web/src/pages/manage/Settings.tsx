@@ -25,6 +25,7 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
+import { ExternalServicesSection } from './ExternalServicesSettings'
 import { PublicAddressSection } from './PublicAddressSettings'
 import { StorageSection } from './StorageSettings'
 import { TelegramSection } from './TelegramSettings'
@@ -45,11 +46,11 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
 }
 
 /** The screens of «Настройки сервера», in their order in «Управление» (Manage.tsx: MANAGE_SECTIONS). */
-export type SettingsGroup = 'library' | 'watching' | 'processing' | 'music' | 'subtitles' | 'kindle' | 'ai' | 'accounts' | 'address'
+export type SettingsGroup = 'library' | 'watching' | 'processing' | 'music' | 'subtitles' | 'kindle' | 'ai' | 'accounts' | 'address' | 'external'
 
 interface GroupInfo {
   id: SettingsGroup
-  label: 'settings.group.library' | 'settings.watching' | 'settings.group.processing' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai' | 'acct.section' | 'settings.group.address'
+  label: 'settings.group.library' | 'settings.watching' | 'settings.group.processing' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai' | 'acct.section' | 'settings.group.address' | 'ext.title'
 }
 
 /** The groups of the page. */
@@ -64,6 +65,7 @@ export function settingsGroups(): GroupInfo[] {
     { id: 'ai', label: 'settings.group.ai' },
     { id: 'accounts', label: 'acct.section' },
     { id: 'address', label: 'settings.group.address' },
+    { id: 'external', label: 'ext.title' },
   ]
 }
 
@@ -329,6 +331,8 @@ export function Settings() {
       {at('accounts') && <AccountsSection />}
 
       {at('address') && <PublicAddressSection values={values} onChange={(patch) => change(patch)} />}
+
+      {at('external') && <ExternalServicesSection />}
 
       {at('library') && <StorageSection />}
 

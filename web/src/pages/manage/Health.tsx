@@ -18,12 +18,13 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { APP_NAME } from '../../brand'
 import { errorText, getAddonHelpers, getAddons, getCoreUpdate, getLibraryStatus, getNetworkHealth, getTranscoding } from '../../api/client'
 import { getStorage, type StorageView } from '../../api/storage'
+import { EXTERNAL_PATH, getExternal, saveExternal } from '../../api/external'
 import type { AddonInfo, CoreUpdate, HelperHealth, LibraryStatus, NetCheck, TranscodingView } from '../../api/types'
 import { StoragePerms } from '../../components/storage/StoragePerms'
 import { t as tr, useT, type Key } from '../../i18n'
 import { showNotice } from '../../state/notice'
 import { useSession } from '../../state/session'
-import { Button, ButtonAnchor } from '../../ui/Button'
+import { Button, ButtonAnchor, ButtonLink } from '../../ui/Button'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
 import { SettingsIcon } from '../../ui/SettingsIcon'
@@ -84,6 +85,21 @@ export function Health() {
     // the module's t: the loads do not follow the language (useT's changes each render)
     [withAddons],
   )
+  // «Внешние сервисы» never chosen: a one-time notice that they can be
+  // (closed for good by either of its buttons)
+  const [extNotice, setExtNotice] = useState(false)
+  useEffect(() => {
+    const ac = new AbortController()
+    getExternal(ac.signal).then(
+      (v) => setExtNotice(Boolean(v.notice)),
+      () => {},
+    )
+    return () => ac.abort()
+  }, [])
+  const closeExtNotice = () => {
+    setExtNotice(false)
+    void saveExternal({ dismissNotice: true }).catch(() => {})
+  }
   useEffect(() => {
     document.title = `${tr('manage.section.health')} — ${APP_NAME}`
     const ac = new AbortController()
@@ -130,6 +146,25 @@ export function Health() {
           </Button>
         </div>
       </header>
+
+      {extNotice && (
+        <Notice
+          tone="accent"
+          title={t('ext.notice.title')}
+          actions={
+            <>
+              <ButtonLink size="small" to={EXTERNAL_PATH} onClick={closeExtNotice}>
+                {t('ext.notice.open')}
+              </ButtonLink>
+              <Button size="small" variant="secondary" onClick={closeExtNotice}>
+                {t('ext.notice.dismiss')}
+              </Button>
+            </>
+          }
+        >
+          {t('ext.notice.body')}
+        </Notice>
+      )}
 
       <GroupedSection title={t('health.versions')}>
         <CoreRow core={core} />

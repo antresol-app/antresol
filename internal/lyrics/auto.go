@@ -123,7 +123,7 @@ func (a *Auto) Run(ctx context.Context) {
 // Pass looks up every due track until none is left, the queue pauses
 // (the service failing) or ctx is done.
 func (a *Auto) Pass(ctx context.Context) error {
-	if a.Client == nil || a.Repo == nil {
+	if !a.Client.Active() || a.Repo == nil {
 		return nil
 	}
 	if a.now().Before(a.resumeAt) {

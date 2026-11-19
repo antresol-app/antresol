@@ -133,6 +133,9 @@ type Online struct {
 	UA         string
 	Limit      *metadata.Limiter
 	Now        func() time.Time
+	// Gate (nil: always): false is «Внешние сервисы» turning the
+	// lookups off: no service is asked (Enabled(service) is false).
+	Gate func() bool
 
 	mu    sync.Mutex
 	day   map[string]int // requests this day per service
@@ -155,7 +158,7 @@ func (o *Online) now() time.Time {
 
 // Enabled reports whether service is asked.
 func (o *Online) Enabled(service string) bool {
-	if o == nil {
+	if o == nil || (o.Gate != nil && !o.Gate()) {
 		return false
 	}
 	switch service {

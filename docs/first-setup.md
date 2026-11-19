@@ -1,6 +1,6 @@
 # First setup
 
-After you create the administrator, a three-step wizard opens. Every step can be skipped: the
+After you create the administrator, a four-step wizard opens. Every step can be skipped: the
 same checks stay in the server settings.
 
 ![The first-run wizard, Media folders step](images/guide/en/wizard.png)
@@ -26,7 +26,14 @@ cannot, the wizard shows a ready command: copy it and run it on the computer.
 The wizard shows whether a graphics card was found, and if not, what to uncomment in
 `compose.yml`.
 
-**Done** starts the first scan. Films appear within a few minutes.
+## Step 4. External services
+
+Open services that add to what is already in the library: Wikidata (franchises, Rotten Tomatoes
+scores), IMDb ratings, song lyrics (LRCLIB), intros and credits (TheIntroDB, IntroDB). Each row
+says what it sends and what it gives; all are turned on here, turn off what you don't need. See
+[External services](configuration.html#external-services).
+
+**Done** saves the choice and starts the first scan. Films appear within a few minutes.
 
 ## Where the settings are
 

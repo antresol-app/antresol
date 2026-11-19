@@ -42,6 +42,9 @@ type Client struct {
 	UserAgent string // Wikimedia asks for one with a contact
 	HTTP      *http.Client
 	Limiter   *metadata.Limiter
+	// Enabled (nil: always) is asked before every request: false is
+	// «Внешние сервисы» turning Wikidata off, and requests fail with ErrOff.
+	Enabled func() bool
 
 	once sync.Once
 	lim  *metadata.Limiter
@@ -66,6 +69,13 @@ type Work struct {
 	OpenLibrary          string // "/works/OL19061442W" (P648), "" = none
 	Sitelinks            int    // Wikipedia articles: how known the work is
 }
+
+// ErrOff: Wikidata is switched off in the settings («Внешние сервисы»).
+var ErrOff = errors.New("wikidata: off in the settings")
+
+// Active reports whether the client asks Wikidata now: set, and not
+// switched off (Enabled).
+func (c *Client) Active() bool { return c != nil && (c.Enabled == nil || c.Enabled()) }
 
 func (c *Client) limiter() *metadata.Limiter {
 	c.once.Do(func() {
@@ -93,11 +103,17 @@ const maxAddonLookups = 2
 // (metadata.Getter.RawWithin). Any status is
 // returned as it is; a body over metadata.MaxRaw is an error.
 func (c *Client) Raw(ctx context.Context, p string, q url.Values) (status int, contentType string, body []byte, err error) {
+	if !c.Active() {
+		return 0, "", nil, ErrOff
+	}
 	g := c.getter() // initialises addonSem
 	return g.RawWithin(ctx, c.addonSem, c.BaseURL, p, q)
 }
 
 func (c *Client) get(ctx context.Context, q url.Values, out any) error {
+	if !c.Active() {
+		return ErrOff
+	}
 	q.Set("format", "json")
 	u := strings.TrimRight(c.BaseURL, "/") + "/w/api.php?" + q.Encode()
 	path := "/w/api.php " + q.Get("action")

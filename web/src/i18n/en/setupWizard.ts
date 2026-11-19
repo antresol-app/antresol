@@ -16,6 +16,8 @@ export default {
   'wizard.perms.title': 'Write access',
   'wizard.perms.lead': 'The server needs to write to the media folder (subtitles, temporary files) and to the transcoding folder. The check is real: the server creates a test file and deletes it.',
   'wizard.hw.title': 'Graphics card',
+  'wizard.ext.title': 'External Services',
+  'wizard.ext.lead': 'Open services add to what is already in the library: franchises, ratings, song lyrics, intros and credits. Turn off what you don’t need; you can change it later in Settings → Server → External Services.',
   'wizard.hw.lead': 'A graphics card transcodes video several times faster than the CPU. The server works without one, too.',
 
   'storage.title': 'Server folders',

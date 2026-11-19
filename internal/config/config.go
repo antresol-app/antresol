@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/antresol-app/antresol/internal/extsvc"
 	"github.com/antresol-app/antresol/internal/mediaimport"
 )
 
@@ -133,30 +134,28 @@ type Config struct {
 	// bring titles from outside; an empty struct in the core build.
 	Acquisition
 
-	// LRCLibURL (VAULT_LRCLIB_URL) is where song words are looked up
-	// online (default https://lrclib.net); "" (VAULT_LRCLIB_URL=off): only
-	// the words in the files. A library-only server defaults to off.
+	// The external services («Внешние сервисы», internal/extsvc): the
+	// address each is asked at ("" only when its variable is "off"), and
+	// ExternalEnv, the services their variable turns on or off. Whether a
+	// service without its variable is on is the admin's choice in the
+	// settings, else extsvc.Default: the server checks extsvc.Switches
+	// before every request, not these fields.
+	//
+	// LRCLibURL (VAULT_LRCLIB_URL, default https://lrclib.net): song words.
 	LRCLibURL string
-
-	// WikidataURL (VAULT_WIKIDATA_BASEURL, "off": none, "on":
-	// DefaultWikidataURL): Rotten Tomatoes scores of movies and series, and
-	// in the sources build the second book catalog of «Найти и добавить»
-	// (Russian titles). A library-only server (the one App Store users
-	// run) defaults to off, as for LRCLIB: it sends the IMDb ids of the
-	// library to a third party.
+	// WikidataURL (VAULT_WIKIDATA_BASEURL, "on": DefaultWikidataURL):
+	// franchises, Rotten Tomatoes scores, the other names of books.
 	WikidataURL string
-	// IMDbRatingsURL (VAULT_IMDB_RATINGS_URL) is the IMDb dataset
-	// title.ratings.tsv.gz the IMDb ratings come from ("" = none; "off"
-	// turns it off, "on" picks DefaultIMDbRatingsURL). The dataset is for
-	// personal, non-commercial use: a library-only server (the one App
-	// Store users run) defaults to off, as for LRCLIB.
+	// IMDbRatingsURL (VAULT_IMDB_RATINGS_URL, "on": DefaultIMDbRatingsURL):
+	// the IMDb dataset title.ratings.tsv.gz (personal, non-commercial use).
 	IMDbRatingsURL string
-	// SegmentsOnline (VAULT_SEGMENTS_ONLINE "on"/"off") asks TheIntroDB and
-	// IntroDB where the recap, intro and credits of the library's episodes
-	// and films are (their TMDB/IMDb ids with the season and episode). A
-	// library-only server (the one App Store users run) defaults to off, as
-	// for LRCLIB: chapters and the server's own analysis still work.
+	// SegmentsOnline (VAULT_SEGMENTS_ONLINE "on"/"off"): false only when
+	// "off": TheIntroDB and IntroDB are not asked where recaps, intros and
+	// credits are.
 	SegmentsOnline bool
+	// ExternalEnv: the services a variable above sets ("off": false; "on" or
+	// an address: true), which the settings cannot change.
+	ExternalEnv map[extsvc.ID]bool
 	// PublicURL is how browsers reach this server ("https://vault.example.org",
 	// VAULT_PUBLIC_URL, no trailing slash): the links of notification
 	// letters and (sources build) the library import's OAuth redirects.
@@ -351,50 +350,53 @@ func Load() (Config, error) {
 	if err := c.loadAcquisition(); err != nil {
 		return c, err
 	}
+	c.ExternalEnv = map[extsvc.ID]bool{}
 	switch v := strings.TrimSpace(os.Getenv("VAULT_LRCLIB_URL")); {
 	case strings.EqualFold(v, "off"):
-		c.LRCLibURL = ""
+		c.LRCLibURL, c.ExternalEnv[extsvc.Lyrics] = "", false
+	case strings.EqualFold(v, "on"):
+		c.LRCLibURL, c.ExternalEnv[extsvc.Lyrics] = DefaultLRCLibURL, true
 	case v != "":
 		u, err := url.Parse(v)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 			return c, errors.New("VAULT_LRCLIB_URL: неверный адрес")
 		}
-		c.LRCLibURL = strings.TrimRight(v, "/")
-	case !c.LibraryOnly:
+		c.LRCLibURL, c.ExternalEnv[extsvc.Lyrics] = strings.TrimRight(v, "/"), true
+	default:
 		c.LRCLibURL = DefaultLRCLibURL
 	}
 	switch v := strings.TrimSpace(os.Getenv("VAULT_WIKIDATA_BASEURL")); {
 	case strings.EqualFold(v, "off"):
-		c.WikidataURL = ""
+		c.WikidataURL, c.ExternalEnv[extsvc.Wikidata] = "", false
 	case strings.EqualFold(v, "on"):
-		c.WikidataURL = DefaultWikidataURL
+		c.WikidataURL, c.ExternalEnv[extsvc.Wikidata] = DefaultWikidataURL, true
 	case v != "":
-		c.WikidataURL = v
-	case !c.LibraryOnly:
+		c.WikidataURL, c.ExternalEnv[extsvc.Wikidata] = v, true
+	default:
 		c.WikidataURL = DefaultWikidataURL
 	}
 	switch v := strings.TrimSpace(os.Getenv("VAULT_IMDB_RATINGS_URL")); {
 	case strings.EqualFold(v, "off"):
-		c.IMDbRatingsURL = ""
+		c.IMDbRatingsURL, c.ExternalEnv[extsvc.IMDb] = "", false
 	case strings.EqualFold(v, "on"):
-		c.IMDbRatingsURL = DefaultIMDbRatingsURL
+		c.IMDbRatingsURL, c.ExternalEnv[extsvc.IMDb] = DefaultIMDbRatingsURL, true
 	case v != "":
 		u, err := url.Parse(v)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 			return c, errors.New("VAULT_IMDB_RATINGS_URL: неверный адрес")
 		}
-		c.IMDbRatingsURL = v
-	case !c.LibraryOnly:
+		c.IMDbRatingsURL, c.ExternalEnv[extsvc.IMDb] = v, true
+	default:
 		c.IMDbRatingsURL = DefaultIMDbRatingsURL
 	}
 	c.PublicURL = strings.TrimRight(strings.TrimSpace(os.Getenv("VAULT_PUBLIC_URL")), "/")
-	c.SegmentsOnline = !c.LibraryOnly
+	c.SegmentsOnline = true
 	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("VAULT_SEGMENTS_ONLINE"))); v {
 	case "":
 	case "on", "1", "true", "yes":
-		c.SegmentsOnline = true
+		c.ExternalEnv[extsvc.Segments] = true
 	case "off", "0", "false", "no":
-		c.SegmentsOnline = false
+		c.SegmentsOnline, c.ExternalEnv[extsvc.Segments] = false, false
 	default:
 		return c, fmt.Errorf("VAULT_SEGMENTS_ONLINE: unknown value %q", v)
 	}

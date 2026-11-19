@@ -5,38 +5,17 @@ package config
 import "testing"
 
 // TestLibraryEditionAlwaysLibraryOnly: the core build serves its
-// library alone whatever VAULT_LIBRARY_ONLY says, and looks song words up
-// online only when VAULT_LRCLIB_URL asks for it.
+// library alone whatever VAULT_LIBRARY_ONLY says.
 func TestLibraryEditionAlwaysLibraryOnly(t *testing.T) {
 	for _, v := range []string{"", "off", "on"} {
 		t.Setenv("VAULT_LIBRARY_ONLY", v)
-		t.Setenv("VAULT_LRCLIB_URL", "")
 		c, err := Load()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !c.LibraryOnly || c.LRCLibURL != "" {
-			t.Fatalf("VAULT_LIBRARY_ONLY=%q: libraryOnly %v, lrclib %q", v, c.LibraryOnly, c.LRCLibURL)
+		if !c.LibraryOnly {
+			t.Fatalf("VAULT_LIBRARY_ONLY=%q: libraryOnly %v", v, c.LibraryOnly)
 		}
-	}
-	// ratings: Rotten Tomatoes (Wikidata) and the IMDb dataset only when
-	// asked for: an App Store install contacts no third party by default
-	t.Setenv("VAULT_IMDB_RATINGS_URL", "")
-	t.Setenv("VAULT_WIKIDATA_BASEURL", "")
-	if c, err := Load(); err != nil || c.IMDbRatingsURL != "" || c.WikidataURL != "" {
-		t.Fatalf("ratings: imdb %q wikidata %q %v", c.IMDbRatingsURL, c.WikidataURL, err)
-	}
-	t.Setenv("VAULT_WIKIDATA_BASEURL", "on")
-	if c, err := Load(); err != nil || c.WikidataURL != DefaultWikidataURL {
-		t.Fatalf("wikidata on: %q %v", c.WikidataURL, err)
-	}
-	t.Setenv("VAULT_IMDB_RATINGS_URL", "on")
-	if c, err := Load(); err != nil || c.IMDbRatingsURL != DefaultIMDbRatingsURL {
-		t.Fatalf("imdb on: %q %v", c.IMDbRatingsURL, err)
-	}
-	t.Setenv("VAULT_LRCLIB_URL", "http://lrclib.lan:3300/")
-	if c, err := Load(); err != nil || c.LRCLibURL != "http://lrclib.lan:3300" {
-		t.Fatalf("own lrclib: %q %v", c.LRCLibURL, err)
 	}
 }
 

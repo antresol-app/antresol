@@ -38,6 +38,7 @@ import (
 	"github.com/antresol-app/antresol/internal/discovery"
 	"github.com/antresol-app/antresol/internal/disk"
 	"github.com/antresol-app/antresol/internal/events"
+	"github.com/antresol-app/antresol/internal/extsvc"
 	"github.com/antresol-app/antresol/internal/files"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/iptv"
@@ -192,6 +193,18 @@ func run() error {
 			return s.SubtitleSettings()
 		}})
 	jobs.Enrichers, jobs.SlowEnrichers = metaSrc.Fast, metaSrc.Slow
+	// «Внешние сервисы»: the environment, else the admin's choice, else
+	// the defaults; every client below asks its switch before a request,
+	// so a saved choice applies without a restart
+	external := extsvc.New(cfg.ExternalEnv)
+	if c, err := api.LoadExternalChoice(ctx, database); err != nil {
+		log.Printf("external services: %v (using defaults)", err)
+	} else {
+		external.Apply(c)
+	}
+	if metaSrc.Wikidata != nil {
+		metaSrc.Wikidata.Enabled = external.Gate(extsvc.Wikidata)
+	}
 
 	// the transcodes' GPU: auto tries the machine's with a test encode
 	// each; «Настройки сервера → Перекодирование» overrides VAULT_HWACCEL*
@@ -369,20 +382,22 @@ func run() error {
 	repacker := &library.Repacker{DB: database, Scanner: jobs.Scanner, FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe,
 		Keep: 7 * 24 * time.Hour}
 	// song words of the library's tracks, fetched in the background and
-	// kept (LRCLIB, one request a second; off with VAULT_LRCLIB_URL=off)
+	// kept (LRCLIB, one request a second; while «Внешние сервисы» has it on)
 	var lyricsAuto *lyrics.Auto
 	if cfg.LRCLibURL != "" {
 		bg := lyrics.NewAt(cfg.LRCLibURL, version.UserAgent)
 		bg.Limit = &metadata.Limiter{Interval: time.Second}
+		bg.Enabled = external.Gate(extsvc.Lyrics)
 		lyricsAuto = &lyrics.Auto{Client: bg, Repo: repo, Log: slog.Default()}
 	}
 	// recap, intro and credits of the library's videos: chapters, the
-	// online databases (unless VAULT_SEGMENTS_ONLINE=off, the default of a
-	// library-only server) and the server's own analysis, a season at a
-	// time in the background, yielding the disk to playback
+	// online databases (while «Внешние сервисы» has them on) and the
+	// server's own analysis, a season at a time in the background,
+	// yielding the disk to playback
 	var segOnline *segments.Online
 	if cfg.SegmentsOnline {
 		segOnline = segments.NewOnline(version.UserAgent)
+		segOnline.Gate = external.Gate(extsvc.Segments)
 	}
 	// reads of the media disk (stream and HLS segment reads, downloads,
 	// an HLS ffmpeg running) hold the analysis: it reads only after 2 min
@@ -608,13 +623,30 @@ func run() error {
 	if rs := buildRatings(cfg, database, metaSrc.Wikidata, slog.Default()); rs != nil {
 		deps.Ratings = rs
 		if rs.IMDb != nil {
+			rs.IMDb.Enabled = external.Gate(extsvc.IMDb)
 			defer rs.IMDb.Close()
 		}
 	}
-	// song words online (LRCLIB), unless VAULT_LRCLIB_URL=off (the default
-	// of a library-only server)
+	// song words online (LRCLIB), while «Внешние сервисы» has them on
 	if cfg.LRCLibURL != "" {
 		deps.Lyrics = lyrics.NewAt(cfg.LRCLibURL, version.UserAgent)
+		deps.Lyrics.Enabled = external.Gate(extsvc.Lyrics)
+	}
+	// a service turned on starts its work now: the franchises are worked
+	// out again with Wikidata, the songs and episodes waiting are looked up
+	deps.External = external
+	deps.ExternalChanged = func(id extsvc.ID, on bool) {
+		slog.Info("external service switched", "service", id, "on", on)
+		switch id {
+		case extsvc.Wikidata:
+			chans.Franchises.Kick(true)
+		case extsvc.Lyrics:
+			if lyricsAuto != nil {
+				lyricsAuto.Kick()
+			}
+		case extsvc.Segments:
+			segWorker.Kick()
+		}
 	}
 	// cast photos from the image cache (the enricher downloads them), and
 	// posters and logos in the viewer's language

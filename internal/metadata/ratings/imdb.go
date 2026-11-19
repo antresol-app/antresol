@@ -67,7 +67,10 @@ type Dataset struct {
 	HTTP       *http.Client  // nil: http.DefaultClient
 	CheckEvery time.Duration // 0: DefaultCheckEvery
 	Log        *slog.Logger
-	now        func() time.Time
+	// Enabled (nil: always): false is «Внешние сервисы» turning the IMDb
+	// ratings off: no lookup answers, nothing is downloaded.
+	Enabled func() bool
+	now     func() time.Time
 
 	mu     sync.RWMutex
 	opened bool
@@ -88,6 +91,9 @@ type state struct {
 	CheckedAt    time.Time `json:"checkedAt"`
 	Titles       int       `json:"titles"`
 }
+
+// Active reports whether the dataset is set and not switched off.
+func (d *Dataset) Active() bool { return d != nil && (d.Enabled == nil || d.Enabled()) }
 
 func (d *Dataset) log() *slog.Logger {
 	if d.Log != nil {
@@ -168,6 +174,9 @@ func titleNumber(id string) (uint32, bool) {
 // dataset has none (or is not downloaded yet). A dataset not checked for a
 // day starts a refresh in the background.
 func (d *Dataset) Lookup(id string) (IMDbRating, bool) {
+	if !d.Active() {
+		return IMDbRating{}, false
+	}
 	d.mu.Lock()
 	d.open()
 	stale := d.clock().Sub(d.state.CheckedAt) >= d.checkEvery()

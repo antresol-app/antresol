@@ -258,7 +258,7 @@ func (v *trackView) dtos(ctx context.Context, tracks []library.Track) ([]TrackDT
 		}
 		out = append(out, TrackDTO{ID: t.ID, Title: scanLabel(ctx, t.Title), Artist: scanLabel(ctx, t.Artist), ArtistID: t.ArtistID, AlbumID: t.AlbumID, Album: scanLabel(ctx, t.Album),
 			DiscNo: t.Disc, TrackNo: t.No, DurationMs: t.DurationMs, FileID: t.FileID, Lossless: t.Lossless,
-			HasLyrics: strings.TrimSpace(t.Lyrics) != "" || kept[t.ID] == library.LyricsFound || (v.h.Lyrics != nil && kept[t.ID] != library.LyricsNone), Cover: imageURL(al.ID, "poster", al.Poster), Starred: v.starred[t.ID], Cue: cueSlice(t),
+			HasLyrics: strings.TrimSpace(t.Lyrics) != "" || kept[t.ID] == library.LyricsFound || (v.h.Lyrics.Active() && kept[t.ID] != library.LyricsNone), Cover: imageURL(al.ID, "poster", al.Poster), Starred: v.starred[t.ID], Cue: cueSlice(t),
 			GainTrackDb: t.Gain.TrackGain, GainAlbumDb: t.Gain.AlbumGain, PeakTrack: t.Gain.TrackPeak, PeakAlbum: t.Gain.AlbumPeak})
 	}
 	return out, nil
@@ -797,7 +797,7 @@ func (h *lib) lyrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	text, source := library.EffectiveLyrics(tr, stored, has)
-	if !lyrics.Synced.MatchString(text) && h.Lyrics != nil && !(has && stored.Fresh(time.Now())) {
+	if !lyrics.Synced.MatchString(text) && h.Lyrics.Active() && !(has && stored.Fresh(time.Now())) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		res, err := h.Lyrics.Find(ctx, lyrics.QueryOf(tr))
 		cancel()

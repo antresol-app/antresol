@@ -63,6 +63,15 @@ Requests come through a reverse proxy the server does not know about. Put that a
 The external address is not set. Put it in **Settings → Server → Server Address**. See
 [Public address](public-address.html).
 
+## No franchises across collections, ratings, lyrics or intro skipping
+
+These come from open services that may be off on your server. Check **Settings → Server →
+External Services**: Wikidata merges franchises and gives Rotten Tomatoes scores, IMDb ratings
+and song lyrics (LRCLIB) are off until you turn them on, TheIntroDB and IntroDB mark intros and
+credits. A switch shown as set on the server is decided by a variable in `.env`: see
+[External services](configuration.html#external-services). After Wikidata is turned on, the
+franchises are worked out again within minutes.
+
 ## An extension says its service is not found
 
 The extension needs a helper service in `compose.yml`. See [Helper services](addon-services.html).

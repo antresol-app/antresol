@@ -11,7 +11,9 @@ eight episodes or more. The administrator manages them in **Settings → Server 
 personal channels the same way, from TV.
 
 - **New Channel**: build your own channel from chosen films and series.
-- **Franchises**: channels per universe, the films and series of one franchise in order.
+- **Franchises**: channels per universe, the films and series of one franchise in order. Films
+  and series of different TMDB collections are merged by Wikidata: with it off (**Settings →
+  Server → External Services**), each collection stays a franchise of its own.
 
 ![TV Channels](images/guide/en/channels.png)
 

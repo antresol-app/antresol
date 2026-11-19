@@ -72,6 +72,7 @@ export const MANAGE_SECTIONS: { to: string; label: Key; glyph: SettingsGlyph; ti
   { to: 'settings/kindle', label: 'settings.mailGroup', glyph: 'envelope', tint: 'blue', group: 'server' },
   { to: 'settings/accounts', label: 'acct.section', glyph: 'link', tint: 'cyan', group: 'server' },
   { to: 'settings/address', label: 'settings.group.address', glyph: 'globe', tint: 'blue', group: 'server' },
+  { to: 'settings/external', label: 'ext.title', glyph: 'antenna', tint: 'indigo', group: 'server' },
 ]
 
 /** Where a section's row leads. */
