@@ -69,8 +69,41 @@ It sends email notifications and books to Kindle. Any SMTP account works:
 | Resend | `smtp.resend.com` | 465 or 587 | `resend` | an API key; the sender address must be on a domain verified in Resend |
 | Other mail | from its help pages | 587 or 465 | usually your address | usually an app password |
 
-Then each person turns on what they want in «Profile → Email notifications» and confirms
+Then each person turns on what they want in «Profile → Notifications» and confirms
 their address with the test email. Everything is off until turned on.
+
+## Telegram
+
+Notifications can also go to Telegram, next to email, or instead of it: the same events,
+as plain text, with a link to the title when `VAULT_PUBLIC_URL` is set. Telegram is set up
+once, then each person needs two taps.
+
+**The administrator**, once: in Telegram open [@BotFather](https://t.me/BotFather), send
+`/newbot` and pick a name. Paste the token it sends into «Manage → Server settings → Send to
+Kindle → Telegram bot» and press «Check»: the bot's @name appears. The server keeps the
+token like the SMTP password and never shows it again; it is never written to the log.
+«Turn Bot Off» forgets it.
+
+**Each person** (adult profiles), in «Profile → Notifications»: «Connect Telegram» shows a
+link. Open it in Telegram and press Start; the page notices by itself, and the bot confirms in
+the profile's language. «Disconnect» in the same place, or blocking the bot in Telegram, ends
+it. Kid profiles cannot connect Telegram.
+
+How it behaves:
+
+- No public address, webhook or open port is needed. The server asks Telegram for new messages
+  (long polling), so it only needs to reach `api.telegram.org` over HTTPS, as any home server
+  can. One poller runs per server, only while a token is set.
+- A profile chooses its channels: email, Telegram or both (a switch for each appears once both
+  are set up). Topics and quiet hours (22:00–08:00, server time) apply to both. Each channel
+  sends at most one digest an hour per profile.
+- Telegram's limits are respected: messages are spaced a second apart, and on a «too many
+  requests» answer nothing is sent until Telegram's `retry_after` has passed. A chat that
+  blocked the bot or was deleted is disconnected.
+- A bot token can be polled by one program only. If the screen says another program takes the
+  bot's messages, or it has a webhook, use a bot of its own for the server.
+- Changing the token to another bot disconnects the chats linked with the old one; pasting
+  the same bot again keeps them.
 
 ## Addons
 

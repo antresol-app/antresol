@@ -362,6 +362,13 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 				if deps.Storage != nil {
 					markWizardPending(ctx, deps.DB) // the steps after the administrator
 				}
+			},
+			func(ctx context.Context, id int64) {
+				if deps.Notify != nil {
+					if err := deps.Notify.ForgetTelegram(ctx, id); err != nil {
+						log.Printf("notify: telegram of profile %d that became a kid: %v", id, err)
+					}
+				}
 			})
 	}
 	// «Отдельная история на этом устройстве» (managed accounts)

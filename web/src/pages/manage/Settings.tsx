@@ -1,7 +1,7 @@
 // «Настройки сервера» (admin): what applies to the whole server, a screen per
 // group, /manage/settings/<group>, one row per setting; the groups are rows
 // of «Управление»'s list (Manage.tsx), each in its place there. A profile's own settings (the language,
-// sound, mail) are in pages/ProfileSettings.tsx. Changes save
+// sound, notifications) are in pages/ProfileSettings.tsx. Changes save
 // by themselves (like iOS); «Качество вне дома» applies at once on the
 // server. The core build has only the library's settings (docs/build-tags.md).
 // An addon's own settings are its pages.
@@ -26,6 +26,7 @@ import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection } from './AISettings'
 import { StorageSection } from './StorageSettings'
+import { TelegramSection } from './TelegramSettings'
 import { TranscodingSection } from './TranscodingSettings'
 import { VocleanSection } from './VocleanSettings'
 import m from './Manage.module.css'
@@ -308,6 +309,7 @@ export function Settings() {
           <MailRow values={values} saved={saved} error={error} onChange={(mail) => change({ mail })} />
         </GroupedSection>
       )}
+      {at('kindle') && <TelegramSection />}
 
       {at('transcoding') && <TranscodingSection />}
 

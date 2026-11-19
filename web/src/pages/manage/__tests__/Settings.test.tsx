@@ -192,7 +192,7 @@ describe('Настройки: /manage/settings/library#rescan', () => {
   })
 })
 
-// «Отправка на Kindle»: one row like the others — its state and «Настроить…»;
+// «Почта и уведомления»: one row like the others — its state and «Настроить…»;
 // the steps and the SMTP fields live in a sheet.
 describe('Настройки: отправка на Kindle', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -217,7 +217,7 @@ describe('Настройки: отправка на Kindle', () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
     renderSettings('kindle')
     await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
-    const sheet = screen.getByRole('dialog', { name: 'Отправка на Kindle' })
+    const sheet = screen.getByRole('dialog', { name: 'Почта и уведомления' })
     // set up already: the fields first, the steps on demand
     expect(within(sheet).queryByText(/Создайте пароль для отправки/)).toBeNull()
     await userEvent.click(within(sheet).getByRole('button', { name: 'Как настроить Gmail и Amazon' }))
@@ -236,7 +236,7 @@ describe('Настройки: отправка на Kindle', () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
     renderSettings('kindle')
     await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
-    const from = within(screen.getByRole('dialog', { name: 'Отправка на Kindle' })).getByRole('textbox', { name: 'Адрес отправителя' })
+    const from = within(screen.getByRole('dialog', { name: 'Почта и уведомления' })).getByRole('textbox', { name: 'Адрес отправителя' })
     await userEvent.clear(from)
     await userEvent.type(from, 'books@example.com{Enter}')
     await waitFor(() => expect(puts.at(-1)?.mail?.from).toBe('books@example.com'))

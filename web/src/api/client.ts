@@ -60,6 +60,8 @@ import type {
   Settings,
   PlaybackPrefs,
   NotifyPrefs,
+  TelegramBot,
+  TelegramLink,
   TrackChoice,
   TrackPrefs,
   Stats,
@@ -463,7 +465,7 @@ export const setAutoSkip = (patch: Partial<AutoSkipPrefs>, userId?: number) => r
 export const resetPlaybackPrefs = (userId?: number) => request<PlaybackPrefs>('DELETE', prefsPath(userId))
 // «Уведомления на почту»: a profile's address and topics; a kid's are an administrator's (userId).
 const notifyPath = (userId?: number) => (userId === undefined ? '/api/me/notify' : `/api/users/${userId}/notify`)
-export type NotifyPrefsInput = Pick<NotifyPrefs, 'email' | 'episodes' | 'available' | 'requests' | 'quietHours' | 'lang'> & {
+export type NotifyPrefsInput = Pick<NotifyPrefs, 'email' | 'episodes' | 'available' | 'requests' | 'quietHours' | 'lang' | 'emailOn' | 'telegramOn'> & {
   /** The addon topics to change ([{addon, topic, on}]); the others stay as they are. */
   addonTopics?: { addon: string; topic: string; on: boolean }[]
 }
@@ -472,6 +474,15 @@ export const saveNotifyPrefs = (p: NotifyPrefsInput, userId?: number) => request
 /** «Отправить проверочное письмо»: a code (and a link) to the saved address. */
 export const sendNotifyVerification = (userId?: number) => request<void>('POST', `${notifyPath(userId)}/verify`)
 export const confirmNotifyCode = (code: string, userId?: number) => request<NotifyPrefs>('POST', `${notifyPath(userId)}/confirm`, { code })
+/** «Подключить Telegram»: the one-time code and its link; the server finds the chat by itself once «Запустить» is pressed. */
+export const linkTelegram = () => request<TelegramLink>('POST', '/api/me/notify/telegram/link')
+/** «Отключить»: forgets the profile's chat. */
+export const unlinkTelegram = (userId?: number) => request<NotifyPrefs>('DELETE', `${notifyPath(userId)}/telegram`)
+// The server's Telegram bot (admin): a token from @BotFather, checked with getMe and never returned.
+export const getTelegramBot = (signal?: AbortSignal) => request<TelegramBot>('GET', '/api/settings/telegram', undefined, signal)
+export const setTelegramToken = (token: string) => request<TelegramBot>('PUT', '/api/settings/telegram', { token })
+export const checkTelegramBot = () => request<TelegramBot>('POST', '/api/settings/telegram/check')
+export const clearTelegramBot = () => request<TelegramBot>('DELETE', '/api/settings/telegram')
 export const getTrackPrefs = (itemId: number, signal?: AbortSignal) => request<TrackPrefs>('GET', `/api/items/${itemId}/track-prefs`, undefined, signal)
 /** A track chosen in an episode: kept for its series (a movie keeps nothing). */
 export const rememberTracks = (itemId: number, choice: { audio: TrackChoice } | { subtitle: TrackChoice } | { subtitleOff: true }) =>

@@ -108,7 +108,7 @@ describe('ProfileSettings', () => {
   it('an adult sees the whole list, with short hints', async () => {
     await open(adult)
     expect(screen.getByRole('heading', { name: 'Настройки', level: 1 })).toBeInTheDocument()
-    for (const name of ['Звук и субтитры', 'Письма на почту', 'Пароль для приложений', 'Устройства', 'О сервере']) {
+    for (const name of ['Звук и субтитры', 'Уведомления', 'Пароль для приложений', 'Устройства', 'О сервере']) {
       expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
     }
     expect(screen.getByRole('switch', { name: 'Скрывать прогресс просмотра' })).toBeInTheDocument()
@@ -121,7 +121,7 @@ describe('ProfileSettings', () => {
     expect(screen.getByRole('button', { name: /Пароль для приложений/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /О сервере/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Звук и субтитры/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Письма на почту/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Уведомления/ })).toBeNull()
     expect(screen.queryByRole('switch')).toBeNull()
   })
 

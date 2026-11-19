@@ -755,6 +755,10 @@ func run() error {
 	go func() { defer wg.Done(); segWorker.Run(ctx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); notifier.Run(ctx) }()
+	// Telegram: asks for the bot's messages (a profile linking its chat)
+	// while a token is set; idle otherwise
+	wg.Add(1)
+	go func() { defer wg.Done(); notifier.RunTelegram(ctx) }()
 	if trackSvc.Skeleton != nil { // episode lists need TMDB
 		wg.Add(1)
 		go func() { defer wg.Done(); trackSvc.Run(ctx) }()

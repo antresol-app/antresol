@@ -63,9 +63,9 @@ func posterOf(metaJSON string) string {
 	return RemotePoster(m.PosterURL)
 }
 
-// Enqueue keeps e for the profile's next digest when the profile has an
-// address and e's topic on; an event already known by its key is skipped.
-// It reports whether e was queued.
+// Enqueue keeps e for the profile's next digest when a channel of the
+// profile works (an address, a linked chat) and e's topic is on; an event
+// already known by its key is skipped. It reports whether e was queued.
 func (s *Service) Enqueue(ctx context.Context, e Event) (bool, error) {
 	if s == nil {
 		return false, nil
@@ -74,21 +74,35 @@ func (s *Service) Enqueue(ctx context.Context, e Event) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if p.Email == "" || !p.On(e.Topic) {
+	if !p.hears() || !p.On(e.Topic) {
 		return false, nil
 	}
 	return s.insert(ctx, e)
 }
 
+// insert queues e. A channel the profile does not use is done for e from the
+// start (dropOff's rule), so nothing waits for it.
 func (s *Service) insert(ctx context.Context, e Event) (bool, error) {
 	e.Data.Poster = RemotePoster(e.Data.Poster)
 	b, err := json.Marshal(e.Data)
 	if err != nil {
 		return false, err
 	}
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO notify_events(user_id, topic, key, item_id, group_id, data_json, created_at)
-		VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id, key) DO NOTHING`,
-		e.UserID, e.Topic, e.Key, e.ItemID, e.GroupID, string(b), s.now().Unix())
+	p, err := s.Prefs(ctx, e.UserID)
+	if err != nil {
+		return false, err
+	}
+	now := s.now().Unix()
+	var mailDone, chatDone any
+	if !p.emailActive() {
+		mailDone = now
+	}
+	if !p.telegramActive() {
+		chatDone = now
+	}
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO notify_events(user_id, topic, key, item_id, group_id, data_json, created_at, sent_at, tg_sent_at)
+		VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id, key) DO NOTHING`,
+		e.UserID, e.Topic, e.Key, e.ItemID, e.GroupID, string(b), now, mailDone, chatDone)
 	if err != nil {
 		return false, err
 	}

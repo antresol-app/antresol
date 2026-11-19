@@ -317,6 +317,35 @@ export interface NotifyPrefs {
   publicLinks: boolean
   /** The mail server refused the address for good: unconfirmed until confirmed again. */
   bounced: boolean
+  /** The channels the profile chose (both on until it turns one off): mail needs an address, Telegram a linked chat. */
+  emailOn?: boolean
+  telegramOn?: boolean
+  /** The server has a Telegram bot, so a chat can be linked; the bot's name without «@». */
+  telegramReady?: boolean
+  telegramBot?: string
+  /** The profile's chat is linked with the bot; what to call it («@name»). */
+  telegramLinked?: boolean
+  telegramName?: string
+}
+
+/** «Подключить Telegram»: a one-time code and the link that carries it (POST /api/me/notify/telegram/link). */
+export interface TelegramLink {
+  code: string
+  url: string
+  bot: string
+  /** RFC 3339: until when the code works. */
+  expires: string
+}
+
+/** The server's Telegram bot (admin; the token is write-only). */
+export interface TelegramBot {
+  set: boolean
+  username?: string
+  name?: string
+  /** The server is asking Telegram for the bot's messages. */
+  polling: boolean
+  /** What is in the way of that. */
+  problem?: 'unauthorized' | 'conflict' | 'unreachable'
 }
 
 /** A track as it is remembered: the file's language tag and the track's title (a dub's studio). */

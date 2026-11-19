@@ -144,4 +144,77 @@ describe('NotifySheet', () => {
     expect(screen.queryByText(/VAULT_PUBLIC_URL/)).toBeNull()
   })
 
+
+  describe('Telegram', () => {
+    const linked = {
+      ...empty,
+      email: 'anya@example.com',
+      verified: true,
+      emailOn: true,
+      telegramOn: true,
+      telegramReady: true,
+      telegramBot: 'home_bot',
+      telegramLinked: true,
+      telegramName: '@anya',
+    }
+
+    it('a connected chat and an address: a switch for each channel, saved with the topics', async () => {
+      state = linked as typeof empty
+      render(<NotifySheet onClose={() => {}} />)
+      const tg = await screen.findByRole('switch', { name: 'Присылать в Telegram' })
+      expect(screen.getByText('Подключено: @anya')).toBeInTheDocument()
+      expect(screen.getByRole('switch', { name: 'Присылать на почту' })).toHaveAttribute('aria-checked', 'true')
+      await userEvent.click(tg)
+      await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
+      await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true))
+      expect(calls.filter((c) => c.method === 'PUT').at(-1)!.body).toMatchObject({ emailOn: true, telegramOn: false, email: 'anya@example.com' })
+    })
+
+    it('mail has no switch of its own until there is a choice (no Telegram, mail still on)', async () => {
+      state = { ...linked, telegramLinked: false, telegramName: '' } as typeof empty
+      render(<NotifySheet onClose={() => {}} />)
+      expect(await screen.findByRole('button', { name: 'Подключить Telegram' })).toBeInTheDocument()
+      expect(screen.queryByRole('switch', { name: 'Присылать на почту' })).toBeNull()
+    })
+
+    it('mail turned off stays switchable, so it cannot be lost with Telegram gone', async () => {
+      state = { ...linked, telegramLinked: false, emailOn: false } as typeof empty
+      render(<NotifySheet onClose={() => {}} />)
+      expect(await screen.findByRole('switch', { name: 'Присылать на почту' })).toHaveAttribute('aria-checked', 'false')
+    })
+
+    it('no Telegram where the server has no bot', async () => {
+      state = { ...empty, telegramReady: false } as typeof empty
+      render(<NotifySheet onClose={() => {}} />)
+      await screen.findByRole('switch', { name: 'Новые серии сериалов, которые я смотрю' })
+      expect(screen.queryByText('Telegram')).toBeNull()
+    })
+
+    it('a kid’s settings, opened by an administrator, offer no Telegram', async () => {
+      state = { ...empty, telegramReady: true, telegramBot: 'home_bot', topics: ['episodes', 'available', 'requests'] } as typeof empty
+      render(<NotifySheet userId={7} name="Вася" onClose={() => {}} />)
+      await screen.findByRole('switch', { name: 'Мои запросы одобрены / в медиатеке' })
+      expect(screen.queryByRole('button', { name: 'Подключить Telegram' })).toBeNull()
+      expect(screen.queryByText('Telegram')).toBeNull()
+    })
+
+    it('a chat still linked to a kid can be unlinked by the administrator', async () => {
+      state = { ...empty, telegramReady: true, telegramBot: 'home_bot', telegramLinked: true, telegramName: '@papa', topics: ['episodes'] } as typeof empty
+      const real = globalThis.fetch
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === '/api/users/7/notify/telegram' && init?.method === 'DELETE') {
+          calls.push({ url: String(input), method: 'DELETE' })
+          state = { ...state, telegramLinked: false, telegramName: '' } as typeof empty
+          return json(state)
+        }
+        return real(input, init)
+      })
+      render(<NotifySheet userId={7} name="Вася" onClose={() => {}} />)
+      expect(await screen.findByText('Подключено: @papa')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Подключить Telegram' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Отвязать Telegram' }))
+      await waitFor(() => expect(screen.queryByText('Подключено: @papa')).toBeNull())
+      expect(calls.some((c) => c.url === '/api/users/7/notify/telegram' && c.method === 'DELETE')).toBe(true)
+    })
+  })
 })

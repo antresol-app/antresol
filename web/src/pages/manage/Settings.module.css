@@ -3,7 +3,7 @@
   max-width: 760px;
 }
 
-/* «Отправка на Kindle» */
+/* «Почта и уведомления» */
 .mailFields {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 8rem);
@@ -36,6 +36,23 @@
 }
 .mailError {
   color: var(--destructive-text);
+  font: var(--t-footnote);
+}
+/* «Бот Telegram»: the token, its buttons and what Telegram answered */
+.tgFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 100%;
+}
+.tgActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.tgOk {
+  margin: 0;
+  color: var(--success);
   font: var(--t-footnote);
 }
 /* a finger's 44 pt target (HIG): the hit area grows, the look does not */

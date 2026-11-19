@@ -21,6 +21,9 @@ type notifyOut struct {
 	Topics      []string `json:"topics"`
 	MailReady   bool     `json:"mailReady"`
 	PublicLinks bool     `json:"publicLinks"`
+	// Telegram: the bot is set up (and its name)
+	TelegramReady bool   `json:"telegramReady"`
+	TelegramBot   string `json:"telegramBot"`
 }
 
 type fakeMail struct {

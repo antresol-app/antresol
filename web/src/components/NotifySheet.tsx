@@ -1,5 +1,6 @@
-// «Уведомления на почту»: a profile's address and what it wants to hear
-// about by mail. Everything is off until the profile turns it on, and no
+// «Уведомления»: a profile's address and what it wants to hear about by
+// mail (and, where the server has a Telegram bot, in Telegram: NotifyTelegram).
+// Everything is off until the profile turns it on, and no
 // letter goes before the address is confirmed («Отправить проверочное
 // письмо»: a code to type here, and a link in the letter). An adult opens
 // it from the profile menu; a kid's are the administrator's (Профили), as
@@ -7,12 +8,13 @@
 // settings were saved in. A switch saves at once, the address when the field
 // is left (useAutosave); «Готово» only closes.
 import { useEffect, useId, useState } from 'react'
-import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, type NotifyPrefsInput, errorText } from '../api/client'
+import { confirmNotifyCode, getNotifyPrefs, saveNotifyPrefs, sendNotifyVerification, unlinkTelegram, type NotifyPrefsInput, errorText } from '../api/client'
 import type { NotifyPrefs, NotifyTopic } from '../api/types'
 import { getLanguage, useT, type Key } from '../i18n'
 import { useSession } from '../state/session'
 import { Button } from '../ui/Button'
 import { Icon } from './Icon'
+import { NotifyTelegram } from './NotifyTelegram'
 import { Sheet } from '../ui/Sheet'
 import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
@@ -50,6 +52,8 @@ const inputOf = (p: NotifyPrefs): NotifyPrefsInput => ({
   requests: p.requests,
   quietHours: p.quietHours,
   lang: getLanguage(),
+  emailOn: p.emailOn,
+  telegramOn: p.telegramOn,
   addonTopics: p.addonTopics?.map(({ addon, topic, on }) => ({ addon, topic, on })),
 })
 
@@ -107,6 +111,19 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
     commitEmail()
     await autosave.flush()
     onClose()
+  }
+
+  const adminUnlink = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const p = await unlinkTelegram(userId)
+      change({ telegramLinked: p.telegramLinked, telegramName: p.telegramName })
+    } catch (e) {
+      failed(e, 'comp.notify.tg.unlinkFailed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const sendLetter = async () => {
@@ -206,6 +223,17 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 </div>
               )}
               {note && <p className={styles.hint}>{note}</p>}
+              {/* a choice only where there is one: an address and Telegram, or mail turned off before */}
+              {email !== '' && (prefs.telegramLinked || prefs.emailOn === false) && (
+                <ul className={styles.list}>
+                  <li className={styles.item}>
+                    <div className={styles.itemText}>
+                      <span aria-hidden>{t('comp.notify.emailOn')}</span>
+                    </div>
+                    <Toggle label={t('comp.notify.emailOn')} checked={prefs.emailOn !== false} onChange={(emailOn) => flip({ emailOn })} />
+                  </li>
+                </ul>
+              )}
               {codeSent && !confirmed && (
                 <div className={styles.codeRow}>
                   <TextField
@@ -222,6 +250,34 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 </div>
               )}
             </section>
+            {/* a kid's Telegram is not offered; a chat linked before the profile became a kid can still be let go */}
+            {userId !== undefined && prefs.telegramLinked && (
+              <section className={styles.section} aria-labelledby={`${id}-tg`}>
+                <h3 className={styles.label} id={`${id}-tg`}>
+                  {t('comp.notify.tg.title')}
+                </h3>
+                <p className={styles.ok} role="status">
+                  <Icon name="checkCircle" size={16} />{' '}
+                  {prefs.telegramName ? t('comp.notify.tg.connected', { name: prefs.telegramName }) : t('comp.notify.tg.connectedNoName')}
+                </p>
+                <div className={styles.row}>
+                  <Button size="small" variant="secondary" disabled={busy} onClick={() => void adminUnlink()}>
+                    {t('comp.notify.tg.adminUnlink')}
+                  </Button>
+                </div>
+              </section>
+            )}
+            {/* a kid's Telegram is not offered: its settings are its parent's */}
+            {userId === undefined && (
+              <NotifyTelegram
+                prefs={prefs}
+                onLinked={(p) =>
+                  change({ telegramLinked: p.telegramLinked, telegramName: p.telegramName, telegramOn: p.telegramOn, telegramReady: p.telegramReady })
+                }
+                onToggle={(telegramOn) => flip({ telegramOn })}
+                onError={setError}
+              />
+            )}
             <section className={styles.section} aria-labelledby={`${id}-topics`}>
               <h3 className={styles.label} id={`${id}-topics`}>
                 {t('comp.notify.topics')}

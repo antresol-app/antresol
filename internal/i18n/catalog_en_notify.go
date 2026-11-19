@@ -27,6 +27,18 @@ func init() {
 		"Почтовый сервер не принял этот адрес":                             "The mail server refused this address",
 		"Не удалось отправить письмо, попробуйте ещё раз":                  "Couldn’t send the email, try again",
 		"Неверный или устаревший код":                                      "Wrong or expired code",
+		// Telegram: linking and the bot's settings
+		"Telegram подключают только взрослые профили":                                          "Only adult profiles connect Telegram",
+		"Telegram не настроен: бота подключает администратор в настройках сервера":             "Telegram isn’t set up: an administrator adds the bot in the server settings",
+		"Это не токен бота: он выглядит как 123456:ABC… — скопируйте его целиком у @BotFather": "That isn’t a bot token: it looks like 123456:ABC… — copy it whole from @BotFather",
+		"Telegram не принял токен — проверьте, что он скопирован целиком и бот не удалён":      "Telegram didn’t accept the token — check that it was copied whole and the bot wasn’t deleted",
+		"Нет связи с Telegram, попробуйте ещё раз":                                             "Can’t reach Telegram, try again",
+		"Сначала вставьте токен бота":                                                          "Paste the bot token first",
+		// the Telegram bot's answers
+		"Это бот уведомлений %s. Чтобы получать их здесь, откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram».": "This is the %s notifications bot. To get them here, open “Notifications” in the profile menu and press “Connect Telegram”.",
+		"Ссылка устарела. Откройте «Уведомления» в меню профиля и нажмите «Подключить Telegram» ещё раз.":                         "The link has expired. Open “Notifications” in the profile menu and press “Connect Telegram” again.",
+		"Не получилось подключить Telegram, попробуйте ещё раз.":                                                                  "Couldn’t connect Telegram, try again.",
+		"Готово! Уведомления %s профиля «%s» будут приходить сюда.":                                                               "Done! %s notifications for the profile “%s” will arrive here.",
 		// kids' requests
 		"Запросы":             "Requests",
 		"Запрос одобрен: %s":  "Request approved: %s",

@@ -333,7 +333,7 @@ func (s *Service) QueueAddon(ctx context.Context, e AddonEvent) (int, error) {
 		if err != nil {
 			return n, err
 		}
-		if p.Email == "" || !p.On(key) {
+		if !p.hears() || !p.On(key) {
 			continue
 		}
 		ev.UserID = id

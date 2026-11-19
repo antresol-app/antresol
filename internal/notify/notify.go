@@ -12,6 +12,11 @@
 // address or has not turned the topic on, and nothing is sent to an
 // address its own verification letter did not confirm.
 //
+// Telegram is a second channel (telegram.go): a profile that linked its
+// chat with the server's bot gets the same events there, as plain text, on
+// the same schedule. A profile chooses its channels: the address and the
+// linked chat each work when they are set and on.
+//
 // The letters are text with a simple HTML form, in the profile's language;
 // pictures are only remote TMDB poster links (no attachments), and the
 // links to the titles and to «Отписаться» (a signed token, no login) need
@@ -32,6 +37,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/mailer"
+	"github.com/antresol-app/antresol/internal/telegram"
 )
 
 // Topics: what a profile may hear about.
@@ -82,9 +88,28 @@ type Prefs struct {
 	// AddonTopics: answers list the addon topics the profile may turn on
 	// (AddonPrefs); a save changes the rows it lists and no other.
 	AddonTopics []AddonPref `json:"addonTopics"`
+	// EmailOn and TelegramOn are the channels the profile chose (both on
+	// until it turns one off); mail also needs an address, Telegram a linked
+	// chat. TelegramLinked and TelegramName (what to call the chat, «@name»)
+	// say whether it is. All four are answers only: SetPrefs leaves them
+	// (SetChannels turns a channel on or off, linking is telegram.go's).
+	EmailOn        bool   `json:"emailOn"`
+	TelegramOn     bool   `json:"telegramOn"`
+	TelegramLinked bool   `json:"telegramLinked"`
+	TelegramName   string `json:"telegramName"`
 
 	addon addonState
 }
+
+// emailActive: mail is where this profile hears (an address, and the channel
+// on); the address need not be confirmed yet, events wait for it.
+func (p Prefs) emailActive() bool { return p.Email != "" && p.EmailOn }
+
+// telegramActive: the profile's chat is linked and the channel on.
+func (p Prefs) telegramActive() bool { return p.TelegramLinked && p.TelegramOn }
+
+// hears reports whether any channel of the profile works.
+func (p Prefs) hears() bool { return p.emailActive() || p.telegramActive() }
 
 // TopicAll names every topic in an unsubscribe token (List-Unsubscribe).
 const TopicAll = "all"
@@ -205,9 +230,20 @@ type Service struct {
 	// RequestsOpen says whether kids' requests work on this server (nil:
 	// not here); when it does, kids may turn Requests on in either edition.
 	RequestsOpen func(ctx context.Context) bool
-	Log          *slog.Logger
+	// TG calls the Telegram Bot API (nil: the real one; tests: a fake
+	// server); TelegramGap is the least time between two sends to Telegram
+	// (0: DefaultTelegramGap; negative: none).
+	TG          *telegram.Client
+	TelegramGap time.Duration
+	// PollTimeout bounds one getUpdates (0: the wait plus a margin; tests).
+	PollTimeout time.Duration
+	Log         *slog.Logger
 
 	collectMu sync.Mutex
+	// the Telegram poller's and limiter's state (telegram.go)
+	telegramState
+	// pauseHook replaces the waits after a failed poll (tests)
+	pauseHook func(time.Duration)
 	// addonTopics lists the addons' topics (SetAddonTopics)
 	addonTopics addonTopicsHolder
 }
@@ -297,6 +333,11 @@ type prefsRow struct {
 	verifySentAt int64
 	failCount    int
 	nextTryAt    int64
+	// the Telegram digests' own clock, and the linked chat
+	tgLastSent int64
+	tgFail     int
+	tgNextTry  int64
+	tgChat     int64
 	// onAt: when each topic was last turned on (Unix seconds)
 	onAt map[string]int64
 }
@@ -304,21 +345,24 @@ type prefsRow struct {
 func (s *Service) prefs(ctx context.Context, uid int64) (Prefs, prefsRow, error) {
 	var p Prefs
 	r := prefsRow{onAt: map[string]int64{}}
-	var ep, av, rq, dl, qh int
+	var ep, av, rq, dl, qh, emailOn, tgOn int
 	var epAt, avAt, rqAt int64
 	var bounced string
 	err := s.DB.QueryRowContext(ctx, `SELECT email, verified, episodes, available, requests, downloads, quiet_hours, lang, last_sent_at, verify_sent_at,
-		episodes_at, available_at, requests_at, bounced, fail_count, next_try_at
+		episodes_at, available_at, requests_at, bounced, fail_count, next_try_at,
+		email_on, telegram_on, telegram_chat, telegram_name, tg_last_sent_at, tg_fail_count, tg_next_try_at
 		FROM notify_prefs WHERE user_id=?`, uid).Scan(&p.Email, &r.verified, &ep, &av, &rq, &dl, &qh, &p.Lang, &r.lastSent, &r.verifySentAt,
-		&epAt, &avAt, &rqAt, &bounced, &r.failCount, &r.nextTryAt)
+		&epAt, &avAt, &rqAt, &bounced, &r.failCount, &r.nextTryAt,
+		&emailOn, &tgOn, &r.tgChat, &p.TelegramName, &r.tgLastSent, &r.tgFail, &r.tgNextTry)
 	if errors.Is(err, sql.ErrNoRows) {
-		p = Prefs{QuietHours: true}
+		p = Prefs{QuietHours: true, EmailOn: true, TelegramOn: true}
 		return p, r, s.loadAddonRows(ctx, uid, &p)
 	}
 	if err != nil {
 		return Prefs{}, r, err
 	}
 	p.Episodes, p.Available, p.Requests, p.QuietHours = ep != 0, av != 0, rq != 0, qh != 0
+	p.EmailOn, p.TelegramOn, p.TelegramLinked = emailOn != 0, tgOn != 0, r.tgChat != 0
 	// what an addon topic without a row falls back to (D1: the column of
 	// the same topic name; legacyDownloads keeps the admins' old choice)
 	p.addon.legacy = map[string]bool{Episodes: ep != 0, Available: av != 0, Requests: rq != 0, legacyDownloads: dl != 0}
@@ -406,16 +450,45 @@ func (s *Service) SetPrefs(ctx context.Context, u auth.User, in Prefs) (Prefs, e
 	return p, nil
 }
 
+// SetChannels turns the profile's mail and Telegram on or off (nil: as it
+// is). A channel turned off loses what waited in it.
+func (s *Service) SetChannels(ctx context.Context, uid int64, email, telegram *bool) (Prefs, error) {
+	if email != nil || telegram != nil {
+		// a profile that never saved anything has no row yet: the defaults
+		// (everything off, quiet hours on) are what a row starts from
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO notify_prefs(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING`, uid); err != nil {
+			return Prefs{}, err
+		}
+	}
+	if email != nil {
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_prefs SET email_on=? WHERE user_id=?`, b2i(*email), uid); err != nil {
+			return Prefs{}, err
+		}
+	}
+	if telegram != nil {
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_prefs SET telegram_on=? WHERE user_id=?`, b2i(*telegram), uid); err != nil {
+			return Prefs{}, err
+		}
+	}
+	p, err := s.Prefs(ctx, uid)
+	if err != nil {
+		return Prefs{}, err
+	}
+	return p, s.dropOff(ctx, uid, p)
+}
+
 // dropOff forgets the unsent events of the topics p has off (or of every
-// topic, without an address).
+// topic, when no channel works). A channel p does not use now (no address,
+// switched off, no linked chat) is done for what waited in it: that was never
+// sent and, when the channel comes back, it is no news.
 func (s *Service) dropOff(ctx context.Context, uid int64, p Prefs) error {
 	var off []any
 	for _, t := range AllTopics {
-		if p.Email == "" || !p.On(t) {
+		if !p.hears() || !p.On(t) {
 			off = append(off, t)
 		}
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT topic FROM notify_events WHERE user_id=? AND sent_at IS NULL AND substr(topic, 1, ?)=?`,
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT topic FROM notify_events WHERE user_id=? AND (sent_at IS NULL OR tg_sent_at IS NULL) AND substr(topic, 1, ?)=?`,
 		uid, len(addonPrefix), addonPrefix)
 	if err != nil {
 		return err
@@ -426,7 +499,7 @@ func (s *Service) dropOff(ctx context.Context, uid int64, p Prefs) error {
 			rows.Close()
 			return err
 		}
-		if p.Email == "" || !p.On(t) {
+		if !p.hears() || !p.On(t) {
 			off = append(off, t)
 		}
 	}
@@ -434,15 +507,27 @@ func (s *Service) dropOff(ctx context.Context, uid int64, p Prefs) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if len(off) == 0 {
-		return nil
+	if len(off) > 0 {
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND (sent_at IS NULL OR tg_sent_at IS NULL) AND topic IN (?`+
+			strings.Repeat(",?", len(off)-1)+`)`, append([]any{uid}, off...)...); err != nil {
+			return err
+		}
 	}
-	_, err = s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND sent_at IS NULL AND topic IN (?`+
-		strings.Repeat(",?", len(off)-1)+`)`, append([]any{uid}, off...)...)
-	return err
+	now := s.now().Unix()
+	if !p.emailActive() {
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET sent_at=? WHERE user_id=? AND sent_at IS NULL`, now, uid); err != nil {
+			return err
+		}
+	}
+	if !p.telegramActive() {
+		if _, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET tg_sent_at=? WHERE user_id=? AND tg_sent_at IS NULL`, now, uid); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// wanting are the profiles with an address and topic on.
+// wanting are the profiles with a channel that works and topic on.
 func (s *Service) wanting(ctx context.Context, topic string) (map[int64]Prefs, error) {
 	col := map[string]string{Episodes: "episodes", Available: "available", Requests: "requests"}[topic]
 	where := col + `=1`
@@ -451,7 +536,7 @@ func (s *Service) wanting(ctx context.Context, topic string) (map[int64]Prefs, e
 	} else if col == "" {
 		return nil, nil
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE email<>'' AND `+where)
+	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE ((email<>'' AND email_on=1) OR (telegram_chat<>0 AND telegram_on=1)) AND `+where)
 	if err != nil {
 		return nil, err
 	}

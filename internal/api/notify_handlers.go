@@ -25,6 +25,17 @@ import (
 //   - POST /api/me/notify/verify: «Отправить проверочное письмо» (a code,
 //     and a link with a public address); POST /api/me/notify/confirm
 //     {code} confirms the address.
+//   - Telegram, the second channel: PUT /api/me/notify also takes emailOn and
+//     telegramOn (the channels; left out: as they are); POST
+//     /api/me/notify/telegram/link makes the one-time code and the
+//     t.me/<bot>?start=<code> link («Подключить Telegram»; the server finds
+//     the chat by itself: telegramLinked turns true), DELETE
+//     /api/me/notify/telegram unlinks. A kid's Telegram is not offered; one
+//     that was linked before the profile became a kid is let go then, and the
+//     administrator can also DELETE /api/users/{id}/notify/telegram.
+//     The bot is the administrator's: GET|PUT|DELETE /api/settings/telegram
+//     (a token from @BotFather, checked with getMe; never returned) and
+//     POST /api/settings/telegram/check.
 //   - GET /api/notify/link/verify?t=, GET|POST /api/notify/link/unsubscribe?t=:
 //     the letters' links, no login (a signed token); GET of unsubscribe
 //     only asks (mail scanners open links), POST (its form, or a mail
@@ -34,10 +45,17 @@ func mountNotify(r chi.Router, h *lib) {
 	r.Put("/api/me/notify", h.kidLockedNotify(h.saveNotify))
 	r.Post("/api/me/notify/verify", h.kidLockedNotify(h.verifyNotify))
 	r.Post("/api/me/notify/confirm", h.kidLockedNotify(h.confirmNotify))
+	r.Post("/api/me/notify/telegram/link", h.kidLockedNotify(h.linkTelegram))
+	r.Delete("/api/me/notify/telegram", h.kidLockedNotify(h.unlinkTelegram))
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
+		r.Get("/api/settings/telegram", h.telegramSettings)
+		r.Put("/api/settings/telegram", h.setTelegram)
+		r.Post("/api/settings/telegram/check", h.checkTelegram)
+		r.Delete("/api/settings/telegram", h.clearTelegram)
 		r.Get("/api/users/{id}/notify", h.kidNotify(h.notifyOut))
 		r.Put("/api/users/{id}/notify", h.kidNotify(h.saveNotify))
+		r.Delete("/api/users/{id}/notify/telegram", h.kidNotify(h.adminUnlinkTelegram))
 		r.Post("/api/users/{id}/notify/verify", h.kidNotify(h.verifyNotify))
 		r.Post("/api/users/{id}/notify/confirm", h.kidNotify(h.confirmNotify))
 	})
@@ -79,6 +97,10 @@ type notifyView struct {
 	MailReady bool `json:"mailReady"`
 	// PublicLinks: letters carry links (VAULT_PUBLIC_URL is set).
 	PublicLinks bool `json:"publicLinks"`
+	// TelegramReady: the server has a bot, so a chat can be linked
+	// (TelegramBot: its @name, without the @).
+	TelegramReady bool   `json:"telegramReady"`
+	TelegramBot   string `json:"telegramBot"`
 }
 
 func (h *lib) kidLockedNotify(next func(http.ResponseWriter, *http.Request, int64)) http.HandlerFunc {
@@ -106,12 +128,19 @@ func (h *lib) notifyOut(w http.ResponseWriter, r *http.Request, uid int64) {
 	}
 	p.AddonTopics = h.Notify.AddonPrefs(ctx, u, p, i18n.FromContext(ctx))
 	_, ready := h.Notify.MailReady(ctx)
+	bot := h.Notify.TelegramBot(ctx)
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, notifyView{Prefs: p, Topics: h.Notify.TopicsFor(ctx, u), MailReady: ready, PublicLinks: h.Notify.Links()})
+	writeJSON(w, http.StatusOK, notifyView{Prefs: p, Topics: h.Notify.TopicsFor(ctx, u), MailReady: ready, PublicLinks: h.Notify.Links(),
+		TelegramReady: bot.Set && bot.Username != "", TelegramBot: bot.Username})
 }
 
 func (h *lib) saveNotify(w http.ResponseWriter, r *http.Request, uid int64) {
-	var in notify.Prefs
+	// the channels are optional: a client that does not know them leaves them
+	var in struct {
+		notify.Prefs
+		EmailOn    *bool `json:"emailOn"`
+		TelegramOn *bool `json:"telegramOn"`
+	}
 	if !decode(w, r, &in) {
 		return
 	}
@@ -120,7 +149,7 @@ func (h *lib) saveNotify(w http.ResponseWriter, r *http.Request, uid int64) {
 		storeErr(w, r, err)
 		return
 	}
-	if _, err := h.Notify.SetPrefs(r.Context(), u, in); err != nil {
+	if _, err := h.Notify.SetPrefs(r.Context(), u, in.Prefs); err != nil {
 		if errors.Is(err, notify.ErrBadEmail) {
 			writeErr(w, r, http.StatusBadRequest, "Укажите адрес почты, например name@example.com")
 			return
@@ -128,7 +157,125 @@ func (h *lib) saveNotify(w http.ResponseWriter, r *http.Request, uid int64) {
 		internalErr(w, r, "save notify prefs", err)
 		return
 	}
+	if _, err := h.Notify.SetChannels(r.Context(), uid, in.EmailOn, in.TelegramOn); err != nil {
+		internalErr(w, r, "save notify channels", err)
+		return
+	}
 	h.notifyOut(w, r, uid)
+}
+
+// linkTelegram: «Подключить Telegram» — the one-time code and the link that
+// carries it; the chat is found by the server's poller.
+func (h *lib) linkTelegram(w http.ResponseWriter, r *http.Request, uid int64) {
+	u, err := h.Users.Get(r.Context(), uid)
+	if err != nil {
+		storeErr(w, r, err)
+		return
+	}
+	l, err := h.Notify.StartTelegramLink(r.Context(), u, i18n.FromContext(r.Context()))
+	switch {
+	case err == nil:
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, l)
+	case errors.Is(err, notify.ErrKidTelegram):
+		writeErr(w, r, http.StatusForbidden, "Telegram подключают только взрослые профили")
+	case errors.Is(err, notify.ErrNoTelegram):
+		writeErr(w, r, http.StatusConflict, "Telegram не настроен: бота подключает администратор в настройках сервера")
+	default:
+		internalErr(w, r, "telegram link", err)
+	}
+}
+
+// adminUnlinkTelegram: the administrator lets go of a kid's chat (a profile
+// that was an adult when it linked); the kid's own settings never offer it.
+func (h *lib) adminUnlinkTelegram(w http.ResponseWriter, r *http.Request, uid int64) {
+	if err := h.Notify.ForgetTelegram(r.Context(), uid); err != nil {
+		internalErr(w, r, "telegram unlink", err)
+		return
+	}
+	h.notifyOut(w, r, uid)
+}
+
+func (h *lib) unlinkTelegram(w http.ResponseWriter, r *http.Request, uid int64) {
+	if err := h.Notify.UnlinkTelegram(r.Context(), uid); err != nil {
+		internalErr(w, r, "telegram unlink", err)
+		return
+	}
+	h.notifyOut(w, r, uid)
+}
+
+// telegramView is the administrator's view of the bot: never the token.
+type telegramView struct {
+	// Set: a token is stored; Username (without @) and Name are the bot's.
+	Set      bool   `json:"set"`
+	Username string `json:"username,omitempty"`
+	Name     string `json:"name,omitempty"`
+	// Polling: the server is asking Telegram for the bot's messages; Problem
+	// says what is in the way (unauthorized | conflict | unreachable).
+	Polling bool   `json:"polling"`
+	Problem string `json:"problem,omitempty"`
+}
+
+func (h *lib) telegramOut(w http.ResponseWriter, r *http.Request, b notify.Bot) {
+	polling, problem := h.Notify.TelegramProblem()
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, telegramView{Set: b.Set, Username: b.Username, Name: b.Name, Polling: polling && b.Set, Problem: problem})
+}
+
+func (h *lib) telegramSettings(w http.ResponseWriter, r *http.Request) {
+	h.telegramOut(w, r, h.Notify.TelegramBot(r.Context()))
+}
+
+// telegramErr answers an error of the bot's settings.
+func telegramErr(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, notify.ErrBadTelegramToken):
+		writeErr(w, r, http.StatusBadRequest, "Это не токен бота: он выглядит как 123456:ABC… — скопируйте его целиком у @BotFather")
+	case errors.Is(err, notify.ErrTelegramRejected):
+		writeErr(w, r, http.StatusBadRequest, "Telegram не принял токен — проверьте, что он скопирован целиком и бот не удалён")
+	case errors.Is(err, notify.ErrTelegramUnreachable):
+		writeErr(w, r, http.StatusBadGateway, "Нет связи с Telegram, попробуйте ещё раз")
+	case errors.Is(err, notify.ErrNoTelegram):
+		writeErr(w, r, http.StatusConflict, "Сначала вставьте токен бота")
+	default:
+		internalErr(w, r, "telegram settings", err)
+	}
+}
+
+// PUT /api/settings/telegram {token}: checks the token with getMe and keeps
+// it; the bot's name comes back.
+func (h *lib) setTelegram(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token string `json:"token"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	b, err := h.Notify.SetTelegramToken(r.Context(), in.Token)
+	if err != nil {
+		telegramErr(w, r, err)
+		return
+	}
+	h.telegramOut(w, r, b)
+}
+
+// POST /api/settings/telegram/check: «Проверить» the stored token again.
+func (h *lib) checkTelegram(w http.ResponseWriter, r *http.Request) {
+	b, err := h.Notify.CheckTelegram(r.Context())
+	if err != nil {
+		telegramErr(w, r, err)
+		return
+	}
+	h.telegramOut(w, r, b)
+}
+
+// DELETE /api/settings/telegram: forgets the token (polling stops).
+func (h *lib) clearTelegram(w http.ResponseWriter, r *http.Request) {
+	if err := h.Notify.ClearTelegramToken(r.Context()); err != nil {
+		internalErr(w, r, "telegram settings", err)
+		return
+	}
+	h.telegramOut(w, r, notify.Bot{})
 }
 
 func (h *lib) verifyNotify(w http.ResponseWriter, r *http.Request, uid int64) {
