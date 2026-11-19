@@ -151,3 +151,50 @@ func TestStereoMonoVoiceOver(t *testing.T) {
 		t.Fatalf("a mono dub taken for a voice-over: %+v", m)
 	}
 }
+
+// A stereo voice-over that runs late against a 5.1 original: the original
+// is led in with silence of the lag on the centre and on both sides alike
+// (the sides once had none, and indexing them by the centre's length ran
+// past their end).
+func TestCleanStereoOver51Late(t *testing.T) {
+	ff := ffmpegPath(t)
+	orig := original51(testSeconds*sr, 33)
+	vo := voiceOverStereo(orig, 30*sr/1000, false)
+	path := muxTracks(t, ff, vo, orig)
+	m := eligible1(t, ff, path, pair(2, 6), testSeconds*1000)
+	if !m.Eligible || m.LagMs < 1 {
+		t.Fatalf("want a late voice-over: %+v", m)
+	}
+	out := filepath.Join(t.TempDir(), "out.mka")
+	cleanPCM(t, ff, Input{Path: path, DurationMs: testSeconds * 1000}, Job{Pair: pair(2, 6), LagMs: m.LagMs, GainCap: GainCap(m.FrontGain), Out: out})
+	if got := decodeAll(t, ff, out, 0, 2); len(got[0]) != len(vo[0]) {
+		t.Fatalf("length %d, want %d", len(got[0]), len(vo[0]))
+	}
+}
+
+// The sides of a stereo voice-over's original are led in like its centre,
+// and a block of the original shorter than the voice-over's (the decoders
+// read in their own sizes) keeps the three the same length: stepStereo
+// indexes the sides by the centre's length.
+func TestLeadInKeepsSidesWithCentre(t *testing.T) {
+	c := &cleanJob{ch: 2, och: 6, stereo: true}
+	c.leadIn(512)
+	if len(c.or) != 512 || len(c.orL) != 512 || len(c.orR) != 512 {
+		t.Fatalf("lead-in: centre %d, sides %d %d", len(c.or), len(c.orL), len(c.orR))
+	}
+	ob := make([]float32, 3584*6) // the original's block, shorter than the voice-over's 4096
+	for i := 0; i < 3584; i++ {
+		c.or = append(c.or, ob[i*c.och+centre])
+		c.orL, c.orR = append(c.orL, ob[i*c.och]), append(c.orR, ob[i*c.och+1])
+	}
+	for i := range 4096 { // what stepStereo reads for a 4096-frame block
+		if i < len(c.or) {
+			_, _, _ = c.or[i], c.orL[i], c.orR[i]
+		}
+	}
+	e := &cleanJob{ch: 2, och: 6, stereo: true}
+	e.leadIn(-300)
+	if e.dropOr != 300 || len(e.or) != 0 || len(e.orL) != 0 {
+		t.Fatalf("early voice-over: drop %d, centre %d, side %d", e.dropOr, len(e.or), len(e.orL))
+	}
+}

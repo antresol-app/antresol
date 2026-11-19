@@ -116,13 +116,7 @@ func clean(ctx context.Context, ffmpeg string, in Input, jobs []Job, codec func(
 			c.cl, c.cr = make([]float32, readFrames), make([]float32, readFrames)
 		}
 		c.sub.SetGainCap(j.GainCap)
-		// vo[t] pairs with orig[t − lag]: a late voice-over gets zeros of
-		// the original first, an early one drops its head
-		if lag := int(math.Round(j.LagMs * rate / 1000)); lag > 0 {
-			c.or = make([]float32, lag)
-		} else {
-			c.dropOr = -lag
-		}
+		c.leadIn(int(math.Round(j.LagMs * rate / 1000)))
 		title := j.Vo.Title + TitleSuffix
 		if j.Vo.Title == "" {
 			title = "Очищено"
@@ -220,6 +214,22 @@ func clean(ctx context.Context, ffmpeg string, in Input, jobs []Job, codec func(
 		}
 	}
 	return errs
+}
+
+// leadIn lines the original up with the voice-over: vo[t] pairs with
+// orig[t − lag]. A late voice-over (lag > 0) gets lag zeros of the original
+// first, on the centre and, for a stereo voice-over, on both sides alike:
+// stepStereo reads the sides at the centre's indexes, so the three stay the
+// same length. An early one (lag < 0) drops the original's head.
+func (c *cleanJob) leadIn(lag int) {
+	if lag <= 0 {
+		c.dropOr = -lag
+		return
+	}
+	c.or = make([]float32, lag)
+	if c.stereo {
+		c.orL, c.orR = make([]float32, lag), make([]float32, lag)
+	}
 }
 
 // step takes the next blocks of the voice-over and its original.
