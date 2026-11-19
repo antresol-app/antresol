@@ -1,18 +1,19 @@
-// «Аккаунты → Shikimori» of a profile's settings: link by nickname (the
-// list is read from the public profile), the sync status, «Отмечать и на
-// Shikimori» (needs a sign-in there: opens it in this tab) and «Отвязать».
-// Not for a kid; absent when the server has no accounts.
+// Shikimori's card on «Аккаунты и синхронизация» (pages/AccountsSettings.tsx):
+// link by nickname (the list is read from the public profile), the sync
+// status, «Отмечать и на Shikimori» (needs a sign-in there: opens it in this
+// tab) and «Отвязать». Not for a kid; absent when the server has no accounts.
+
 import { useEffect, useState } from 'react'
 import { errorText, linkShikimori, setShikimoriWrite, unlinkShikimori } from '../../api/client'
 import type { ShikimoriState } from '../../api/types'
-import { useT } from '../../i18n'
+import { useT, type Key } from '../../i18n'
 import { loadAccounts, setAccountsState } from '../../state/accounts'
 import { ago } from '../../state/format'
 import { useSession } from '../../state/session'
-import { Button } from '../../ui/Button'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Toggle } from '../../ui/Toggle'
+import { AccountRow } from './AccountRow'
 
 export function ShikimoriAccount() {
   const t = useT()
@@ -71,9 +72,10 @@ export function ShikimoriAccount() {
     })
 
   return (
-    <GroupedSection title={t('acct.title')} footer={error || undefined}>
+    <GroupedSection title={t('acct.shikimori.title')} footer={error || undefined}>
+      <AccountRow linked={s.linked} name={s.nickname} direction={t(direction(s))} status={statusLine(s, t)} busy={busy} onUnlink={() => void unlink()} />
       {!s.linked ? (
-        <ListRow wide label="Shikimori" hint={t('acct.hint')}>
+        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.hint')}>
           <InlineForm
             field={{ label: t('acct.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}
@@ -82,22 +84,21 @@ export function ShikimoriAccount() {
           />
         </ListRow>
       ) : (
-        <>
-          <ListRow label={s.nickname} hint="Shikimori" status={statusLine(s, t)}>
-            <Button variant="secondary" size="small" disabled={busy} onClick={() => void unlink()}>
-              {t('acct.unlink')}
-            </Button>
-          </ListRow>
-          <ListRow label={t('acct.write')} hint={s.canWrite || s.writeState === 'enabled' ? t('acct.write.hint') : t('acct.write.unavailable')}>
-            <Toggle label={t('acct.write')} checked={s.writeState === 'enabled'} disabled={busy || (!s.canWrite && s.writeState !== 'enabled')} onChange={(on) => void write(on)} />
-          </ListRow>
-        </>
+        <ListRow label={t('acct.write')} hint={s.canWrite || s.writeState === 'enabled' ? t('acct.write.hint') : t('acct.write.unavailable')}>
+          <Toggle label={t('acct.write')} checked={s.writeState === 'enabled'} disabled={busy || (!s.canWrite && s.writeState !== 'enabled')} onChange={(on) => void write(on)} />
+        </ListRow>
       )}
     </GroupedSection>
   )
 }
 
 type T = ReturnType<typeof useT>
+
+/** What flows which way: both ways only once the profile has allowed marks to go to Shikimori. */
+function direction(s: ShikimoriState): Key {
+  if (!s.linked) return 'acct.dir.shikimori.setup'
+  return s.writeState === 'enabled' ? 'acct.dir.shikimori.both' : 'acct.dir.shikimori.read'
+}
 
 function statusLine(s: ShikimoriState, t: T): string {
   switch (s.status) {

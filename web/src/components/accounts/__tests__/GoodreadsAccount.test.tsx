@@ -73,15 +73,15 @@ describe('GoodreadsAccount', () => {
     expect(await screen.findByText(/не больше 100 последних книг с полки/)).toBeInTheDocument()
     await userEvent.type(await screen.findByLabelText('Адрес профиля на Goodreads'), 'https://www.goodreads.com/user/show/12345-some-name')
     await userEvent.click(screen.getByRole('button', { name: 'Связать' }))
-    expect(await screen.findByText('some-name')).toBeInTheDocument()
+    expect(await screen.findByText('Связан как some-name')).toBeInTheDocument()
     expect(calls).toContain('PUT /api/accounts/goodreads {"profile":"https://www.goodreads.com/user/show/12345-some-name"}')
     expect(screen.getByText('Читаем полки с Goodreads, это займёт несколько секунд')).toBeInTheDocument()
   })
 
-  it('shows the books, the read-only note and the status line of a linked profile', async () => {
+  it('shows the books, the read-only line and the status line of a linked profile', async () => {
     state = linked()
     await open()
-    expect(await screen.findByText(/Только чтение: у Goodreads нет открытого способа писать/)).toBeInTheDocument()
+    expect(await screen.findByText(/Только чтение: полки с Goodreads попадают в «Книги», а вся история приходит из файла экспорта/)).toBeInTheDocument()
     expect(screen.getByText(/Синхронизировано .*/)).toBeInTheDocument()
     expect(screen.getByText(/Книг с Goodreads: 12 \(прочитано 8, читаю 1, хочу прочитать 3\), в библиотеке нашлось 5/)).toBeInTheDocument()
     // a linked profile has no «Забыть список»: «Отвязать» does it

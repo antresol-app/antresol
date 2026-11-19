@@ -119,6 +119,8 @@ function AddonRoute() {
 const MyRequests = lazy(() => import('../pages/MyRequests'))
 // a profile's own «Настройки» (every profile)
 const ProfileSettings = lazy(() => import('../pages/ProfileSettings'))
+// its «Аккаунты и синхронизация» (every adult profile; a kid is sent back to the settings)
+const AccountsSettings = lazy(() => import('../pages/AccountsSettings'))
 // «Вход на телевизоре» (/pair?code=…, the TV's QR code)
 const Pair = lazy(() => import('../pages/Pair'))
 
@@ -216,6 +218,14 @@ export const routes: RouteObject[] = [
             element: (
               <ChunkBoundary>
                 <ProfileSettings />
+              </ChunkBoundary>
+            ),
+          },
+          {
+            path: 'settings/accounts',
+            element: (
+              <ChunkBoundary>
+                <AccountsSettings />
               </ChunkBoundary>
             ),
           },

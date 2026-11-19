@@ -1,26 +1,24 @@
 // «Настройки» of the signed-in profile (every profile, from the profile
 // menu; an admin's are also the first row of «Управление», drawn in its frame): the photo (an adult's), the language, «Звук и субтитры», mail, the app password, devices,
 // what is saved on this device and «О сервере». One short list: a row opens
-// its sheet. What applies to the whole server is the admin's, in
-// «Управление → Настройки сервера». A kid's sound and mail are the admin's
-// (Профили), as «Скрывать прогресс» is.
+// its sheet, or a page («Аккаунты и синхронизация», pages/AccountsSettings.tsx).
+// What applies to the whole server is the admin's, in «Управление → Настройки
+// сервера». A kid's sound and mail are the admin's (Профили), as «Скрывать
+// прогресс» is.
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Navigate, useLocation, useNavigate } from 'react-router'
 import { updateMe } from '../api/client'
+import type { AccountsState } from '../api/types'
 import { APP_NAME } from '../brand'
 import { AboutSheet } from '../components/AboutSheet'
-import { GoodreadsAccount } from '../components/accounts/GoodreadsAccount'
-import { MyShowsAccount } from '../components/accounts/MyShowsAccount'
-import { ShikimoriAccount } from '../components/accounts/ShikimoriAccount'
 import { AppPasswordSheet } from '../components/AppPasswordSheet'
 import { DevicesSheet } from '../components/DevicesSheet'
 import { NotifySheet } from '../components/NotifySheet'
 import { PlaybackPrefsSheet } from '../components/PlaybackPrefsSheet'
 import { ProfilePhotoRow } from '../components/ProfilePhotoRow'
-import { getLanguagePref, useLang, useT, type Key, type LangPref } from '../i18n'
+import { getLanguagePref, useLang, useT, type LangPref } from '../i18n'
 import { offlineSupported } from '../offline/store'
-import { showNotice } from '../state/notice'
-import { resetAccounts } from '../state/accounts'
+import { loadAccountsState, resetAccounts } from '../state/accounts'
 import { session, useSession } from '../state/session'
 import { chooseInterfaceLanguage } from '../state/uiLanguage'
 import { GroupedSection, ListLinkRow, ListRow } from '../ui/List'
@@ -40,31 +38,34 @@ export function ProfileSettings() {
   const [open, setOpen] = useState<Open>('')
   const [pref, setPref] = useState<LangPref>(getLanguagePref)
   const [hideFailed, setHideFailed] = useState(false)
-  const [params, setParams] = useSearchParams()
-
-  // back from Shikimori's sign-in (the server's redirect): say how it went, clear the address
-  useEffect(() => {
-    if (params.get('account') !== 'shikimori') return
-    const error = params.get('error')
-    const known = ['session', 'state', 'denied', 'exchange', 'account']
-    resetAccounts() // the link's state changed on the server
-    showNotice(error ? t(`acct.err.${known.includes(error) ? error : 'exchange'}` as Key) : t('acct.ok'), 5000)
-    setParams({}, { replace: true })
-  }, [params, setParams, t])
+  const { search } = useLocation()
+  // the linked accounts, for the row that leads to their page (null: this server has none)
+  const [accounts, setAccounts] = useState<AccountsState | null>(null)
 
   // a fresh read of the accounts: the cached link state may be a session old
-  // (a layout effect: it runs before the account blocks' own loads start)
+  // (a layout effect: it runs before the load below)
   useLayoutEffect(() => {
     resetAccounts()
   }, [])
+  const adult = !!user && !user.isKid
+  useEffect(() => {
+    if (!adult) return
+    let live = true
+    void loadAccountsState().then((a) => live && setAccounts(a?.shikimori ? a : null))
+    return () => {
+      live = false
+    }
+  }, [adult, user?.id])
 
   useEffect(() => {
     document.title = `${t('common.settings')} — ${APP_NAME}`
   }, [t])
 
   if (!user) return null
-  const adult = !user.isKid
+  // the old address of Shikimori's sign-in coming back (and the links made from it): the accounts page has it now
+  if (new URLSearchParams(search).get('account') === 'shikimori') return <Navigate to={`/settings/accounts${search}`} replace />
   const close = () => setOpen('')
+  const linked = accounts ? [accounts.shikimori, accounts.myshows, accounts.goodreads].filter((a) => a?.linked).length : 0
 
   const toggleHidden = (on: boolean) => {
     setHideFailed(false)
@@ -129,9 +130,11 @@ export function ProfileSettings() {
           </GroupedSection>
         )}
 
-        {adult && <ShikimoriAccount />}
-        {adult && <MyShowsAccount />}
-        {adult && <GoodreadsAccount />}
+        {adult && accounts && (
+          <GroupedSection>
+            <ListLinkRow icon="link" tint="cyan" label={t('acct.section')} value={linked ? t('acct.section.linked', { count: linked }) : t('acct.section.none')} onOpen={() => navigate('/settings/accounts')} />
+          </GroupedSection>
+        )}
 
         <GroupedSection title={t('prefs.apps')}>
           <ListLinkRow icon="key" tint="gray" label={t('prefs.appPassword')} hint={t('prefs.appPassword.hint')} onOpen={() => setOpen('appPassword')} />

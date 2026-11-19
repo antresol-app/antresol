@@ -1,9 +1,9 @@
-// «Аккаунты → Goodreads» of a profile's settings. Goodreads has no open API,
-// so there are two ways in, both read only: link the profile by its address
-// (the public shelves are read, up to 100 newest books of each) and upload
-// the library export (CSV: the whole history, no link needed). The books go
-// onto «Читаю сейчас», «Хочу прочитать» and «Прочитано». Not for a kid;
-// absent when the server does not offer Goodreads.
+// Goodreads' card on «Аккаунты и синхронизация» (pages/AccountsSettings.tsx).
+// Goodreads has no open API, so there are two ways in, both read only: link
+// the profile by its address (the public shelves are read, up to 100 newest
+// books of each) and upload the library export (CSV: the whole history, no
+// link needed). The books go onto «Читаю сейчас», «Хочу прочитать» and
+// «Прочитано». Not for a kid; absent when the server does not offer Goodreads.
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, errorText, getAccounts, importGoodreads, linkGoodreads, unlinkGoodreads } from '../../api/client'
 import type { GoodreadsState } from '../../api/types'
@@ -14,6 +14,7 @@ import { useSession } from '../../state/session'
 import { Button } from '../../ui/Button'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
+import { AccountRow } from './AccountRow'
 
 // the first read of the shelves takes seconds: ask again, ever less often
 const POLL_MS = 2000
@@ -116,8 +117,9 @@ export function GoodreadsAccount() {
 
   return (
     <GroupedSection title={t('acct.goodreads.title')} footer={error || undefined}>
+      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.goodreads')} status={statusLine(s, t)} busy={busy} onUnlink={() => void forget()} />
       {!s.linked ? (
-        <ListRow wide label="Goodreads" hint={t('acct.goodreads.hint')}>
+        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.goodreads.hint')}>
           <InlineForm
             field={{ label: t('acct.goodreads.profile'), value: profile, onChange: (e) => setProfile(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}
@@ -126,14 +128,7 @@ export function GoodreadsAccount() {
           />
         </ListRow>
       ) : (
-        <>
-          <ListRow label={s.nickname} hint="Goodreads" status={statusLine(s, t)}>
-            <Button variant="secondary" size="small" disabled={busy} onClick={() => void forget()}>
-              {t('acct.unlink')}
-            </Button>
-          </ListRow>
-          {polling && <ListRow label={t('acct.goodreads.firstRead')} />}
-        </>
+        polling && <ListRow label={t('acct.goodreads.firstRead')} />
       )}
       <ListRow label={t('acct.goodreads.file')} hint={t('acct.goodreads.file.hint')} status={imported || undefined}>
         {/* no accept: a spreadsheet app may have renamed the file, the server checks the content */}
@@ -160,7 +155,6 @@ export function GoodreadsAccount() {
           )}
         </ListRow>
       )}
-      <ListRow label={t('acct.goodreads.note')} />
     </GroupedSection>
   )
 }

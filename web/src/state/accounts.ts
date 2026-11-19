@@ -28,6 +28,16 @@ function load(): Promise<AccountsState | null> {
   return cache
 }
 
+/**
+ * Every account's link state in one read (the page of «Аккаунты и
+ * синхронизация», the row that leads to it); null when the server has no
+ * accounts or does not answer. A server that has them always answers with
+ * `shikimori`.
+ */
+export function loadAccountsState(): Promise<AccountsState | null> {
+  return load()
+}
+
 export async function loadAccounts(): Promise<ShikimoriState | null> {
   return (await load())?.shikimori ?? null
 }

@@ -64,8 +64,43 @@ describe('ShikimoriAccount', () => {
     await open()
     await userEvent.type(await screen.findByLabelText('Ник на Shikimori'), 'tester')
     await userEvent.click(screen.getByRole('button', { name: 'Связать' }))
-    expect(await screen.findByText('tester')).toBeInTheDocument()
+    expect(await screen.findByText('Связан как tester')).toBeInTheDocument()
     expect(calls).toContain('PUT /api/accounts/shikimori {"nickname":"tester"}')
+  })
+
+  it('says it is not linked, and that it syncs both ways once marks may go back', async () => {
+    await open()
+    expect(await screen.findByText('Не связан')).toBeInTheDocument()
+    expect(screen.getByText(/В обе стороны: список с Shikimori попадает в отметки, а после одного входа туда/)).toBeInTheDocument()
+    // no unlink, no last sync for a card that has no link
+    expect(screen.queryByRole('button', { name: 'Отвязать' })).toBeNull()
+    expect(screen.queryByText(/Синхронизировано|Ещё не синхронизировано/)).toBeNull()
+  })
+
+  it('is honest about the direction: reading only until marks are allowed to go back', async () => {
+    state = linked()
+    const { unmount } = await open()
+    expect(await screen.findByText(/Сейчас только чтение: список с Shikimori попадает в отметки, обратно ничего не уходит/)).toBeInTheDocument()
+    unmount()
+    resetAccounts()
+    state = linked({ writeState: 'enabled' })
+    await open()
+    expect(await screen.findByText('В обе стороны: список с Shikimori попадает в отметки, а твои отметки уходят на Shikimori.')).toBeInTheDocument()
+  })
+
+  it('shows the last sync and how it went, and unlinks', async () => {
+    state = linked()
+    await open()
+    expect(await screen.findByText('Синхронизировано 5 мин назад')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Отвязать' }))
+    expect(await screen.findByText('Не связан')).toBeInTheDocument()
+    expect(calls).toContain('DELETE /api/accounts/shikimori')
+  })
+
+  it('puts a failed sync in the card', async () => {
+    state = linked({ status: 'error', lastError: 'Shikimori не отвечает' })
+    await open()
+    expect(await screen.findByText('Не удалось синхронизировать: Shikimori не отвечает')).toBeInTheDocument()
   })
 
   it('shows synced status with the unmapped count', async () => {

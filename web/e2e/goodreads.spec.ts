@@ -1,4 +1,4 @@
-// «Аккаунты → Goodreads» against a real bin/vault with a fake shelf widget
+// «Аккаунты и синхронизация → Goodreads» against a real bin/vault with a fake shelf widget
 // (fakes.ts): the profile is linked by its address, its shelves land on the
 // shelves of «Книги», and a library export (CSV) adds the rest; the layout
 // holds at a desktop and a phone width.
@@ -8,7 +8,7 @@ import { expect, scanLibrary, setupAdmin, test } from './vault'
 
 test.use({ library: 'books', fakes: true })
 
-// the group's own section: its heading's parent (the page's column holds every group)
+// the service's own card: its heading's parent (the page's column holds every card)
 const section = (page: import('@playwright/test').Page) => page.getByRole('heading', { name: 'Goodreads', exact: true }).locator('..')
 
 const exportCSV =
@@ -19,7 +19,7 @@ const exportCSV =
 test('a profile is linked, its shelves and an export land in «Книги»', async ({ page }) => {
   await setupAdmin(page.request)
   await scanLibrary(page.request, (s) => s.books >= 3)
-  await page.goto('/settings')
+  await page.goto('/settings/accounts')
   const gr = section(page)
   await expect(gr).toBeVisible()
   await gr.scrollIntoViewIfNeeded()
@@ -43,7 +43,7 @@ test('a profile is linked, its shelves and an export land in «Книги»', as
 
   await gr.getByLabel('Адрес профиля на Goodreads').fill(`https://www.goodreads.com/user/show/${FAKE_GOODREADS.profile}-reader`)
   await gr.getByRole('button', { name: 'Связать' }).click()
-  await expect(gr.getByText('reader', { exact: true })).toBeVisible()
+  await expect(gr.getByText('Связан как reader')).toBeVisible()
   await expect(gr.getByText(/Книг с Goodreads: 3 \(прочитано 2, читаю 0, хочу прочитать 1\), в библиотеке нашлось 2/)).toBeVisible({ timeout: 15_000 })
   await expect(gr.getByText(/Синхронизировано/)).toBeVisible()
   await expect(gr.getByText(/Только чтение/)).toBeVisible()
@@ -75,7 +75,7 @@ test('a profile is linked, its shelves and an export land in «Книги»', as
   if (shots) await page.screenshot({ path: `${shots}/books.png` })
 
   // «Отвязать»: the link and the list go, the marks stay
-  await page.goto('/settings')
+  await page.goto('/settings/accounts')
   await gr.getByRole('button', { name: 'Отвязать' }).click()
   await expect(gr.getByLabel('Адрес профиля на Goodreads')).toBeVisible()
   await expect(gr.getByText(/Книг с Goodreads/)).toHaveCount(0)

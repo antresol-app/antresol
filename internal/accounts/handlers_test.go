@@ -210,7 +210,7 @@ func TestCallbackChecksStateAndUser(t *testing.T) {
 	// wrong state
 	e.authorize()
 	w := e.callback("forged", "c1")
-	if loc := w.Header().Get("Location"); !strings.HasPrefix(loc, "/settings?account=shikimori&error=") {
+	if loc := w.Header().Get("Location"); !strings.HasPrefix(loc, "/settings/accounts?account=shikimori&error=") {
 		t.Fatalf("location %q", loc)
 	}
 	if len(e.acct.codes) != 0 {
@@ -226,7 +226,7 @@ func TestCallbackChecksStateAndUser(t *testing.T) {
 			e.api.Viewer = func(*http.Request) (Viewer, bool) { return kid, true }
 		}
 		w = e.callback(st0, "c0")
-		if loc := w.Header().Get("Location"); loc != "/settings?account=shikimori&error=session" || len(e.acct.codes) != 0 {
+		if loc := w.Header().Get("Location"); loc != "/settings/accounts?account=shikimori&error=session" || len(e.acct.codes) != 0 {
 			t.Fatalf("no session: %q %v", loc, e.acct.codes)
 		}
 	}
@@ -258,7 +258,7 @@ func TestCallbackChecksStateAndUser(t *testing.T) {
 	e.local("series", 101, tracking.Planned, e.now)
 	st = e.authorize()
 	w = e.callback(st, "c4")
-	if loc := w.Header().Get("Location"); loc != "/settings?account=shikimori&ok=1" {
+	if loc := w.Header().Get("Location"); loc != "/settings/accounts?account=shikimori&ok=1" {
 		t.Fatalf("ok: %q", loc)
 	}
 	tok, _, _ = e.acc.Tokens(ctx, e.uid, Shikimori)

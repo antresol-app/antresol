@@ -1,7 +1,7 @@
-// «Аккаунты → MyShows» of a profile's settings: link by login (the list is
-// read from the public profile), the sync status and «Отвязать». Read only:
-// nothing is sent back to MyShows. Not for a kid; absent when the server
-// does not offer MyShows.
+// MyShows' card on «Аккаунты и синхронизация» (pages/AccountsSettings.tsx):
+// link by login (the list is read from the public profile), the sync status
+// and «Отвязать». Read only: nothing is sent back to MyShows. Not for a kid;
+// absent when the server does not offer MyShows.
 import { useEffect, useState } from 'react'
 import { errorText, getAccounts, linkMyShows, unlinkMyShows } from '../../api/client'
 import type { MyShowsState } from '../../api/types'
@@ -9,9 +9,9 @@ import { useT } from '../../i18n'
 import { loadMyShows, setMyShowsState } from '../../state/accounts'
 import { ago } from '../../state/format'
 import { useSession } from '../../state/session'
-import { Button } from '../../ui/Button'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
+import { AccountRow } from './AccountRow'
 
 // a first read of a long list takes minutes: ask again, ever less often
 const POLL_MS = 4000
@@ -93,8 +93,9 @@ export function MyShowsAccount() {
 
   return (
     <GroupedSection title={t('acct.myshows.title')} footer={error || undefined}>
+      <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.myshows')} status={statusLine(s, t)} busy={busy} onUnlink={() => void unlink()} />
       {!s.linked ? (
-        <ListRow wide label="MyShows" hint={t('acct.myshows.hint')}>
+        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.myshows.hint')}>
           <InlineForm
             field={{ label: t('acct.myshows.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}
@@ -103,15 +104,7 @@ export function MyShowsAccount() {
           />
         </ListRow>
       ) : (
-        <>
-          <ListRow label={s.nickname} hint="MyShows" status={statusLine(s, t)}>
-            <Button variant="secondary" size="small" disabled={busy} onClick={() => void unlink()}>
-              {t('acct.unlink')}
-            </Button>
-          </ListRow>
-          <ListRow label={t('acct.myshows.note')} />
-          {polling && <ListRow label={t('acct.myshows.firstRead')} />}
-        </>
+        polling && <ListRow label={t('acct.myshows.firstRead')} />
       )}
     </GroupedSection>
   )

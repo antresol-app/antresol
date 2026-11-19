@@ -172,7 +172,7 @@ func (a *API) Routes(r chi.Router) {
 // BrowserRoutes mounts the routes a browser navigates to:
 //
 //	GET /api/accounts/shikimori/callback?code&state
-//	  → 302 /settings?account=shikimori&ok=1 | &error=session|state|denied|exchange|account
+//	  → 302 /settings/accounts?account=shikimori&ok=1 | &error=session|state|denied|exchange|account
 func (a *API) BrowserRoutes(r chi.Router) {
 	r.Get(callbackPath, a.callback)
 }
@@ -476,7 +476,7 @@ func (a *API) callback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	done := func(result string) {
-		http.Redirect(w, r, "/settings?account=shikimori&"+result, http.StatusFound)
+		http.Redirect(w, r, "/settings/accounts?account=shikimori&"+result, http.StatusFound)
 	}
 	v, ok := a.Viewer(r)
 	if !ok || v.IsKid {

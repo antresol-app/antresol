@@ -19,8 +19,8 @@ import { MultiSelect } from '../../ui/Select'
 import { StudioList } from '../../components/StudioList'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
-import { GroupedSection, ListRow } from '../../ui/List'
-import { Navigate, useParams } from 'react-router'
+import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
+import { Navigate, useNavigate, useParams } from 'react-router'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
@@ -43,11 +43,11 @@ export function withLanguages(v: Values, languages: LangCode[]): Partial<Values>
 }
 
 /** The screens of «Настройки сервера», in their order in «Управление» (Manage.tsx: MANAGE_SECTIONS). */
-export type SettingsGroup = 'library' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'kindle' | 'ai'
+export type SettingsGroup = 'library' | 'watching' | 'transcoding' | 'music' | 'subtitles' | 'kindle' | 'ai' | 'accounts'
 
 interface GroupInfo {
   id: SettingsGroup
-  label: 'settings.group.library' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai'
+  label: 'settings.group.library' | 'settings.watching' | 'settings.group.transcoding' | 'common.music' | 'common.subtitles' | 'settings.mailGroup' | 'settings.group.ai' | 'acct.section'
 }
 
 /** The groups of the page. */
@@ -60,6 +60,7 @@ export function settingsGroups(): GroupInfo[] {
     { id: 'subtitles', label: 'common.subtitles' },
     { id: 'kindle', label: 'settings.mailGroup' },
     { id: 'ai', label: 'settings.group.ai' },
+    { id: 'accounts', label: 'acct.section' },
   ]
 }
 
@@ -314,7 +315,7 @@ export function Settings() {
 
       {at('library') && <VocleanSection />}
 
-      {at('library') && <ShikimoriAdmin />}
+      {at('accounts') && <AccountsSection />}
 
       {at('library') && <StorageSection />}
 
@@ -324,6 +325,24 @@ export function Settings() {
         </GroupedSection>
       )}
     </section>
+  )
+}
+
+/**
+ * «Аккаунты и синхронизация» of the server: what applies to every profile
+ * (Shikimori's application, which lets marks go back there) and the way to
+ * the admin's own accounts, which are a profile's settings like anyone's.
+ */
+function AccountsSection() {
+  const t = useT()
+  const navigate = useNavigate()
+  return (
+    <>
+      <ShikimoriAdmin />
+      <GroupedSection>
+        <ListLinkRow icon="link" tint="cyan" label={t('acct.admin.mine')} hint={t('acct.admin.mine.hint')} onOpen={() => navigate('/settings/accounts')} />
+      </GroupedSection>
+    </>
   )
 }
 

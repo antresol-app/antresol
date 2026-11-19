@@ -6,7 +6,7 @@
 // Медиатека (its settings, Файлы, Импорт, Переезд), Воспроизведение (the
 // playback settings, the channels), Загрузки и источники (the addons' tiles
 // that name that group), Расширения (an addon's tile with no group), Система
-// (Статистика, Расширения, Обновления, ИИ, Kindle) — with the section on the
+// (Статистика, Расширения, Обновления, ИИ, Kindle, Аккаунты и синхронизация) — with the section on the
 // right. The screens of the server's settings (/manage/settings/<group>) are
 // rows of their groups, a phone's row with its current choice («1080p»). On
 // phones the list is its own screen and each section has a back button.
@@ -62,6 +62,7 @@ export const MANAGE_SECTIONS: { to: string; label: Key; glyph: SettingsGlyph; ti
   { to: 'updates', label: 'manage.section.updates', glyph: 'updates', tint: 'gray', group: 'server' },
   { to: 'settings/ai', label: 'settings.group.ai', glyph: 'sparkles', tint: 'purple', group: 'server' },
   { to: 'settings/kindle', label: 'settings.mailGroup', glyph: 'envelope', tint: 'blue', group: 'server' },
+  { to: 'settings/accounts', label: 'acct.section', glyph: 'link', tint: 'cyan', group: 'server' },
 ]
 
 /** Where a section's row leads. */

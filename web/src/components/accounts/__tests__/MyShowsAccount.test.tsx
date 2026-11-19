@@ -55,14 +55,14 @@ describe('MyShowsAccount', () => {
     await open()
     await userEvent.type(await screen.findByLabelText('Логин на MyShows'), 'tester')
     await userEvent.click(screen.getByRole('button', { name: 'Связать' }))
-    expect(await screen.findByText('tester')).toBeInTheDocument()
+    expect(await screen.findByText('Связан как tester')).toBeInTheDocument()
     expect(calls).toContain('PUT /api/accounts/myshows {"nickname":"tester"}')
   })
 
-  it('shows the read-only note and the status line', async () => {
+  it('says in one line that it only reads, and shows the status line', async () => {
     state = linked()
     await open()
-    expect(await screen.findByText(/Только чтение: отметки с MyShows появляются здесь; обратно пока не отправляются/)).toBeInTheDocument()
+    expect(await screen.findByText('Только чтение: список с MyShows попадает в отметки; отправка обратно появится позже.')).toBeInTheDocument()
     expect(screen.getByText(/Синхронизировано .* · не найдено в TMDB: 3/)).toBeInTheDocument()
   })
 
