@@ -68,7 +68,7 @@ func (s *tmdbSkeleton) EpisodesInfo(ctx context.Context, t Title) ([]Episode, st
 			return nil, "", TitleInfo{}, err
 		}
 		for _, e := range sd.Episodes {
-			eps = append(eps, Episode{TitleID: t.ID, Season: sc.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate})
+			eps = append(eps, Episode{TitleID: t.ID, Season: sc.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate, Still: e.Still})
 		}
 	}
 	return eps, seriesStatus(eps, now), infoOf(d), nil

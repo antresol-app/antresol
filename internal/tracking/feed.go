@@ -17,6 +17,7 @@ type FeedItem struct {
 	Season, Episode int
 	Name            string
 	AirDate         string
+	Still           string // the episode's TMDB still_path, "" = none (a movie, not fetched yet)
 	FirstSeen       time.Time
 	Kinds           []string
 	Why             Why
@@ -65,7 +66,7 @@ func scanFeedItem(r scanner) (FeedItem, error) {
 	var nc, rf, fs, kinds sql.NullString
 	t := &it.Title
 	if err := r.Scan(&t.ID, &t.Kind, &t.TMDBID, &sh, &ms, &an, &t.IMDbID, &t.Name, &t.Poster, &t.Status, &t.Cert, &nc, &rf,
-		&it.Season, &it.Episode, &it.Name, &it.AirDate, &fs, &kinds, &it.Why.State, &it.Why.Origin); err != nil {
+		&it.Season, &it.Episode, &it.Name, &it.AirDate, &it.Still, &fs, &kinds, &it.Why.State, &it.Why.Origin); err != nil {
 		return FeedItem{}, err
 	}
 	t.ShikimoriID, t.MyShowsID, t.AniDBID = ptr(sh), ptr(ms), ptr(an)
@@ -99,7 +100,7 @@ func IsNews(kind, airDate string, first, since time.Time) bool {
 // The rule is IsNews: the query narrows by first_seen, IsNews decides.
 func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched WatchedFunc) ([]FeedItem, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, src.season, src.episode,
-		  COALESCE(e.name,''), COALESCE(e.air_date,''), src.first, src.kinds, m.state, m.origin
+		  COALESCE(e.name,''), COALESCE(e.air_date,''), COALESCE(e.still,''), src.first, src.kinds, m.state, m.origin
 		FROM `+interest+` m JOIN tracked_titles t ON t.id=m.title_id
 		JOIN (SELECT title_id, season, episode, MIN(first_seen) AS first, GROUP_CONCAT(DISTINCT kind) AS kinds
 		      FROM episode_sources GROUP BY title_id, season, episode) src ON src.title_id=t.id
@@ -148,7 +149,7 @@ func (s *Store) Feed(ctx context.Context, userID int64, since time.Time, watched
 // Calendar lists, by air date from..to (YYYY-MM-DD, both included), the
 // episodes of the profile's tracked titles; only days with episodes.
 func (s *Store) Calendar(ctx context.Context, userID int64, from, to string) ([]CalendarDay, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, e.season, e.number, e.name, e.air_date,
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+prefixedTitleCols+`, e.season, e.number, e.name, e.air_date, e.still,
 		  (SELECT MIN(first_seen) FROM episode_sources x WHERE x.title_id=e.title_id AND x.season=e.season AND x.episode=e.number),
 		  (SELECT GROUP_CONCAT(DISTINCT kind) FROM episode_sources x WHERE x.title_id=e.title_id AND x.season=e.season AND x.episode=e.number),
 		  m.state, m.origin

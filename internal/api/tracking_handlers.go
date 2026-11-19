@@ -74,6 +74,8 @@ type feedItemOut struct {
 	Episode int           `json:"episode"`
 	Name    string        `json:"name"`
 	AirDate string        `json:"airDate,omitempty"`
+	// Still: the episode's own 16:9 picture (TMDB), "" = none (the card shows the poster).
+	Still string `json:"still,omitempty"`
 	// FirstSeen: when it became available (null: not yet).
 	FirstSeen *time.Time `json:"firstSeen"`
 	Kinds     []string   `json:"kinds"`
@@ -495,7 +497,7 @@ func (h *lib) visibleFeed(ctx context.Context, u auth.User, days, max int) ([]tr
 
 func feedJSON(it tracking.FeedItem, g *trackGate) feedItemOut {
 	out := feedItemOut{Title: titleJSON(it.Title, g.seen[it.Title.ID].item), Season: it.Season, Episode: it.Episode,
-		Name: it.Name, AirDate: it.AirDate, Kinds: it.Kinds, Why: whyJSON(it.Why)}
+		Name: it.Name, AirDate: it.AirDate, Still: tracking.StillURL(it.Still), Kinds: it.Kinds, Why: whyJSON(it.Why)}
 	if out.Kinds == nil {
 		out.Kinds = []string{}
 	}
@@ -671,6 +673,7 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		Number      int         `json:"number"`
 		Name        string      `json:"name"`
 		AirDate     string      `json:"airDate"`
+		Still       string      `json:"still,omitempty"` // the episode's TMDB picture
 		Watched     bool        `json:"watched"`
 		PositionSec int         `json:"positionSec,omitempty"`
 		New         bool        `json:"new"`
@@ -687,7 +690,7 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		return e
 	}
 	for _, e := range eps {
-		add(e.Season, e.Number, e.Name, e.AirDate)
+		add(e.Season, e.Number, e.Name, e.AirDate).Still = tracking.StillURL(e.Still)
 	}
 	extra := false
 	for _, s := range srcs {

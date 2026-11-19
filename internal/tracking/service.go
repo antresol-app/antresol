@@ -437,6 +437,14 @@ func PosterURL(p string) string {
 	return p
 }
 
+// StillURL is the full URL of an episode's TMDB still_path ("" stays "").
+func StillURL(p string) string {
+	if strings.HasPrefix(p, "/") {
+		return tmdb.DefaultImageBase + "/w300" + p
+	}
+	return p
+}
+
 // NextCheck is when to refresh a title again: airing with an episode out
 // today or yesterday in 2h, airing otherwise in 6h, upcoming in 24h, ended
 // or unknown in 72h.

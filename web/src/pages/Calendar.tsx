@@ -1,11 +1,12 @@
 // «Календарь»: what comes out of the titles this profile marked.
-//   Неделя — a row of covers (a Shelf) per day that has anything, the title
-//            and «С2 Э3» under each; «доступно» when it has a source already
-//            (on the server, or one an addon found).
+//   Неделя — a row of episode pictures (a wide Shelf) per day that has
+//            anything: the episode's still, the poster when it has none; the
+//            title and «С2 Э3» under each; «доступно» when it has a source
+//            already (on the server, or one an addon found).
 //   Месяц  — a month as a calendar: seven columns Monday to Sunday, a week a
 //            row, today ringed, the days of the months around dimmed; a day
-//            shows the covers of what comes out (with the names where the
-//            cell is wide enough). A tap picks the day: its covers as a row
+//            shows the pictures of what comes out (the still, else the
+//            poster; with the names where the cell is wide enough). A tap picks the day: its covers as a row
 //            under the month.
 import { useEffect, useState } from 'react'
 import { errorText, getTrackingCalendar } from '../api/client'
@@ -141,7 +142,7 @@ export function Calendar() {
       {span === 'week' && days.length > 0 && (
         <div className={styles.rails}>
           {days.map((d) => (
-            <Shelf key={d.date} title={dayTitle(t, d.date, today)} cards={dayCards(t, d.items)} contained />
+            <Shelf key={d.date} title={dayTitle(t, d.date, today)} cards={dayCards(t, d.items)} variant="wide" contained />
           ))}
         </div>
       )}
@@ -155,7 +156,7 @@ export function Calendar() {
             state.status === 'ready' && (
               <div className={styles.rails} id="cal-day" aria-live="polite">
                 {byDate.get(selected)?.length ? (
-                  <Shelf title={dayTitle(t, selected, today)} cards={dayCards(t, byDate.get(selected)!)} contained />
+                  <Shelf title={dayTitle(t, selected, today)} cards={dayCards(t, byDate.get(selected)!)} variant="wide" contained />
                 ) : (
                   <p className={styles.dayEmpty}>
                     <span className={styles.dayEmptyTitle}>{dayTitle(t, selected, today)}</span>
@@ -249,7 +250,11 @@ function MonthGrid({
                 <span className={styles.items}>
                   {titles.map((c, i) => (
                     <span key={`${c.tmdbKind}-${c.tmdbId}`} className={[styles.item, i >= WIDE_MAX ? styles.wideHidden : '', i >= NARROW_MAX ? styles.narrowHidden : ''].filter(Boolean).join(' ')}>
-                      <Artwork src={c.poster} width={32} className={styles.thumb} fallback={<span className={styles.thumb} />} />
+                      {c.backdrop ? (
+                        <Artwork src={c.backdrop} width={48} className={`${styles.thumb} ${styles.still}`} fallback={<CellPoster src={c.poster} />} />
+                      ) : (
+                        <CellPoster src={c.poster} />
+                      )}
                       <span className={styles.itemText}>
                         <span className={styles.itemName}>{c.title}</span>
                         <span className={styles.itemEp}>{c.subtitle}</span>
@@ -266,6 +271,11 @@ function MonthGrid({
       </div>
     </div>
   )
+}
+
+/** A month cell's poster thumb (an item without a still, or one that failed). */
+function CellPoster({ src }: { src: string }) {
+  return <Artwork src={src} width={32} className={styles.thumb} fallback={<span className={styles.thumb} />} />
 }
 
 export default Calendar

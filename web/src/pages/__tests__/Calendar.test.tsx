@@ -55,6 +55,7 @@ beforeEach(() => {
                 episode: 1,
                 name: '',
                 airDate: '2026-11-14',
+                still: 'https://image.example/w300/still-1x1.jpg',
                 firstSeen: null,
                 kinds: [],
               },
@@ -89,6 +90,13 @@ describe('Календарь: неделя', () => {
     // the cover is drawn
     expect(lib.querySelector('img')?.getAttribute('src')).toContain('/t/12.jpg')
     expect(screen.getAllByText('доступно')).toHaveLength(1)
+  })
+
+  it('an episode with a still shows it, one without the poster', async () => {
+    show()
+    const off = await screen.findByRole('link', { name: /Дальний берег/ })
+    expect(off.querySelector('img')?.getAttribute('src')).toContain('still-1x1.jpg')
+    expect(screen.getByRole('link', { name: /Тихая гавань/ }).querySelector('img')?.getAttribute('src')).toContain('/t/12.jpg')
   })
 
   it('an off-library title opens its title page on that episode', async () => {
@@ -133,6 +141,9 @@ describe('Календарь: месяц', () => {
     })
     expect(twelfth.querySelector('img')?.getAttribute('src')).toContain('/t/12.jpg')
     expect(within(twelfth).getByText('С2 Э3')).toBeTruthy()
+    // the 14th: the episode's still, not the series' poster
+    const fourteenth = screen.getByRole('button', { name: /14 ноября: Дальний берег/ })
+    expect(fourteenth.querySelector('img')?.getAttribute('src')).toContain('still-1x1.jpg')
     await userEvent.click(twelfth)
     expect(twelfth).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('heading', { name: 'Четверг, 12 ноября' })).toBeTruthy()

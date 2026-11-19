@@ -65,7 +65,7 @@ func newTrackEnv(t *testing.T) *trackEnv { return newTrackEnvWith(t, nil) }
 // newTrackEnvWith is newTrackEnv with more of the router's deps set.
 func newTrackEnvWith(t *testing.T, opt func(*Deps)) *trackEnv {
 	today := time.Now().Format(time.DateOnly)
-	sk := &trackSkeleton{eps: []tracking.Episode{{Season: 1, Number: 1, Name: "Первая", AirDate: today},
+	sk := &trackSkeleton{eps: []tracking.Episode{{Season: 1, Number: 1, Name: "Первая", AirDate: today, Still: "/s1e1.jpg"},
 		{Season: 1, Number: 2, Name: "Вторая", AirDate: today}}}
 	te := &trackEnv{sk: sk, addons: &fakeAddons{installed: map[string]addons.Installed{
 		"scan": scanAddon("scan", "adults", true, "alpha", "beta")}, status: map[string]addons.Status{}}}

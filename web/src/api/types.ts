@@ -1873,6 +1873,8 @@ export interface TrackingItem {
   episode: number
   name: string
   airDate?: string
+  /** The episode's own 16:9 picture (TMDB still); absent: none (a movie, not fetched yet). */
+  still?: string
   /** When it became available (null: not yet). */
   firstSeen: string | null
   kinds: string[]

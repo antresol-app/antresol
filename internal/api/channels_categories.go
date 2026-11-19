@@ -21,7 +21,9 @@ import (
 //	group:<name> the playlist's group-title, or an own channel's category
 //
 // The list's order: the AI's categories (by count), the sources (by their
-// position), the groups (by count, then name).
+// position), the groups (by count, then name). Names compare as a person
+// reads them (i18n.Collator: «Группа 2» before «Группа 10»), so the web
+// and the apps show one order.
 
 type categoryJSON struct {
 	ID    string `json:"id"`
@@ -105,6 +107,7 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 		out = append(out, c)
 	}
 	rank := map[string]int{"ai": 0, "source": 1, "group": 2}
+	coll := i18n.Collator(ctx)
 	sort.SliceStable(out, func(i, j int) bool {
 		x, y := out[i], out[j]
 		if x.Kind != y.Kind {
@@ -117,6 +120,9 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 		}
 		if x.Count != y.Count {
 			return x.Count > y.Count
+		}
+		if c := coll.CompareString(x.Name, y.Name); c != 0 {
+			return c < 0
 		}
 		return x.Name < y.Name
 	})

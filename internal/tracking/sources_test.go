@@ -33,7 +33,7 @@ func TestTMDBSkeletonSeries(t *testing.T) {
 	f := &fakeTMDB{
 		tv: tmdb.Details{Seasons: []tmdb.SeasonCount{{Number: 0, Episodes: 1}, {Number: 1, Episodes: 2}, {Number: 2, Episodes: 1}}},
 		seasons: map[int]tmdb.SeasonDetails{
-			1: {Number: 1, Episodes: []tmdb.Episode{{Number: 1, Name: "A", AirDate: "2026-01-01"}, {Number: 2, Name: "B", AirDate: "2026-01-08"}}},
+			1: {Number: 1, Episodes: []tmdb.Episode{{Number: 1, Name: "A", AirDate: "2026-01-01", Still: "/a.jpg"}, {Number: 2, Name: "B", AirDate: "2026-01-08"}}},
 			2: {Number: 2, Episodes: []tmdb.Episode{{Number: 1, Name: "C", AirDate: "2026-04-01"}}},
 		},
 	}
@@ -43,7 +43,7 @@ func TestTMDBSkeletonSeries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Episode{{5, 1, 1, "A", "2026-01-01"}, {5, 1, 2, "B", "2026-01-08"}, {5, 2, 1, "C", "2026-04-01"}}
+	want := []Episode{{5, 1, 1, "A", "2026-01-01", "/a.jpg"}, {5, 1, 2, "B", "2026-01-08", ""}, {5, 2, 1, "C", "2026-04-01", ""}}
 	if !reflect.DeepEqual(eps, want) || status != "airing" || !reflect.DeepEqual(f.asked, []int{1, 2}) {
 		t.Fatalf("eps %+v status %q asked %v", eps, status, f.asked)
 	}

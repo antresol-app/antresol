@@ -1,7 +1,9 @@
 /* «Телегид»: the guide grid. One scroller both ways, filling the window
    down to the tab bar; the channel column sticks to its left edge, the time
    ruler to its top. Sizes come from the component: --chan-w (the channel
-   column), --track-w (the time's width), --guide-top (where it starts). */
+   column), --track-w (the time's width), --guide-top (where it starts),
+   --row-h (a channel's row: the virtual list's row height, Guide.tsx ROW_H;
+   the values below are what it sets). */
 .wrap {
   --row-h: var(--s-16);
   --ruler-h: var(--s-12);

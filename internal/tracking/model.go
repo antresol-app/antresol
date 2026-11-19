@@ -47,6 +47,7 @@ type Episode struct {
 	Season        int
 	Number        int
 	Name, AirDate string // AirDate: YYYY-MM-DD or ""
+	Still         string // TMDB still_path ("/abc.jpg") or "": the episode's own picture
 }
 
 // Source is a place where an episode can be watched or fetched.

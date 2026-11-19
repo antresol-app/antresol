@@ -5,7 +5,9 @@
 // been is dimmed, what is on is lit. It opens an hour back and reads the
 // next six hours as it scrolls towards them. A block opens its details
 // (ProgramSheet). Keys: arrows move between blocks (up/down keep the time),
-// Enter opens, «Сейчас» returns to now.
+// Enter opens, «Сейчас» returns to now. Only the rows near the screen are
+// drawn (VirtualList, as the channel list): a playlist of thousands of
+// channels under «Все каналы» costs as much as a screenful.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { errorText } from '../../api/client'
@@ -15,6 +17,7 @@ import { useT } from '../../i18n'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
+import { VirtualList } from '../../ui/VirtualList'
 import { applyFilter, blockOf, gridMove, guideOrigin, labelInset, mergePrograms, MIN, ticksOf, type ChannelFilter } from './model'
 import { ChannelLogo } from './ChannelLogo'
 import { ProgramSheet } from './ProgramSheet'
@@ -27,6 +30,8 @@ const PAGE_H = 6
 const AHEAD_MS = 47 * 60 * MIN
 /** The hairline between two programmes (px). */
 const GAP = 2
+/** A channel's row (px): the CSS --row-h, set from here (--s-16; a phone's --s-12 + --s-2). */
+const ROW_H = { compact: 56, wide: 64 }
 
 export interface GuideProps {
   filter: ChannelFilter
@@ -47,6 +52,7 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
   const navigate = useNavigate()
   const now = useNow(30_000)
   const ppm = compact ? 4 : 6 // px per minute: 30 min = 120 / 180 px
+  const rowH = compact ? ROW_H.compact : ROW_H.wide
   const [origin] = useState(() => guideOrigin(Date.now()))
   const [data, setData] = useState<{ end: number; channels: ChannelEPG[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -138,6 +144,28 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
   }, [data !== null])
 
   const cell = (r: number, c: number) => scroller.current?.querySelector<HTMLButtonElement>(`[data-cell="${r}:${c}"]`)
+  // a cell's row may be off the drawn band (up/down past empty rows):
+  // scroll the row into sight, then focus the cell once the list drew it
+  const focusCell = (r: number, c: number) => {
+    const el = scroller.current
+    if (!el) return
+    const show = (x: HTMLButtonElement) => {
+      x.focus({ preventScroll: true })
+      x.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+    const found = cell(r, c)
+    if (found) return show(found)
+    const ruler = el.querySelector<HTMLElement>('[aria-rowindex="1"]')?.offsetHeight ?? 0
+    const top = r * rowH // the row's top under the sticky ruler
+    el.scrollTop = top < el.scrollTop ? top : top + rowH - (el.clientHeight - ruler)
+    let tries = 8
+    const retry = () => {
+      const x = cell(r, c)
+      if (x) show(x)
+      else if (tries-- > 0) window.requestAnimationFrame(retry)
+    }
+    window.requestAnimationFrame(retry)
+  }
   const onKey = (e: KeyboardEvent) => {
     const keys: Record<string, 'left' | 'right' | 'up' | 'down'> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
     const k = keys[e.key]
@@ -150,9 +178,7 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
     if (!p) return
     const anchor = k === 'up' || k === 'down' ? focus.anchor : Math.max(Date.parse(p.start), origin)
     setFocus({ row: to[0], col: to[1], anchor })
-    const el = cell(to[0], to[1])
-    el?.focus({ preventScroll: false })
-    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    focusCell(to[0], to[1])
   }
   // the one cell in the tab order: the focused one, else the first on air
   const tabCell = useMemo(() => {
@@ -183,16 +209,17 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
       <div
         ref={scroller}
         className={styles.guide}
-        style={{ '--chan-w': `${chanW}px`, '--track-w': `${width}px`, '--guide-top': `${top}px` } as CSSProperties}
+        style={{ '--chan-w': `${chanW}px`, '--track-w': `${width}px`, '--guide-top': `${top}px`, '--row-h': `${rowH}px` } as CSSProperties}
         onScroll={onScroll}
         onKeyDown={onKey}
         role="grid"
         aria-label={t('tv.guideAria')}
         aria-busy={!data || undefined}
+        aria-rowcount={rows.length + 1}
         data-testid="guide"
       >
         <div className={styles.inner}>
-          <div className={styles.ruler} role="row">
+          <div className={styles.ruler} role="row" aria-rowindex={1}>
             <div className={styles.corner} role="columnheader">
               <Button variant="secondary" size="small" onClick={() => toNow(true)}>
                 {t('tv.guideNow')}
@@ -214,60 +241,70 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
 
           {!data && <p className={styles.loading}>{t('tv.guideLoading')}</p>}
 
-          {rows.map(({ channel: c, programs }, r) => {
-            const fav = Boolean(c.favorite)
-            return (
-              <div key={c.id} className={styles.row} role="row">
-                <div className={styles.chan} role="rowheader">
-                  <span className={styles.chanNum}>{c.number}</span>
-                  {anyLogo && <ChannelLogo url={c.logoUrl ?? logos?.[c.id]} fallback={c.logoAlt} name={c.name} size={compact ? 'xs' : 'sm'} />}
-                  <span className={styles.chanName} title={c.name}>
-                    {c.name}
-                  </span>
-                  <IconButton
-                    className={styles.chanStar}
-                    icon={fav ? 'starFill' : 'star'}
-                    size="xs"
-                    variant="plain"
-                    label={fav ? t('tv.favRemove') : t('tv.favAdd')}
-                    aria-pressed={fav}
-                    data-fav={fav || undefined}
-                    onClick={() => onFavorite(c.id, !fav)}
-                  />
-                </div>
-                <div className={styles.track}>
-                  {programs.map((p, i) => {
-                    const b = blockOf(p, origin, end, ppm, now)
-                    if (!b) return null
-                    const time = t('tv.time', { start: clock(p.start), end: clock(p.end) })
-                    const isTab = tabCell.row === r && tabCell.col === i
-                    const inset = labelInset(b.left, b.width - GAP, viewLeft)
-                    return (
-                      <button
-                        key={p.id ?? p.start}
-                        type="button"
-                        role="gridcell"
-                        className={styles.block}
-                        style={{ left: b.left, width: Math.max(0, b.width - GAP), '--inset': `${inset}px` } as CSSProperties}
-                        data-cell={`${r}:${i}`}
-                        data-past={b.past || undefined}
-                        data-live={b.live || undefined}
-                        data-narrow={b.width - GAP - inset < 56 || undefined}
-                        tabIndex={isTab ? 0 : -1}
-                        aria-label={t('tv.programAria', { title: [p.title, p.subtitle].filter(Boolean).join(', '), time })}
-                        title={`${p.title} · ${time}`}
-                        onFocus={() => (focus?.row === r && focus.col === i ? undefined : setFocus({ row: r, col: i, anchor: Math.max(Date.parse(p.start), origin) }))}
-                        onClick={() => setOpen({ row: r, col: i })}
-                      >
-                        <span className={styles.blockTitle}>{p.title}</span>
-                        <span className={styles.blockTime}>{p.subtitle ? `${clock(p.start)} · ${p.subtitle}` : clock(p.start)}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
+          <VirtualList
+            count={rows.length}
+            itemHeight={rowH}
+            itemKey={(r) => rows[r]!.channel.id}
+            overscan={8}
+            role="rowgroup"
+            itemRole="row"
+            itemClassName={styles.row}
+            renderItem={(r) => {
+              const { channel: c, programs } = rows[r]!
+              const fav = Boolean(c.favorite)
+              return (
+                <>
+                  <div className={styles.chan} role="rowheader">
+                    <span className={styles.chanNum}>{c.number}</span>
+                    {anyLogo && <ChannelLogo url={c.logoUrl ?? logos?.[c.id]} fallback={c.logoAlt} name={c.name} size={compact ? 'xs' : 'sm'} />}
+                    <span className={styles.chanName} title={c.name}>
+                      {c.name}
+                    </span>
+                    <IconButton
+                      className={styles.chanStar}
+                      icon={fav ? 'starFill' : 'star'}
+                      size="xs"
+                      variant="plain"
+                      label={fav ? t('tv.favRemove') : t('tv.favAdd')}
+                      aria-pressed={fav}
+                      data-fav={fav || undefined}
+                      onClick={() => onFavorite(c.id, !fav)}
+                    />
+                  </div>
+                  <div className={styles.track}>
+                    {programs.map((p, i) => {
+                      const b = blockOf(p, origin, end, ppm, now)
+                      if (!b) return null
+                      const time = t('tv.time', { start: clock(p.start), end: clock(p.end) })
+                      const isTab = tabCell.row === r && tabCell.col === i
+                      const inset = labelInset(b.left, b.width - GAP, viewLeft)
+                      return (
+                        <button
+                          key={p.id ?? p.start}
+                          type="button"
+                          role="gridcell"
+                          className={styles.block}
+                          style={{ left: b.left, width: Math.max(0, b.width - GAP), '--inset': `${inset}px` } as CSSProperties}
+                          data-cell={`${r}:${i}`}
+                          data-past={b.past || undefined}
+                          data-live={b.live || undefined}
+                          data-narrow={b.width - GAP - inset < 56 || undefined}
+                          tabIndex={isTab ? 0 : -1}
+                          aria-label={t('tv.programAria', { title: [p.title, p.subtitle].filter(Boolean).join(', '), time })}
+                          title={`${p.title} · ${time}`}
+                          onFocus={() => (focus?.row === r && focus.col === i ? undefined : setFocus({ row: r, col: i, anchor: Math.max(Date.parse(p.start), origin) }))}
+                          onClick={() => setOpen({ row: r, col: i })}
+                        >
+                          <span className={styles.blockTitle}>{p.title}</span>
+                          <span className={styles.blockTime}>{p.subtitle ? `${clock(p.start)} · ${p.subtitle}` : clock(p.start)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )
+            }}
+          />
 
           {/* not while now has scrolled under the channel column */}
           {nowX >= viewLeft && nowX <= width && <div className={styles.nowLine} style={{ left: `calc(var(--chan-w) + ${nowX}px)` }} aria-hidden />}

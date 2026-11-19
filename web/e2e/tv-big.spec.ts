@@ -171,3 +171,54 @@ test('a big playlist: fast first rows, categories as a level, one row shape', as
   await p.screenshot({ path: test.info().outputPath('tv-big-category-phone.png') })
   await ctx.close()
 })
+
+// «Телегид» under «Все каналы» with the same 3000 channels: only the rows
+// near the screen are drawn (the grid stays a screenful of DOM), the first
+// cells come fast, the keys still walk the grid (down past the drawn band
+// too) and the bottom of the list is reachable. TV_BIG_REPORT=1 prints the
+// numbers (time to the first cells, rows and cells in the DOM, long tasks).
+test('a big playlist: the guide grid draws only the rows in sight', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'one engine measures')
+  await setupAdmin(page.request)
+  await addSource(page.request)
+
+  await page.addInitScript(() => {
+    const w = window as unknown as { __long: number[] }
+    w.__long = []
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => w.__long.push(e.duration))).observe({ type: 'longtask', buffered: true })
+  })
+  const t0 = Date.now()
+  await page.goto('/tv?f=all&view=guide')
+  const guide = page.getByTestId('guide')
+  await expect(guide.locator('[data-cell]').first()).toBeVisible({ timeout: 60_000 })
+  const first = Date.now() - t0
+  await page.waitForTimeout(3000)
+  const dom = await guide.evaluate((el) => ({ rows: el.querySelectorAll('[role=row]').length, cells: el.querySelectorAll('[data-cell]').length, rowcount: el.getAttribute('aria-rowcount') }))
+  report('guide', JSON.stringify({ first, ...dom, long: await longTasks(page) }))
+  expect(Number(dom.rowcount)).toBe(N + 1)
+  expect(dom.rows).toBeLessThan(80)
+
+  // «Сейчас» brings now back into sight
+  await guide.evaluate((el) => el.scrollTo({ left: 0 }))
+  await page.getByRole('button', { name: 'Сейчас' }).click()
+  await expect(guide.locator('[data-cell^="0:"][data-live]')).toBeInViewport()
+  await page.screenshot({ path: test.info().outputPath('tv-big-guide-desktop.png') })
+
+  // the keys: the first on-air cell, then down three rows (the time kept)
+  const tab = guide.locator('[data-cell][tabindex="0"]')
+  await tab.focus()
+  const start = await tab.getAttribute('data-cell')
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+  expect(start?.startsWith('0:')).toBe(true)
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-cell')?.split(':')[0])).toBe('3')
+  // forty rows down: well past the drawn band, still focused and in sight
+  for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowDown')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-cell')?.split(':')[0])).toBe('43')
+  await expect(page.locator(':focus')).toBeInViewport()
+
+  // the bottom: the last channel is drawn, the grid still a screenful
+  await guide.evaluate((el) => el.scrollTo({ top: el.scrollHeight }))
+  await expect(guide.getByRole('rowheader').filter({ hasText: `Канал номер ${N}` })).toBeInViewport()
+  expect(await guide.locator('[role=row]').count()).toBeLessThan(80)
+  await page.screenshot({ path: test.info().outputPath('tv-big-guide-bottom-desktop.png') })
+})

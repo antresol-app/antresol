@@ -20,7 +20,7 @@ func feedFixture(t *testing.T) (*Store, int64, Title) {
 	s.SetMark(ctx, Mark{UserID: u, TitleID: ti.ID, State: Watching})
 	if err := s.ReplaceEpisodes(ctx, ti.ID, []Episode{
 		{Season: 1, Number: 1, Name: "Old", AirDate: "2020-01-01"},
-		{Season: 2, Number: 1, Name: "One", AirDate: "2026-03-01"},
+		{Season: 2, Number: 1, Name: "One", AirDate: "2026-03-01", Still: "/one.jpg"},
 		{Season: 2, Number: 2, Name: "Two", AirDate: "2026-03-08"},
 		{Season: 2, Number: 3, Name: "Three", AirDate: "2026-03-15"},
 	}); err != nil {
@@ -43,7 +43,7 @@ func TestFeedNewestFirstWithKinds(t *testing.T) {
 	if len(got) != 2 || got[0].Episode != 2 || got[1].Episode != 1 {
 		t.Fatalf("%+v", got)
 	}
-	if got[0].Name != "Two" || got[0].Title.Name != "Show" || !got[1].FirstSeen.Equal(time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)) {
+	if got[0].Name != "Two" || got[0].Still != "" || got[1].Still != "/one.jpg" || got[0].Title.Name != "Show" || !got[1].FirstSeen.Equal(time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)) {
 		t.Fatalf("%+v", got)
 	}
 	if !slices.Equal(got[1].Kinds, []string{"alpha", "library"}) {
@@ -95,7 +95,7 @@ func TestCalendarRange(t *testing.T) {
 	if len(days) != 3 || days[0].Date != "2026-03-01" || days[2].Date != "2026-03-15" {
 		t.Fatalf("%+v", days)
 	}
-	if it := days[0].Items[0]; it.FirstSeen.IsZero() || it.Name != "One" || !slices.Equal(it.Kinds, []string{"alpha", "library"}) {
+	if it := days[0].Items[0]; it.FirstSeen.IsZero() || it.Name != "One" || it.Still != "/one.jpg" || !slices.Equal(it.Kinds, []string{"alpha", "library"}) {
 		t.Fatalf("%+v", it)
 	}
 	if it := days[2].Items[0]; !it.FirstSeen.IsZero() || it.Episode != 3 || it.Kinds == nil {
@@ -353,5 +353,19 @@ func TestFeedWatchedUnionsElsewhere(t *testing.T) {
 	}
 	if (&Service{}).FeedWatched() != nil {
 		t.Fatal("no funcs: nil")
+	}
+}
+
+// A refresh writes the episodes' stills over a list stored without them
+// (the rows from before migration 0116 fill in on the normal refresh).
+func TestReplaceEpisodesBackfillsStill(t *testing.T) {
+	s, _, ti := feedFixture(t)
+	ctx := context.Background()
+	if err := s.ReplaceEpisodes(ctx, ti.ID, []Episode{{Season: 2, Number: 2, Name: "Two", AirDate: "2026-03-08", Still: "/two.jpg"}}); err != nil {
+		t.Fatal(err)
+	}
+	eps, err := s.Episodes(ctx, ti.ID)
+	if err != nil || len(eps) != 1 || eps[0].Still != "/two.jpg" {
+		t.Fatalf("%+v %v", eps, err)
 	}
 }

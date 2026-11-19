@@ -23,6 +23,8 @@ export function episodeLabel(t: TFunction, it: TrackingItem): string {
  * The card of a calendar item: a library title opens its page, one off the
  * library its TMDB title page (at that episode); `subtitle` is what the
  * card says under the title; «доступно» is its chip when it has a source.
+ * `backdrop` is the episode's still (a wide card shows it, the poster when
+ * there is none); a poster card keeps the poster.
  */
 export function calendarCard(t: TFunction, it: TrackingItem, subtitle = episodeLabel(t, it)): Card {
   const inLibrary = Boolean(it.title.itemId)
@@ -33,7 +35,7 @@ export function calendarCard(t: TFunction, it: TrackingItem, subtitle = episodeL
     title: it.title.name,
     subtitle,
     poster: it.title.poster,
-    backdrop: '',
+    backdrop: it.still ?? '',
     logo: '',
     progress: 0,
     onServer: inLibrary,

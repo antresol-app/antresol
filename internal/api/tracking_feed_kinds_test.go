@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/tracking"
 )
 
@@ -66,6 +67,7 @@ func TestFeed_OnlyKindsTheProfileMayOpen(t *testing.T) {
 					Name string `json:"name"`
 				} `json:"title"`
 				Episode   int        `json:"episode"`
+				Still     string     `json:"still"`
 				FirstSeen *time.Time `json:"firstSeen"`
 				Kinds     []string   `json:"kinds"`
 			} `json:"items"`
@@ -87,7 +89,8 @@ func TestFeed_OnlyKindsTheProfileMayOpen(t *testing.T) {
 			}
 		case "Для всех":
 			seen++
-			if it.FirstSeen == nil || !slices.Equal(it.Kinds, []string{"alpha"}) {
+			// the episode's own picture (TMDB still), not the poster
+			if it.FirstSeen == nil || !slices.Equal(it.Kinds, []string{"alpha"}) || it.Still != tmdb.DefaultImageBase+"/w300/s1e1.jpg" {
 				t.Fatalf("adult calendar: %+v", it)
 			}
 		}

@@ -229,9 +229,9 @@ func (s *Store) ReplaceEpisodes(ctx context.Context, titleID int64, eps []Episod
 	}
 	for _, e := range eps {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO title_episodes(title_id, season, number, name, air_date) VALUES(?,?,?,?,?)
-			 ON CONFLICT(title_id, season, number) DO UPDATE SET name=excluded.name, air_date=excluded.air_date`,
-			titleID, e.Season, e.Number, e.Name, e.AirDate); err != nil {
+			`INSERT INTO title_episodes(title_id, season, number, name, air_date, still) VALUES(?,?,?,?,?,?)
+			 ON CONFLICT(title_id, season, number) DO UPDATE SET name=excluded.name, air_date=excluded.air_date, still=excluded.still`,
+			titleID, e.Season, e.Number, e.Name, e.AirDate, e.Still); err != nil {
 			return err
 		}
 	}
@@ -502,7 +502,7 @@ func (s *Store) SetInfo(ctx context.Context, titleID int64, info TitleInfo) erro
 // Episodes lists a title's stored episode list in season and number order.
 func (s *Store) Episodes(ctx context.Context, titleID int64) ([]Episode, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT title_id, season, number, name, air_date FROM title_episodes WHERE title_id=? ORDER BY season, number`, titleID)
+		`SELECT title_id, season, number, name, air_date, still FROM title_episodes WHERE title_id=? ORDER BY season, number`, titleID)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ func (s *Store) Episodes(ctx context.Context, titleID int64) ([]Episode, error) 
 	var out []Episode
 	for rows.Next() {
 		var e Episode
-		if err := rows.Scan(&e.TitleID, &e.Season, &e.Number, &e.Name, &e.AirDate); err != nil {
+		if err := rows.Scan(&e.TitleID, &e.Season, &e.Number, &e.Name, &e.AirDate, &e.Still); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

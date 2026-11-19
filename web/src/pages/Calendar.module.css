@@ -170,6 +170,11 @@
   object-fit: cover;
   background: var(--fill-2);
 }
+/* the episode's still: the same height band, its own 16:9 shape */
+.still {
+  width: 40px;
+  aspect-ratio: 16 / 9;
+}
 .itemText {
   display: flex;
   flex-direction: column;
@@ -221,6 +226,9 @@
   .thumb {
     width: 20px;
   }
+  .still {
+    width: 32px;
+  }
   .wideHidden {
     display: flex;
   }
@@ -263,5 +271,8 @@
   }
   .thumb {
     width: 16px;
+  }
+  .still {
+    width: 24px;
   }
 }
