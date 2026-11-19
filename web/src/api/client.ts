@@ -67,6 +67,8 @@ import type {
   DiskBreakdown,
   TitleInfo,
   Device,
+  DeviceHistory,
+  ManagedAccount,
   DiskUsage,
   HlsStatus,
   Home,
@@ -613,6 +615,18 @@ export const revokeAppPassword = () => request<void>('DELETE', '/api/me/app-pass
 // --- Devices (the Vault app signed in to this profile) ---
 export const getDevices = () => request<{ items: Device[] }>('GET', '/api/me/devices')
 export const revokeDevice = (id: number) => request<void>('DELETE', `/api/me/devices/${id}`)
+// «Отдельная история на этом устройстве»: on (a new account named after the
+// device, the one it had, or accountId), or off keeping or merging its history
+export const setDeviceHistory = (id: number | 'current', body: { separate: true; accountId?: number } | { separate: false; merge: boolean }) =>
+  request<{ id: number; history: DeviceHistory | null }>('PUT', `/api/me/devices/${id}/history`, body)
+export const getManagedAccounts = () => request<{ items: ManagedAccount[] }>('GET', '/api/me/managed')
+export const createManagedAccount = (name: string) => request<ManagedAccount>('POST', '/api/me/managed', { name })
+export const renameManagedAccount = (id: number, name: string) => request<ManagedAccount>('PATCH', `/api/me/managed/${id}`, { name })
+export const deleteManagedAccount = (id: number) => request<void>('DELETE', `/api/me/managed/${id}`)
+export const mergeManagedAccount = (id: number) => request<void>('POST', `/api/me/managed/${id}/merge`)
+// an admin's view: every profile's, with its owner
+export const getAllManagedAccounts = () => request<{ items: ManagedAccount[] }>('GET', '/api/managed-accounts')
+export const deleteAnyManagedAccount = (id: number) => request<void>('DELETE', `/api/managed-accounts/${id}`)
 
 // --- Books ---
 export const getBooksHome = (signal?: AbortSignal, scope?: LibraryScope) =>

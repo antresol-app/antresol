@@ -9,6 +9,7 @@ import (
 
 	"github.com/antresol-app/antresol/addonkit"
 	"github.com/antresol-app/antresol/internal/addons"
+	"github.com/antresol-app/antresol/internal/auth"
 )
 
 // The progress of an addon input: PUT /api/play/input/{id}/progress saves
@@ -59,7 +60,7 @@ func (p *inputPlay) progress(w http.ResponseWriter, r *http.Request) {
 	u := userOf(r)
 	// the item's kind and visibility were checked when the input was registered
 	if in.Req.ItemID > 0 && p.lib != nil && p.Progress != nil {
-		if err := p.Progress.PlayedAt(r.Context(), u.ID, in.Req.ItemID, pos, dur, time.Time{}); err != nil {
+		if err := p.Progress.PlayedAt(r.Context(), auth.HistoryID(r.Context()), in.Req.ItemID, pos, dur, time.Time{}); err != nil {
 			internalErr(w, r, "input progress save", err)
 			return
 		}

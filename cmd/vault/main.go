@@ -916,6 +916,19 @@ func newTrackingService(st *tracking.Store, repo *library.Repo, prog *progress.S
 	return s
 }
 
+// skipManaged wraps a watched-change hook so that a device's managed
+// account («Отдельная история на этом устройстве») reaches no linked
+// account: its marks are the device's, not the person's (a failed lookup
+// posts nothing either).
+func skipManaged(users *auth.Store, f func(ctx context.Context, uid, itemID int64)) func(ctx context.Context, uid, itemID int64) {
+	return func(ctx context.Context, uid, itemID int64) {
+		if managed, err := users.IsManaged(ctx, uid); err != nil || managed {
+			return
+		}
+		f(ctx, uid, itemID)
+	}
+}
+
 // newAccounts builds the anime map, the Shikimori sync (pull, outbox push,
 // OAuth) and its routes, the MyShows puller (read only, hourly, under the
 // Shikimori sync's per-profile lock), the Goodreads shelves (read only: the
@@ -965,11 +978,11 @@ func newAccounts(ctx context.Context, database *sql.DB, trackStore *tracking.Sto
 	trackSvc.WatchedElsewhere = append(trackSvc.WatchedElsewhere, func(ctx context.Context, uid int64, t tracking.Title) (map[[2]int]bool, error) {
 		return syncer.RemoteWatched(ctx, uid, accountTitle(t), "")
 	})
-	prog.OnWatchedChange = func(ctx context.Context, uid, itemID int64) {
+	prog.OnWatchedChange = skipManaged(auth.NewStore(database), func(ctx context.Context, uid, itemID int64) {
 		if tid, ok := trackedTitleOfItem(ctx, repo, trackStore, itemID); ok {
 			syncer.EpisodesChanged(ctx, uid, tid)
 		}
-	}
+	})
 	acctAPI := &accounts.API{Sync: syncer, Account: shiki, Log: log, Localize: i18n.Localize,
 		Viewer: func(r *http.Request) (accounts.Viewer, bool) {
 			u, ok := auth.UserFrom(r.Context())

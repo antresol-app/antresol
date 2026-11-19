@@ -102,6 +102,12 @@ func (m *MediaKeys) Verify(ctx context.Context, key string) (User, Session, erro
 	if err != nil {
 		return User{}, Session{}, err
 	}
+	if u.OwnerID != 0 { // a managed account is never signed in
+		return User{}, Session{}, ErrNotFound
+	}
+	if err := m.sessions.withHistory(ctx, &ss); err != nil {
+		return User{}, Session{}, err
+	}
 	return u, ss, nil
 }
 

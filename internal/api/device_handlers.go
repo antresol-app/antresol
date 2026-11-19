@@ -115,10 +115,13 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 			UserName   string `json:"userName"`
 			UserAvatar string `json:"userAvatar"`
 			UserPhoto  string `json:"userPhoto,omitempty"`
+			// History: the managed account the device writes its history
+			// into (null: the profile's own)
+			History *historyRef `json:"history"`
 		}
 		of := func(s auth.Session, name, avatar, photo string) item {
 			return item{s.ID, s.Kind, s.Device.Name, s.Device.Model, s.Device.Version,
-				s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == cur.ID, s.UserID, name, avatar, photo}
+				s.CreatedAt.UTC().Format(time.RFC3339), s.LastSeen.UTC().Format(time.RFC3339), s.ID == cur.ID, s.UserID, name, avatar, photo, historyOf(s)}
 		}
 		var out []item
 		if u.IsAdmin {

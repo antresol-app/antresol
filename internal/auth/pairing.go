@@ -287,7 +287,7 @@ func (p *Pairings) Poll(ctx context.Context, secret string) (PairingPoll, error)
 	if n, _ := res.RowsAffected(); n == 0 {
 		return PairingPoll{Status: PairExpired, ExpiresAt: expires}, nil
 	}
-	u, err := scan(p.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, uid.Int64))
+	u, err := scan(p.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=? AND owner_id IS NULL`, uid.Int64))
 	if err == nil {
 		var tok string
 		if tok, err = p.sessions.CreateDevice(ctx, u.ID, d); err == nil {

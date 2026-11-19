@@ -1265,7 +1265,7 @@ func (a *iptvAdmin) assign(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if _, err := a.ca.users.Get(ctx, b.UserID); err != nil {
+	if _, err := a.ca.users.GetPerson(ctx, b.UserID); err != nil { // never a managed account
 		writeErr(w, r, http.StatusBadRequest, msgUnknownProfile)
 		return
 	}
@@ -1310,7 +1310,7 @@ func (a *iptvAdmin) createLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if _, err := a.ca.users.Get(ctx, b.UserID); err != nil {
+	if _, err := a.ca.users.GetPerson(ctx, b.UserID); err != nil { // never a managed account
 		writeErr(w, r, http.StatusBadRequest, msgUnknownProfile)
 		return
 	}

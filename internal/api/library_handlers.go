@@ -218,7 +218,7 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.Progress.ContinueWatching(ctx, u.ID, shelfSize)
+	entries, err := h.Progress.ContinueWatching(ctx, auth.HistoryID(ctx), shelfSize)
 	if err != nil {
 		internalErr(w, r, "home continue", err)
 		return
@@ -241,7 +241,7 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	batch = append(append(append(batch, heroItems...), movies...), series...)
-	ctx = h.withCards(ctx, u.ID, batch)
+	ctx = h.withCards(ctx, auth.HistoryID(ctx), batch)
 	if b := batchOf(ctx); b != nil && werr == nil {
 		for _, id := range ids {
 			b.askedI[id] = true // one ItemsByID did not return is not shown (visible: false)
@@ -249,7 +249,7 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 	}
 	hero := []Card{}
 	for _, it := range heroItems {
-		hero = append(hero, h.card(ctx, u.ID, it))
+		hero = append(hero, h.card(ctx, auth.HistoryID(ctx), it))
 	}
 	var dated []datedCard
 	mine := map[int64]bool{} // the titles of «Продолжить» («Семья смотрит» leaves them out)
@@ -265,7 +265,7 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
-			c := h.card(ctx, u.ID, it)
+			c := h.card(ctx, auth.HistoryID(ctx), it)
 			c.Progress = ratio(e)
 			dated = append(dated, datedCard{e.UpdatedAt, c})
 		}
@@ -315,8 +315,8 @@ func (h *lib) home(w http.ResponseWriter, r *http.Request) {
 		"shelves": append(shelves, []shelf{
 			{"recently-played", i18n.T(ctx, "Слушали недавно"), played},
 			{"reading", i18n.T(ctx, "Читаю сейчас"), reading},
-			{"recent-movies", i18n.T(ctx, "Недавно добавленные фильмы"), h.cards(ctx, u.ID, movies)},
-			{"recent-series", i18n.T(ctx, "Новые серии"), h.cards(ctx, u.ID, series)},
+			{"recent-movies", i18n.T(ctx, "Недавно добавленные фильмы"), h.cards(ctx, auth.HistoryID(ctx), movies)},
+			{"recent-series", i18n.T(ctx, "Новые серии"), h.cards(ctx, auth.HistoryID(ctx), series)},
 			{"watchlist", i18n.T(ctx, "Хочу посмотреть"), watch},
 		}...),
 	})
@@ -368,7 +368,7 @@ func (h *lib) list(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "list", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": h.cards(r.Context(), u.ID, items), "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": h.cards(r.Context(), auth.HistoryID(r.Context()), items), "total": total})
 }
 
 // searchSize is how many results each search section returns (songs: songsSize).
@@ -393,10 +393,10 @@ func (h *lib) search(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "search", err)
 		return
 	}
-	ctx = h.withCards(ctx, u.ID, slices.Concat(found[:len(keys)]...)) // every section's cards at once
+	ctx = h.withCards(ctx, auth.HistoryID(ctx), slices.Concat(found[:len(keys)]...)) // every section's cards at once
 	out := map[string]any{}
 	for i, key := range keys {
-		out[key] = h.cards(ctx, u.ID, found[i])
+		out[key] = h.cards(ctx, auth.HistoryID(ctx), found[i])
 	}
 	songs := found[len(keys)]
 	ids := make([]int64, 0, len(songs))
@@ -513,7 +513,7 @@ func (h *lib) detail(w http.ResponseWriter, r *http.Request) {
 	// fetched before the cards, which then find it cached
 	tr := h.pageTranslation(ctx, it, seasons)
 
-	d := ItemDetail{Card: h.card(ctx, u.ID, it), OriginalTitle: it.OriginalTitle, Overview: it.Overview,
+	d := ItemDetail{Card: h.card(ctx, auth.HistoryID(ctx), it), OriginalTitle: it.OriginalTitle, Overview: it.Overview,
 		Genres: h.genreNames(ctx, it.Kind, m), Runtime: m.Runtime, Rating: it.Rating, Cast: []CastMember{}, Seasons: []SeasonInfo{}, Files: []FileInfo{}}
 	if d.Genres == nil {
 		d.Genres = []string{}
@@ -568,19 +568,19 @@ func (h *lib) detail(w http.ResponseWriter, r *http.Request) {
 		}
 		allEps = append(allEps, seasonEps[i]...)
 	}
-	ctx = h.withCards(ctx, u.ID, allEps)
+	ctx = h.withCards(ctx, auth.HistoryID(ctx), allEps)
 	episodes := 0
 	for i, s := range seasons {
 		si := SeasonInfo{ID: s.ID, Number: s.SeasonNo, Title: scanLabel(ctx, s.Title), Episodes: []EpisodeCard{}}
 		for _, ep := range seasonEps[i] {
-			si.Episodes = append(si.Episodes, h.episodeCard(ctx, u.ID, ep, tr))
+			si.Episodes = append(si.Episodes, h.episodeCard(ctx, auth.HistoryID(ctx), ep, tr))
 		}
 		episodes += len(si.Episodes)
 		d.Seasons = append(d.Seasons, si)
 	}
 
 	if it.Kind == library.KindSeries {
-		next, ok, err := h.Progress.NextEpisode(ctx, u.ID, it.ID)
+		next, ok, err := h.Progress.NextEpisode(ctx, auth.HistoryID(ctx), it.ID)
 		if err != nil {
 			internalErr(w, r, "detail next", err)
 			return
@@ -590,7 +590,7 @@ func (h *lib) detail(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("api: series %d next episode %d: %v", it.ID, next, err) // degrade: no "next"
 			} else {
-				ec := h.episodeCard(ctx, u.ID, ep, tr)
+				ec := h.episodeCard(ctx, auth.HistoryID(ctx), ep, tr)
 				d.Next = &ec
 			}
 		}
@@ -704,7 +704,7 @@ func (h *lib) getProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	e, err := h.Progress.Get(r.Context(), userOf(r).ID, it.ID)
+	e, err := h.Progress.Get(r.Context(), auth.HistoryID(r.Context()), it.ID)
 	if err != nil && !errors.Is(err, progress.ErrNotFound) {
 		internalErr(w, r, "progress get", err)
 		return
@@ -729,7 +729,7 @@ func (h *lib) getProgress(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// marked unwatched: no position, as of that time (a client compares
 		// its queued writes with it)
-		at, ok, cerr := h.Progress.ClearedAt(r.Context(), userOf(r).ID, it.ID)
+		at, ok, cerr := h.Progress.ClearedAt(r.Context(), auth.HistoryID(r.Context()), it.ID)
 		if cerr != nil {
 			internalErr(w, r, "progress get", cerr)
 			return
@@ -767,7 +767,7 @@ func (h *lib) saveProgress(w http.ResponseWriter, r *http.Request) {
 		}
 		at = t
 	}
-	ctx, uid := r.Context(), userOf(r).ID
+	ctx, uid := r.Context(), auth.HistoryID(r.Context())
 	var err error
 	switch it.Kind {
 	case library.KindMovie, library.KindEpisode:
@@ -863,7 +863,7 @@ func (h *lib) watched(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, id := range ids {
-		if err := h.Progress.MarkWatchedAt(r.Context(), userOf(r).ID, id, in.Watched, at); err != nil {
+		if err := h.Progress.MarkWatchedAt(r.Context(), auth.HistoryID(r.Context()), id, in.Watched, at); err != nil {
 			internalErr(w, r, "watched", err)
 			return
 		}

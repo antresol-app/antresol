@@ -48,7 +48,7 @@ func (s *Store) SetAppPassword(ctx context.Context, id int64) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE users SET app_password=?, app_password_created_at=? WHERE id=?`, p, now, id)
+	res, err := tx.ExecContext(ctx, `UPDATE users SET app_password=?, app_password_created_at=? WHERE id=? AND owner_id IS NULL`, p, now, id)
 	if err != nil {
 		return "", err
 	}

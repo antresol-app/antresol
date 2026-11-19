@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/progress"
@@ -123,7 +124,7 @@ func (h *lib) booksHome(w http.ResponseWriter, r *http.Request) {
 			internalErr(w, r, "books home "+s.id, err)
 			return
 		}
-		add(s.id, i18n.T(ctx, s.title), h.cards(ctx, u.ID, items))
+		add(s.id, i18n.T(ctx, s.title), h.cards(ctx, auth.HistoryID(ctx), items))
 	}
 	done, err := h.progressCards(ctx, r, true)
 	if err != nil {
@@ -140,7 +141,7 @@ func (h *lib) booksHome(w http.ResponseWriter, r *http.Request) {
 // progressCards are the visible books, volumes and audiobooks the user is
 // reading (finished false) or has read, newest first.
 func (h *lib) progressCards(ctx context.Context, r *http.Request, finished bool) ([]Card, error) {
-	uid := userOf(r).ID
+	uid := auth.HistoryID(ctx)
 	var entries []progress.Entry
 	var err error
 	if finished {
@@ -181,7 +182,9 @@ func (h *lib) watchlistCards(ctx context.Context, r *http.Request, keep func(kin
 	if err != nil {
 		return nil, err
 	}
-	ctx = h.withItems(ctx, uid, ids[:min(len(ids), 5*shelfSize)])
+	// the person's list, with the marks of the device's history
+	hid := auth.HistoryID(ctx)
+	ctx = h.withItems(ctx, hid, ids[:min(len(ids), 5*shelfSize)])
 	out := []Card{}
 	for _, id := range ids {
 		if len(out) >= shelfSize {
@@ -192,7 +195,7 @@ func (h *lib) watchlistCards(ctx context.Context, r *http.Request, keep func(kin
 			return nil, err
 		}
 		if ok && keep(it.Kind) {
-			out = append(out, h.card(ctx, uid, it))
+			out = append(out, h.card(ctx, hid, it))
 		}
 	}
 	return out, nil
@@ -217,7 +220,7 @@ func (h *lib) books(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "books", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": h.cards(r.Context(), u.ID, items), "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": h.cards(r.Context(), auth.HistoryID(r.Context()), items), "total": total})
 }
 
 // bookFormat is the display format of a book, audiobook or volume file.
@@ -285,7 +288,7 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, u := r.Context(), userOf(r)
 	m := bookMetaOf(it)
-	d := BookDetail{Card: h.card(ctx, u.ID, it), Kind: it.Kind, Authors: m.Authors, Narrator: m.Narrator, Description: it.Overview,
+	d := BookDetail{Card: h.card(ctx, auth.HistoryID(ctx), it), Kind: it.Kind, Authors: m.Authors, Narrator: m.Narrator, Description: it.Overview,
 		Year: it.Year, Lang: m.Lang, Files: []BookFile{}, Chapters: []BookChapter{}, Volumes: []VolumeCard{}}
 	if d.Authors == nil {
 		d.Authors = []string{}
@@ -359,7 +362,7 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			vm := bookMetaOf(v)
-			vc := VolumeCard{Card: h.card(ctx, u.ID, v), Pages: vm.Pages, Direction: directionOr(vm.Direction)}
+			vc := VolumeCard{Card: h.card(ctx, auth.HistoryID(ctx), v), Pages: vm.Pages, Direction: directionOr(vm.Direction)}
 			fs, err := h.Library.FilesOf(ctx, v.ID)
 			if err != nil {
 				internalErr(w, r, "book volumes", err)
@@ -407,7 +410,7 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	e, err := h.Progress.Get(ctx, u.ID, it.ID)
+	e, err := h.Progress.Get(ctx, auth.HistoryID(ctx), it.ID)
 	switch {
 	case err == nil:
 		d.Progress = &BookProgress{Fraction: ratio(e), Locator: e.Locator, PositionMs: e.PositionMs, DurationMs: e.DurationMs, Finished: e.Finished}

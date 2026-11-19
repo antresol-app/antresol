@@ -138,7 +138,7 @@ func (g *Guard) Require(next http.Handler) http.Handler {
 			return
 		}
 		ctx := WithUser(r.Context(), u)
-		ctx = context.WithValue(ctx, sessionKey{}, s)
+		ctx = WithSession(ctx, s)
 		if mk != "" {
 			ctx = context.WithValue(ctx, mediaKeyKey{}, mk)
 		} else {

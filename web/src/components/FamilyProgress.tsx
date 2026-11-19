@@ -241,7 +241,7 @@ export function FamilyProgress({ members, kind, chapters, onOpen }: FamilyProgre
                 <li key={m.userId} className={styles.row}>
                   <RingAvatar m={{ ...m, ring: ringOf(m) }} size={36} />
                   <span className={styles.who}>
-                    <span className={styles.name}>{m.name}</span>
+                    <span className={styles.name}>{m.ownerName ? `${m.name} · ${m.ownerName}` : m.name}</span>
                     <span className={styles.place}>
                       {placeOf(kind, m, chapters)}
                       <span className={styles.when}> · {ago(m.updatedAt)}</span>

@@ -240,7 +240,7 @@ func (h *lib) similarCards(ctx context.Context, u auth.User, it library.Item, re
 	for _, ref := range refs {
 		if e, ok := m.items[ref.ID]; ok {
 			if len(out) < maxSimilarLibrary {
-				out = append(out, h.card(ctx, u.ID, e))
+				out = append(out, h.card(ctx, auth.HistoryID(ctx), e))
 			}
 			continue
 		}
@@ -250,7 +250,7 @@ func (h *lib) similarCards(ctx context.Context, u auth.User, it library.Item, re
 		}
 		more = append(more, h.discoverCard(ref))
 	}
-	h.markWatched(ctx, u.ID, out, m.editions)
+	h.markWatched(ctx, auth.HistoryID(ctx), out, m.editions)
 	return append(out, more...)
 }
 
@@ -274,9 +274,9 @@ func (h *lib) collectionRow(ctx context.Context, u auth.User, it library.Item, r
 		var c Card
 		switch e, ok := m.items[p.ID]; {
 		case p.ID == int(it.TmdbID):
-			c = h.card(ctx, u.ID, it)
+			c = h.card(ctx, auth.HistoryID(ctx), it)
 		case ok:
-			c = h.card(ctx, u.ID, e)
+			c = h.card(ctx, auth.HistoryID(ctx), e)
 		case m.inLib[p.ID] || !discover:
 			continue // in the library but not for this profile, or nothing to open
 		default:
@@ -292,7 +292,7 @@ func (h *lib) collectionRow(ctx context.Context, u auth.User, it library.Item, r
 	if others == 0 {
 		return nil
 	}
-	h.markWatched(ctx, u.ID, row.Parts, m.editions)
+	h.markWatched(ctx, auth.HistoryID(ctx), row.Parts, m.editions)
 	return row
 }
 

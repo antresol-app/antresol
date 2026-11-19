@@ -35,6 +35,26 @@ export interface User extends Profile {
   /** «Общая медиатека» (all) or «Моя медиатека» (mine): the library this
    * profile's pages show (always all for a kid; older servers send none). */
   libraryScope?: LibraryScope
+  /** /api/me: the managed account this device writes its history into
+   * («Отдельная история на этом устройстве»); null or absent: the profile's own. */
+  deviceHistory?: DeviceHistory | null
+}
+
+/** A device's separate history: the managed account it writes into. */
+export interface DeviceHistory {
+  id: number
+  name: string
+}
+
+/** A managed account: a history of its own under a profile (a shared TV, «Гостиная»). */
+export interface ManagedAccount {
+  id: number
+  name: string
+  avatar: string
+  /** The devices writing into it now. */
+  devices: { id: number; kind?: 'native' | 'web'; name: string; model: string }[]
+  /** The admin's view only. */
+  owner?: { id: number; name: string }
 }
 
 /** Which library a page lists: the shared one, or the titles this profile brought. */
@@ -94,6 +114,8 @@ export interface Device {
   userName?: string
   userAvatar?: string
   userPhoto?: string
+  /** Its separate history (null or absent: the profile's own). */
+  history?: DeviceHistory | null
 }
 
 export type CardKind =
@@ -1513,6 +1535,8 @@ export interface PendingEntry {
 export interface FamilyMember {
   userId: number
   name: string
+  /** A device's managed account names its profile («Гостиная · Папа»). */
+  ownerName?: string
   avatar: AvatarId
   photo?: string
   isKid: boolean

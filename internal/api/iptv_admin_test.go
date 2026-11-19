@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/channels"
@@ -490,5 +491,31 @@ func TestShowAllHiddenByDefault(t *testing.T) {
 	c := e.channels(src.ID, "?state=hidden")
 	if c.Total != 1 || c.Channels[0].Why != "preset-timeshift" {
 		t.Fatalf("hidden after %+v", c)
+	}
+}
+
+// A managed account has no IPTV link, and a token it got some other way
+// opens nothing.
+func TestIPTVLinkRefusesAManagedAccount(t *testing.T) {
+	e := newTVEnv(t)
+	acc, err := e.store.CreateManaged(context.Background(), 1, "Гостиная")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do("POST", "/api/tv/links", `{"userId":`+itoa(acc.ID)+`,"setId":0,"name":"Кухня"}`, e.admin); w.Code != 400 {
+		t.Fatalf("link for a managed account: %d %s", w.Code, w.Body)
+	}
+	var n int
+	e.db.QueryRow(`SELECT COUNT(*) FROM app_tokens WHERE user_id=?`, acc.ID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d app tokens of a managed account", n)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := e.db.Exec(`INSERT INTO app_tokens(token, user_id, proto, device_id, device, client, version, created_at, last_seen) VALUES(?,?,?,?,?,?,?,?,?)`,
+		"0123456789abcdef0123456789abcdef", acc.ID, "iptv", "iptv-link-x", "x", "IPTV", "", now, now); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do("GET", "/iptv/0123456789abcdef0123456789abcdef/playlist.m3u", "", nil); w.Code != 404 {
+		t.Fatalf("playlist with a managed account's token: %d", w.Code)
 	}
 }

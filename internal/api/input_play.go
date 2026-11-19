@@ -160,7 +160,7 @@ func (p *inputPlay) info(w http.ResponseWriter, r *http.Request) {
 	}
 	out := inputInfo{ID: in.ID, AddonID: in.AddonID, Name: in.Req.Name, ItemID: in.Req.ItemID, Title: in.Req.Title,
 		Slow: in.Req.Slow, Meta: in.Req.Meta}
-	out.StartSec = p.startSec(r.Context(), userOf(r).ID, in.Req.ItemID)
+	out.StartSec = p.startSec(r.Context(), auth.HistoryID(r.Context()), in.Req.ItemID)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
 }

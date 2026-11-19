@@ -59,6 +59,12 @@ type User struct {
 	// UID: the profile's stable key (users.uid), for addons only: an id
 	// may be given to a new profile once this one is deleted, a uid never.
 	UID string `json:"-"`
+	// OwnerID: the person a managed account belongs to (users.owner_id; 0:
+	// a person's own profile). A managed account takes its owner's limits
+	// (IsKid, MaxRating, LibraryScope, HideProgress) and is never signed in.
+	OwnerID int64 `json:"ownerId,omitempty"`
+	// OwnerName: the owner's name (ManagedOf, AllManaged and ListAll only).
+	OwnerName string `json:"ownerName,omitempty"`
 
 	hash sql.NullString
 }
@@ -92,7 +98,24 @@ type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-const cols = `id, name, avatar, password_hash, is_admin, is_kid, max_rating, hide_progress, library_scope, kindle_email, COALESCE(uid, ''), photo_version`
+// cols: a managed account (owner_id set) reads its limits from its owner,
+// so a change of the owner's applies to it at once, and its name from
+// managed_name (users.name holds an internal key for it, see NameSQL).
+// Every query with cols reads FROM users without an alias.
+const cols = `id, CASE WHEN owner_id IS NULL THEN name ELSE COALESCE(managed_name, name) END, avatar, password_hash, is_admin,
+	COALESCE((SELECT o.is_kid FROM users o WHERE o.id = users.owner_id), is_kid),
+	CASE WHEN owner_id IS NULL THEN max_rating ELSE (SELECT o.max_rating FROM users o WHERE o.id = users.owner_id) END,
+	COALESCE((SELECT o.hide_progress FROM users o WHERE o.id = users.owner_id), hide_progress),
+	COALESCE((SELECT o.library_scope FROM users o WHERE o.id = users.owner_id), library_scope),
+	kindle_email, COALESCE(uid, ''), photo_version, COALESCE(owner_id, 0)`
+
+// NameSQL is the profile's name as an expression over the users table
+// (or its alias a). A managed account keeps its name in managed_name, so
+// that it never shares the namespace of the people's profiles; its
+// users.name is an internal key and is never shown.
+func NameSQL(a string) string {
+	return `CASE WHEN ` + a + `.owner_id IS NULL THEN ` + a + `.name ELSE COALESCE(` + a + `.managed_name, ` + a + `.name) END`
+}
 
 type scanner interface{ Scan(...any) error }
 
@@ -100,7 +123,7 @@ func scan(s scanner) (User, error) {
 	var u User
 	var admin, kid, hide int
 	var mr sql.NullString
-	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID, &u.PhotoVersion); err != nil {
+	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID, &u.PhotoVersion, &u.OwnerID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -257,8 +280,10 @@ func b2i(b bool) int {
 	return 0
 }
 
+// List: the people's profiles (managed accounts are left out: they are
+// never signed in to; ManagedOf and AllManaged list them).
 func (s *Store) List(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM users ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM users WHERE owner_id IS NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -278,11 +303,22 @@ func (s *Store) Get(ctx context.Context, id int64) (User, error) {
 	return scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, id))
 }
 
+// GetPerson is Get for a person's profile only: a managed account is
+// ErrNotFound (it has no sign-in and no settings of its own). Whatever
+// signs a profile in, or picks one to sign in as, looks it up with this.
+func (s *Store) GetPerson(ctx context.Context, id int64) (User, error) {
+	u, err := s.Get(ctx, id)
+	if err == nil && u.OwnerID != 0 {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
 // Verify checks the password. A profile without a password accepts an empty
 // password only. Passwords longer than bcrypt's 72 bytes never match (no
 // stored password can be that long), so they never reach bcrypt.
 func (s *Store) Verify(ctx context.Context, id int64, password string) (User, error) {
-	u, err := s.Get(ctx, id)
+	u, err := s.GetPerson(ctx, id)
 	if err != nil {
 		return User{}, err
 	}
@@ -303,7 +339,7 @@ func (s *Store) Verify(ctx context.Context, id int64, password string) (User, er
 
 // VerifyPasswordless returns the user only if it has no password.
 func (s *Store) VerifyPasswordless(ctx context.Context, id int64) (User, error) {
-	u, err := s.Get(ctx, id)
+	u, err := s.GetPerson(ctx, id)
 	if err != nil {
 		return User{}, err
 	}
@@ -322,6 +358,9 @@ func (s *Store) Update(ctx context.Context, id int64, p UserPatch) error {
 	u, err := scan(tx.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, id))
 	if err != nil {
 		return err
+	}
+	if u.OwnerID != 0 { // a managed account is renamed with RenameManaged only
+		return ErrNotFound
 	}
 	if p.Name != nil {
 		u.Name = strings.TrimSpace(*p.Name)
@@ -427,6 +466,11 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
+		return err
+	}
+	// the person's managed accounts first (the owner_id cascade covers it
+	// too; explicit as below)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE owner_id=?`, id); err != nil {
 		return err
 	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=?`, id)

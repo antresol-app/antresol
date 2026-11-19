@@ -52,6 +52,9 @@ type me struct {
 	// Addons: the server runs addons (not VAULT_ADDONS=off); the web shows
 	// «Расширения» to admins only then.
 	Addons bool `json:"addons"`
+	// DeviceHistory: the managed account this device writes its history
+	// into («Отдельная история на этом устройстве»); null: the profile's own.
+	DeviceHistory *historyRef `json:"deviceHistory"`
 }
 
 // patchMe: PATCH /api/me {"hideProgress": bool}, the settings a profile
@@ -84,6 +87,9 @@ func (a *authAPI) patchMe(w http.ResponseWriter, r *http.Request) {
 // meOf is the /api/me answer for u on request r.
 func (a *authAPI) meOf(r *http.Request, u auth.User) me {
 	m := me{User: u, Remote: !a.net.IsTrusted(r), LibraryOnly: a.libraryOnly, Addons: a.addons}
+	if ss, ok := auth.SessionFrom(r.Context()); ok && ss.UserID == u.ID {
+		m.DeviceHistory = historyOf(ss)
+	}
 	if a.requestsOpen != nil && (u.IsKid || u.IsAdmin) && a.requestsOpen(r.Context()) {
 		m.CanRequest, m.Requests = u.IsKid, u.IsAdmin && !u.IsKid
 	}

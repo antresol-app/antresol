@@ -98,4 +98,9 @@ describe('the profile menu’s addon entries', () => {
     expect(screen.queryByRole('menuitem', { name: 'Только не админу' })).toBeNull()
     expect(screen.getByRole('menuitem', { name: 'Мои подборки' })).toBeInTheDocument()
   })
+
+  it('names this device’s separate history', async () => {
+    await openMenu({ ...adult, deviceHistory: { id: 9, name: 'Гостиная' } })
+    expect(await screen.findByText('История этого устройства: Гостиная')).toBeInTheDocument()
+  })
 })

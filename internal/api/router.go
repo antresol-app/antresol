@@ -364,6 +364,13 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 				}
 			})
 	}
+	// «Отдельная история на этом устройстве» (managed accounts)
+	if deps.Users != nil && deps.Sessions != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(guard.Require)
+			mountManaged(r, deps.Users, deps.Sessions, deps.Progress)
+		})
+	}
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
 		mountPairing(r, deps, guard, requestsOpen)

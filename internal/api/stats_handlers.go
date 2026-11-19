@@ -156,7 +156,7 @@ func (s *stats) overview(w http.ResponseWriter, r *http.Request) {
 	// the time played (watch_time, per UTC day), not the positions: a seek
 	// to the end of a film is not three hours watched
 	month := s.now().Add(-30 * 24 * time.Hour).UTC().Format(time.DateOnly)
-	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.name, u.avatar, u.photo_version, COALESCE(SUM(w.ms), 0) AS played
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, `+auth.NameSQL("u")+`, u.avatar, u.photo_version, COALESCE(SUM(w.ms), 0) AS played
 		FROM watch_time w JOIN users u ON u.id = w.user_id
 		WHERE w.day >= ? GROUP BY u.id ORDER BY played DESC`, month)
 	if err != nil {

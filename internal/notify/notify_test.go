@@ -627,3 +627,40 @@ func TestTopicsByRole(t *testing.T) {
 		t.Errorf("adult %v", got)
 	}
 }
+
+// A series watched on a device with a separate history (progress of a
+// managed account) is the owner's series: the person gets the letter, the
+// account (which has none) does not count as the watcher.
+func TestManagedAccountsProgressMakesTheOwnerTheWatcher(t *testing.T) {
+	f := newFixture(t)
+	u := f.user(t, "Аня", false, false)
+	other := f.user(t, "Боря", false, false)
+	f.subscribe(t, u, "anya@example.com", Prefs{Episodes: true})
+	f.subscribe(t, other, "borya@example.com", Prefs{Episodes: true})
+	acc, err := f.users.CreateManaged(f.ctx, u.ID, "Гостиная")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := f.episode(t, "Тед Лассо", "16+", 1, 10)
+	// watched on the TV only: the person has no progress of her own
+	f.prog.Save(f.ctx, acc.ID, first, 1000, 60000)
+	f.collect(t)
+	f.episode(t, "Тед Лассо", "16+", 2, 1)
+	f.collect(t)
+	if n := f.pending(t, u.ID); n != 1 {
+		t.Fatalf("the owner of the account got %d events, want 1", n)
+	}
+	if n := f.pending(t, acc.ID); n != 0 {
+		t.Fatalf("the managed account got %d events", n)
+	}
+	if n := f.pending(t, other.ID); n != 0 {
+		t.Fatalf("a profile that does not watch it got %d", n)
+	}
+	// and the person who has her own progress too is one watcher, not two
+	f.prog.Save(f.ctx, u.ID, first, 2000, 60000)
+	f.episode(t, "Тед Лассо", "16+", 2, 2)
+	f.collect(t)
+	if n := f.pending(t, u.ID); n != 2 {
+		t.Fatalf("events %d, want 2 (one per episode)", n)
+	}
+}

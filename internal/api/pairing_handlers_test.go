@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -212,5 +213,28 @@ func TestPairStartChecks(t *testing.T) {
 	w := e.do("POST", "/api/auth/pair/start", `{"device":{"id":"tv-device-0z"}}`, nil)
 	if w.Code != 429 || w.Header().Get("Retry-After") != "30" {
 		t.Fatalf("over the cap %d %v", w.Code, w.Header())
+	}
+}
+
+// A managed account has no sign-in: an administrator cannot approve a QR
+// sign-in for one, whatever the request names.
+func TestPairApproveRefusesAManagedAccount(t *testing.T) {
+	e, admin := newPairEnv(t)
+	acc, err := e.store.CreateManaged(context.Background(), 1, "Гостиная")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := e.pairStart(tvStart)
+	if w := e.do("POST", "/api/auth/pair/approve", codeBody(st.Code, acc.ID), admin); w.Code != 404 {
+		t.Fatalf("approve for a managed account: %d %s", w.Code, w.Body)
+	}
+	// nothing was decided: the request is still open and signs nobody in
+	if code, out := e.pairPoll(st.Secret); code != 200 || out["status"] != "pending" || out["token"] != nil {
+		t.Fatalf("poll %d %v", code, out)
+	}
+	var n int
+	e.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id=?`, acc.ID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d sessions of a managed account", n)
 	}
 }

@@ -147,6 +147,8 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
               <div>
                 <div className={styles.name}>{user.name}</div>
                 <div className={styles.role}>{t(user.isAdmin ? 'common.role.admin' : user.isKid ? 'common.role.kid' : 'comp.profile.role')}</div>
+                {/* «Отдельная история на этом устройстве»: where this device's history goes */}
+                {user.deviceHistory && <div className={styles.role}>{t('comp.profile.deviceHistory', { name: user.deviceHistory.name })}</div>}
               </div>
             </div>
             <MenuSeparator />

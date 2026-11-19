@@ -34,12 +34,36 @@ func (s *Sessions) Create(ctx context.Context, userID int64) (string, error) {
 // CreateBrowser is a browser's cookie session with what «Устройства» calls
 // it: the browser («Safari») and its system («iPhone»), "" when unknown.
 func (s *Sessions) CreateBrowser(ctx context.Context, userID int64, browser, system string) (string, error) {
+	if err := requirePerson(ctx, s.db, userID); err != nil {
+		return "", err
+	}
 	tok, err := newToken()
 	if err != nil {
 		return "", err
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(token, user_id, device_name, device_model) VALUES(?,?,?,?)`, TokenHash(tok), userID, browser, system)
 	return tok, err
+}
+
+// requirePerson is the guard of everything that signs a profile in or
+// keeps it signed in: a managed account has no sign-in and is never the
+// identity of a request, so a session, a device token or an app token of
+// one is refused (ErrNotFound) when it is made and again when it is
+// presented, whichever path got there. A user that does not exist passes:
+// the foreign key refuses it.
+func requirePerson(ctx context.Context, q dbtx, userID int64) error {
+	var owner sql.NullInt64
+	err := q.QueryRowContext(ctx, `SELECT owner_id FROM users WHERE id=?`, userID).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if owner.Valid {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Session kinds: a browser's cookie session, or a native app's device token.
@@ -60,6 +84,11 @@ type Session struct {
 	Kind                string
 	Device              DeviceInfo
 	CreatedAt, LastSeen time.Time
+	// HistoryUserID: the managed account the device's history goes to
+	// («Отдельная история на этом устройстве»; 0: the profile's own), with
+	// its name.
+	HistoryUserID int64
+	HistoryName   string
 }
 
 // TokenHash is what sessions.token holds for a session token: the hex
@@ -89,6 +118,9 @@ func (s *Sessions) CreateDevice(ctx context.Context, userID int64, d DeviceInfo)
 		return "", err
 	}
 	defer tx.Rollback()
+	if err := requirePerson(ctx, tx, userID); err != nil {
+		return "", err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND kind=? AND device_id=?`, userID, KindNative, d.ID); err != nil {
 		return "", err
 	}
@@ -105,6 +137,11 @@ func (s *Sessions) Lookup(ctx context.Context, token string) (User, error) {
 }
 
 const sessionCols = `rowid, user_id, kind, device_id, device_name, device_model, app_version, created_at, last_seen`
+
+// sessionColsOf is sessionCols of the table (or alias) t.
+func sessionColsOf(t string) string {
+	return t + ".rowid, " + t + ".user_id, " + t + ".kind, " + t + ".device_id, " + t + ".device_name, " + t + ".device_model, " + t + ".app_version, " + t + ".created_at, " + t + ".last_seen"
+}
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var ss Session
@@ -146,6 +183,12 @@ func (s *Sessions) LookupSession(ctx context.Context, token string) (User, Sessi
 	if err != nil {
 		return User{}, Session{}, err
 	}
+	if u.OwnerID != 0 { // a managed account is never signed in
+		return User{}, Session{}, ErrNotFound
+	}
+	if err := s.withHistory(ctx, &ss); err != nil {
+		return User{}, Session{}, err
+	}
 	if age > lastSeenThrottle {
 		h := TokenHash(token)
 		s.seen.do(h, func(ctx context.Context) error {
@@ -173,7 +216,16 @@ func (s *Sessions) Devices(ctx context.Context, userID int64) ([]Session, error)
 		}
 		out = append(out, ss)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range out {
+		if err := s.withHistory(ctx, &out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // FamilyDevice is a device of any profile, with the profile's name and
@@ -207,7 +259,16 @@ func (s *Sessions) AllDevices(ctx context.Context) ([]FamilyDevice, error) {
 		d.UserPhoto = PhotoURL(ss.UserID, photo)
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range out {
+		if err := s.withHistory(ctx, &out[i].Session); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 type scanFn func(dest ...any) error

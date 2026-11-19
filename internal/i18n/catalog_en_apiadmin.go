@@ -95,5 +95,11 @@ func init() {
 
 		// playback
 		"Перекодирование недоступно": "Transcoding isn’t available",
+
+		// managed accounts («Отдельная история на этом устройстве»)
+		"Нет такой истории":               "No such history",
+		"Слишком много отдельных историй": "Too many separate histories",
+		"Укажите название":                "Enter a name",
+		"Это устройство":                  "This device",
 	})
 }

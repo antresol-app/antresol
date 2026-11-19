@@ -33,8 +33,11 @@ import (
 // after the last finished (not started: PositionMs 0), and Finished that
 // everything is done.
 type FamilyMember struct {
-	UserID     int64   `json:"userId"`
-	Name       string  `json:"name"`
+	UserID int64  `json:"userId"`
+	Name   string `json:"name"`
+	// OwnerName: a device's managed account names its person («Гостиная ·
+	// Папа»); absent for a person's own profile.
+	OwnerName  string  `json:"ownerName,omitempty"`
 	Avatar     string  `json:"avatar"`
 	Photo      string  `json:"photo,omitempty"` // auth.User.Photo: absent without one
 	IsKid      bool    `json:"isKid"`
@@ -66,18 +69,23 @@ var adoptKinds = map[string]bool{library.KindMovie: true, library.KindEpisode: t
 	library.KindAudiobook: true, library.KindComicVolume: true}
 
 // family is whose progress u may see: nobody for a kid; else every other
-// profile that does not hide its progress.
+// profile that does not hide its progress, and the devices' managed
+// accounts (an owner's own always, others' as their owner hides or not).
+// On a device with a separate history (auth.HistoryID) the caller's own
+// profile is family too, and the device's account is not.
 func (h *lib) family(ctx context.Context, u auth.User) ([]auth.User, error) {
 	if u.IsKid || h.Users == nil {
 		return nil, nil
 	}
-	all, err := h.Users.List(ctx)
+	all, err := h.Users.ListAll(ctx)
 	if err != nil {
 		return nil, err
 	}
+	hid := auth.HistoryID(ctx)
 	var out []auth.User
 	for _, o := range all {
-		if o.ID != u.ID && !o.HideProgress {
+		own := o.ID == u.ID || o.OwnerID == u.ID
+		if o.ID != hid && (own || !o.HideProgress) {
 			out = append(out, o)
 		}
 	}
@@ -197,7 +205,7 @@ func findUser(us []auth.User, id int64) auth.User {
 
 // member is o's entry e in the leaf item it.
 func (h *lib) member(o auth.User, e progress.Entry, it library.Item) FamilyMember {
-	m := FamilyMember{UserID: o.ID, Name: o.Name, Avatar: o.Avatar, Photo: o.Photo, IsKid: o.IsKid, ItemID: it.ID,
+	m := FamilyMember{UserID: o.ID, Name: o.Name, OwnerName: o.OwnerName, Avatar: o.Avatar, Photo: o.Photo, IsKid: o.IsKid, ItemID: it.ID,
 		PositionMs: e.PositionMs, DurationMs: e.DurationMs, Fraction: ratio(e), Finished: e.Finished, Locator: e.Locator,
 		UpdatedAt: e.UpdatedAt.UTC().Format(wireTime)}
 	switch it.Kind {
@@ -336,11 +344,12 @@ func (h *lib) adoptProgress(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "adopt", err)
 		return
 	}
-	if in.UserID == u.ID || !containsID(userIDs(fam), in.UserID) {
+	hid := auth.HistoryID(ctx) // the caller's own row: the device's history when separate
+	if in.UserID == hid || !containsID(userIDs(fam), in.UserID) {
 		writeErr(w, r, http.StatusNotFound, "Не найдено")
 		return
 	}
-	done, err := h.Progress.Adopt(ctx, in.UserID, u.ID, it.ID)
+	done, err := h.Progress.Adopt(ctx, in.UserID, hid, it.ID)
 	if err != nil {
 		internalErr(w, r, "adopt", err)
 		return
@@ -399,7 +408,7 @@ func (h *lib) familyShelf(ctx context.Context, r *http.Request, u auth.User, ski
 			ids = append(ids, e.ItemID)
 		}
 	}
-	ctx = h.withItems(ctx, u.ID, ids)
+	ctx = h.withItems(ctx, auth.HistoryID(ctx), ids)
 	type title struct {
 		card  Card
 		names []string
@@ -432,7 +441,7 @@ func (h *lib) familyShelf(ctx context.Context, r *http.Request, u auth.User, ski
 			skip[top] = true
 			continue
 		}
-		c := h.card(ctx, u.ID, it)
+		c := h.card(ctx, auth.HistoryID(ctx), it)
 		c.Progress = ratio(e)
 		code := ""
 		if e.SeriesID != 0 {

@@ -1,24 +1,31 @@
 // «Устройства»: the Vault app on iPhone, iPad and Mac and the browsers
 // signed in to this profile (an admin: to every profile, by profile). Each one can be signed out from here (its
 // session ends, with the media keys it asked for, e.g. for AirPlay; it is
-// asked to sign in again).
+// asked to sign in again). «Отдельная история на этом устройстве» switches
+// a device to a history of its own (a managed account, listed below in
+// «Отдельные истории»); turning it off asks whether to move that history
+// into the profile or keep it apart. A kid profile sees the state only: its
+// switch and accounts are an administrator's to change.
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useState } from 'react'
-import { getDevices, revokeDevice, errorText } from '../api/client'
-import type { Device } from '../api/types'
+import { getAllManagedAccounts, getDevices, getManagedAccounts, revokeDevice, setDeviceHistory, errorText } from '../api/client'
+import type { Device, ManagedAccount } from '../api/types'
+import { session } from '../state/session'
 import { locale, t as tr, useT } from '../i18n'
 import { Avatar } from './Avatar'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { GroupedSection, ListRow } from '../ui/List'
 import { Sheet } from '../ui/Sheet'
+import { Toggle } from '../ui/Toggle'
+import { ManagedAccountsSection } from './ManagedAccountsSection'
 import styles from './DevicesSheet.module.css'
 
 export interface DevicesSheetProps {
   onClose: () => void
 }
 
-type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Device[] }
+type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: Device[]; managed: ManagedAccount[] }
 
 const errText = (e: unknown) => (errorText(e, tr('comp.serverUnreachable')))
 
@@ -60,28 +67,51 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
   const t = useT()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [confirm, setConfirm] = useState<Device | null>(null)
+  const [turnOff, setTurnOff] = useState<Device | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const kid = Boolean(session.get().user?.isKid)
 
-  const load = useCallback(() => {
+  // soft: keep the list on screen while it is read again (after a switch)
+  const load = useCallback((soft = false) => {
     let live = true
-    setState({ status: 'loading' })
-    getDevices()
-      .then((r) => live && setState({ status: 'ready', items: r.items }))
-      .catch((e: unknown) => live && setState({ status: 'error', message: errText(e) }))
+    if (!soft) setState({ status: 'loading' })
+    // an admin sees every profile's managed accounts; an older server has
+    // none: the devices alone; a kid has no list of them
+    const user = session.get().user
+    const managed = user?.isKid ? Promise.resolve({ items: [] as ManagedAccount[] }) : user?.isAdmin ? getAllManagedAccounts() : getManagedAccounts()
+    Promise.all([getDevices(), managed.catch(() => ({ items: [] as ManagedAccount[] }))])
+      .then(([r, m]) => live && setState({ status: 'ready', items: r.items, managed: m.items }))
+      .catch((e: unknown) => live && (soft ? setError(errText(e)) : setState({ status: 'error', message: errText(e) })))
     return () => {
       live = false
     }
   }, [])
   useEffect(() => load(), [load])
+  const reload = useCallback(() => void load(true), [load])
 
   const signOut = (d: Device) => {
     setConfirm(null)
     setBusy(true)
     setError('')
     revokeDevice(d.id)
-      .then(() => setState((s) => (s.status === 'ready' ? { status: 'ready', items: s.items.filter((x) => x.id !== d.id) } : s)))
+      .then(() => setState((s) => (s.status === 'ready' ? { ...s, items: s.items.filter((x) => x.id !== d.id) } : s)))
       .catch((e: unknown) => setError(errText(e)))
+      .finally(() => setBusy(false))
+  }
+
+  // the switch: on at once, off after «Перенести в мой профиль» / «Оставить»
+  const switchHistory = (d: Device, body: Parameters<typeof setDeviceHistory>[1]) => {
+    setTurnOff(null)
+    setBusy(true)
+    setError('')
+    setDeviceHistory(d.id, body)
+      .then((r) => {
+        // the profile menu shows this device's history
+        if (d.current && d.userId) session.updateUser({ id: d.userId, deviceHistory: r.history })
+        reload()
+      })
+      .catch((e: unknown) => setError(errorText(e, tr('comp.devices.separateFailed'))))
       .finally(() => setBusy(false))
   }
 
@@ -101,7 +131,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
           {state.status === 'error' && (
             <div className={styles.retry} role="alert">
               <span className={styles.error}>{state.message}</span>
-              <button type="button" className={styles.button} onClick={load}>
+              <button type="button" className={styles.button} onClick={() => load()}>
                 {t('common.retry')}
               </button>
             </div>
@@ -130,8 +160,19 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
                         {d.current && <Badge>{t('comp.devices.current')}</Badge>}
                       </span>
                     }
-                    hint={[subtitle(d), lastSeenLabel(d.lastSeen)].filter(Boolean).join(' · ')}
+                    hint={[subtitle(d), lastSeenLabel(d.lastSeen), d.history ? t('comp.devices.separateOn', { name: d.history.name }) : '']
+                      .filter(Boolean)
+                      .join(' · ')}
                   >
+                    {!kid && (
+                      <Toggle
+                        label={`${t('comp.devices.separate')}: ${deviceName(d)}`}
+                        checked={Boolean(d.history)}
+                        disabled={busy}
+                        size="small"
+                        onChange={(on) => (on ? switchHistory(d, { separate: true }) : setTurnOff(d))}
+                      />
+                    )}
                     <Button
                       size="small"
                       variant="destructive"
@@ -145,6 +186,7 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
                 ))}
               </GroupedSection>
             ))}
+          {state.status === 'ready' && !kid && <ManagedAccountsSection items={state.managed} me={session.get().user?.id ?? 0} onChanged={reload} />}
           {error && (
             <p className={styles.error} role="alert">
               {error}
@@ -160,6 +202,19 @@ export function DevicesSheet({ onClose }: DevicesSheetProps) {
           actions={[
             { label: t('common.cancelAction'), kind: 'cancel', run: () => setConfirm(null) },
             { label: t('comp.devices.signOutAction'), kind: 'destructive', run: () => signOut(confirm) },
+          ]}
+        />
+      )}
+
+      {turnOff && (
+        <Sheet
+          title={t('comp.devices.offTitle', { name: deviceName(turnOff) })}
+          message={t('comp.devices.offText')}
+          onCancel={() => setTurnOff(null)}
+          actions={[
+            { label: t('common.cancelAction'), kind: 'cancel', run: () => setTurnOff(null) },
+            { label: t('comp.devices.offKeep'), run: () => switchHistory(turnOff, { separate: false, merge: false }) },
+            { label: t('comp.devices.offMerge'), kind: 'primary', run: () => switchHistory(turnOff, { separate: false, merge: true }) },
           ]}
         />
       )}

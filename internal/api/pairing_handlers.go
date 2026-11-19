@@ -218,7 +218,7 @@ func (p *pairingAPI) approve(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, r, http.StatusForbidden, msgPairOther)
 			return
 		}
-		t, err := p.users.Get(r.Context(), in.UserID)
+		t, err := p.users.GetPerson(r.Context(), in.UserID) // never a managed account
 		if err != nil {
 			storeErr(w, r, err)
 			return

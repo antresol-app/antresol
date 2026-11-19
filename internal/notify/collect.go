@@ -341,12 +341,15 @@ func (s *Service) markSeen(ctx context.Context, uid int64, keys ...string) error
 
 // seriesWatchers: the profiles with progress in a series (on its episodes
 // other than the new ones), with it in «Хочу посмотреть», or interested by
-// an InterestFunc.
+// an InterestFunc. A series watched on a device with a separate history
+// (a managed account) is watched by the person the account belongs to:
+// the account has no letters of its own, the person does.
 func (s *Service) seriesWatchers(ctx context.Context, seriesID, tmdbID int64, newIDs map[int64]bool) ([]int64, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT user_id, item_id FROM progress WHERE item_id = ?
-			OR item_id IN (SELECT id FROM items WHERE parent_id = ?)
-			OR item_id IN (SELECT e.id FROM items e JOIN items se ON se.id = e.parent_id WHERE se.parent_id = ?)
-		UNION SELECT user_id, 0 FROM watchlist WHERE item_id = ?`, seriesID, seriesID, seriesID, seriesID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT COALESCE(u.owner_id, p.user_id), p.item_id FROM progress p JOIN users u ON u.id = p.user_id
+			WHERE p.item_id = ?
+			OR p.item_id IN (SELECT id FROM items WHERE parent_id = ?)
+			OR p.item_id IN (SELECT e.id FROM items e JOIN items se ON se.id = e.parent_id WHERE se.parent_id = ?)
+		UNION SELECT COALESCE(u.owner_id, w.user_id), 0 FROM watchlist w JOIN users u ON u.id = w.user_id WHERE w.item_id = ?`, seriesID, seriesID, seriesID, seriesID)
 	if err != nil {
 		return nil, err
 	}

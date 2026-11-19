@@ -53,6 +53,9 @@ func (t *AppTokens) Issue(ctx context.Context, userID int64, proto string, d Dev
 		return "", err
 	}
 	defer tx.Rollback()
+	if err := requirePerson(ctx, tx, userID); err != nil {
+		return "", err
+	}
 	if d.ID != "" {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM app_tokens WHERE proto=? AND user_id=? AND device_id=?`, proto, userID, d.ID); err != nil {
 			return "", err
@@ -99,6 +102,9 @@ func (t *AppTokens) Lookup(ctx context.Context, token string) (User, Device, err
 	u, err := scan(t.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, uid))
 	if err != nil {
 		return User{}, Device{}, err
+	}
+	if u.OwnerID != 0 { // a managed account is never signed in
+		return User{}, Device{}, ErrNotFound
 	}
 	if age > lastSeenThrottle {
 		t.seen.do(token, func(ctx context.Context) error {

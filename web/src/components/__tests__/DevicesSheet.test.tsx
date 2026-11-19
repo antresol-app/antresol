@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { DevicesSheet } from '../DevicesSheet'
-import type { Device } from '../../api/types'
+import type { Device, ManagedAccount, User } from '../../api/types'
+import { session } from '../../state/session'
 
 let devices: Device[] = []
+let managed: ManagedAccount[] = []
 let calls: string[] = []
+let bodies: Record<string, unknown> = {}
 
 const phone: Device = {
   id: 7,
@@ -22,12 +25,37 @@ const mac: Device = { ...phone, id: 9, name: 'MacBook', model: 'Mac15,3', versio
 
 beforeEach(() => {
   devices = [phone, mac]
+  managed = []
   calls = []
+  bodies = {}
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? 'GET'
-      calls.push(`${method} ${String(input)}`)
+      const url = String(input)
+      calls.push(`${method} ${url}`)
+      if (init?.body) bodies[`${method} ${url}`] = JSON.parse(String(init.body))
+      if (url.endsWith('/history')) {
+        const id = Number(url.split('/').at(-2))
+        const on = (bodies[`${method} ${url}`] as { separate: boolean }).separate
+        const history = on ? { id: 50, name: 'Гостиная' } : null
+        devices = devices.map((d) => (d.id === id ? { ...d, history } : d))
+        managed = on ? [{ id: 50, name: 'Гостиная', avatar: 'grad-1', devices: [{ id, name: 'MacBook', model: '' }] }] : []
+        return new Response(JSON.stringify({ id, history }), { status: 200 })
+      }
+      if (url.startsWith('/api/me/managed')) {
+        if (method === 'POST' && url === '/api/me/managed') {
+          const a = { id: 60, name: (bodies[`POST ${url}`] as { name: string }).name, avatar: 'grad-1', devices: [] }
+          managed = [...managed, a]
+          return new Response(JSON.stringify(a), { status: 201 })
+        }
+        if (method === 'DELETE' || method === 'POST') {
+          const id = Number(url.split('/')[4])
+          managed = managed.filter((m) => m.id !== id)
+          return new Response(null, { status: 204 })
+        }
+        return new Response(JSON.stringify({ items: managed }), { status: 200 })
+      }
       if (method === 'DELETE') {
         const id = Number(String(input).split('/').pop())
         devices = devices.filter((d) => d.id !== id)
@@ -89,10 +117,83 @@ describe('DevicesSheet', () => {
     render(<DevicesSheet onClose={() => {}} />)
     const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
     await within(sheet).findByText('iPad')
-    expect(within(sheet).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['ММаша', 'ДДед'])
+    expect(within(sheet).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['ММаша', 'ДДед', 'Отдельные истории'])
     const section = within(sheet).getByRole('heading', { name: /Дед/ }).closest('section') as HTMLElement
     expect(within(section).getByText('iPad')).toBeInTheDocument()
     expect(within(section).queryByText('MacBook')).not.toBeInTheDocument()
+  })
+
+  it('switches a device to a separate history and back, moving it into the profile', async () => {
+    render(<DevicesSheet onClose={() => {}} />)
+    const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+    await within(sheet).findByText('MacBook')
+    // the devices' row (the account's row below names the device too)
+    const row = () => within(sheet).getAllByText('MacBook')[0]!.closest('li') as HTMLElement
+    const toggle = () => within(row()).getByRole('switch', { name: 'Отдельная история на этом устройстве: MacBook' })
+    expect(toggle()).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle())
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'true'))
+    expect(bodies['PUT /api/me/devices/9/history']).toEqual({ separate: true })
+    expect(within(row()).getByText(/История: «Гостиная»/)).toBeInTheDocument()
+    // the account is listed under «Отдельные истории»
+    const section = within(sheet).getByRole('heading', { name: 'Отдельные истории' }).closest('section') as HTMLElement
+    expect(within(section).getByText('Гостиная')).toBeInTheDocument()
+
+    fireEvent.click(toggle())
+    const ask = await screen.findByRole('alertdialog', { name: 'Вернуть «MacBook» к вашей истории?' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Перенести в мой профиль' }))
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'false'))
+    expect(bodies['PUT /api/me/devices/9/history']).toEqual({ separate: false, merge: true })
+  })
+
+  it('keeps the history apart with «Оставить»', async () => {
+    devices = [phone, { ...mac, history: { id: 50, name: 'Гостиная' } }]
+    render(<DevicesSheet onClose={() => {}} />)
+    const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+    const toggle = await within(sheet).findByRole('switch', { name: 'Отдельная история на этом устройстве: MacBook' })
+    fireEvent.click(toggle)
+    const ask = await screen.findByRole('alertdialog', { name: 'Вернуть «MacBook» к вашей истории?' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Оставить' }))
+    await waitFor(() => expect(bodies['PUT /api/me/devices/9/history']).toEqual({ separate: false, merge: false }))
+  })
+
+  it('creates a separate history by hand and deletes it', async () => {
+    render(<DevicesSheet onClose={() => {}} />)
+    const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+    await within(sheet).findByText('MacBook')
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Название' }), { target: { value: 'Кухня' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Создать' }))
+    expect(await within(sheet).findByText('Кухня')).toBeInTheDocument()
+    expect(bodies['POST /api/me/managed']).toEqual({ name: 'Кухня' })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить историю: Кухня' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Удалить «Кухня»?' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Удалить' }))
+    await waitFor(() => expect(within(sheet).queryByText('Кухня')).not.toBeInTheDocument())
+    expect(calls).toContain('DELETE /api/me/managed/60')
+  })
+
+  it('leaves the switch and the accounts to an administrator for a kid', async () => {
+    devices = [phone, { ...mac, history: { id: 50, name: 'Гостиная' } }]
+    const kid: User = { id: 1, name: 'Маша', avatar: 'grad-2', hasPassword: false, isAdmin: false, isKid: true, maxRating: '6+' }
+    const base = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith('/api/login') ? new Response(JSON.stringify(kid), { status: 200 }) : base(input, init),
+    ))
+    await session.login(kid.id)
+    try {
+      render(<DevicesSheet onClose={() => {}} />)
+      const sheet = await screen.findByRole('dialog', { name: 'Устройства' })
+      await within(sheet).findByText('MacBook')
+      // what is on is still shown, nothing of it can be changed
+      expect(within(sheet).getByText(/История: «Гостиная»/)).toBeInTheDocument()
+      expect(within(sheet).queryByRole('switch')).not.toBeInTheDocument()
+      expect(within(sheet).queryByRole('heading', { name: 'Отдельные истории' })).not.toBeInTheDocument()
+      expect(calls.filter((c) => c.includes('/api/me/managed'))).toEqual([])
+      // signing a device out stays the kid's own
+      expect(within(sheet).getAllByRole('button', { name: /Выйти на устройстве/ })).toHaveLength(2)
+    } finally {
+      session.reset()
+    }
   })
 
   it('shows the empty state', async () => {

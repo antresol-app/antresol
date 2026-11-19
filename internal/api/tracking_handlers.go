@@ -652,7 +652,7 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userOf(r)
-	states, err := tracking.MergeWatchStates(ctx, h.Tracking.WatchStates, u.ID, kind, tmdbID)
+	states, err := tracking.MergeWatchStates(ctx, h.Tracking.WatchStates, auth.HistoryID(ctx), kind, tmdbID)
 	if err != nil {
 		internalErr(w, r, "tracking watch state", err)
 		return
@@ -750,7 +750,7 @@ func (h *lib) trackedShelf(ctx context.Context, u auth.User) ([]Card, error) {
 			lib = append(lib, *li)
 		}
 	}
-	ctx = h.withCards(ctx, u.ID, lib)
+	ctx = h.withCards(ctx, auth.HistoryID(ctx), lib)
 	for _, it := range items {
 		if done[it.Title.ID] || len(cards) == shelfSize {
 			continue
@@ -758,7 +758,7 @@ func (h *lib) trackedShelf(ctx context.Context, u auth.User) ([]Card, error) {
 		done[it.Title.ID] = true
 		var c Card
 		if li := g.seen[it.Title.ID].item; li != nil {
-			c = h.card(ctx, u.ID, *li)
+			c = h.card(ctx, auth.HistoryID(ctx), *li)
 		} else {
 			// off the library (ID 0): the TMDB title and the episode
 			c = Card{Kind: it.Title.Kind, Title: it.Title.Name, Poster: tracking.PosterURL(it.Title.Poster),
