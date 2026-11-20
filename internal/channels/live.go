@@ -258,6 +258,8 @@ type liveChan struct {
 	// when it started, how long its set and first programme took
 	started        time.Time
 	setTook, pTook time.Duration
+	// why the run was ended from outside (its log line when it stops)
+	why string
 }
 
 // Span is how far from the clock what a viewer of a channel is served may
@@ -367,6 +369,9 @@ func (l *Live) channel(k runKey, start bool) (*liveChan, error) {
 		if stale == nil {
 			return nil, ErrBusy
 		}
+		stale.mu.Lock()
+		stale.why = "another channel took its place"
+		stale.mu.Unlock()
 		stale.cancel()
 		delete(l.chans, stale.key) // its goroutine sees it gone and only cleans up
 	}
@@ -392,9 +397,17 @@ func (l *Live) channel(k runKey, start bool) (*liveChan, error) {
 		l.mu.Unlock()
 		c.mu.Lock()
 		c.err = err
+		why := c.why
 		close(c.changed)
 		c.changed = make(chan struct{})
 		c.mu.Unlock()
+		switch {
+		case err != nil:
+			why = err.Error()
+		case why == "":
+			why = "the server stops"
+		}
+		log.Printf("channels: channel %d%s stopped after %s: %s", id, k.label(), time.Since(c.started).Round(time.Second), why)
 		os.RemoveAll(dir)
 		close(c.done)
 	}()
@@ -633,6 +646,9 @@ func (l *Live) Stop(id int64) {
 	}
 	l.mu.Unlock()
 	for _, c := range runs {
+		c.mu.Lock()
+		c.why = "the channel was changed"
+		c.mu.Unlock()
 		c.cancel()
 		<-c.done
 	}
@@ -739,6 +755,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 		}
 		now = l.Now()
 		if c.idle(now, l.IdleTimeout) {
+			c.idleOut()
 			return nil
 		}
 		if pos.Before(now.Add(-l.MaxLag)) {
@@ -1048,6 +1065,7 @@ func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playli
 	}
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
+	lastN, lastAt, stuck := 0, time.Now(), false
 	for {
 		select {
 		case err := <-done:
@@ -1082,7 +1100,18 @@ func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playli
 		case <-tick.C:
 			collect(false)
 			if c.idle(l.Now(), l.IdleTimeout) {
+				c.idleOut()
 				cancel() // nobody watches: done picks it up
+			}
+			// a programme that stops making segments while somebody
+			// watches is a stream standing still: said once, with what
+			// ffmpeg said so far
+			if n := len(got); n != lastN {
+				lastN, lastAt = n, time.Now()
+			} else if !stuck && time.Since(lastAt) > stallAfter && !c.idle(l.Now(), 2*media.LiveSegmentSeconds*time.Second) {
+				stuck = true
+				log.Printf("channels: channel %d%s: no new segment for %s (programme from segment %d, %d made): %s",
+					c.id, c.key.label(), time.Since(lastAt).Round(time.Second), firstSeq(got), n, strings.TrimSpace(stderr.String()))
 			}
 		}
 	}
@@ -1118,6 +1147,28 @@ func (c *liveChan) wake() {
 	c.mu.Lock()
 	close(c.changed)
 	c.changed = make(chan struct{})
+	c.mu.Unlock()
+}
+
+// stallAfter: a programme's ffmpeg that made no segment this long while
+// somebody watches is logged (a segment is due every LiveSegmentSeconds;
+// the first one of a programme after its seek and start).
+const stallAfter = 4 * media.LiveSegmentSeconds * time.Second
+
+// firstSeq is the number of the first segment of segs (-1: none).
+func firstSeq(segs []liveSeg) int64 {
+	if len(segs) == 0 {
+		return -1
+	}
+	return segs[0].seq
+}
+
+// idleOut marks a run ending because nobody asked for it.
+func (c *liveChan) idleOut() {
+	c.mu.Lock()
+	if c.why == "" {
+		c.why = "nobody watched it"
+	}
 	c.mu.Unlock()
 }
 
