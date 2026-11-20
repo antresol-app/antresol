@@ -26,13 +26,13 @@ const SUBS = /^(Субтитры|Subtitles)(?::\s*|\s+|$)/
 /** A badge's text, with the audio or subtitles word turned into an icon. */
 export function BadgeLabel({ text }: { text: string }) {
   const m = AUDIO.exec(text) ?? SUBS.exec(text)
-  if (!m) return <>{text}</>
+  if (!m) return <span className={styles.text}>{text}</span>
   const rest = text.slice(m[0].length)
   return (
     <>
       <Icon name={AUDIO.test(text) ? 'speaker' : 'captions'} size={13} strokeWidth={2} className={styles.icon} />
       <span className="visually-hidden">{rest ? `${m[1]} ` : m[1]}</span>
-      {rest}
+      <span className={styles.text}>{rest}</span>
     </>
   )
 }
@@ -49,7 +49,7 @@ export function Badges({ items, className, inline }: { items?: string[]; classNa
     return (
       <span className={cls}>
         {items.map((b) => (
-          <span key={b} className={styles.badge}>
+          <span key={b} className={styles.badge} title={b}>
             <BadgeLabel text={b} />
           </span>
         ))}
@@ -58,7 +58,7 @@ export function Badges({ items, className, inline }: { items?: string[]; classNa
   return (
     <ul className={cls} aria-label={t('comp.badges')}>
       {items.map((b) => (
-        <li key={b} className={styles.badge}>
+        <li key={b} className={styles.badge} title={b}>
           <BadgeLabel text={b} />
         </li>
       ))}

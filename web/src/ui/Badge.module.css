@@ -30,6 +30,15 @@
   font: 600 11px / 18px var(--font-text);
   letter-spacing: 0.02em;
   white-space: nowrap;
+  /* a long fact («🔈 Дубляж, MVO, …») ends in an ellipsis inside its row
+     instead of widening the row (and scrolling a list sideways) */
+  max-width: 100%;
+  min-width: 0;
+}
+.text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Variants live here, after .badge: a chunk that bundles this file again
    must not undo another module's override of it. */
