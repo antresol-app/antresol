@@ -80,9 +80,9 @@ func TestLiveArgsCopiesAAC(t *testing.T) {
 		DurationSec: 100, OutDir: "/o", Playlist: "run.m3u8"}
 	a := strings.Join(media.LiveArgs("none", in), " ")
 	for _, want := range []string{
-		"-map 0:1 -vn -sn -dn -c:a copy -f hls", "/o/a0-%d.ts /o/run-a0.m3u8",
+		"-map 0:1 -vn -sn -dn -t 100.000 -c:a copy -f hls", "/o/a0-%d.ts /o/run-a0.m3u8",
 		"-map 0:2 -vn -sn -dn -af apad -t 101.000 -c:a aac -b:a 192k -ac 2 -ar 48000", "/o/a1-%d.ts",
-		"-map 1:a:0 -vn -sn -dn -c:a copy -f hls", "/o/a2-%d.ts",
+		"-map 1:a:0 -vn -sn -dn -t 100.000 -c:a copy -f hls", "/o/a2-%d.ts",
 		// silence is never "copied"
 		"-map 2:a:0 -vn -sn -dn -af apad -t 101.000 -c:a aac", "/o/a3-%d.ts",
 	} {
@@ -617,5 +617,57 @@ func TestLiveVariantIsARunOfItsOwn(t *testing.T) {
 	live.Stop(1)
 	if r := live.Running(); len(r) != 0 {
 		t.Fatalf("after Stop %v", r)
+	}
+}
+
+// A voice-over file beside the video that is copied (AAC-LC stereo 48 kHz,
+// unshifted) ends with the programme: before, nothing cut it (the video's
+// -t is its own input's), so at real-time reading the programme's ffmpeg
+// went on for the rest of the voice-over and the channel stood still on the
+// next programme — a whole episode after an intro cut (owner, 2026-11-20:
+// «зависает примерно через 5 минут»).
+func TestLiveCopiedVoiceOverEndsWithTheProgramme(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil || testing.Short() {
+		t.Skip("no ffmpeg")
+	}
+	dir := t.TempDir()
+	mk := func(name string, args ...string) string {
+		p := filepath.Join(dir, name)
+		if out, err := exec.Command("ffmpeg", append(append([]string{"-v", "error", "-y"}, args...), p)...).CombinedOutput(); err != nil {
+			t.Fatalf("make %s: %v %s", name, err, out)
+		}
+		return p
+	}
+	v := mk("a.mkv", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=60", "-c:v", "libx264", "-preset", "ultrafast", "-g", "10")
+	vo := mk("a.LostFilm.mka", "-f", "lavfi", "-i", "sine=f=330:duration=60:sample_rate=48000", "-c:a", "aac", "-ac", "2")
+	probe := media.ProbeResult{Video: &media.VideoStream{Codec: "h264", Width: 160, Height: 120}}
+	tr := Plan(probe, []media.ExternalAudio{{Path: vo, Studio: "LostFilm", Stream: media.AudioStream{Codec: "aac", Profile: "LC", Channels: 2, SampleRate: 48000, Lang: "ru"}}}, nil, PlanOptions{})
+	if !tr.Audio[0].Source.Copy || tr.Audio[0].Source.External == "" {
+		t.Fatalf("not a copied sidecar: %+v", tr.Audio)
+	}
+	// the schedule's intro cut: 14 s of the episode, then the rest of it
+	base := time.Now()
+	src := cycle{base: base, progs: []Program{
+		{Entry: Entry{ItemID: 1, Start: base, End: base.Add(14 * time.Second)}, Path: v, Probe: probe, Tracks: &tr},
+		{Entry: Entry{ItemID: 1, Start: base, End: base.Add(40 * time.Second), OffsetMs: 20_000}, Path: v, Probe: probe, Tracks: &tr},
+	}}
+	// read in real time, as on the server (the lead covers the first piece)
+	live := &Live{FFmpeg: "ffmpeg", HW: "none", Dir: filepath.Join(dir, "live"), Source: src, ReadRate: 1, Lead: 20 * time.Second,
+		Width: 320, Height: 180, ReadySegments: 1}
+	defer live.Close()
+	ctx := context.Background()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		pl, err := live.Playlist(ctx, 1, "video.m3u8")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(pl), "#EXT-X-DISCONTINUITY\n") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the programme after the cut never started:\n%s", pl)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }

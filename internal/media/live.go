@@ -301,11 +301,16 @@ func LiveArgs(hw string, in LiveInput) []string {
 
 	// the audio outputs: padded with silence a second past the video, so
 	// every video segment has its audio (the extra is never listed); an
-	// AAC-LC stereo 48 kHz source is copied (its packets end with the
-	// input's -t)
+	// AAC-LC stereo 48 kHz source is copied (cut where the programme ends)
 	for k, x := range in.Audio {
 		a = append(a, "-map", audioIn[k], "-vn", "-sn", "-dn")
 		if x.Copy && !tempoOn(x.Tempo) && (x.Input != "" || x.Index >= 0) {
+			if in.DurationSec > 0 {
+				// its own end: a file beside the video is an input of its
+				// own, which the video's -t does not cut — at -readrate
+				// ffmpeg would read the rest of it before it exits
+				a = append(a, "-t", ff(in.DurationSec))
+			}
 			a = append(a, "-c:a", "copy")
 			a = append(a, liveHLS(in, "a"+strconv.Itoa(k)+"-%d.ts", LiveAudioPlaylist(k))...)
 			continue

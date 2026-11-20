@@ -192,6 +192,14 @@ type runKey struct {
 	br   int64
 }
 
+// label names a variant's run in the log ("" the channel's own).
+func (k runKey) label() string {
+	if k.h == 0 {
+		return ""
+	}
+	return " (" + strconv.Itoa(k.h) + "p)"
+}
+
 // key is the run of channel id ctx asks for.
 func (l *Live) key(ctx context.Context, id int64) runKey {
 	v, _ := ctx.Value(variantKey{}).(Variant)
@@ -246,6 +254,10 @@ type liveChan struct {
 	program  int64     // item on air (for the status)
 	set      TrackSet  // the run's renditions (made before its first segment)
 	hasSet   bool
+	// the run's start, for its log line once its first segment is out:
+	// when it started, how long its set and first programme took
+	started        time.Time
+	setTook, pTook time.Duration
 }
 
 // Span is how far from the clock what a viewer of a channel is served may
@@ -367,7 +379,7 @@ func (l *Live) channel(k runKey, start bool) (*liveChan, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(l.root)
-	c := &liveChan{id: id, key: k, dir: dir, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), last: l.Now()}
+	c := &liveChan{id: id, key: k, dir: dir, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), last: l.Now(), started: time.Now()}
 	l.chans[k] = c
 	l.wg.Add(1)
 	go func() {
@@ -644,6 +656,11 @@ func (c *liveChan) add(segs []liveSeg, keep int) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.segs) == 0 && c.discGone == 0 && !c.started.IsZero() {
+		// how long a viewer waited for the stream, and on what
+		log.Printf("channels: channel %d%s: first segment %.2f s after the start (track set %.2f s, programme %.2f s)",
+			c.id, c.key.label(), time.Since(c.started).Seconds(), c.setTook.Seconds(), c.pTook.Seconds())
+	}
 	c.segs = append(c.segs, segs...)
 	if n := len(c.segs) - keep; n > 0 {
 		for _, s := range c.segs[:n] {
@@ -714,6 +731,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 	set := l.trackSet(ctx, c.id, now)
 	c.mu.Lock()
 	c.set, c.hasSet = set, true
+	c.setTook = time.Since(c.started)
 	c.mu.Unlock()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -727,7 +745,13 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 			// the encoder fell behind the schedule: catch up (skip)
 			pos = now
 		}
+		asked := time.Now()
 		p, err := l.Source.Program(ctx, c.id, pos)
+		if first {
+			c.mu.Lock()
+			c.pTook += time.Since(asked)
+			c.mu.Unlock()
+		}
 		if err != nil {
 			if errors.Is(err, ErrNothing) {
 				return fmt.Errorf("channels: channel %d has nothing to play", c.id)
