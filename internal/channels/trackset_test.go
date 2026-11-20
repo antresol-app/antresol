@@ -3,6 +3,7 @@ package channels
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -318,4 +319,70 @@ func TestTrackSetWithDefaults(t *testing.T) {
 	if n := strings.Count(strings.Join(names(en.Audio), " "), "/D"); n != 1 {
 		t.Fatalf("%d defaults", n)
 	}
+}
+
+// A channel whose next 48 h carry more Russian voices than a set has
+// renditions (the owner's «Все сериалы», 2026-11-20): a programme whose
+// voices did not make the set still offers each of its tracks, each in a
+// rendition of its language its own voices left free — not only the one
+// rendition whose voice it shares (the original), with every language of
+// the horizon kept in the set.
+func TestEveryTrackOfTheProgrammeHasARendition(t *testing.T) {
+	o := PlanOptions{}
+	var progs []Tracks
+	// on air: two Russian voices no other programme has, and the original
+	onAir := Plan(media.ProbeResult{Audio: []media.AudioStream{aud(1, "rus", "MVO Первый канал"), aud(2, "rus", "DVO NewStudio"), aud(3, "eng", "Original")}}, nil, nil, o)
+	progs = append(progs, onAir)
+	// later: eight other Russian voices, each in two programmes, with English
+	for _, v := range []string{"Кубик в Кубе", "LostFilm", "Jimmy J", "Дроздов", "ColdFilm", "FocusX", "ViruseProject", "Kurdov"} {
+		p := Plan(media.ProbeResult{Audio: []media.AudioStream{aud(1, "rus", v), aud(2, "eng", "")}}, nil, nil, o)
+		progs = append(progs, p, p)
+	}
+	// and one with Ukrainian
+	progs = append(progs, Plan(media.ProbeResult{Audio: []media.AudioStream{aud(1, "rus", "rus"), aud(2, "ukr", "ukr AC3 2.0"), aud(3, "eng", "eng")}}, nil, nil, o))
+	set := BuildSet(progs, o)
+	langs := map[string]int{}
+	for _, r := range set.Audio {
+		langs[r.Lang]++
+	}
+	if len(set.Audio) != AudioCap || langs["uk"] != 1 || langs["en"] < 1 || langs["ru"] < 2 {
+		t.Fatalf("set %q", names(set.Audio))
+	}
+	a, _ := onAir.Labels(set, "ru")
+	var labels []string
+	for _, l := range a {
+		labels = append(labels, l.Label+"/"+l.Lang)
+	}
+	if want := []string{"Русский — Первый канал/ru", "Русский — NewStudio/ru", "Оригинал (English)/en"}; !reflect.DeepEqual(sortedCopy(labels), sortedCopy(want)) {
+		t.Fatalf("labels %q of set %q", labels, names(set.Audio))
+	}
+	// each label's rendition plays that very track
+	src, _ := onAir.Renditions(set)
+	for _, l := range a {
+		n := slot(t, set, l.Name)
+		k := slices.IndexFunc(onAir.Audio, func(x AudioTrack) bool { return strings.HasSuffix(l.Label, x.Voice) && bcp47(x.Lang) == l.Lang })
+		if k < 0 || src[n] != onAir.Audio[k].Source {
+			t.Fatalf("%s plays %+v", l.Label, src[n])
+		}
+	}
+	// and the DEFAULT rendition plays its best Russian voice
+	def := slices.IndexFunc(set.Audio, func(r Rendition) bool { return r.Default })
+	if src[def] != onAir.Audio[0].Source {
+		t.Fatalf("default plays %+v", src[def])
+	}
+}
+
+func slot(t *testing.T, set TrackSet, name string) int {
+	t.Helper()
+	n := slices.IndexFunc(set.Audio, func(r Rendition) bool { return r.Name == name })
+	if n < 0 {
+		t.Fatalf("no rendition %q", name)
+	}
+	return n
+}
+
+func sortedCopy(s []string) []string {
+	s = slices.Clone(s)
+	slices.Sort(s)
+	return s
 }

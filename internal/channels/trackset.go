@@ -56,7 +56,8 @@ type setAgg struct {
 // studio order, then by how many programmes have them (a cleaned voice
 // beside its voice: before it with PreferCleaned); then each original
 // language, then the other languages, by frequency; the first AudioCap,
-// one of them an original when any programme has one.
+// with a place for every language (its original first) before a
+// language's further voices.
 // Subtitles: Russian first, then by frequency; the first SubCap. A set
 // with no audio at all still has one rendition (each programme's default
 // track, else silence).
@@ -131,14 +132,25 @@ func BuildSet(progs []Tracks, o PlanOptions) TrackSet {
 		return x.first - y.first
 	})
 	if len(keys) > AudioCap {
-		// one place is kept for the original language: when the cap would
-		// cut every original (a film with eight Russian voices), the best
-		// one replaces the lowest-ranked key
-		orig := func(k string) bool { return aggs[k].group == 1 }
-		if k := slices.IndexFunc(keys, orig); k >= AudioCap {
-			keys[AudioCap-1] = keys[k]
+		// every known language of the horizon keeps a place (its best key:
+		// an original before another track of its language), then the best of
+		// the rest fill the set: a programme's tracks of a language whose
+		// voices did not make it play in that language's renditions
+		// (Tracks.own), so a cap cut can cost a voice's own name, never a
+		// language
+		pick := map[string]bool{}
+		langs := map[string]bool{}
+		for _, k := range keys {
+			if l := aggs[k].track.Lang; l != "" && len(pick) < AudioCap && !langs[l] {
+				langs[l], pick[k] = true, true
+			}
 		}
-		keys = keys[:AudioCap]
+		for _, k := range keys {
+			if len(pick) < AudioCap {
+				pick[k] = true
+			}
+		}
+		keys = slices.DeleteFunc(keys, func(k string) bool { return !pick[k] })
 	}
 	var set TrackSet
 	ml := o.Lang
@@ -287,7 +299,12 @@ func uniqueNames(g []Rendition) {
 // its best Russian one, else its default track — never silence when it
 // has sound.
 func (t Tracks) Renditions(set TrackSet) (audio []AudioSource, subs []*SubPick) {
-	for _, r := range set.Audio {
+	own := t.own(set)
+	for n, r := range set.Audio {
+		if k := own[n]; k >= 0 {
+			audio = append(audio, t.Audio[k].Source)
+			continue
+		}
 		audio = append(audio, t.audioFor(r.Key))
 	}
 	for _, r := range set.Subs {
@@ -299,6 +316,48 @@ func (t Tracks) Renditions(set TrackSet) (audio []AudioSource, subs []*SubPick) 
 		subs = append(subs, p)
 	}
 	return audio, subs
+}
+
+// own is the programme's track each rendition of set plays as its own:
+// own[n] indexes t.Audio, -1 none (the rendition plays a fallback). A
+// track plays in the rendition of its key; a track whose key the set
+// lacks (a run's set holds the voices of 48 h, AudioCap of them) takes the
+// first rendition of its language the programme has no track for — the
+// programme's best tracks first, a cleaned voice-over a cleaned rendition
+// when one is free — so every track of the programme plays somewhere
+// while its language has renditions enough.
+func (t Tracks) own(set TrackSet) []int {
+	own := make([]int, len(set.Audio))
+	for n := range own {
+		own[n] = -1
+	}
+	placed := make([]bool, len(t.Audio))
+	for n, r := range set.Audio {
+		if k := slices.IndexFunc(t.Audio, func(a AudioTrack) bool { return a.Key == r.Key }); k >= 0 && !placed[k] {
+			own[n], placed[k] = k, true
+		}
+	}
+	for k, a := range t.Audio {
+		if placed[k] {
+			continue
+		}
+		free := func(alike bool) int {
+			for n, r := range set.Audio {
+				if own[n] < 0 && r.Key != "" && keyLang(r.Key) == a.Lang && (!alike || strings.HasSuffix(r.Key, cleanSuffix) == a.Cleaned) {
+					return n
+				}
+			}
+			return -1
+		}
+		n := free(true)
+		if n < 0 {
+			n = free(false)
+		}
+		if n >= 0 {
+			own[n], placed[k] = k, true
+		}
+	}
+	return own
 }
 
 func (t Tracks) audioFor(key string) AudioSource {
@@ -345,8 +404,9 @@ type TrackLabel struct {
 // Never nil.
 func (t Tracks) Labels(set TrackSet, lang string) (audio, subs []TrackLabel) {
 	audio, subs = []TrackLabel{}, []TrackLabel{}
+	own := t.own(set)
 	for n, r := range set.Audio {
-		k := slices.IndexFunc(t.Audio, func(a AudioTrack) bool { return a.Key == r.Key })
+		k := own[n]
 		if k < 0 {
 			continue
 		}
@@ -354,8 +414,8 @@ func (t Tracks) Labels(set TrackSet, lang string) (audio, subs []TrackLabel) {
 		l := TrackLabel{Slot: "a" + strconv.Itoa(n), Name: r.Name, Lang: bcp47(a.Lang)}
 		if a.Cleaned {
 			base := strings.TrimSuffix(a.Key, cleanSuffix)
-			if slices.ContainsFunc(t.Audio, func(x AudioTrack) bool { return x.Key == base }) {
-				if b := slices.IndexFunc(set.Audio, func(x Rendition) bool { return x.Key == base }); b >= 0 {
+			if bk := slices.IndexFunc(t.Audio, func(x AudioTrack) bool { return x.Key == base }); bk >= 0 {
+				if b := slices.Index(own, bk); b >= 0 {
 					l.CleanedOf = set.Audio[b].Name
 				}
 			}
