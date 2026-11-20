@@ -12,6 +12,7 @@ export default {
   "tv.categories": "Categories",
   "tv.allChannels": "All channels",
   "tv.categoryGroup.ai": "Topics",
+  "tv.categoryGroup.lang": "Languages",
   "tv.categoryGroup.source": "Sources",
   "tv.categoryGroup.group": "Groups",
   "tv.categoryKind.ai": { one: "Topic · {count} channel", other: "Topic · {count} channels" },

@@ -9,6 +9,7 @@ import { AudioScreenStop } from '../player/AudioScreenStop'
 import { NowPlaying } from '../player/NowPlaying'
 import { WritePrompt } from '../components/accounts/WritePrompt'
 import { Notice } from '../components/Notice'
+import { UpdateBanner } from '../components/UpdateBanner'
 import { useAudioSelect } from '../player/audio/useAudio'
 import { useSession } from '../state/session'
 import { useLang, useT } from '../i18n'
@@ -69,6 +70,7 @@ export function Shell() {
         {t('app.skipToContent')}
       </a>
       <TopNav user={user} />
+      <UpdateBanner />
       <main id="main" tabIndex={-1} className={styles.main} data-mini={mini ? 'on' : undefined}>
         <Outlet key={lang} />
       </main>

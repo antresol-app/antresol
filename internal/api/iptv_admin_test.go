@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -319,6 +320,7 @@ func TestDevicesAndSets(t *testing.T) {
 	w = e.do("GET", "/api/tv/devices", "", e.admin)
 	var d struct{ Devices []deviceJSON }
 	json.Unmarshal(w.Body.Bytes(), &d)
+	d.Devices = slices.DeleteFunc(d.Devices, func(x deviceJSON) bool { return x.Kind == "web" })
 	if len(d.Devices) != 1 || d.Devices[0].Client != "tvos" || d.Devices[0].SetID != set.ID || d.Devices[0].Kind != "app" || d.Devices[0].DeviceID != "dev-1" {
 		t.Fatalf("devices %s", w.Body)
 	}
@@ -359,6 +361,7 @@ func TestLinksCreateTokenWithSet(t *testing.T) {
 	w = e.do("GET", "/api/tv/devices", "", e.admin)
 	var d struct{ Devices []deviceJSON }
 	json.Unmarshal(w.Body.Bytes(), &d)
+	d.Devices = slices.DeleteFunc(d.Devices, func(x deviceJSON) bool { return x.Kind == "web" }) // the admin's own browser
 	if len(d.Devices) != 2 || d.Devices[0].Kind != "iptv" || d.Devices[0].Client != "iptv" {
 		t.Fatalf("devices %s", w.Body)
 	}
@@ -572,5 +575,119 @@ func TestVariantOverride(t *testing.T) {
 	}
 	if v := by()["Кино 1"].Variant; v == nil || v.Manual != "" || len(v.Members) != 3 {
 		t.Errorf("auto: %+v", v)
+	}
+}
+
+// A group marked adult by the admin is hidden by the adult preset and is
+// in the adult category only; «Взрослые» is one by its title and can be
+// unmarked. Every channel of one language is hidden and shown at once.
+func TestGroupAdultAndLanguageBulk(t *testing.T) {
+	e := newTVEnv(t)
+	e.p.put("/l.m3u", "#EXTM3U\n"+
+		"#EXTINF:-1 group-title=\"Премиум\",Ночь\nhttp://stream.example.test/1.ts\n"+
+		"#EXTINF:-1 group-title=\"Взрослые\",Вечер\nhttp://stream.example.test/2.ts\n"+
+		"#EXTINF:-1 group-title=\"Кино\",#dabeiTV HD DE\nhttp://stream.example.test/3.ts\n"+
+		"#EXTINF:-1 group-title=\"Кино\",Sport Klub HD DE\nhttp://stream.example.test/4.ts\n"+
+		"#EXTINF:-1 group-title=\"Кино\",&Pictures HD IN\nhttp://stream.example.test/5.ts\n")
+	w := e.do("POST", "/api/tv/sources", `{"name":"Л","url":"`+e.p.srv.URL+`/l.m3u"}`, e.admin)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body)
+	}
+	var src sourceJSON
+	json.Unmarshal(w.Body.Bytes(), &src)
+	if _, err := e.tv.RefreshSource(context.Background(), src.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	by := func() map[string]memberJSON {
+		out := map[string]memberJSON{}
+		for _, m := range e.channels(src.ID, "").Channels {
+			out[m.ProviderName] = m
+		}
+		return out
+	}
+	m := by()
+	if !m["Вечер"].GroupAdult || m["Вечер"].Shown || m["Вечер"].Why != "preset-adult" || m["Ночь"].GroupAdult || !m["Ночь"].Shown {
+		t.Fatalf("before %+v", m)
+	}
+	if m["#dabeiTV HD DE"].Lang != "de" || m["&Pictures HD IN"].Lang != "hi" {
+		t.Fatalf("langs %+v", m)
+	}
+	patch := func(body string) {
+		t.Helper()
+		if w := e.do("PATCH", "/api/tv/groups", `{"sourceId":`+itoa(src.ID)+`,`+body+`}`, e.admin); w.Code != 200 {
+			t.Fatalf("%s: %d %s", body, w.Code, w.Body)
+		}
+	}
+	patch(`"group":"Премиум","adult":true`)
+	patch(`"group":"Взрослые","adult":false`)
+	m = by()
+	if !m["Ночь"].GroupAdult || m["Ночь"].Shown || m["Ночь"].Why != "preset-adult" || m["Вечер"].GroupAdult || !m["Вечер"].Shown {
+		t.Fatalf("after %+v", m)
+	}
+	w = e.do("GET", "/api/channels", "", e.admin)
+	var l struct{ Channels []channelJSON }
+	json.Unmarshal(w.Body.Bytes(), &l)
+	for _, c := range l.Channels {
+		if c.Name == "Ночь" {
+			t.Fatalf("an adult channel shown: %+v", c)
+		}
+	}
+	// back to automatic: the word that agrees with the title
+	patch(`"group":"Взрослые","adult":true`)
+	if src2, _ := e.tv.Store.Source(context.Background(), src.ID); len(src2.AdultGroups) != 1 {
+		t.Fatalf("overrides %v", src2.AdultGroups)
+	}
+	// a language at once
+	patch(`"lang":"de","shown":false`)
+	m = by()
+	if m["#dabeiTV HD DE"].Shown || m["Sport Klub HD DE"].Shown || !m["&Pictures HD IN"].Shown || m["#dabeiTV HD DE"].Why != "manual" {
+		t.Fatalf("lang hidden %+v", m)
+	}
+	patch(`"lang":"de","shown":true`)
+	if m = by(); !m["#dabeiTV HD DE"].Shown {
+		t.Fatalf("lang shown %+v", m)
+	}
+}
+
+// The devices list every profile's browsers too (read-only rows): one per
+// profile, browser and system, the last 30 days only.
+func TestDevicesListBrowsersOfEveryProfile(t *testing.T) {
+	e := newTVEnv(t)
+	ctx := context.Background()
+	ss := auth.NewSessions(e.db)
+	ids := map[string]int64{}
+	for _, n := range []string{"Анна", "Борис"} {
+		res, err := e.db.Exec(`INSERT INTO users (name, avatar) VALUES (?, '')`, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[n], _ = res.LastInsertId()
+	}
+	for _, s := range []struct {
+		who, browser, system string
+	}{{"Анна", "Safari", "macOS"}, {"Анна", "Safari", "macOS"}, {"Анна", "Chrome", "Windows"}, {"Борис", "Firefox", "Linux"}, {"Борис", "Edge", "Windows"}} {
+		if _, err := ss.CreateBrowser(ctx, ids[s.who], s.browser, s.system); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-40 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	if _, err := e.db.Exec(`UPDATE sessions SET last_seen=? WHERE device_name='Edge'`, old); err != nil {
+		t.Fatal(err)
+	}
+	w := e.do("GET", "/api/tv/devices", "", e.admin)
+	var d struct{ Devices []deviceJSON }
+	json.Unmarshal(w.Body.Bytes(), &d)
+	var got []string
+	for _, x := range d.Devices {
+		if x.Kind == "web" && x.UserID != 0 && (x.Profile == "Анна" || x.Profile == "Борис") {
+			if x.Client != "web" || x.LastSeen == nil || x.SetID != 0 {
+				t.Fatalf("row %+v", x)
+			}
+			got = append(got, x.Profile+":"+x.Name)
+		}
+	}
+	slices.Sort(got)
+	if strings.Join(got, ",") != "Анна:Chrome · Windows,Анна:Safari · macOS,Борис:Firefox · Linux" {
+		t.Fatalf("browsers %v (%s)", got, w.Body)
 	}
 }

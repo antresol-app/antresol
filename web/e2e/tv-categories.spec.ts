@@ -133,7 +133,7 @@ test('categories: one tag per topic, capped, adult last and exclusive; TiviMate 
 
   // a phone: the categories as a level of their own
   const { defaultBrowserType: _, ...phone } = devices['iPhone 13']
-  const ctx = await browser.newContext({ ...phone, viewport: { width: 390, height: 844 }, baseURL: vaultURL, locale: 'ru-RU', colorScheme: 'dark', storageState: await page.context().storageState() })
+  const ctx = await browser.newContext({ ...phone, viewport: { width: 390, height: 844 }, baseURL: vaultURL, locale: 'ru-RU', colorScheme: 'dark', storageState: await otherDevice(page) })
   const p = await ctx.newPage()
   await p.goto('/tv')
   const cats = p.getByRole('navigation', { name: 'Категории' })
@@ -147,3 +147,10 @@ test('categories: one tag per topic, capped, adult last and exclusive; TiviMate 
   await p.screenshot({ path: shot('tv-390-movies.png') })
   await ctx.close()
 })
+
+// another device signed in to the same profile: the cookies, not where this one left «ТВ» (vault.tvPlace)
+async function otherDevice(page: import('@playwright/test').Page) {
+  const state = await page.context().storageState()
+  for (const o of state.origins) o.localStorage = o.localStorage.filter((x) => x.name !== 'vault.tvPlace')
+  return state
+}

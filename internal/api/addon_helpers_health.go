@@ -14,6 +14,7 @@ import (
 
 	"github.com/antresol-app/antresol/addonkit"
 	"github.com/antresol-app/antresol/internal/addons"
+	"github.com/antresol-app/antresol/internal/i18n"
 )
 
 // helperHealth is one row of GET /api/addons/helpers: a helper service an
@@ -25,8 +26,11 @@ import (
 // (ANTRESOL_<ADDON>_<HELPER>_URL, as the addons read it), else its compose
 // address.
 type helperHealth struct {
-	Addon   string `json:"addon"`
-	Name    string `json:"name"`
+	Addon string `json:"addon"`
+	Name  string `json:"name"`
+	// Title: the manifest's name of the service for people, in the
+	// request's language ("": none, the page shows Name).
+	Title   string `json:"title,omitempty"`
 	Address string `json:"address"`
 	// Custom: an address of the admin's is in use; it is never shown (it
 	// may carry a secret), so Address is then "".
@@ -124,6 +128,7 @@ func (a *addonsAPI) helpers(w http.ResponseWriter, r *http.Request) {
 		h, ok := declared[id+" "+name]
 		return h, ok
 	})
+	lang := i18n.FromContext(r.Context())
 	out := []helperHealth{}
 	var hs []addons.Helper
 	var bases []string
@@ -134,12 +139,12 @@ func (a *addonsAPI) helpers(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, h := range in.Manifest.Helpers {
 			if st, ok := toldState(told[in.ID], h.Name); ok {
-				out = append(out, helperHealth{Addon: in.ID, Name: h.Name, Address: st.Address, Source: st.Source,
+				out = append(out, helperHealth{Addon: in.ID, Name: h.Name, Title: localText(lang, h.Title), Address: st.Address, Source: st.Source,
 					Custom: st.Source == addonkit.HelperOverride || st.Source == addonkit.HelperSettings,
 					OK:     st.OK, Problem: st.Problem, CheckedAt: st.CheckedAt, Live: st.Live})
 				continue
 			}
-			hh := helperHealth{Addon: in.ID, Name: h.Name, Address: h.Address()}
+			hh := helperHealth{Addon: in.ID, Name: h.Name, Title: localText(lang, h.Title), Address: h.Address()}
 			base := h.Address()
 			if o := helperOverride(in.ID, h.Name); o != "" {
 				hh.Address, hh.Custom, base = "", true, o

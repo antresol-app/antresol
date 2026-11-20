@@ -4,7 +4,9 @@
 // tvsieve and the Settings tables of macOS. The whole list loads once and
 // filters here: a search field and the state filter on one line, the
 // provider's groups as chips with counts, a bulk «Показать все / Скрыть
-// все» for the chosen group, then one virtualised row per channel —
+// все» and «Группа для взрослых» for the chosen group, the channels'
+// languages as chips (two or more) with the same bulk for the chosen one,
+// then one virtualised row per channel —
 // number, logo, name (edited in place), category, how it got its guide,
 // why it is shown or hidden, the switch, «⋯». A phone folds the columns
 // into the row's second line; a tap opens the channel's sheet.
@@ -22,6 +24,7 @@ import {
   refreshEPG,
   refreshSource,
   rejectDrop,
+  setGroupAdult,
   showAllDefault,
   updateSource,
   type Source,
@@ -47,6 +50,7 @@ import { Toast } from '../../../ui/Toast'
 import { Toggle } from '../../../ui/Toggle'
 import { VirtualList } from '../../../ui/VirtualList'
 import { ChannelLogo } from '../ChannelLogo'
+import { languageName } from '../tagNames'
 import { ChannelSheet } from './ChannelSheet'
 import { epgLabel, whyLabel } from './labels'
 import { SourceEditor } from './SourceEditor'
@@ -77,6 +81,7 @@ export function SourceChannels() {
   const [error, setError] = useState('')
   const [q, setQ] = useState('')
   const [group, setGroup] = useState('')
+  const [lang, setLang] = useState('')
   const [state, setState] = useState<StateFilter>('all')
   const [editing, setEditing] = useState<number | null>(null)
   const [sheet, setSheet] = useState<SourceChannel | null>(null)
@@ -125,7 +130,22 @@ export function SourceChannels() {
       if (c.shown) g.shown++
       m.set(c.group, g)
     }
-    return [...m].map(([name, g]) => ({ name, ...g }))
+    return [...m].map(([name, g]) => ({ name, ...g, adult: (list ?? []).some((c) => c.group === name && c.groupAdult) }))
+  }, [list])
+
+  // the channels' languages (present ones), the most common first
+  const langs = useMemo(() => {
+    const m = new Map<string, { total: number; shown: number }>()
+    for (const c of list ?? []) {
+      if (!c.present || !c.lang) continue
+      const g = m.get(c.lang) ?? { total: 0, shown: 0 }
+      g.total++
+      if (c.shown) g.shown++
+      m.set(c.lang, g)
+    }
+    return [...m]
+      .map(([code, g]) => ({ code, name: `${languageName(code)} (${code.toUpperCase()})`, ...g }))
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
   }, [list])
 
   const rows = useMemo(() => {
@@ -139,8 +159,8 @@ export function SourceChannels() {
       String(c.number) === needle
     const inState = (c: SourceChannel) =>
       state === 'all' ? c.present : state === 'shown' ? c.present && c.shown : state === 'hidden' ? c.present && !c.shown : state === 'new' ? c.new : !c.present
-    return (list ?? []).filter((c) => (!group || c.group === group) && inState(c) && match(c))
-  }, [list, q, group, state])
+    return (list ?? []).filter((c) => (!group || c.group === group) && (!lang || c.lang === lang) && inState(c) && match(c))
+  }, [list, q, group, lang, state])
 
   const counts = useMemo(() => {
     const l = (list ?? []).filter((c) => c.present)
@@ -193,6 +213,16 @@ export function SourceChannels() {
     update(ids, { shown: on, why: 'manual' })
     patchGroup({ sourceId: id, group, shown: on }).then(() => loadSource(), failed)
   }
+  const showLang = (on: boolean) => {
+    const ids = (list ?? []).filter((c) => c.present && c.lang === lang).map((c) => c.channelId)
+    update(ids, { shown: on, why: 'manual' })
+    patchGroup({ sourceId: id, lang, shown: on }).then(() => loadSource(), failed)
+  }
+  // the adult preset decides the group's channels again: the list reloads
+  const markAdult = (on: boolean) => {
+    setList((l) => l?.map((c) => (c.group === group ? { ...c, groupAdult: on } : c)) ?? null)
+    setGroupAdult(id, group, on).then(() => (loadChannels(), loadSource()), failed)
+  }
 
   // the header hides the rows passing behind the top bar only once it is stuck
   const tableRef = useRef<HTMLDivElement>(null)
@@ -212,7 +242,7 @@ export function SourceChannels() {
       window.removeEventListener('scroll', check)
       window.removeEventListener('resize', check)
     }
-  }, [list, group, state, q])
+  }, [list, group, lang, state, q])
 
   const run = (what: string, call: Promise<unknown>) => {
     setBusy(what)
@@ -238,6 +268,7 @@ export function SourceChannels() {
     )
 
   const chosen = groups.find((g) => g.name === group)
+  const chosenLang = langs.find((l) => l.code === lang)
   const dropNotice = source && source.pendingDrop > 0 ? <DropNotice s={source} busy={busy} onConfirm={() => drop('confirm')} onKeep={() => drop('keep')} /> : null
 
   return (
@@ -348,6 +379,18 @@ export function SourceChannels() {
           />
         </div>
 
+        {langs.length > 1 && (
+          <div className={styles.chips}>
+            <FilterChips
+              label={t('iptv.table.langs')}
+              value={lang}
+              onChange={setLang}
+              formatCount={num}
+              chips={[{ value: '', label: t('iptv.table.allLangs'), count: counts.total }, ...langs.map((l) => ({ value: l.code, label: l.name, count: l.total }))]}
+            />
+          </div>
+        )}
+
         {chosen && (
           <GroupedSection className={styles.groupBar}>
             <ListRow stack label={t('iptv.group.title', { name: chosen.name || t('iptv.table.noGroup') })} hint={t('iptv.group.counts', { shown: num(chosen.shown), total: num(chosen.total) })}>
@@ -355,6 +398,21 @@ export function SourceChannels() {
                 {t('iptv.group.showAll')}
               </Button>
               <Button variant="secondary" size="small" disabled={chosen.shown === 0} onClick={() => showGroup(false)}>
+                {t('iptv.group.hideAll')}
+              </Button>
+            </ListRow>
+            <ListRow label={t('iptv.group.adult')} hint={t('iptv.group.adultHint')}>
+              <Toggle label={t('iptv.group.adult')} checked={chosen.adult} onChange={markAdult} />
+            </ListRow>
+          </GroupedSection>
+        )}
+        {chosenLang && (
+          <GroupedSection className={styles.groupBar}>
+            <ListRow stack label={t('iptv.lang.title', { name: chosenLang.name })} hint={t('iptv.group.counts', { shown: num(chosenLang.shown), total: num(chosenLang.total) })}>
+              <Button variant="secondary" size="small" disabled={chosenLang.shown === chosenLang.total} onClick={() => showLang(true)}>
+                {t('iptv.group.showAll')}
+              </Button>
+              <Button variant="secondary" size="small" disabled={chosenLang.shown === 0} onClick={() => showLang(false)}>
                 {t('iptv.group.hideAll')}
               </Button>
             </ListRow>

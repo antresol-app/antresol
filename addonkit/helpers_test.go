@@ -40,6 +40,8 @@ func TestHelperValid(t *testing.T) {
 		"query health":     func(h *Helper) { h.Health = "/?uid=x" },
 		"space in health":  func(h *Helper) { h.Health = "/a b" },
 		"backslash health": func(h *Helper) { h.Health = `/a\b` },
+		"long title":       func(h *Helper) { h.Title.EN = strings.Repeat("x", MaxHelperTitle+1) },
+		"newline title":    func(h *Helper) { h.Title.RU = "a\nb" },
 	}
 	for name, mod := range bad {
 		t.Run(name, func(t *testing.T) {
@@ -80,6 +82,11 @@ func TestHelpersFromManifest(t *testing.T) {
 	}
 	if len(hs) != 1 || hs[0] != goodHelper() {
 		t.Fatalf("helpers %+v", hs)
+	}
+	// a title for people, in both languages
+	hs, err = HelpersFromManifest([]byte(`{"helpers":[{"name":"cache-svc","image":"i","port":1,"health":"/","title":{"ru":"Кэш","en":"Cache"}}]}`))
+	if err != nil || len(hs) != 1 || hs[0].Title != (Text{RU: "Кэш", EN: "Cache"}) {
+		t.Fatalf("title: %+v %v", hs, err)
 	}
 	// a manifest without the field: none, no error (contract 1 as before)
 	hs, err = HelpersFromManifest([]byte(`{"id":"demo","contract":1}`))

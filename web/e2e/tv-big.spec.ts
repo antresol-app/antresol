@@ -158,7 +158,7 @@ test('a big playlist: fast first rows, categories as a level, one row shape', as
 
   // a phone
   const { defaultBrowserType: _, ...phone } = devices['iPhone 13']
-  const ctx = await browser.newContext({ ...phone, viewport: { width: 390, height: 844 }, baseURL: vaultURL, locale: 'ru-RU', colorScheme: 'dark', storageState: await page.context().storageState() })
+  const ctx = await browser.newContext({ ...phone, viewport: { width: 390, height: 844 }, baseURL: vaultURL, locale: 'ru-RU', colorScheme: 'dark', storageState: await otherDevice(page) })
   const p = await ctx.newPage()
   await p.goto('/tv')
   await expect(p.getByRole('navigation', { name: 'Категории' })).toBeVisible()
@@ -221,3 +221,10 @@ test('a big playlist: the guide grid draws only the rows in sight', async ({ pag
   expect(await guide.locator('[role=row]').count()).toBeLessThan(80)
   await page.screenshot({ path: test.info().outputPath('tv-big-guide-bottom-desktop.png') })
 })
+
+// another device signed in to the same profile: the cookies, not where this one left «ТВ» (vault.tvPlace)
+async function otherDevice(page: import('@playwright/test').Page) {
+  const state = await page.context().storageState()
+  for (const o of state.origins) o.localStorage = o.localStorage.filter((x) => x.name !== 'vault.tvPlace')
+  return state
+}

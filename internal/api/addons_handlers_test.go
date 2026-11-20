@@ -267,7 +267,7 @@ func newAddonEnv(t *testing.T, more ...func(*Deps)) *addonEnv {
 			Contract: addons.ContractVersion, Web: &addons.Platform{}, Permissions: []string{"events"}}}
 	lib := hello
 	lib.ID, lib.Manifest.ID, lib.Manifest.Permissions = "lib", "lib", []string{"library.read"}
-	lib.Manifest.Helpers = []addons.Helper{{Name: "cache-svc", Image: "ghcr.io/example/cache-svc:1.2.3", Port: 8191, Health: "/"}}
+	lib.Manifest.Helpers = []addons.Helper{{Name: "cache-svc", Image: "ghcr.io/example/cache-svc:1.2.3", Port: 8191, Health: "/", Title: addons.Text{RU: "Кэш-сервис", EN: "Cache service"}}}
 	off := hello
 	off.ID, off.Manifest.ID, off.Enabled = "off", "off", false
 	ea := echoAddon(t)

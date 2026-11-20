@@ -205,7 +205,7 @@ func (s *Service) langFilters(ctx context.Context) bool {
 }
 
 // aiTodo: the shown external channels (by their row's name) without an
-// answer, one per key.
+// answer, one per key; adult ones (by their source's word) are not asked.
 func (s *Service) aiTodo(ctx context.Context, known map[string]AIInfo) ([]aiItem, error) {
 	ms, err := s.Store.AllMembers(ctx)
 	if err != nil {
@@ -215,11 +215,22 @@ func (s *Service) aiTodo(ctx context.Context, known map[string]AIInfo) ([]aiItem
 	if err != nil {
 		return nil, err
 	}
+	srcs, err := s.Store.Sources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	bySrc := map[int64]Source{}
+	for _, src := range srcs {
+		bySrc[src.ID] = src
+	}
 	seen := map[string]bool{}
 	var out []aiItem
 	for _, m := range ms {
 		if !m.Present || !m.Shown || m.ChannelID == 0 {
 			continue
+		}
+		if bySrc[m.SourceID].EntryAdult(m.Name, m.Group) {
+			continue // an adult channel is in its category only: nothing to ask
 		}
 		r, ok := rows[m.ChannelID]
 		if !ok || !r.Enabled {

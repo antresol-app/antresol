@@ -33,7 +33,7 @@ export interface ChannelCategoriesProps {
 type Row = { key: string; label: string; count: number }
 type Section = { title?: string; rows: Row[] }
 
-/** The rows in their order, in sections: the lists, the topics, the sources, the exclusive one. */
+/** The rows in their order, in sections: the lists (and «Из медиатеки»), the topics, the languages, the sources, the exclusive one. */
 export function categorySections(categories: ChannelCategory[], all: number, favorites: number, t: TFunction): Section[] {
   const row = (c: ChannelCategory): Row => ({
     key: `k:${c.id}`,
@@ -45,11 +45,16 @@ export function categorySections(categories: ChannelCategory[], all: number, fav
       rows: [
         { key: 'fav', label: t('tv.filterFav'), count: favorites },
         { key: 'all', label: t('tv.allChannels'), count: all },
+        ...categories.filter((c) => c.kind === 'own').map(row),
       ],
     },
     {
       title: t('tv.categoryGroup.ai'),
-      rows: categories.filter((c) => c.kind !== 'source' && c.id !== ADULT).map(row),
+      rows: categories.filter((c) => (c.kind === 'ai' || c.kind === 'group') && c.id !== ADULT).map(row),
+    },
+    {
+      title: t('tv.categoryGroup.lang'),
+      rows: categories.filter((c) => c.kind === 'lang').map(row),
     },
     {
       title: t('tv.categoryGroup.source'),

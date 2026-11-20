@@ -2,6 +2,10 @@
 export default {
   'app.api.bookFileMissing': 'Файл книги не найден на сервере.',
   'app.skipToContent': 'Перейти к содержимому',
+  'update.banner.title': 'Вышла версия {version}',
+  'update.banner.message': 'Как обновить сервер — в разделе «{page}».',
+  'update.banner.details': 'Подробнее',
+  'update.banner.hide': 'Скрыть',
   'app.failedTryAgain': 'Не получилось. Попробуйте ещё раз.',
   // routes: offline screen, placeholders
   'app.offline.hint': 'Проверьте, что сервер Antresol включён и вы в той же сети.',

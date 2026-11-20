@@ -59,6 +59,10 @@ type Source struct {
 	PresetVariants bool
 	// Langs: the languages kept (ISO 639-1); empty: all (languages.go).
 	Langs []string
+	// AdultGroups: the admin's word on playlist groups (group-title →
+	// adult or not) over IsAdultGroup; kept apart (SetAdultGroup), a
+	// SaveSource leaves it.
+	AdultGroups map[string]bool
 	// RefreshHours: 0 = off.
 	RefreshHours  int
 	RefreshOnOpen bool
@@ -152,6 +156,10 @@ func (s *Store) Sources(ctx context.Context) ([]Source, error) {
 		return nil, err
 	}
 	defer rows.Close()
+	adultBy, err := s.adultGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []Source
 	for rows.Next() {
 		var src Source
@@ -176,6 +184,7 @@ func (s *Store) Sources(ctx context.Context) ([]Source, error) {
 			return nil, fmt.Errorf("iptv source %d langs: %w", src.ID, err)
 		}
 		src.LastOK, src.LastTry = fromMS(ok), fromMS(try)
+		src.AdultGroups = adultBy[strconv.FormatInt(src.ID, 10)]
 		out = append(out, src)
 	}
 	return out, rows.Err()
@@ -240,7 +249,15 @@ func (s *Store) SaveSource(ctx context.Context, src Source) (Source, error) {
 // DeleteSource removes a source with its guide URLs, programmes and
 // members (the logical channel rows are the caller's).
 func (s *Store) DeleteSource(ctx context.Context, id int64) error {
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM iptv_sources WHERE id=?`, id)
+	if _, err := s.DB.ExecContext(ctx, `DELETE FROM iptv_sources WHERE id=?`, id); err != nil {
+		return err
+	}
+	all, err := s.adultGroups(ctx)
+	if err != nil || all[strconv.FormatInt(id, 10)] == nil {
+		return err
+	}
+	delete(all, strconv.FormatInt(id, 10))
+	_, err = s.DB.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, jsonText(all), settingAdultGroups)
 	return err
 }
 
@@ -477,6 +494,50 @@ func (s *Store) EPGURL(ctx context.Context, id int64) (EPGURL, error) {
 		}
 	}
 	return EPGURL{}, sql.ErrNoRows
+}
+
+// settingAdultGroups: the admin's word on sources' groups being adult
+// (settings "iptv_adult_groups": {"<source id>": {"<group>": bool}}).
+const settingAdultGroups = "iptv_adult_groups"
+
+func (s *Store) adultGroups(ctx context.Context) (map[string]map[string]bool, error) {
+	out := map[string]map[string]bool{}
+	var v string
+	err := s.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingAdultGroups).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(v), &out); err != nil {
+		return nil, fmt.Errorf("iptv adult groups: %w", err)
+	}
+	return out, nil
+}
+
+// SetAdultGroup records the admin's word on a source's group: adult, not
+// adult, or (nil) back to its title's.
+func (s *Store) SetAdultGroup(ctx context.Context, sourceID int64, group string, adult *bool) error {
+	all, err := s.adultGroups(ctx)
+	if err != nil {
+		return err
+	}
+	k := strconv.FormatInt(sourceID, 10)
+	if adult == nil {
+		delete(all[k], group)
+		if len(all[k]) == 0 {
+			delete(all, k)
+		}
+	} else {
+		if all[k] == nil {
+			all[k] = map[string]bool{}
+		}
+		all[k][group] = *adult
+	}
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		settingAdultGroups, jsonText(all))
+	return err
 }
 
 // settingXtream: Xtream sources are on (settings "iptv_xtream" = "1").

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Helper is a helper service an addon declares in its manifest
@@ -32,7 +34,14 @@ type Helper struct {
 	// Health is the path asked to tell the service is up ("/" is fine):
 	// any answer below 400 counts, a redirect is not followed.
 	Health string `json:"health"`
+	// Title is the service's name for people («Unlocker»), in both
+	// interface languages (optional, at most MaxHelperTitle characters
+	// each); Health shows Name without one.
+	Title Text `json:"title,omitzero"`
 }
+
+// MaxHelperTitle is the longest Title (per language, in characters).
+const MaxHelperTitle = 60
 
 var (
 	helperNameRe   = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -56,8 +65,17 @@ func (h Helper) Valid() error {
 	case !helperHealthRe.MatchString(h.Health) || strings.HasPrefix(h.Health, "//") || strings.Contains(h.Health, "/../") ||
 		strings.HasSuffix(h.Health, "/..") || strings.Contains(h.Health, "/./"):
 		return errors.New("helper: bad health path")
+	case !helperTitleOK(h.Title.RU) || !helperTitleOK(h.Title.EN):
+		return errors.New("helper: bad title")
 	}
 	return nil
+}
+
+func helperTitleOK(s string) bool {
+	if !utf8.ValidString(s) || utf8.RuneCountInString(s) > MaxHelperTitle {
+		return false
+	}
+	return !strings.ContainsFunc(s, unicode.IsControl)
 }
 
 // ValidHelpers checks a manifest's whole list: each one valid, names

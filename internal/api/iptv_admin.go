@@ -717,6 +717,10 @@ type memberJSON struct {
 	WhyText      string        `json:"whyText"`
 	Present      bool          `json:"present"`
 	New          bool          `json:"new"`
+	// Lang: the entry's language (iptv.EntryLang; "" unknown); GroupAdult:
+	// its group is an adult one (the admin's word, else its title).
+	Lang       string `json:"lang"`
+	GroupAdult bool   `json:"groupAdult"`
 	// Variant: the entry's group of variants of one channel (nil: none,
 	// and no word of the admin on it).
 	Variant *memberVariantJSON `json:"variant,omitempty"`
@@ -778,6 +782,11 @@ func (a *iptvAdmin) sourceChannels(w http.ResponseWriter, r *http.Request) {
 	for _, m := range ms {
 		byID[m.ID] = m
 	}
+	langs, err := a.svc.MemberLangs(ctx, ms)
+	if err != nil {
+		internalErr(w, r, "iptv channels", err)
+		return
+	}
 	first, now := firstImport(ms), time.Now()
 	groups := []groupJSON{}
 	gi := map[string]int{}
@@ -824,6 +833,7 @@ func (a *iptvAdmin) sourceChannels(w http.ResponseWriter, r *http.Request) {
 			Logo: m.Logo, Shown: m.Shown, Number: c.Number, NumberManual: c.NumberManual, Category: c.Category,
 			EPG: memberEPGJSON{XMLID: m.EPGID, EPGURLID: m.EPGURLID, How: m.EPGHow, Manual: m.EPGManual},
 			Why: whyCode(m.Why), WhyText: i18n.Localize(ctx, m.Why), Present: m.Present, New: nw,
+			Lang: langs[m.ID], GroupAdult: src.AdultGroup(m.Group),
 			Variant: variantJSON(m, variants[m.ID], byID)})
 	}
 	a.guideLogos(ctx, src.ID, out)
@@ -1057,30 +1067,69 @@ func (a *iptvAdmin) patchChannels(w http.ResponseWriter, r *http.Request) {
 // group of a source's playlist (a manual decision per entry). With
 // all:true instead of a group: every present entry the source's default
 // decided (a big playlist's channels, hidden so as not to flood the
-// guide); the adult and timeshift presets keep theirs.
+// guide); the adult and timeshift presets keep theirs. With lang:<code>
+// instead of a group: every present entry in that language
+// (iptv.EntryLang, as the source's page shows it). {sourceId, group,
+// adult}: the admin's word on the group being an adult one (the adult
+// preset and category follow it; the word that agrees with the group's
+// title is no word: back to automatic), shown untouched.
 func (a *iptvAdmin) patchGroup(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		SourceID int64  `json:"sourceId"`
 		Group    string `json:"group"`
+		Lang     string `json:"lang"`
 		All      bool   `json:"all"`
 		Shown    bool   `json:"shown"`
+		Adult    *bool  `json:"adult"`
 	}
 	if !decode(w, r, &b) {
 		return
 	}
 	ctx := r.Context()
+	if b.Adult != nil {
+		if _, err := a.svc.Store.Source(ctx, b.SourceID); err != nil {
+			writeErr(w, r, http.StatusNotFound, msgSourceNotFound)
+			return
+		}
+		word := b.Adult
+		if *word == iptv.IsAdultGroup(b.Group) {
+			word = nil
+		}
+		if err := a.svc.Store.SetAdultGroup(ctx, b.SourceID, b.Group, word); err != nil {
+			internalErr(w, r, "iptv groups", err)
+			return
+		}
+		if err := a.svc.Sync(ctx); err != nil {
+			internalErr(w, r, "iptv groups", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"adult": *b.Adult})
+		return
+	}
 	ms, err := a.svc.Store.Members(ctx, b.SourceID)
 	if err != nil {
 		internalErr(w, r, "iptv groups", err)
 		return
 	}
+	var langs map[int64]string
+	if b.Lang != "" {
+		if langs, err = a.svc.MemberLangs(ctx, ms); err != nil {
+			internalErr(w, r, "iptv groups", err)
+			return
+		}
+	}
 	n := 0
 	for _, m := range ms {
-		if b.All {
+		switch {
+		case b.All:
 			if !m.Present || m.Manual != nil || m.Why != iptv.WhySourceDefault {
 				continue
 			}
-		} else if m.Group != b.Group {
+		case b.Lang != "":
+			if !m.Present || langs[m.ID] != b.Lang {
+				continue
+			}
+		case m.Group != b.Group:
 			continue
 		}
 		d := iptv.Decision{}
@@ -1274,7 +1323,7 @@ func (a *iptvAdmin) deleteSet(w http.ResponseWriter, r *http.Request) {
 type deviceJSON struct {
 	UserID     int64      `json:"userId"`
 	Profile    string     `json:"profile"`
-	Kind       string     `json:"kind"`     // app | iptv
+	Kind       string     `json:"kind"`     // app | iptv | web (a browser: read-only, always «Все мои каналы»)
 	DeviceID   string     `json:"deviceId"` // app: its device id; iptv: ""
 	LinkID     string     `json:"linkId"`   // iptv: the link's id; app: ""
 	Name       string     `json:"name"`
@@ -1314,8 +1363,13 @@ func linkID(token string) string {
 	return hex.EncodeToString(h[:8])
 }
 
-// GET /api/tv/devices: the profiles' app devices and IPTV links with
-// their sets.
+// browserWindow: a browser seen within it is listed among the devices.
+const browserWindow = 30 * 24 * time.Hour
+
+// GET /api/tv/devices: every profile's app devices and IPTV links with
+// their sets, then the browsers of every profile seen in the last 30 days
+// (one row per profile, browser and system; read-only: a browser always
+// gets «Все мои каналы»).
 func (a *iptvAdmin) devices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	asg, err := a.svc.Store.Assignments(ctx)
@@ -1378,6 +1432,35 @@ func (a *iptvAdmin) devices(w http.ResponseWriter, r *http.Request) {
 		d.DefaultSetID = asg[d.UserID][""]
 		base := a.ca.iptvBase(r, tok)
 		d.Playlist, d.Guide = base+"/playlist.m3u", base+"/epg.xml"
+		out = append(out, d)
+	}
+	if err := rows.Err(); err != nil {
+		internalErr(w, r, "iptv devices", err)
+		return
+	}
+	rows.Close()
+	since := time.Now().Add(-browserWindow).UTC().Format(time.RFC3339)
+	rows, err = a.svc.Store.DB.QueryContext(ctx, `SELECT s.user_id, u.name, s.device_name, s.device_model, MAX(s.last_seen)
+		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.last_seen>=?
+		GROUP BY s.user_id, s.device_name, s.device_model ORDER BY MAX(s.last_seen) DESC`, auth.KindWeb, since)
+	if err != nil {
+		internalErr(w, r, "iptv devices", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d deviceJSON
+		var browser, system, seenAt string
+		if err := rows.Scan(&d.UserID, &d.Profile, &browser, &system, &seenAt); err != nil {
+			internalErr(w, r, "iptv devices", err)
+			return
+		}
+		d.Kind, d.Client = "web", "web"
+		d.Name = strings.Join(slices.DeleteFunc([]string{browser, system}, func(s string) bool { return s == "" }), " · ")
+		d.ClientName = d.Name
+		if t, err := time.Parse(time.RFC3339, seenAt); err == nil {
+			d.LastSeen = optTime(t)
+		}
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {

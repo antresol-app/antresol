@@ -44,8 +44,12 @@ var (
 	minusHours = regexp.MustCompile(`(?:^|[^\pL\pN])-\d{1,2}\s*(?:h|\x{0447})(?:[^\pL\pN]|$)`)
 	// Words of timeshift copies (whole words, lower case).
 	timeshiftWords = []string{"орбита", "дубль"}
-	// Marks of adult channels (anywhere in the name or group, lower case).
+	// Marks of adult channels' names (anywhere in the name, lower case):
+	// strict, a name is a brand («Adult Swim» is cartoons).
 	adultMarks = []string{"18+", "xxx", "для взрослых", "эротика"}
+	// Stems of adult group-titles (lower case, at a word's start):
+	// «Взрослые», «Adult», «Porn», «Эротика», «NSFW», «18+».
+	adultGroupStems = []string{"взросл", "adult", "porn", "порн", "эрот", "erotic", "nsfw", "xxx", "18+"}
 )
 
 // hasWord: w is in s as a whole word.
@@ -80,15 +84,46 @@ func IsTimeshift(name string) bool {
 	return false
 }
 
-// IsAdult: the name or group carries an adult mark.
+// IsAdult: the name carries an adult mark or the group is an adult one.
 func IsAdult(name, group string) bool {
-	l := strings.ToLower(name + "\n" + group)
+	return adultName(name) || IsAdultGroup(group)
+}
+
+func adultName(name string) bool {
+	l := strings.ToLower(name)
 	for _, m := range adultMarks {
 		if strings.Contains(l, m) {
 			return true
 		}
 	}
 	return false
+}
+
+// IsAdultGroup: a word of group-title g starts with an adult stem.
+func IsAdultGroup(g string) bool {
+	for _, w := range words(g) {
+		for _, s := range adultGroupStems {
+			if strings.HasPrefix(w, s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AdultGroup: group g of the source's playlist is an adult one: the
+// admin's word (AdultGroups), else its title.
+func (src Source) AdultGroup(g string) bool {
+	if v, ok := src.AdultGroups[g]; ok {
+		return v
+	}
+	return IsAdultGroup(g)
+}
+
+// EntryAdult: an entry of the source is an adult channel (its name, or
+// its group by AdultGroup).
+func (src Source) EntryAdult(name, group string) bool {
+	return adultName(name) || src.AdultGroup(group)
 }
 
 // Defaults is a new entry's decision by the source's rules: the adult
@@ -99,7 +134,7 @@ func Defaults(src Source, e Entry, total int) Decision {
 	d := Decision{Group: e.Group, Name: e.Name}
 	hidden, shown := false, true
 	switch {
-	case src.PresetAdult && IsAdult(e.Name, e.Group):
+	case src.PresetAdult && src.EntryAdult(e.Name, e.Group):
 		d.Shown, d.Why = &hidden, WhyAdult
 	case src.PresetTimeshift && IsTimeshift(e.Name):
 		d.Shown, d.Why = &hidden, WhyTimeshift

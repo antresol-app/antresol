@@ -29,6 +29,12 @@ Server" (with a **Copy** button): the server cannot replace its own container. S
 database live in the `antresol-config` volume and are kept. Before updating, read what is new:
 [Releases](releases.html). If a version needs anything from you, it says so there.
 
+An administrator also sees a **Version … Is Out** banner in the corner of the web app (checked at
+most every six hours); **Hide** hides that release on this device, and the next one shows again.
+Apps and scripts can read the same answer at `GET /api/updates` (an administrator's session or an
+[API key](api-and-mcp.html) with Administration): `version`, `latest`, `releaseUrl`, `checked`
+(whether GitHub answered), `newer` and `docker`.
+
 ## Update an extension
 
 Under **Versions and Updates**, click **Update** next to an extension with a newer version. No

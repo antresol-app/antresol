@@ -32,7 +32,7 @@ func TestAddonHelpersHealth(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(out) != 1 || out[0].Addon != "lib" || out[0].Name != "cache-svc" || out[0].Address != "http://cache-svc:8191" || out[0].OK || out[0].Problem != "dns" || out[0].Custom {
+	if len(out) != 1 || out[0].Addon != "lib" || out[0].Name != "cache-svc" || out[0].Title != "Кэш-сервис" || out[0].Address != "http://cache-svc:8191" || out[0].OK || out[0].Problem != "dns" || out[0].Custom {
 		t.Fatalf("%s", w.Body)
 	}
 	if len(asked) != 1 || asked[0] != "http://cache-svc:8191" {

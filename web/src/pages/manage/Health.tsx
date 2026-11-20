@@ -223,18 +223,32 @@ export function Health() {
           {helpers.status === 'error' ? (
             <ListRow label={t('health.helpers')} status={<Tone ok={false}>{helpers.message}</Tone>} />
           ) : (
-            helpers.value.map((h) => {
-              const owner = addons.status === 'ready' ? addons.value.find((a) => a.id === h.addon)?.name : undefined
-              return (
+            <>
+              {helpers.value.filter((h) => !unset(h)).map((h) => {
+                const owner = addons.status === 'ready' ? addons.value.find((a) => a.id === h.addon)?.name : undefined
+                const name = h.title || h.name
+                return (
+                  <ListRow
+                    key={`${h.addon}:${h.name}`}
+                    leading={<SettingsIcon glyph="antenna" tint="cyan" />}
+                    label={owner ? `${name} · ${owner}` : name}
+                    hint={helperHint(t, h)}
+                    status={<Tone ok={h.ok}>{h.ok ? t(h.live ? 'health.helperOkLive' : 'health.helperOk') : helperProblemText(t, h)}</Tone>}
+                  />
+                )
+              })}
+              {helpers.value.some(unset) && (
                 <ListRow
-                  key={`${h.addon}:${h.name}`}
-                  leading={<SettingsIcon glyph="antenna" tint="cyan" />}
-                  label={owner ? `${h.name} · ${owner}` : h.name}
-                  hint={helperHint(t, h)}
-                  status={<Tone ok={h.ok}>{h.ok ? t(h.live ? 'health.helperOkLive' : 'health.helperOk') : helperProblemText(t, h)}</Tone>}
+                  key="unset"
+                  leading={<SettingsIcon glyph="antenna" tint="gray" />}
+                  label={t('health.helpersUnset')}
+                  hint={helpers.value
+                    .filter(unset)
+                    .map((h) => h.title || h.name)
+                    .join(', ')}
                 />
-              )
-            })
+              )}
+            </>
           )}
         </GroupedSection>
       )}
@@ -374,6 +388,9 @@ function CoreRow({ core }: { core: Load<CoreUpdate> }) {
 }
 
 /** Which address of a helper is in use: the compose one is shown, an admin's never (it may carry a secret). */
+/** A helper the addon has no address for (an optional one nobody set up): one quiet line for all of them, not a failure each. */
+const unset = (h: HelperHealth) => h.source === 'none' && !h.address
+
 function helperHint(t: ReturnType<typeof useT>, h: HelperHealth) {
   if (h.source === 'settings') return t('health.helperSettings')
   if (h.custom) return t('health.helperCustom')

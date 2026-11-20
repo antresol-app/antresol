@@ -59,6 +59,7 @@ export default {
   'health.helperCustom': 'Свой адрес (задан переменной окружения)',
   'health.helperSettings': 'Свой адрес (задан в настройках расширения)',
   'health.helperNone': 'Адрес не задан',
+  'health.helpersUnset': 'Не настроены',
   'health.helperOkLive': 'Отвечает: последний запрос расширения прошёл',
   'health.helperDns': 'Не найдена: в сети сервера нет «{name}». Добавьте службу в compose.yml рядом с Antresol или задайте свой адрес.',
   'health.helperRefused': 'Не отвечает: по этому адресу ничего не слушает. Служба остановлена или порт другой.',

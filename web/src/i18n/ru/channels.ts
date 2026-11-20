@@ -12,6 +12,7 @@ export default {
   "tv.categories": "Категории",
   "tv.allChannels": "Все каналы",
   "tv.categoryGroup.ai": "Темы",
+  "tv.categoryGroup.lang": "Языки",
   "tv.categoryGroup.source": "Источники",
   "tv.categoryGroup.group": "Группы",
   "tv.categoryKind.ai": { one: "Тема · {count} канал", few: "Тема · {count} канала", many: "Тема · {count} каналов" },

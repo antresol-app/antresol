@@ -1,0 +1,14 @@
+/* Floats over the page's bottom corner, where a toast would rise (above
+   the tab bar and the player bar when they are there), on an opaque ground:
+   the notice's tint alone would let the page show through. Out of the
+   page's top, where the titles are. */
+.banner {
+  position: fixed;
+  z-index: var(--z-sticky);
+  right: var(--gutter);
+  bottom: var(--toast-bottom);
+  width: min(420px, calc(100vw - 2 * var(--gutter)));
+  border-radius: var(--r-control);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+}

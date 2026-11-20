@@ -1,6 +1,7 @@
 package iptv
 
 import (
+	"context"
 	"strings"
 	"unicode"
 )
@@ -92,7 +93,61 @@ func marked(text string, names bool) string {
 }
 
 func groupLang(group string) string { return marked(group, true) }
-func nameLang(name string) string   { return marked(name, false) }
+
+// nameLang: a mark of the name (marked), else its last word when that is
+// a country code in capitals after the quality marks («#dabeiTV HD DE»,
+// «&Pictures HD IN»): a provider's suffix, not a word of the name.
+func nameLang(name string) string {
+	if l := marked(name, false); l != "" {
+		return l
+	}
+	return suffixLang(name)
+}
+
+// suffixQuality: words after a name that say its quality, not its
+// language («HD» itself is none).
+var suffixQuality = map[string]bool{
+	"hd": true, "fhd": true, "uhd": true, "sd": true, "hq": true, "4k": true, "8k": true, "hevc": true, "h264": true, "h265": true,
+	"orig": true, "original": true, "50fps": true, "60fps": true, "fps": true, "50": true, "60": true, "+": true, "backup": true, "alt": true,
+}
+
+func suffixLang(name string) string {
+	ws := strings.FieldsFunc(name, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune("|/\\()[]{}-_.,:;•·", r)
+	})
+	for len(ws) > 1 && suffixQuality[strings.ToLower(ws[len(ws)-1])] {
+		ws = ws[:len(ws)-1]
+	}
+	if len(ws) < 2 {
+		return "" // a name of one word is a name («CNN», «ARD»)
+	}
+	w := []rune(ws[len(ws)-1])
+	if len(w) < 2 || len(w) > 3 {
+		return ""
+	}
+	for _, r := range w {
+		if !unicode.IsUpper(r) {
+			return ""
+		}
+	}
+	return langMarks[strings.ToLower(string(w))]
+}
+
+// langNames: the languages' names as categories of channels (Russian,
+// plural: «Немецкие» channels; the i18n catalog translates them).
+var langNames = map[string]string{
+	"ru": "Русские", "uk": "Украинские", "be": "Белорусские", "en": "Английские", "de": "Немецкие", "fr": "Французские",
+	"es": "Испанские", "it": "Итальянские", "pl": "Польские", "tr": "Турецкие", "ar": "Арабские", "hy": "Армянские",
+	"ka": "Грузинские", "az": "Азербайджанские", "uz": "Узбекские", "he": "Израильские", "pt": "Португальские",
+	"hi": "Индийские", "zh": "Китайские", "ro": "Румынские", "nl": "Нидерландские", "el": "Греческие",
+	"bg": "Болгарские", "sr": "Сербские", "lt": "Литовские", "lv": "Латвийские", "et": "Эстонские",
+	"kk": "Казахские", "ja": "Японские", "ko": "Корейские",
+}
+
+// LangName: a language's name as a category of channels («Немецкие (DE)»;
+// an unknown code: the code alone), Russian for i18n.Localize — the name
+// and the code are localized apart, so the caller joins them.
+func LangName(code string) string { return langNames[code] }
 
 // tvgLang: a tvg-id's country suffix («name.ua»).
 func tvgLang(id string) string {
@@ -132,4 +187,18 @@ func EntryLang(name, group, tvgID, ai string) string {
 		}
 	}
 	return ai
+}
+
+// MemberLangs: each entry's language by EntryLang (with the AI helper's
+// word), by member id; "" unknown.
+func (s *Service) MemberLangs(ctx context.Context, ms []Member) (map[int64]string, error) {
+	ai, err := s.aiInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(ms))
+	for _, m := range ms {
+		out[m.ID] = EntryLang(m.Name, m.Group, m.TvgID, ai[aiKey(m.Name)].Lang)
+	}
+	return out, nil
 }

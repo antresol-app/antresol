@@ -29,6 +29,21 @@ describe('the adult category', () => {
   })
 })
 
+describe('the library and the languages', () => {
+  it('«Из медиатеки» joins the lists, the languages have a section of their own', () => {
+    const t = ((k: string) => k) as never
+    const more: ChannelCategory[] = [
+      { id: 'own:auto', name: 'Из медиатеки', kind: 'own', count: 3 },
+      ...cats,
+      { id: 'lang:de', name: 'Немецкие (DE)', kind: 'lang', count: 2 },
+    ]
+    const secs = categorySections(more, 5, 1, t)
+    expect(secs.map((s) => s.title)).toEqual([undefined, 'tv.categoryGroup.ai', 'tv.categoryGroup.lang', 'tv.categoryGroup.source', undefined])
+    expect(secs[0]!.rows.map((r) => r.key)).toEqual(['fav', 'all', 'k:own:auto'])
+    expect(secs[2]!.rows.map((r) => r.key)).toEqual(['k:lang:de'])
+  })
+})
+
 function Where() {
   const l = useLocation()
   return <output data-testid="where">{l.search}</output>

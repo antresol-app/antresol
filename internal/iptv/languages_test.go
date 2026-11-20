@@ -22,6 +22,16 @@ func TestEntryLang(t *testing.T) {
 		{"Перший національний", "", "", "", "uk"}, // Ukrainian letters
 		{"Something", "", "", "fr", "fr"},         // the AI's word, last
 		{"Первый канал", "RU | Общие", "", "en", "ru"},
+		// a provider's country code after the name, past the quality marks
+		{"#dabeiTV HD DE", "", "", "", "de"},
+		{"&Pictures HD IN", "", "", "", "hi"},
+		{"Sport Klub FHD orig PL", "", "", "", "pl"},
+		{"Kino UK HD", "", "", "", "en"},
+		{"Sky News HD", "", "", "", ""},  // HD is no language
+		{"CNN", "", "", "", ""},          // one word: a name
+		{"Discovery ID", "", "", "", ""}, // not a code
+		{"Canal De", "", "", "", ""},     // not in capitals
+		{"Disney XD", "", "", "", ""},
 	} {
 		if got := EntryLang(c.name, c.group, c.tvg, c.ai); got != c.want {
 			t.Errorf("EntryLang(%q, %q, %q, %q) = %q, want %q", c.name, c.group, c.tvg, c.ai, got, c.want)

@@ -17,6 +17,10 @@
 // channels of the chosen one with what is on, and the details of the channel
 // in focus. The keyboard (a remote) moves through it: ↑/↓ in a column, →
 // from the categories into the channels, ← back, Enter opens the channel.
+//
+// The device keeps where «ТВ» was left (state/tvPlace: the category, the
+// view, the channel in the details, the scroll): /tv without ?f and ?view
+// comes back to it, scrolled once the list has loaded.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { useNavigate, useNavigationType, useSearchParams } from 'react-router'
 import { APP_NAME } from '../../brand'
@@ -24,6 +28,7 @@ import { channelsOpened } from '../../api/iptv'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
 import { useSession } from '../../state/session'
+import { loadTvPlace, saveTvPlace } from '../../state/tvPlace'
 import { useIsCompact, useMediaQuery } from '../../state/useMediaQuery'
 import { Button, ButtonLink } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
@@ -65,6 +70,23 @@ export function Tv() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { state, data, load, toggleFavorite, favError, clearFavError } = useChannelList()
+  // where this device left «ТВ»: taken back only when the address says nothing
+  const [restore] = useState(() => (params.has('f') || params.has('view') ? null : loadTvPlace()))
+  // once (setParams changes with every address: a later run would undo the viewer's choice)
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current || !restore || (!restore.f && !restore.view)) return
+    restored.current = true
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p)
+        if (restore.f) n.set('f', restore.f)
+        if (restore.view === 'guide') n.set('view', 'guide')
+        return n
+      },
+      { replace: true },
+    )
+  }, [restore, setParams])
   useEffect(() => {
     document.title = `${t('tv.title')} — ${APP_NAME}`
   }, [t])
@@ -102,7 +124,37 @@ export function Tv() {
       { replace: true },
     )
   const lastId = data?.lastChannel ?? null
-  const [previewId, setPreviewId] = useState<number | null>(null)
+  const [previewId, setPreviewId] = useState<number | null>(() => restore?.previewId ?? null)
+  useEffect(() => {
+    saveTvPlace({ f: fParam ?? undefined, view: view === 'guide' ? 'guide' : undefined, previewId: previewId ?? undefined })
+  }, [fParam, view, previewId])
+  // the scroll: kept as the page scrolls, taken back once after the list loads
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current || !data) return
+    scrolled.current = true
+    const y = restore?.scrollY
+    if (y) window.requestAnimationFrame(() => window.scrollTo(0, y))
+  }, [data, restore])
+  useEffect(() => {
+    let tm = 0
+    let pending: number | null = null
+    const flush = () => {
+      if (pending !== null) saveTvPlace({ scrollY: pending })
+      pending = null
+    }
+    const onScroll = () => {
+      pending = window.scrollY
+      window.clearTimeout(tm)
+      tm = window.setTimeout(flush, 200)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.clearTimeout(tm)
+      flush()
+    }
+  }, [])
   const preview = shown.find((c) => c.id === previewId) ?? shown.find((c) => c.id === lastId) ?? shown[0]
   const favorites = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, Boolean(c.favorite)])), [channels])
   const logos = useMemo(() => Object.fromEntries(channels.map((c) => [c.id, c.logoUrl])), [channels])

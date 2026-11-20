@@ -40,6 +40,7 @@ const DEVICES = [
   { userId: 1, profile: 'Анна', kind: 'app', deviceId: 'dev-1', linkId: '', name: 'Гостиная', client: 'tvos', clientName: 'Apple TV', lastSeen: new Date().toISOString(), setId: 0, defaultSetId: 0 },
 ]
 DEVICES.push({ userId: 1, profile: 'Анна', kind: 'iptv', deviceId: '', linkId: 'ab12', name: 'Кухня', client: 'iptv', clientName: 'IPTV', lastSeen: null as unknown as string, setId: 0, defaultSetId: 0 })
+DEVICES.push({ userId: 2, profile: 'Борис', kind: 'web', deviceId: '', linkId: '', name: 'Safari · macOS', client: 'web', clientName: 'Safari · macOS', lastSeen: new Date().toISOString(), setId: 0, defaultSetId: 0 })
 const SETS = [{ id: 2, name: 'Подписка А', sources: [1], hiddenGroups: [], hiddenChannels: [] }]
 
 type Call = { method: string; url: string; body?: unknown }
@@ -116,6 +117,26 @@ describe('a source’s page', () => {
     expect(screen.getByText('Показано 0 из 1 000')).toBeInTheDocument()
   })
 
+  it('marks a group as an adult one', async () => {
+    at('/tv/manage/sources/1')
+    await screen.findByRole('table')
+    fireEvent.click(screen.getByRole('radio', { name: /^Спорт/ }))
+    const sw = screen.getByRole('switch', { name: 'Группа для взрослых' })
+    expect(sw).not.toBeChecked()
+    fireEvent.click(sw)
+    await waitFor(() => expect(writes()).toEqual([{ method: 'PATCH', url: '/api/tv/groups', body: { sourceId: 1, group: 'Спорт', adult: true } }]))
+  })
+
+  it('shows or hides every channel of one language with one call', async () => {
+    channels = CHANNELS.map((c, i) => ({ ...c, lang: i % 2 ? 'de' : 'ru', groupAdult: false }))
+    at('/tv/manage/sources/1')
+    await screen.findByRole('table')
+    fireEvent.click(screen.getByRole('radio', { name: /\(DE\)/ }))
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '1501')
+    fireEvent.click(screen.getByRole('button', { name: 'Скрыть все' }))
+    await waitFor(() => expect(writes()).toEqual([{ method: 'PATCH', url: '/api/tv/groups', body: { sourceId: 1, lang: 'de', shown: false } }]))
+  })
+
   it('confirms the shorter list', async () => {
     at('/tv/manage/sources/1')
     await screen.findByText('Пропало 412 каналов из 1 300 — подтвердить?')
@@ -181,6 +202,16 @@ describe('the sources page', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /^Набор: Все мои каналы/ })[0]!)
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Подписка А' }))
     await waitFor(() => expect(writes()).toContainEqual({ method: 'PUT', url: '/api/tv/devices/assign', body: { userId: 1, deviceId: 'dev-1', setId: 2 } }))
+  })
+
+  it('lists a profile’s browser read-only', async () => {
+    at('/tv/manage/sources')
+    await screen.findByText('Гостиная')
+    const row = screen.getByText('Safari · macOS').closest('li')!
+    expect(within(row).getByText('Браузер')).toBeInTheDocument()
+    expect(within(row).getByText(/Борис · всегда «Все мои каналы»/)).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /^Набор:/ })).toBeNull()
+    expect(screen.getByText(/Здесь устройства всех профилей/)).toBeInTheDocument()
   })
 
   it('deletes an IPTV link after asking', async () => {

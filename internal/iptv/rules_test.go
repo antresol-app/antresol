@@ -102,6 +102,71 @@ func TestApplyManual(t *testing.T) {
 	}
 }
 
+// Adult groups by whole-word stems («Взрослые» is one); a name stays
+// strict («Adult Swim» is a cartoon channel); the admin's word on a group
+// wins either way, and is kept with the source.
+func TestAdultGroups(t *testing.T) {
+	for _, g := range []string{"Взрослые", "ВЗРОСЛЫЕ HD", "RU | Взрослое", "Adult", "Adults only", "Porn", "PORNO", "Порно", "Эротические", "Erotic", "NSFW", "XXX", "18+"} {
+		if !IsAdultGroup(g) {
+			t.Errorf("group %q is not adult", g)
+		}
+	}
+	for _, g := range []string{"Кино", "Детские", "Sport", "Новости 18", "Superporno", "Неэротичное"} {
+		if IsAdultGroup(g) {
+			t.Errorf("group %q is adult", g)
+		}
+	}
+	if IsAdult("Adult Swim", "Мультфильмы") || IsAdult("Porn Hub Fake", "") {
+		t.Error("a name with a group-only stem is adult")
+	}
+	src := Source{PresetAdult: true, AdultGroups: map[string]bool{"Премиум": true, "Взрослые": false}}
+	if d := Defaults(src, Entry{Name: "Ночь", Group: "Премиум"}, 10); d.Why != WhyAdult || shownOf(d) != "hidden" {
+		t.Errorf("marked group: %s %q", shownOf(d), d.Why)
+	}
+	if d := Defaults(src, Entry{Name: "Ночь", Group: "Взрослые"}, 10); d.Why != WhySourceDefault {
+		t.Errorf("unmarked group: %q", d.Why)
+	}
+	if d := Defaults(Source{PresetAdult: true}, Entry{Name: "Ночь", Group: "Взрослые"}, 10); d.Why != WhyAdult {
+		t.Errorf("взрослые: %q", d.Why)
+	}
+	if !src.EntryAdult("Ночь", "Премиум") || src.EntryAdult("Ночь", "Взрослые") || !src.EntryAdult("Demo XXX", "Взрослые") {
+		t.Error("EntryAdult")
+	}
+
+	ctx := context.Background()
+	s := newTestStore(t)
+	saved, err := s.SaveSource(ctx, Source{Name: "Synthetic", Kind: KindM3U})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes, no := true, false
+	if err := s.SetAdultGroup(ctx, saved.ID, "Премиум", &yes); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAdultGroup(ctx, saved.ID, "Взрослые", &no); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAdultGroup(ctx, saved.ID, "Взрослые", nil); err != nil { // back to automatic
+		t.Fatal(err)
+	}
+	got, err := s.Source(ctx, saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.AdultGroups) != 1 || !got.AdultGroups["Премиум"] {
+		t.Fatalf("stored overrides %v", got.AdultGroups)
+	}
+	if _, err := s.SaveSource(ctx, got); err != nil { // a save keeps them
+		t.Fatal(err)
+	}
+	if got, _ = s.Source(ctx, saved.ID); !got.AdultGroups["Премиум"] {
+		t.Fatalf("lost on save: %v", got.AdultGroups)
+	}
+	if err := s.DeleteSource(ctx, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDedupeKey(t *testing.T) {
 	if DedupeKey("Demo One HD") != "ext:demo one" || DedupeKey("Demo One") != DedupeKey("demo one FHD") {
 		t.Fatal(DedupeKey("Demo One HD"))

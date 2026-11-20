@@ -949,7 +949,10 @@ export interface TasksView {
 /** GET /api/addons/helpers: an enabled addon's helper service, as the addon itself uses it (helpers.status) or asked by the server. */
 export interface HelperHealth {
   addon: string
+  /** The manifest's compose name («my-helper»). */
   name: string
+  /** The manifest's name of it for people, in the interface language (absent: none, `name` is shown). */
+  title?: string
   /** Its compose address; '' when `custom` (the admin's own is never shown). */
   address: string
   /** An address of the admin's is in use (a variable, or the addon's own settings). */

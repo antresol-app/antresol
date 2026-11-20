@@ -180,7 +180,7 @@ it is not installed), and the app shows it as locked.
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
 | `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, `channels.fetch`, `helpers.status`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
-| `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health" }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
+| `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health", "title"? }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
 | `author`, `homepage` | free text, shown before install |
 
 Unknown fields, and anything after the JSON object, are refused. A platform asset name is a bare file name (no
@@ -207,6 +207,7 @@ project's internal network. The manifest declares it:
 | `image` | the container image, best with a pinned tag; no spaces |
 | `port` | the port it listens on inside the network, 1-65535 |
 | `health` | the path asked to tell it is up (`/` is fine): `/` then letters, digits and `._~/-`, no `..`, no query; any answer below 400 counts, a redirect is not followed |
+| `title` | optional `{ "ru", "en" }`: the service's name for people on «Здоровье» (`Unlocker`), at most 60 characters each, no control characters; without it the page shows `name`. A server older than this key refuses a manifest that has it |
 
 Unknown keys are refused, as anywhere in the manifest. The field is an
 addition to contract 1: an addon without it works as before, and a server

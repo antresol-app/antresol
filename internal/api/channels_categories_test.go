@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestCategoriesDedupeCapAdult(t *testing.T) {
 		ext("G", nil, "Премиум"),
 		ext("H", nil, "премиум"),
 	}
-	if got := fmt.Sprint(lists[1], lists[2], lists[3], lists[5], lists[6], lists[8]); got != "[ai:movies] [ai:movies] [ai:movies] [ai:adult] [ai:adult] [group:Премиум]" {
+	if got := fmt.Sprint(lists[1], lists[2], lists[3], lists[5], lists[6], lists[8]); got != "[ai:movies] [ai:movies] [own:auto ai:movies] [ai:adult] [ai:adult] [group:Премиум]" {
 		t.Fatalf("tags %s", got)
 	}
 	for i := 0; i < 20; i++ { // twenty more groups of one channel each
@@ -98,10 +99,14 @@ func TestCategoriesDedupeCapAdult(t *testing.T) {
 	tags := 0
 	for _, c := range cats {
 		names = append(names, fmt.Sprintf("%s/%d", c.ID, c.Count))
-		if !c.Exclusive {
+		if isTag(c.ID) {
 			tags++
 		}
 	}
+	if cats[0].ID != "own:auto" || cats[0].Kind != "own" || cats[0].Name != "Из медиатеки" {
+		t.Fatalf("own first: %v", names)
+	}
+	cats = cats[1:]
 	if tags != MaxTags || cats[0].ID != "ai:movies" || cats[0].Count != 5 || cats[1].ID != "ai:news" || cats[1].Count != 2 ||
 		cats[2].ID != "group:Премиум" || cats[2].Count != 2 {
 		t.Fatalf("categories %v", names)
@@ -112,5 +117,59 @@ func TestCategoriesDedupeCapAdult(t *testing.T) {
 	// a channel loses the tags that did not make it
 	if l := lists[len(lists)-1]; len(l) != 0 {
 		t.Fatalf("a dropped tag stays on its channel: %v", l)
+	}
+}
+
+// Adult groups («Взрослые») put a channel in the adult category only, the
+// admin's «not adult» on a group wins the AI; a channel's language is a
+// category apart from the tags (no cap), shown when there are two or more;
+// the library's generated channels are «Из медиатеки» (no tag of their
+// group for a franchise).
+func TestCategoriesAdultGroupsLangsOwn(t *testing.T) {
+	a := &channelsAPI{}
+	r := httptest.NewRequest("GET", "/api/channels", nil)
+	ext := func(x iptv.ExtChannel) []string { return extCats(x, 1) }
+	lists := [][]string{
+		ext(iptv.ExtChannel{Channel: channels.Channel{Name: "Ночной"}, Groups: []string{"Взрослые"}, Lang: "ru"}),
+		ext(iptv.ExtChannel{Channel: channels.Channel{Name: "Премиум"}, Adult: true, Groups: []string{"Кино"}}),
+		ext(iptv.ExtChannel{Channel: channels.Channel{Name: "Вечер"}, NotAdult: true, AI: iptv.AIInfo{Cats: []string{"adult"}}, Groups: []string{"Взрослые"}, Lang: "ru"}),
+		ext(iptv.ExtChannel{Channel: channels.Channel{Name: "Adult Swim"}, Groups: []string{"Мультфильмы"}, Lang: "en"}),
+		ext(iptv.ExtChannel{Channel: channels.Channel{Name: "#dabeiTV HD DE"}, Groups: []string{"Кино"}, Lang: "de"}),
+		ownCats(channels.Channel{AutoKey: "franchise:bond", Category: "Франшизы"}, "Франшизы"),
+		ownCats(channels.Channel{Name: "Своё", Category: "Кино"}, "Кино"),
+	}
+	if got := fmt.Sprint(lists[0], lists[1], lists[5], lists[6]); got != "[ai:adult] [ai:adult] [own:auto] [ai:movies]" {
+		t.Fatalf("adult/own %s", got)
+	}
+	if fmt.Sprint(lists[2]) == "[ai:adult]" || fmt.Sprint(lists[3]) == "[ai:adult]" {
+		t.Fatalf("not adult: %v %v", lists[2], lists[3])
+	}
+	for i := 0; i < 20; i++ { // the tags fill their cap
+		lists = append(lists, ext(iptv.ExtChannel{Channel: channels.Channel{Name: "x"}, Groups: []string{fmt.Sprintf("Группа %d", i)}, Lang: "de"}))
+	}
+	cats := a.categoriesOf(r, lists, nil, nil)
+	byID := map[string]categoryJSON{}
+	for _, c := range cats {
+		byID[c.ID] = c
+	}
+	if c := byID["lang:de"]; c.Kind != "lang" || c.Name != "Немецкие (DE)" || c.Count != 21 {
+		t.Fatalf("lang:de %+v", c)
+	}
+	if c := byID["lang:en"]; c.Name != "Английские (EN)" {
+		t.Fatalf("lang:en %+v", c)
+	}
+	if c := byID["own:auto"]; c.Kind != "own" || c.Count != 1 {
+		t.Fatalf("own %+v", c)
+	}
+	if last := cats[len(cats)-1]; last.ID != "ai:adult" || last.Count != 2 {
+		t.Fatalf("adult last: %+v", last)
+	}
+	if !slices.Contains(lists[len(lists)-1], "lang:de") {
+		t.Fatalf("a language dropped by the cap: %v", lists[len(lists)-1])
+	}
+	// one language only: no language category
+	one := [][]string{ext(iptv.ExtChannel{Channel: channels.Channel{Name: "A"}, Lang: "ru"}), ext(iptv.ExtChannel{Channel: channels.Channel{Name: "B"}, Lang: "ru"})}
+	if cats := a.categoriesOf(r, one, nil, nil); len(cats) != 0 || len(one[0]) != 0 {
+		t.Fatalf("lone language %+v %v", cats, one)
 	}
 }

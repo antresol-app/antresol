@@ -143,13 +143,15 @@ export interface Channel {
  * request's language), `source:<id>` (an external source, when there are two or
  * more), `group:<name>` (a group of none of the topics). The server keeps the
  * most common topics and groups only, one spelling each («Кино», «Фильмы» and
- * «Movies» are one). `ai:adult` is exclusive: its channels are in no other
- * category, nor in «Все» and «Избранное»; it comes last.
+ * «Movies» are one). `own:auto` (first): the channels generated from the
+ * library; `lang:<code>`: an external channel's language (when there are two
+ * or more). `ai:adult` is exclusive: its channels are in no other category,
+ * nor in «Все» and «Избранное»; it comes last.
  */
 export interface ChannelCategory {
   id: string;
   name: string;
-  kind: "ai" | "source" | "group";
+  kind: "ai" | "source" | "group" | "own" | "lang";
   count: number;
   /** Its channels are in no other list (the adult category). */
   exclusive?: boolean;

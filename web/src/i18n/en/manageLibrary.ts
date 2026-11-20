@@ -59,6 +59,7 @@ export default {
   'health.helperCustom': 'Own address (set by an environment variable)',
   'health.helperSettings': 'Own address (set in the addon\'s settings)',
   'health.helperNone': 'No address set',
+  'health.helpersUnset': 'Not Set Up',
   'health.helperOkLive': 'Responding: the addon\'s last request went through',
   'health.helperDns': 'Not found: there is no “{name}” on the server\'s network. Add the service to compose.yml next to Antresol or set its own address.',
   'health.helperRefused': 'Not responding: nothing listens at this address. The service is stopped or uses another port.',

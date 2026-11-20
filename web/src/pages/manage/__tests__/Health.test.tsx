@@ -27,6 +27,9 @@ const helpers = [
   { addon: 'online', name: 'cache', address: 'http://cache:80', ok: true },
   { addon: 'trailers', name: 'solver', address: '', custom: true, source: 'settings', ok: true, live: true },
   { addon: 'trailers', name: 'gate', address: '', custom: true, source: 'override', ok: false, problem: 'auth' },
+  { addon: 'online', name: 'unlocker', title: 'Unlocker', address: 'http://unlocker:8191', ok: false, problem: 'refused' },
+  { addon: 'online', name: 'proxy', title: 'Прокси', address: '', source: 'none', ok: false, problem: 'unset' },
+  { addon: 'trailers', name: 'warp', address: '', source: 'none', ok: false, problem: 'unset' },
 ]
 const network = [
   { id: 'github', name: 'GitHub', ok: true, ms: 120 },
@@ -130,5 +133,11 @@ describe('«Обновления»: addons', () => {
     expect(screen.getByText('Отвечает: последний запрос расширения прошёл')).toBeInTheDocument()
     expect(screen.getByText(/^Не пускает: логин или пароль не подходят/)).toBeInTheDocument()
     expect(await screen.findByText('Веб-часть не загрузилась: timeout')).toBeInTheDocument()
+    // the manifest's title for people; the ones nobody set up: one quiet line
+    expect(screen.getByText('Unlocker · Онлайн')).toBeInTheDocument()
+    expect(screen.queryByText('unlocker · Онлайн')).toBeNull()
+    expect(screen.queryByText(/^Прокси · /)).toBeNull()
+    expect(screen.getByText('Не настроены')).toBeInTheDocument()
+    expect(screen.getByText('Прокси, warp')).toBeInTheDocument()
   })
 })

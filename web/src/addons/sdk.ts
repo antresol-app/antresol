@@ -207,10 +207,11 @@ export function addonApi(id: string) {
   return {
     get: <T>(p: string, signal?: AbortSignal) => call<T>('GET', p, undefined, signal),
     // the proxy takes JSON only (the CSRF rule): no body is an empty object
-    post: <T>(p: string, body?: unknown) => call<T>('POST', p, body ?? {}),
-    put: <T>(p: string, body?: unknown) => call<T>('PUT', p, body ?? {}),
-    patch: <T>(p: string, body?: unknown) => call<T>('PATCH', p, body ?? {}),
-    del: <T>(p: string) => call<T>('DELETE', p, {}),
+    // an abort stops the request (the AbortError); the server sees its context end
+    post: <T>(p: string, body?: unknown, signal?: AbortSignal) => call<T>('POST', p, body ?? {}, signal),
+    put: <T>(p: string, body?: unknown, signal?: AbortSignal) => call<T>('PUT', p, body ?? {}, signal),
+    patch: <T>(p: string, body?: unknown, signal?: AbortSignal) => call<T>('PATCH', p, body ?? {}, signal),
+    del: <T>(p: string, signal?: AbortSignal) => call<T>('DELETE', p, {}, signal),
     /**
      * A GET whose answer is NDJSON: each non-empty line, JSON-parsed, goes
      * to `onLine` as it arrives, in order. Resolves at the end of the body;

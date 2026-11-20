@@ -70,7 +70,7 @@ func meaningful(g string) []string {
 // GroupCodes: the CategoryList codes group-title g means (none: a topic of
 // its own), the adult code for an adult group (alone: it is exclusive).
 func GroupCodes(g string) []string {
-	if IsAdult("", g) {
+	if IsAdultGroup(g) {
 		return []string{AdultCode}
 	}
 	ws := meaningful(g)

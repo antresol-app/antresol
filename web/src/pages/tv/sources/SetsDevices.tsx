@@ -23,7 +23,7 @@ import { TextField } from '../../../ui/TextField'
 import { SetSheet } from './SetSheet'
 import styles from './Sources.module.css'
 
-const GLYPH: Record<Device['client'], IconName> = { tvos: 'tv', androidtv: 'tv', macos: 'tv', ios: 'play', ipados: 'play', android: 'play', iptv: 'broadcast', other: 'play' }
+const GLYPH: Record<Device['client'], IconName> = { tvos: 'tv', androidtv: 'tv', macos: 'tv', ios: 'play', ipados: 'play', android: 'play', iptv: 'broadcast', web: 'laptop', other: 'play' }
 
 const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => undefined)
 
@@ -31,7 +31,8 @@ export function SetsPanel({ sets, sources, devices, onSets, onToast }: { sets: C
   const t = useT()
   const [editing, setEditing] = useState<ChannelSet | 'new' | null>(null)
   const [removing, setRemoving] = useState<ChannelSet | null>(null)
-  const used = (id: number) => devices.filter((d) => d.setId === id).length
+  // browsers always get «Все мои каналы» and pick no set: not counted
+  const used = (id: number) => devices.filter((d) => d.kind !== 'web' && d.setId === id).length
   const usedLine = (id: number) => (used(id) ? t('iptv.setDevices', { count: used(id) }) : t('iptv.setNoDevices'))
   const names = (ids: number[]) => [t('iptv.ownChannels'), ...ids.map((id) => sources.find((x) => x.id === id)?.name ?? '')].filter(Boolean).join(' · ')
   return (
@@ -154,7 +155,7 @@ export function DevicesPanel({
         {devices.length === 0 && <ListRow label={t('iptv.devicesEmpty')} hint={t('iptv.devicesEmptyHint')} />}
         {devices.map((d) => (
           <ListRow
-            key={d.kind === 'iptv' ? `l${d.linkId}` : `${d.userId}:${d.deviceId}`}
+            key={d.kind === 'iptv' ? `l${d.linkId}` : d.kind === 'web' ? `w${d.userId}:${d.name}` : `${d.userId}:${d.deviceId}`}
             stack
             shrink
             leading={
@@ -165,17 +166,17 @@ export function DevicesPanel({
             label={
               <span className={styles.nameLine}>
                 <span>{d.name || clientName(d)}</span>
-                <Badge>{d.kind === 'iptv' ? t('iptv.kindIptv') : t('iptv.kindApp')}</Badge>
+                <Badge>{d.kind === 'iptv' ? t('iptv.kindIptv') : d.kind === 'web' ? t('iptv.kindWeb') : t('iptv.kindApp')}</Badge>
               </span>
             }
             hint={
               <>
-                {`${d.profile} · ${clientName(d)} · `}
+                {d.kind === 'web' ? `${d.profile} · ${t('iptv.webAlwaysAll')} · ` : `${d.profile} · ${clientName(d)} · `}
                 <span className={styles.nowrap}>{d.lastSeen ? t('iptv.deviceSeen', { ago: ago(d.lastSeen) }) : t('iptv.deviceNeverSeen')}</span>
               </>
             }
           >
-            <Select label={t('iptv.deviceSet')} showLabel={compact} placement="bottom-end" value={String(d.setId)} options={options} onChange={(v) => assign(d, Number(v))} />
+            {d.kind !== 'web' && <Select label={t('iptv.deviceSet')} showLabel={compact} placement="bottom-end" value={String(d.setId)} options={options} onChange={(v) => assign(d, Number(v))} />}
             {d.kind === 'iptv' && (
               <Menu label={t('iptv.linkMore', { name: d.name })} placement="bottom-end" trigger={(p) => <IconButton {...p} size="sm" icon="ellipsis" label={t('iptv.linkMore', { name: d.name })} />}>
                 {(close) => (

@@ -4,6 +4,10 @@ import type ru from '../ru/app'
 export default {
   'app.api.bookFileMissing': 'The book file isn’t on the server.',
   'app.skipToContent': 'Skip to content',
+  'update.banner.title': 'Version {version} Is Out',
+  'update.banner.message': 'How to update the server is in {page}.',
+  'update.banner.details': 'Details',
+  'update.banner.hide': 'Hide',
   'app.failedTryAgain': 'Something went wrong. Try again.',
   'app.offline.hint': 'Make sure the Antresol server is on and you’re on the same network.',
   'app.notFound.title': 'Page Not Found',

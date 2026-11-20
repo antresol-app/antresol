@@ -105,6 +105,12 @@ type ExtChannel struct {
 	Groups    []string
 	SourceIDs []int64
 	AI        AIInfo
+	// Adult: an entry's name or group says it is an adult channel (the
+	// source's AdultGroup); NotAdult: the admin said an entry's group is
+	// not an adult one (it wins the AI helper and the row's category).
+	Adult, NotAdult bool
+	// Lang: its language (EntryLang of its first entry that says one).
+	Lang string
 }
 
 // Limited: the viewer sees no external channels (an age limit, or screen
@@ -232,6 +238,14 @@ func (s *Service) Visible(ctx context.Context, v channels.Viewer, setID int64) (
 		}
 		if g != "" && !slices.Contains(x.Groups, g) {
 			x.Groups = append(x.Groups, g)
+		}
+		if src.EntryAdult(m.Name, m.Group) || (m.Manual != nil && m.Manual.Group != "" && IsAdultGroup(m.Manual.Group)) {
+			x.Adult = true
+		} else if _, ok := src.AdultGroups[m.Group]; ok {
+			x.NotAdult = true // the admin said its group is not an adult one
+		}
+		if x.Lang == "" {
+			x.Lang = EntryLang(m.Name, m.Group, m.TvgID, x.AI.Lang)
 		}
 		if !slices.Contains(x.SourceIDs, src.ID) {
 			x.SourceIDs = append(x.SourceIDs, src.ID)

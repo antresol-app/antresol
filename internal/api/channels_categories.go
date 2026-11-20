@@ -28,12 +28,18 @@ import (
 //	source:<id>  the external source it comes from (only when there are two or more)
 //	group:<name> a group of none of the topics (iptv.CleanGroup's spelling),
 //	             only for a channel without a topic
+//	own:auto     the channels generated from the library («Из медиатеки»),
+//	             alongside their topic; the first
+//	lang:<code>  an external channel's language (iptv.EntryLang: its
+//	             playlist's mark or name suffix, the AI's word), only when
+//	             the list has two or more
 //
 // Topics and groups are one set of tags: the MaxTags most common are the
 // categories, the rest are dropped from the channels (they stay in «Все»).
-// The order: the tags by count (then name, as a person reads it: «Группа 2»
-// before «Группа 10», i18n.Collator), the sources by their position, then
-// «Для взрослых».
+// The library's and the languages' categories are not tags (no cap).
+// The order: «Из медиатеки», the tags by count (then name, as a person
+// reads it: «Группа 2» before «Группа 10», i18n.Collator), the languages by
+// count, the sources by their position, then «Для взрослых».
 
 // MaxTags: the most topic and group categories a list has.
 const MaxTags = 15
@@ -41,7 +47,7 @@ const MaxTags = 15
 type categoryJSON struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
-	Kind  string `json:"kind"` // ai | source | group
+	Kind  string `json:"kind"` // ai | source | group | own | lang
 	Count int    `json:"count"`
 	// Exclusive: its channels are in no other category, nor in «Все» and
 	// «Избранное» (the adult one).
@@ -49,6 +55,11 @@ type categoryJSON struct {
 }
 
 var adultCat = aiCat(iptv.AdultCode)
+
+// ownAutoCat: the channels generated from the library.
+const ownAutoCat = "own:auto"
+
+func langCat(code string) string { return "lang:" + code }
 
 func groupCat(g string) string  { return "group:" + g }
 func sourceCat(id int64) string { return "source:" + strconv.FormatInt(id, 10) }
@@ -62,14 +73,13 @@ var ownKinds = map[string][]string{
 }
 
 // ownCats: the category ids of an own channel (category: its group in the
-// viewer's language): a generated one's topic by its kind, else what its
-// group means, else its group.
+// viewer's language): a generated one is «Из медиатеки» and its topic by
+// its kind (a franchise or «Моя медиатека»: none, no tag of their group);
+// a channel made by hand: what its group means, else its group.
 func ownCats(c channels.Channel, category string) []string {
-	if c.AutoKey != "" {
+	if c.AutoKey != "" && !c.External() {
 		k, _, _ := strings.Cut(c.AutoKey, ":")
-		if codes, ok := ownKinds[k]; ok {
-			return codeCats(codes)
-		}
+		return append([]string{ownAutoCat}, codeCats(ownKinds[k])...)
 	}
 	return groupCats([]string{category})
 }
@@ -103,14 +113,21 @@ func groupCats(groups []string) []string {
 	return own
 }
 
-// extAdult: an external channel is an adult one (its name or a group says
-// so, or the AI helper does).
+// extAdult: an external channel is an adult one (an entry's name or group
+// says so, by the source's word on its groups first; else the row's name,
+// a group or the AI helper does, unless the admin said its group is not).
 func extAdult(x iptv.ExtChannel) bool {
-	if slices.Contains(x.AI.Cats, iptv.AdultCode) || iptv.IsAdult(x.Channel.Name, "") {
+	if x.Adult || iptv.IsAdult(x.Channel.Name, "") {
+		return true
+	}
+	if x.NotAdult {
+		return false
+	}
+	if slices.Contains(x.AI.Cats, iptv.AdultCode) {
 		return true
 	}
 	for _, g := range x.Groups {
-		if iptv.IsAdult("", g) {
+		if iptv.IsAdultGroup(g) {
 			return true
 		}
 	}
@@ -131,6 +148,9 @@ func extCats(x iptv.ExtChannel, sources int) []string {
 		if !slices.Contains(out, id) {
 			out = append(out, id)
 		}
+	}
+	if x.Lang != "" {
+		out = append(out, langCat(x.Lang))
 	}
 	if sources > 1 {
 		for _, id := range x.SourceIDs {
@@ -167,10 +187,14 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 	ctx := r.Context()
 	count := map[string]int{}
 	var ids []string
+	langs := 0
 	for _, l := range lists {
 		for _, id := range l {
 			if count[id] == 0 {
 				ids = append(ids, id)
+				if strings.HasPrefix(id, "lang:") {
+					langs++
+				}
 			}
 			count[id]++
 		}
@@ -186,6 +210,17 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 		case strings.HasPrefix(id, "source:"):
 			n, _ := strconv.ParseInt(id[7:], 10, 64)
 			c.Kind, c.Name = "source", names[n]
+		case id == ownAutoCat:
+			c.Kind, c.Name = "own", i18n.T(ctx, "Из медиатеки")
+		case strings.HasPrefix(id, "lang:"):
+			if langs < 2 {
+				continue // one language: a category of every channel says nothing
+			}
+			code := id[len("lang:"):]
+			c.Kind, c.Name = "lang", strings.ToUpper(code)
+			if n := iptv.LangName(code); n != "" {
+				c.Name = i18n.Localize(ctx, n) + " (" + c.Name + ")"
+			}
 		default:
 			c.Kind, c.Name = "group", id[len("group:"):]
 		}
@@ -197,9 +232,13 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 	rank := func(c categoryJSON) int {
 		switch {
 		case c.Exclusive:
-			return 2
+			return 3
 		case c.Kind == "source":
+			return 2
+		case c.Kind == "lang":
 			return 1
+		case c.Kind == "own":
+			return -1
 		}
 		return 0
 	}
@@ -222,7 +261,7 @@ func (a *channelsAPI) categoriesOf(r *http.Request, lists [][]string, names map[
 		}
 		return x.Name < y.Name
 	})
-	// the most common tags only
+	// the most common tags only (and no lone language)
 	kept := map[string]bool{}
 	n := 0
 	out = slices.DeleteFunc(out, func(c categoryJSON) bool {

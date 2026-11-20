@@ -109,6 +109,10 @@ export interface SourceChannel {
   /** Still in the playlist. */
   present: boolean
   new: boolean
+  /** Its language (ISO 639-1, from the playlist's marks or the AI helper; '' unknown). */
+  lang: string
+  /** Its group is an adult one (the admin's word, else the group's title). */
+  groupAdult: boolean
   /** Its group of variants of one channel (absent: none, and no word of the admin on it). */
   variant?: ChannelVariant
 }
@@ -152,12 +156,13 @@ export interface ChannelSet {
   hiddenChannels: number[]
 }
 
-export type DeviceClient = 'ios' | 'ipados' | 'tvos' | 'macos' | 'android' | 'androidtv' | 'iptv' | 'other'
+export type DeviceClient = 'ios' | 'ipados' | 'tvos' | 'macos' | 'android' | 'androidtv' | 'iptv' | 'web' | 'other'
 
 export interface Device {
   userId: number
   profile: string
-  kind: 'app' | 'iptv'
+  /** web: a profile's browser (read-only: it always gets «Все мои каналы»). */
+  kind: 'app' | 'iptv' | 'web'
   deviceId: string
   /** An IPTV link's id ("" for an app). */
   linkId: string
@@ -202,7 +207,10 @@ export const patchChannels = (body: { channelIds: number[]; shown?: boolean; cat
 /** The admin's word on an entry's variants: a channel of its own, a variant of another entry's channel, or back to automatic. */
 export const setVariant = (sourceId: number, memberId: number, mode: 'own' | 'with' | 'auto', withMember?: number) =>
   request<void>('PUT', `/api/tv/sources/${sourceId}/members/${memberId}/variant`, { mode, with: withMember ?? 0 })
-export const patchGroup = (body: { sourceId: number; group: string; shown: boolean }) => request<{ updated: number }>('PATCH', '/api/tv/groups', body)
+/** Shows or hides a whole group of the source (or, with `lang`, every channel in that language). */
+export const patchGroup = (body: { sourceId: number; group?: string; lang?: string; shown: boolean }) => request<{ updated: number }>('PATCH', '/api/tv/groups', body)
+/** The admin's word on a group being an adult one (the adult preset and category follow it). */
+export const setGroupAdult = (sourceId: number, group: string, adult: boolean) => request<{ adult: boolean }>('PATCH', '/api/tv/groups', { sourceId, group, adult })
 /** Shows every channel the source's default hid (a big playlist's); the adult and timeshift presets keep theirs. */
 export const showAllDefault = (sourceId: number) => request<{ updated: number }>('PATCH', '/api/tv/groups', { sourceId, all: true, shown: true })
 export const searchEPG = (q: string, signal?: AbortSignal) =>
