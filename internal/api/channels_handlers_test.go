@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/antresol-app/antresol/internal/auth"
@@ -518,6 +519,31 @@ func channelsWriteNoHistory(t *testing.T, stream bool) {
 		if fetched != 4 {
 			t.Fatal(fetched)
 		}
+		// «Качество»: every URI of a quality's playlists carries it, so the
+		// player stays in that quality's run
+		mw := e.do("GET", base+"index.m3u8?q=480", "", e.admin)
+		if mw.Code != 200 || mw.Header().Get("X-Antresol-Quality") != "480" || !strings.Contains(mw.Body.String(), `URI="audio-0.m3u8?q=480"`) ||
+			!strings.Contains(mw.Body.String(), "\nvideo.m3u8?q=480") {
+			t.Fatalf("480: %d %v\n%s", mw.Code, mw.Header(), mw.Body)
+		}
+		vw := e.do("GET", base+"video.m3u8?q=480", "", e.admin)
+		var seg string
+		for _, l := range strings.Split(vw.Body.String(), "\n") {
+			if strings.HasPrefix(l, "seg") {
+				seg = l
+				break
+			}
+		}
+		if !strings.HasSuffix(seg, ".ts?q=480") {
+			t.Fatalf("480 video %s", vw.Body)
+		}
+		if s := e.do("GET", base+seg, "", e.admin); s.Code != 200 || s.Body.Len() == 0 {
+			t.Fatalf("480 segment %s: %d", seg, s.Code)
+		}
+		// «Авто» at home is the channel's own stream: no quality in its URIs
+		if mw := e.do("GET", base+"index.m3u8?q=auto", "", e.admin); mw.Header().Get("X-Antresol-Quality") != "original" || strings.Contains(mw.Body.String(), "q=") {
+			t.Fatalf("auto: %v\n%s", mw.Header(), mw.Body)
+		}
 		live.Stop(c.ID)
 	}
 	after := snap()
@@ -636,5 +662,39 @@ func TestChannelsGeneratedEditFlag(t *testing.T) {
 	}
 	if got, _ := svc.Store.Get(ctx, g.ID); got.Name != "Сериалы" || !got.Edited {
 		t.Fatalf("renamed: %+v", got)
+	}
+}
+
+// GET /api/channels/live/quality: what the live player's «Качество» means,
+// as a film's menu does — «Авто» is the channel's own stream at home and
+// «Качество вне дома» outside it; a choice is itself anywhere.
+func TestChannelsLiveQualityInfo(t *testing.T) {
+	var remote atomic.Bool
+	e := newLibEnvWith(t, func(d *Deps, db *sql.DB) {
+		d.Channels, d.DB = channels.New(db, nil), db
+		d.ClientIsRemote = func(*http.Request) bool { return remote.Load() }
+	})
+	get := func(q string) string {
+		w := e.do("GET", "/api/channels/live/quality?q="+q, "", e.admin)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", q, w.Code, w.Body)
+		}
+		return strings.TrimSpace(w.Body.String())
+	}
+	if got := get("auto"); got != `{"selected":"auto","applied":"original","remote":false}` {
+		t.Fatal(got)
+	}
+	if got := get("bogus"); got != `{"selected":"auto","applied":"original","remote":false}` {
+		t.Fatal(got)
+	}
+	if got := get("720"); got != `{"selected":"720","applied":"720","remote":false}` {
+		t.Fatal(got)
+	}
+	remote.Store(true)
+	if got := get("auto"); got != `{"selected":"auto","applied":"1080","remote":true}` {
+		t.Fatal(got)
+	}
+	if got := get("original"); got != `{"selected":"original","applied":"original","remote":true}` {
+		t.Fatal(got)
 	}
 }

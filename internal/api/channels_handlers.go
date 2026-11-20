@@ -108,6 +108,7 @@ func mountChannels(r chi.Router, a *channelsAPI) {
 	r.Get("/api/channels/{id}/logo.png", a.webLogo)
 	r.Post("/api/channels/{id}/logo", a.uploadLogo)
 	r.Delete("/api/channels/{id}/logo", a.deleteLogo)
+	r.Get("/api/channels/live/quality", a.liveQualityInfo)
 	r.Get("/api/channels/live/{id}/{name}", a.webLive)
 	if a.ext != nil {
 		r.Get("/api/channels/live/ext/{id}/{n}", a.extStream)
@@ -975,6 +976,11 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 		}
 	}
 	name := chi.URLParam(r, "name")
+	// «Качество»: the run of the quality asked for (?q=, as the film
+	// player's menu: auto | original | 1080 | 720 | 480); every URI of
+	// its playlists carries the quality it resolved to
+	variant, quality := a.liveQuality(r)
+	ctx = channels.WithVariant(ctx, variant)
 	if name == "index.m3u8" {
 		// the renditions named in the profile's interface language (as its guide names them)
 		ctx = channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
@@ -1006,18 +1012,22 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 			a.liveErr(w, r, err)
 			return
 		}
+		if quality.Applied != qualityOriginal {
+			b = withSegmentQuery(b, "q="+quality.Applied)
+		}
 		if key, keyed := auth.ViaMediaKey(ctx); keyed {
 			// AVPlayer fetches the renditions and segments without the
 			// app's headers: each one carries the key
 			b = withSegmentQuery(b, "mk="+url.QueryEscape(key))
 		}
+		w.Header().Set("X-Antresol-Quality", quality.Applied)
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache, no-store")
 		w.Write(b)
 		return
 	}
 	if strings.HasSuffix(name, ".vtt") {
-		b, err := a.svc.Live.VTT(c.ID, name)
+		b, err := a.svc.Live.VTT(ctx, c.ID, name)
 		if err != nil {
 			writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
 			return
@@ -1027,7 +1037,7 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 		w.Write(b)
 		return
 	}
-	p, dur, err := a.svc.Live.Segment(c.ID, name)
+	p, dur, err := a.svc.Live.Segment(ctx, c.ID, name)
 	if err != nil {
 		writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
 		return
@@ -1051,6 +1061,38 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, name, st.ModTime(), f)
+}
+
+// liveQuality is the quality ?q= asks a channel's stream in (none or
+// unknown: «Авто» — the channel's own stream at home, «Качество вне дома»
+// outside it, as for a film) and the variant of the channel that plays it.
+func (a *channelsAPI) liveQuality(r *http.Request) (channels.Variant, qualityInfo) {
+	q := qualityInfo{Selected: r.URL.Query().Get("q")}
+	if _, ok := qualityCaps[q.Selected]; !ok && q.Selected != qualityOriginal {
+		q.Selected = qualityAuto
+	}
+	q.Applied = q.Selected
+	if a.cards != nil {
+		q.Remote = viewerRemote(&a.cards.Deps, r)
+	}
+	if q.Selected == qualityAuto {
+		q.Applied = qualityOriginal
+		if q.Remote {
+			q.Applied = savedRemoteQuality(&a.cards.Deps, r)
+		}
+	}
+	cp, ok := qualityCaps[q.Applied]
+	if !ok {
+		return channels.Variant{}, q
+	}
+	return channels.Variant{Height: cp.height, Bitrate: cp.bitrate}, q
+}
+
+// GET /api/channels/live/quality?q=: what the live player's «Качество»
+// means right now (as a film's: selected, applied, remote).
+func (a *channelsAPI) liveQualityInfo(w http.ResponseWriter, r *http.Request) {
+	_, q := a.liveQuality(r)
+	writeJSON(w, http.StatusOK, q)
 }
 
 // withSegmentQuery adds q to every URI of a live playlist: the segment and

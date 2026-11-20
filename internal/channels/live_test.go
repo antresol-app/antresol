@@ -324,7 +324,7 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	segs := runPlaylist([]byte(pl))
 	var lastStart float64 = -1
 	for _, s := range segs {
-		p, _, err := live.Segment(5, "seg"+itoa(s.seq)+".ts")
+		p, _, err := live.Segment(context.Background(), 5, "seg"+itoa(s.seq)+".ts")
 		if err != nil {
 			t.Fatalf("segment %d: %v", s.seq, err)
 		}
@@ -341,7 +341,7 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 		lastStart = start
 	}
 	// audio: each listed segment is AAC stereo 48 kHz
-	c, _ := live.channel(5, false)
+	c, _ := live.channel(runKey{id: 5}, false)
 	c.mu.Lock()
 	published := append([]liveSeg(nil), c.segs...)
 	c.mu.Unlock()
@@ -350,7 +350,7 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
-			p, _, err := live.Segment(5, line)
+			p, _, err := live.Segment(context.Background(), 5, line)
 			if err != nil {
 				t.Fatalf("%s line %d %s: %v", n, i, line, err)
 			}
@@ -392,11 +392,11 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	// first; B has no Russian ones and A no English ones: empty WebVTT
 	var sawRu, sawEn int
 	for _, s := range published {
-		ru, err := live.VTT(5, "s-0-"+itoa(s.seq)+".vtt")
+		ru, err := live.VTT(context.Background(), 5, "s-0-"+itoa(s.seq)+".vtt")
 		if err != nil {
 			t.Fatal(err)
 		}
-		en, _ := live.VTT(5, "s-1-"+itoa(s.seq)+".vtt")
+		en, _ := live.VTT(context.Background(), 5, "s-1-"+itoa(s.seq)+".vtt")
 		head := "WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:" + strconv.FormatInt(s.pts, 10) + ",LOCAL:" + vttTime(s.at) + "\n"
 		if !strings.HasPrefix(string(ru), head) || !strings.HasPrefix(string(en), head) {
 			t.Fatalf("map %q %q at %+v", ru, en, s)
@@ -426,7 +426,7 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	if sawRu < 2 || sawEn < 1 {
 		t.Fatalf("cues seen ru %d en %d", sawRu, sawEn)
 	}
-	if _, err := live.VTT(5, "s-2-"+itoa(published[0].seq)+".vtt"); err != ErrNoSegment {
+	if _, err := live.VTT(context.Background(), 5, "s-2-"+itoa(published[0].seq)+".vtt"); err != ErrNoSegment {
 		t.Fatalf("a subtitle rendition past the set: %v", err)
 	}
 	// ffmpeg as an HLS client plays every rendition through both boundaries
@@ -442,7 +442,7 @@ func TestLiveCrossesProgrammeBoundaries(t *testing.T) {
 	for _, s := range published {
 		for j := range 2 {
 			n := "s-" + strconv.Itoa(j) + "-" + itoa(s.seq) + ".vtt"
-			b, _ := live.VTT(5, n)
+			b, _ := live.VTT(context.Background(), 5, n)
 			os.WriteFile(filepath.Join(runDirs[0], n), b, 0o644)
 		}
 	}
@@ -557,4 +557,65 @@ func cueNear(vtt string, from, to float64) bool {
 		}
 	}
 	return false
+}
+
+// «Качество» of a channel: a lower variant is a run of its own (its own
+// picture in its master and its segments), the channel's own stream goes on
+// beside it, and a variant at or above the channel's own is that stream.
+func TestLiveVariantIsARunOfItsOwn(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil || testing.Short() {
+		t.Skip("no ffmpeg")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.mkv")
+	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10:duration=30", "-c:v", "libx264", "-preset", "ultrafast", p).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	base := time.Now()
+	src := cycle{base: base, progs: []Program{{Entry: Entry{Start: base, End: base.Add(30 * time.Second)}, Path: p,
+		Probe: media.ProbeResult{Video: &media.VideoStream{Codec: "h264", Width: 320, Height: 240}}}}}
+	live := &Live{HW: "none", Dir: filepath.Join(dir, "live"), Source: src, ReadRate: -1, Width: 640, Height: 360, Bitrate: 1_000_000, ReadySegments: 1}
+	defer live.Close()
+	own := context.Background()
+	low := WithVariant(own, Variant{Height: 180, Bitrate: 400_000})
+	same := WithVariant(own, Variant{Height: 1080, Bitrate: 8_000_000})
+	for ctx, want := range map[context.Context]string{own: "RESOLUTION=640x360", low: "RESOLUTION=320x180", same: "RESOLUTION=640x360"} {
+		m, err := live.Playlist(ctx, 1, "index.m3u8")
+		if err != nil || !strings.Contains(string(m), want) {
+			t.Fatalf("%s: %v\n%s", want, err, m)
+		}
+	}
+	if r := live.Running(); len(r) != 1 || r[0] != 1 {
+		t.Fatalf("running %v", r)
+	}
+	live.mu.Lock()
+	runs := len(live.chans)
+	live.mu.Unlock()
+	if runs != 2 {
+		t.Fatalf("%d runs", runs)
+	}
+	height := func(ctx context.Context) float64 {
+		pl, err := live.Playlist(ctx, 1, "video.m3u8")
+		if err != nil {
+			t.Fatal(err)
+		}
+		segs := runPlaylist(pl)
+		path, _, err := live.Segment(ctx, 1, "seg"+itoa(segs[0].seq)+".ts")
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := ffprobeJSON(t, "-show_streams", path)["streams"].([]any)[0].(map[string]any)
+		return st["height"].(float64)
+	}
+	if h := height(low); h != 180 {
+		t.Fatalf("variant's segment %v lines", h)
+	}
+	if h := height(own); h != 360 {
+		t.Fatalf("own segment %v lines", h)
+	}
+	// an edited channel stops every run of it
+	live.Stop(1)
+	if r := live.Running(); len(r) != 0 {
+		t.Fatalf("after Stop %v", r)
+	}
 }

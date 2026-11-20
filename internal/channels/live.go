@@ -128,7 +128,7 @@ type Live struct {
 	root  context.Context
 	stop  context.CancelFunc
 	mu    sync.Mutex
-	chans map[int64]*liveChan
+	chans map[runKey]*liveChan
 	runs  int64
 	wg    sync.WaitGroup
 	shut  bool
@@ -166,8 +166,73 @@ type liveSubs struct {
 	final bool
 }
 
+// Variant is a lower quality of a channel's stream («Качество» of the
+// players): a picture at most Height lines high and Bitrate bits a second.
+// The zero value (or one at or above the channel's own) is the channel's
+// own stream. Each variant of a channel is a run of its own: its own
+// encoder, numbering and directory, shared by everyone watching that
+// variant.
+type Variant struct {
+	Height  int
+	Bitrate int64
+}
+
+type variantKey struct{}
+
+// WithVariant is ctx asking Live for variant v of a channel (Playlist,
+// Segment, VTT).
+func WithVariant(ctx context.Context, v Variant) context.Context {
+	return context.WithValue(ctx, variantKey{}, v)
+}
+
+// runKey is a run's channel and its picture (h×w at br; zero: the channel's own).
+type runKey struct {
+	id   int64
+	w, h int
+	br   int64
+}
+
+// key is the run of channel id ctx asks for.
+func (l *Live) key(ctx context.Context, id int64) runKey {
+	v, _ := ctx.Value(variantKey{}).(Variant)
+	_, h, br := l.size()
+	if v.Height <= 0 || v.Height >= h {
+		v.Height = h
+	}
+	if v.Bitrate <= 0 || v.Bitrate >= br {
+		v.Bitrate = br
+	}
+	if v.Height == h && v.Bitrate == br {
+		return runKey{id: id}
+	}
+	// the channel's shape at that height (even sizes)
+	w, _, _ := l.size()
+	return runKey{id: id, w: (w*v.Height/h + 1) &^ 1, h: v.Height &^ 1, br: v.Bitrate}
+}
+
+// size is the channel's own picture and bit rate.
+func (l *Live) size() (w, h int, br int64) {
+	w, h, br = l.Width, l.Height, l.Bitrate
+	if w <= 0 || h <= 0 {
+		w, h = 1920, 1080
+	}
+	if br <= 0 {
+		br = 6_000_000
+	}
+	return w, h, br
+}
+
+// picture is the run's picture and bit rate.
+func (l *Live) picture(k runKey) (w, h int, br int64) {
+	if k.h > 0 {
+		return k.w, k.h, k.br
+	}
+	return l.size()
+}
+
 type liveChan struct {
 	id     int64
+	key    runKey
 	dir    string
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -234,7 +299,7 @@ func (l *Live) init() {
 		if l.FFmpeg == "" {
 			l.FFmpeg = "ffmpeg"
 		}
-		l.chans = map[int64]*liveChan{}
+		l.chans = map[runKey]*liveChan{}
 		l.root, l.stop = context.WithCancel(context.Background())
 		// directories of an earlier process (a crash) go
 		if es, err := os.ReadDir(l.Dir); err == nil {
@@ -253,21 +318,24 @@ func (l *Live) Running() []int64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var out []int64
-	for id := range l.chans {
-		out = append(out, id)
+	for k := range l.chans {
+		if !slices.Contains(out, k.id) {
+			out = append(out, k.id)
+		}
 	}
 	return out
 }
 
-// channel returns the running channel id, starting it when start is set.
-func (l *Live) channel(id int64, start bool) (*liveChan, error) {
+// channel returns the run k, starting it when start is set.
+func (l *Live) channel(k runKey, start bool) (*liveChan, error) {
 	l.init()
+	id := k.id
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.shut {
 		return nil, ErrClosed
 	}
-	if c := l.chans[id]; c != nil {
+	if c := l.chans[k]; c != nil {
 		c.touch(l.Now())
 		return c, nil
 	}
@@ -288,7 +356,7 @@ func (l *Live) channel(id int64, start bool) (*liveChan, error) {
 			return nil, ErrBusy
 		}
 		stale.cancel()
-		delete(l.chans, stale.id) // its goroutine sees it gone and only cleans up
+		delete(l.chans, stale.key) // its goroutine sees it gone and only cleans up
 	}
 	// a directory per run: a stopped run of the same channel may still be
 	// removing its own
@@ -299,15 +367,15 @@ func (l *Live) channel(id int64, start bool) (*liveChan, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(l.root)
-	c := &liveChan{id: id, dir: dir, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), last: l.Now()}
-	l.chans[id] = c
+	c := &liveChan{id: id, key: k, dir: dir, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), last: l.Now()}
+	l.chans[k] = c
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		err := l.run(ctx, c)
 		l.mu.Lock()
-		if l.chans[id] == c {
-			delete(l.chans, id)
+		if l.chans[k] == c {
+			delete(l.chans, k)
 		}
 		l.mu.Unlock()
 		c.mu.Lock()
@@ -337,7 +405,7 @@ func (l *Live) Playlist(ctx context.Context, id int64, name string) ([]byte, err
 	if !ok {
 		return nil, ErrNoSegment
 	}
-	c, err := l.channel(id, true)
+	c, err := l.channel(l.key(ctx, id), true)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +464,7 @@ func (l *Live) renderer(ctx context.Context, name string) (func(*liveChan) ([]by
 			if p, ok := trackPrefs(ctx); ok {
 				set = set.WithDefaults(p)
 			}
-			return l.master(set), nil
+			return l.master(set, c.key), nil
 		}, true
 	case "video.m3u8":
 		return media(mediaKind{}), true
@@ -413,12 +481,20 @@ func (l *Live) renderer(ctx context.Context, name string) (func(*liveChan) ([]by
 	return nil, false
 }
 
-// RunSet is the track set of channel id's run (false: not running, or
-// its set not made yet).
+// RunSet is the track set of channel id's run — its own stream's, else a
+// variant's (false: not running, or its set not made yet).
 func (l *Live) RunSet(id int64) (TrackSet, bool) {
 	l.init()
 	l.mu.Lock()
-	c := l.chans[id]
+	c := l.chans[runKey{id: id}]
+	if c == nil {
+		for k, x := range l.chans {
+			if k.id == id {
+				c = x
+				break
+			}
+		}
+	}
 	l.mu.Unlock()
 	if c == nil {
 		return TrackSet{}, false
@@ -460,22 +536,16 @@ func (l *Live) trackSet(ctx context.Context, id int64, from time.Time) TrackSet 
 const maxSetProgs = 200
 
 // master is the channel run's master playlist (fixed for the run: its
-// track set is).
-func (l *Live) master(set TrackSet) []byte {
-	br := l.Bitrate
-	if br <= 0 {
-		br = 6_000_000
-	}
-	w, h := l.Width, l.Height
-	if w <= 0 || h <= 0 {
-		w, h = 1920, 1080
-	}
+// track set and picture are).
+func (l *Live) master(set TrackSet, k runKey) []byte {
+	w, h, br := l.picture(k)
 	return renderMaster(set, br*4/3+audioBitrate, br+audioBitrate, w, h)
 }
 
 // Segment returns the path and length of a segment of a running channel
-// (seg<N>.ts the video, a<k>-<N>.ts an audio output's).
-func (l *Live) Segment(id int64, name string) (string, float64, error) {
+// (seg<N>.ts the video, a<k>-<N>.ts an audio output's) in the run ctx
+// asks for (WithVariant).
+func (l *Live) Segment(ctx context.Context, id int64, name string) (string, float64, error) {
 	var seq int64
 	out := -1
 	if m := segName.FindStringSubmatch(name); m != nil {
@@ -486,7 +556,7 @@ func (l *Live) Segment(id int64, name string) (string, float64, error) {
 	} else {
 		return "", 0, ErrNoSegment
 	}
-	c, err := l.channel(id, false)
+	c, err := l.channel(l.key(ctx, id), false)
 	if err != nil {
 		return "", 0, ErrNoSegment
 	}
@@ -508,15 +578,15 @@ func (l *Live) Segment(id int64, name string) (string, float64, error) {
 
 // VTT returns a subtitle segment of a running channel (s-<n>-<N>.vtt):
 // the cues of the programme's track of subtitle rendition n within video
-// segment N, empty when the programme has none.
-func (l *Live) VTT(id int64, name string) ([]byte, error) {
+// segment N, empty when the programme has none (in the run ctx asks for).
+func (l *Live) VTT(ctx context.Context, id int64, name string) ([]byte, error) {
 	m := vttName.FindStringSubmatch(name)
 	if m == nil {
 		return nil, ErrNoSegment
 	}
 	slot, _ := strconv.Atoi(m[1])
 	seq, _ := strconv.ParseInt(m[2], 10, 64)
-	c, err := l.channel(id, false)
+	c, err := l.channel(l.key(ctx, id), false)
 	if err != nil {
 		return nil, ErrNoSegment
 	}
@@ -538,13 +608,19 @@ func (l *Live) VTT(id int64, name string) ([]byte, error) {
 	return nil, ErrNoSegment
 }
 
-// Stop ends channel id's encoder (an edited or deleted channel).
+// Stop ends channel id's encoders, every variant's (an edited or
+// deleted channel).
 func (l *Live) Stop(id int64) {
 	l.init()
 	l.mu.Lock()
-	c := l.chans[id]
+	var runs []*liveChan
+	for k, c := range l.chans {
+		if k.id == id {
+			runs = append(runs, c)
+		}
+	}
 	l.mu.Unlock()
-	if c != nil {
+	for _, c := range runs {
 		c.cancel()
 		<-c.done
 	}
@@ -725,9 +801,10 @@ func (l *Live) encode(ctx context.Context, c *liveChan, p Program, set TrackSet,
 	if p.Tracks != nil {
 		tr = *p.Tracks
 	}
+	w, h, br := l.picture(c.key)
 	in := media.LiveInput{
 		Input: p.Path, URL: p.URL, Headers: p.Headers, StartSec: startSec, DurationSec: durSec,
-		Width: l.Width, Height: l.Height, Bitrate: l.Bitrate,
+		Width: w, Height: h, Bitrate: br,
 		TsOffset: tsOffset, StartNumber: seq, OutDir: c.dir, Playlist: "run.m3u8",
 	}
 	hw := l.HW
