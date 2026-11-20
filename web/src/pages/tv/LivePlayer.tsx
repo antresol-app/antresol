@@ -853,6 +853,7 @@ export function LivePlayer() {
     extQuality && <StreamQualityMenu info={extQuality} onChange={chooseExtQuality} onOpenChange={setMenuOpen} />
   ) : (
     <QualityMenu
+      live
       quality={quality}
       info={qualityInfo}
       onChange={(q) => {

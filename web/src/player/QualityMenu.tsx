@@ -40,9 +40,13 @@ export function saveQuality(q: Quality) {
 const label = (q: Quality) => QUALITIES.find((x) => x.value === q)?.label ?? t('common.auto')
 
 /** What «Авто» means right now, in plain words. */
-export function autoDetail(info: QualityInfo | null): string {
+export function autoDetail(info: QualityInfo | null, live = false): string {
   if (!info) return t('player.quality.picking')
-  if (info.applied === 'original') return info.remote ? t('player.quality.asInFile') : t('player.quality.homeAsInFile')
+  if (info.applied === 'original') {
+    // a channel is always encoded: its «original» is its full stream, not the file
+    if (live) return info.remote ? t('player.quality.liveFull') : t('player.quality.homeLiveFull')
+    return info.remote ? t('player.quality.asInFile') : t('player.quality.homeAsInFile')
+  }
   return t('player.quality.away', { label: label(info.applied) })
 }
 
@@ -51,9 +55,11 @@ export interface QualityMenuProps {
   info: QualityInfo | null
   onChange: (q: Quality) => void
   onOpenChange?: (open: boolean) => void
+  /** A channel: «Оригинал» is the channel's full stream (always encoded), not the file. */
+  live?: boolean
 }
 
-export function QualityMenu({ quality, info, onChange, onOpenChange }: QualityMenuProps) {
+export function QualityMenu({ quality, info, onChange, onOpenChange, live = false }: QualityMenuProps) {
   const t = useT()
   const shown = quality === 'auto' && info && info.applied !== 'original' ? t('player.quality.autoApplied', { label: label(info.applied) }) : label(quality)
   return (
@@ -75,7 +81,7 @@ export function QualityMenu({ quality, info, onChange, onOpenChange }: QualityMe
             <MenuItem
               key={q.value}
               label={q.label}
-              detail={q.value === 'auto' ? autoDetail(info) : q.value === 'original' ? t('player.quality.originalDetail') : undefined}
+              detail={q.value === 'auto' ? autoDetail(info, live) : q.value === 'original' ? t(live ? 'player.quality.liveFullDetail' : 'player.quality.originalDetail') : undefined}
               checked={q.value === quality}
               onSelect={() => {
                 close()
