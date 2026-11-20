@@ -106,6 +106,18 @@ export type PlayerTrackAction = AdminOnly & {
   visible?: (item: TrackActionItem) => boolean
   run: (item: TrackActionItem, close: () => void) => void | ReactElement
 }
+/**
+ * «Воспроизвести на…» of the music player: a button of «Сейчас играет»
+ * (its bottom row, music and audiobooks). `run(close)` runs on a press;
+ * an element it returns (a sheet, `ui.Sheet`) is drawn inside the player
+ * until it calls `close`. The output itself takes the listening with the
+ * SDK's `attachAudioRemote`; the players then show where it plays.
+ */
+export type AudioOutput = AdminOnly & {
+  label: string
+  icon?: IconName
+  run: (close: () => void) => void | ReactElement
+}
 /** An entry of the profile menu; `to` as NavBadge's. */
 export type ProfileMenuEntry = AdminOnly & { label: string; icon: IconName; to: string; visible?: (user: User) => boolean }
 /**
@@ -198,6 +210,7 @@ export type AddonContributions = {
   profileMenu?: ProfileMenuEntry[]
   migrateSources?: MigrateSourceEntry[]
   importSources?: ImportSource[]
+  audioOutputs?: AudioOutput[]
   /** Short event names: `progress` arrives as addon.<id>.progress (and addon.<id>.admin.progress for admins). */
   events?: string[]
   strings?: { ru: Record<string, string>; en: Record<string, string> }
@@ -218,6 +231,7 @@ export type Slot =
   | 'profileMenu'
   | 'migrateSources'
   | 'importSources'
+  | 'audioOutputs'
 type SlotItem<K extends Slot> = NonNullable<AddonContributions[K]>[number]
 /** A slot entry with the addon it came from. */
 export type Contribution<K extends Slot> = SlotItem<K> & { addonId: string }

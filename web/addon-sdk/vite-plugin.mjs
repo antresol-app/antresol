@@ -32,7 +32,7 @@ export const SHARED = {
   'react-dom': ['createPortal'],
   'react-router': ['Link', 'NavLink', 'Navigate', 'Outlet', 'useLocation', 'useNavigate', 'useNavigationType', 'useParams', 'useSearchParams'],
   '@antresol/addon-sdk': [
-    'ApiError', 'Chip', 'Chips', 'DownloadButton', 'Icon', 'KIND_ICON', 'MEDIA_SEGMENTS', 'MigratePage', 'PendingOverlay', 'ViewMenu', 'ViewToolbar', 'WatchButton', 'addonApi', 'cardHref', 'clock', 'core', 'formatPercent', 'formatRate', 'formatSize', 'kindLabel', 'langBadge', 'langCode', 'languageName', 'locale', 'mediaKindIcon', 'mediaSegmentIcon', 'mediaSegmentOf', 'registerAddon', 'titlePath', 'ui', 'useAddonT', 'useDebounced', 'useEvents', 'useIsCompact', 'useMediaSegments', 'useUrlView', 'useUser', 'useWatchWay', 'useWatchWays', 'yieldSession',
+    'ApiError', 'Chip', 'Chips', 'DownloadButton', 'Icon', 'KIND_ICON', 'MEDIA_SEGMENTS', 'MigratePage', 'PendingOverlay', 'ViewMenu', 'ViewToolbar', 'WatchButton', 'addonApi', 'attachAudioRemote', 'cardHref', 'clock', 'core', 'formatPercent', 'formatRate', 'formatSize', 'kindLabel', 'langBadge', 'langCode', 'languageName', 'locale', 'mediaKindIcon', 'mediaSegmentIcon', 'mediaSegmentOf', 'registerAddon', 'titlePath', 'ui', 'useAddonT', 'useDebounced', 'useEvents', 'useIsCompact', 'useMediaSegments', 'useNowPlaying', 'useUrlView', 'useUser', 'useWatchWay', 'useWatchWays', 'yieldSession',
   ],
 }
 

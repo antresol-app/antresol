@@ -2144,7 +2144,7 @@ shared:
 | `react/jsx-runtime` | `jsx`, `jsxs`, `Fragment` (production builds only: no `jsxDEV`) |
 | `react-dom` | `createPortal` |
 | `react-router` | `Link`, `NavLink`, `Navigate`, `Outlet`, `useLocation`, `useNavigate`, `useNavigationType`, `useParams`, `useSearchParams` |
-| `@antresol/addon-sdk` | `registerAddon`, `addonApi`, `ApiError`, `useAddonT`, `useUser`, `useEvents`, `ui`, `Icon`, `core`, `formatSize`, `formatRate`, `formatPercent`, `locale`, `useIsCompact`, `ViewMenu`, `ViewToolbar`, `useUrlView`, `useMediaSegments`, `MEDIA_SEGMENTS`, `mediaSegmentIcon`, `mediaSegmentOf`, `mediaKindIcon`, `DownloadButton`, `WatchButton`, `cardHref`, `titlePath`, `KIND_ICON`, `kindLabel`, `useDebounced`, `PendingOverlay`, `useWatchWay`, `useWatchWays`, `MigratePage`, `yieldSession`, `Chip`, `Chips`, `clock`, `langBadge`, `langCode`, `languageName` |
+| `@antresol/addon-sdk` | `registerAddon`, `addonApi`, `ApiError`, `useAddonT`, `useUser`, `useEvents`, `ui`, `Icon`, `core`, `attachAudioRemote`, `useNowPlaying`, `formatSize`, `formatRate`, `formatPercent`, `locale`, `useIsCompact`, `ViewMenu`, `ViewToolbar`, `useUrlView`, `useMediaSegments`, `MEDIA_SEGMENTS`, `mediaSegmentIcon`, `mediaSegmentOf`, `mediaKindIcon`, `DownloadButton`, `WatchButton`, `cardHref`, `titlePath`, `KIND_ICON`, `kindLabel`, `useDebounced`, `PendingOverlay`, `useWatchWay`, `useWatchWays`, `MigratePage`, `yieldSession`, `Chip`, `Chips`, `clock`, `langBadge`, `langCode`, `languageName` |
 
 The same names, one module per line (`<module>: <names>`, a module may
 take several lines), as the SDK's Vite plugin lists them (`SHARED`); the
@@ -2164,7 +2164,7 @@ react-router: Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavi
 @antresol/addon-sdk: formatPercent, formatRate, formatSize, kindLabel, langBadge, langCode, languageName, locale
 @antresol/addon-sdk: mediaKindIcon, mediaSegmentIcon, mediaSegmentOf, registerAddon, titlePath, ui, useAddonT
 @antresol/addon-sdk: useDebounced, useEvents, useIsCompact, useMediaSegments, useUrlView, useUser, useWatchWay
-@antresol/addon-sdk: useWatchWays, yieldSession
+@antresol/addon-sdk: useWatchWays, yieldSession, attachAudioRemote, useNowPlaying
 ```
 
 The SDK (`@antresol/addon-sdk`):
@@ -2248,6 +2248,34 @@ The SDK (`@antresol/addon-sdk`):
     page opens.
 - `yieldSession()`: pauses the music and hands the system media controls
   back (a page that plays its own video).
+- `attachAudioRemote(remote, name)`: «Воспроизвести на…», the music
+  player's listening (music or an audiobook) played elsewhere (an
+  `audioOutputs` entry's output: the speakers of the home network, say),
+  shown in the players as `name` («Living room»). The browser falls silent and
+  keeps the queue and its rules (shuffle, repeat, the next track, an
+  audiobook's saved position, play counts); its controls (the players', the
+  system media controls) reach `remote` (`AudioRemote`): `sync(snapshot,
+  jump)` (the queue as `RemoteSnapshot`: `kind`, `items`, `index`,
+  `positionSec`, `playing`, `repeat`, `volume`; `jump` true: play
+  `items[index]` from `positionSec`, false: only the queue around the
+  current item changed, it plays on), `play()`, `pause()`, `seek(sec)`,
+  `volume?(v)` (0..1) and `stop()` (the listening ends here, or another
+  remote takes it: stop the sound and let go). Each `RemoteItem` is `{ key,
+  url, title, artist, album?, durationSec }`; `url` is absolute and carries
+  the profile's **web media key** (`mk=`, valid for 4 hours and ending
+  with the profile's session, as the web player's AirPlay uses it), since
+  the other player fetches the file without the browser's cookie: the
+  addon hands it only to the player that fetches it, never logs it and
+  keeps it no longer than the listening. The answer (`RemoteHandle`)
+  reports what the remote does: `update({ name?, key?, positionSec?,
+  durationSec?, playing?, buffering? })` (`key`: the item it plays now),
+  `notice(text)` (a line under the mini player), `release({ resume? })`
+  (the browser takes the listening back where the remote was, playing on
+  with `resume`), and `active` (false once released or replaced). A
+  remote attached with nothing queued is released at once.
+- `useNowPlaying()`: the music player now, read only and live: `{ playing,
+  output?, title, artist, cover, kind, volume }` (`output`: where a remote
+  plays it), or `null` with nothing queued.
 - `Chip` and `Chips` (and `type ChipProps`): the app's pill choices, a
   radio group or toggles (**best effort**, like `ui`).
 - The player's helpers: `clock(sec)` («1:02:03»), `langBadge(lang)` (a
@@ -2317,7 +2345,9 @@ The SDK (`@antresol/addon-sdk`):
   `MediaSegment`, `ViewSpec`, `MigrateApi`, `MigrateFullApi`,
   `MigrateCtx`, `MigrateProps`, `MigrateReport`, `MigrateText`, `SourceMeta`,
   `ImportJob`, `ImportService`, `PlayerProps`, `StreamPlayback`, `UpNext`,
-  `MediaFile`, `PlayRequest`, `PlayResponse`, `StreamQualityInfo`.
+  `MediaFile`, `PlayRequest`, `PlayResponse`, `StreamQualityInfo`,
+  `AudioOutput`, `AudioRemote`, `RemoteHandle`, `RemoteItem`,
+  `RemoteSnapshot`, `RemoteUpdate`.
 
 ### Slots
 
@@ -2338,6 +2368,7 @@ registerAddon('hello', {
   profileMenu: [{ label: 'menu.hello', icon: 'puzzle', to: 'page', visible: (u) => !u.isAdmin }],
   migrateSources: [{ id: 'old', name: 'migrate.old', icon: 'arrowRight', to: 'migrate', admin: true }],
   importSources: [{ element: (p) => <HelloImport {...p} />, admin: true }],
+  audioOutputs: [{ label: 'out.hello', icon: 'airplayAudio', run: (close) => <HelloOutputs onClose={close} /> }],
   events: ['ping'],
   strings: {
     ru: { 'page.title': 'Привет', tile: 'Привет', 'action.hello': 'Привет от расширения', badge: 'Ждут: {count}', 'empty.find': 'Найти', … },
@@ -2363,6 +2394,7 @@ registerAddon('hello', {
 | `profileMenu` | an entry of the profile menu: `{ label, icon, to, visible?(user) }`, `to` as `manageTiles`' (relative to `/addons/<id>/`, or an app path); `visible(user)` (the signed-in profile, as `GET /api/me` answers it) hides it; one that throws hides only its own entry. |
 | `migrateSources` | a card of «Настройки → Сервер → Переезд» that opens the addon's own migration page: `{ id, name, icon, to, summary? }`; `to` is an app path starting with `/`, else relative to `/addons/<id>/`; `summary()` is drawn under the name inside the card's link, so it is **text only** (what waits there, say: no buttons or links), and one that throws is drawn as nothing. The cards stand after the core's own services. |
 | `importSources` | the way in of «Настройки → Сервер → Импорт» while the server lists import services (`GET /api/import/services`, from `import.services`): `{ element(props) }`, props `ImportSourcesProps` = `{ services, onFiles(files), uploading, onJob(job), onStart(), onProblem(text) }`: `onFiles` uploads files as the file import does, `onJob` shows a job the element started (a sign-in's reading job), `onStart` clears the page's problem and notice, `onProblem` says one over the page. The first entry is drawn in place of the file import; while the app is still loading the profile's addons, the page waits for it. With no service listed, none registered, or when it throws, the file import stays. |
+| `audioOutputs` | «Воспроизвести на…»: a button of the music player's «Сейчас играет» (its bottom row, for music and audiobooks): `{ label, icon?, run(close) }` (`icon` an `IconName`, `airplayAudio` without one). An element `run` returns (the output's picker, a `ui.Sheet`) is drawn inside the player until `close()`, as an item action's; one that throws goes and the player stays. The output takes the listening with `attachAudioRemote`; while it plays, the players say where («Играет на «Living room»») and the button shows as on. |
 | `events` | the short names of the addon's events the app subscribes to |
 | `strings` | `{ ru, en }` catalogs for `useAddonT` |
 
@@ -2385,6 +2417,7 @@ playerTrackActions
 profileMenu
 migrateSources
 importSources
+audioOutputs
 events
 strings
 ```
@@ -2392,7 +2425,8 @@ strings
 Every entry of every slot (`routes`, `manageTiles`, `itemActions`,
 `playerNotes`, `navBadges`, `searchBlocks`, `emptyStateActions`,
 `requestActions`, `statsBlocks`, `itemPanels`, `episodeActions`,
-`playerTrackActions`, `profileMenu`, `migrateSources`, `importSources`) may say
+`playerTrackActions`, `profileMenu`, `migrateSources`, `importSources`,
+`audioOutputs`) may say
 **`admin: true`**: the app then shows it to admins only (an admin's route
 is simply not there for an adult: the page says the addon has no such
 section). Use it for whatever calls `x/admin/…`; it only hides the entry,
@@ -2405,7 +2439,7 @@ that throws is drawn as nothing (or a notice); the rest of the page stays.
 
 Labels and titles are **keys of the addon's `strings`**: every `title` of
 `routes` and `label` of `manageTiles`, `itemActions`, `navBadges`,
-`emptyStateActions`, `playerTrackActions` and `profileMenu`, and every `name` of
+`emptyStateActions`, `playerTrackActions`, `profileMenu` and `audioOutputs`, and every `name` of
 `migrateSources`, is resolved by the app when it draws it, in the
 interface language, the way `useAddonT` does (so it follows a language
 switch). A key missing from `strings` shows as itself, so a plain-text

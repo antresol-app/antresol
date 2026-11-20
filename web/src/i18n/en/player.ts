@@ -121,6 +121,7 @@ export default {
   'player.shuffle': 'Shuffle',
   'player.volume': 'Volume',
   'player.lyrics': 'Lyrics',
+  'player.output.playingOn': 'Playing on “{name}”',
   'player.queue': 'Queue',
   'player.audio.skipNotice': 'Couldn’t play the song — playing the next one',
   'player.audio.stopError': 'Couldn’t play music. Check your connection to the server.',

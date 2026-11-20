@@ -30,7 +30,9 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   )
   if (!it) return live
   const book = s.kind === 'audiobook'
-  const second = (book && chapterAt(it, s.positionSec)?.chapter.title) || it.artist
+  const heard = (book && chapterAt(it, s.positionSec)?.chapter.title) || it.artist
+  // a remote output plays it: where, before the artist («Living room · M83»)
+  const second = s.output ? `${s.output} · ${heard}` : heard
 
   return (
     <>

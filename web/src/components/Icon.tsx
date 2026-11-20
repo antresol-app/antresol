@@ -268,6 +268,35 @@ const paths = {
       <path d="M12 14.5 17 20.5H7z" fill="currentColor" stroke="none" />
     </>
   ),
+  // sound to another device: two arcs over the triangle (the screen one above is video's)
+  airplayAudio: (
+    <>
+      <path d="M7.2 16.6a7.5 7.5 0 1 1 9.6 0" />
+      <path d="M9.3 14a4.3 4.3 0 1 1 5.4 0" />
+      <path d="M12 14.5 16.2 20.5H7.8z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // a round smart speaker (a mesh cylinder seen from the side)
+  homepod: (
+    <>
+      <rect x="5" y="4.5" width="14" height="15" rx="6.5" />
+      <ellipse cx="12" cy="6.6" rx="4.2" ry="1.2" />
+    </>
+  ),
+  // a box speaker: tweeter over woofer
+  speakerBox: (
+    <>
+      <rect x="6" y="3" width="12" height="18" rx="3" />
+      <circle cx="12" cy="14.5" r="3.2" />
+      <circle cx="12" cy="7.2" r="1.2" />
+    </>
+  ),
+  laptop: (
+    <>
+      <rect x="5" y="5" width="14" height="10" rx="1.5" />
+      <path d="M3 18.5h18" />
+    </>
+  ),
   expand: <path d="M4.5 9.5v-5h5M19.5 9.5v-5h-5M4.5 14.5v5h5M19.5 14.5v5h-5" />,
   collapse: <path d="M9.5 4.5v5h-5M14.5 4.5v5h5M9.5 19.5v-5h-5M14.5 19.5v-5h5" />,
   captions: (

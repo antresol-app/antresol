@@ -499,3 +499,17 @@ a.artist:hover {
     height: 64px;
   }
 }
+
+/* «Воспроизвести на…»: where a remote output plays the listening */
+.output {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1h);
+  margin-top: var(--s-1);
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--t-footnote-em);
+  color: var(--label-over-art);
+}

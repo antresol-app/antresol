@@ -119,6 +119,7 @@ export default {
   'player.shuffle': 'Перемешать',
   'player.volume': 'Громкость',
   'player.lyrics': 'Текст',
+  'player.output.playingOn': 'Играет на «{name}»',
   'player.queue': 'Очередь',
   'player.audio.skipNotice': 'Не удалось воспроизвести трек — включаю следующий',
   'player.audio.stopError': 'Не удалось воспроизвести музыку. Проверьте связь с сервером.',

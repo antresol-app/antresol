@@ -5,12 +5,14 @@ import { ApiError, generic, getDisk, getItem, getTitle, imageUrl, offline, readR
 export { ApiError } from '../api/client'
 import { getLanguage, useLang, type Lang } from '../i18n'
 import { useSession } from '../state/session'
-import { audio } from '../player/audio/engine'
+import { audio, type AudioRemote, type RemoteHandle } from '../player/audio/engine'
+import { useAudioSelect } from '../player/audio/useAudio'
 import { useWatchWay as useProfileWatchWay } from '../state/watchWay'
 import { addonString } from './registry'
 
 export type {
   AddonContributions,
+  AudioOutput,
   AddonRoute,
   AddonRouteProps,
   EmptyStateAction,
@@ -99,6 +101,49 @@ export function useUser(): { id: number; name: string; isAdmin: boolean; isKid: 
  */
 export function yieldSession(): void {
   audio.yieldSession()
+}
+
+// «Воспроизвести на…»: what a remote player gets and says (attachAudioRemote)
+export type { AudioRemote, RemoteHandle, RemoteItem, RemoteSnapshot, RemoteUpdate } from '../player/audio/engine'
+
+/**
+ * «Воспроизвести на…» (an `audioOutputs` entry's output): `remote` plays
+ * the music player's listening from now on, shown as `name`. The browser
+ * falls silent; the player's controls go to `remote` (its `sync`, `play`,
+ * `pause`, `seek`, `volume`, `stop`), which reports where it is through the
+ * handle and gives the listening back with `release`. The queue's items
+ * reach it with absolute stream URLs carrying the profile's media key.
+ * Another remote attached later stops this one (its `stop`).
+ */
+export function attachAudioRemote(remote: AudioRemote, name: string): RemoteHandle {
+  return audio.attachRemote(remote, name)
+}
+
+/**
+ * The music player now, read only and live: whether something is queued,
+ * plays, where («Living room» while a remote plays it), the current item's title
+ * and artist, and the kind (music or an audiobook); null with nothing queued.
+ */
+export function useNowPlaying(): {
+  playing: boolean
+  output?: string
+  title: string
+  artist: string
+  cover: string
+  kind: 'music' | 'audiobook'
+  volume: number
+} | null {
+  // primitives only: no re-render on every tick of the position
+  const key = useAudioSelect((s) => s.queue[s.index]?.key ?? null)
+  const playing = useAudioSelect((s) => s.playing)
+  const output = useAudioSelect((s) => s.output)
+  const kind = useAudioSelect((s) => s.kind)
+  const volume = useAudioSelect((s) => s.volume)
+  return useMemo(() => {
+    const s = audio.get()
+    const it = key === null ? undefined : s.queue.find((q) => q.key === key)
+    return it ? { playing, output, title: it.title, artist: it.artist, cover: it.cover, kind: kind ?? 'music', volume } : null
+  }, [key, playing, output, kind, volume])
 }
 
 /**

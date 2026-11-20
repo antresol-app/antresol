@@ -28,6 +28,8 @@ import { clock, locate } from './timeline'
 import { NormalizeMenu } from './NormalizeMenu'
 import { SleepMenu } from './SleepMenu'
 import { SpeedMenu } from './SpeedMenu'
+import { useAudioOutputs, type OutputButton } from './audioOutputs'
+import { SheetContainer } from '../ui/Sheet'
 import styles from './NowPlaying.module.css'
 import { useT, type Key } from '../i18n'
 
@@ -124,7 +126,10 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
   const [dragY, setDragY] = useState(0)
   const [dragging, setDragging] = useState(false)
   const bg = imageUrl(it.cover, 480)
-  const volume = engineMode() === 'dual' // iOS ignores the element volume
+  // iOS ignores the element volume; a remote output (`s.output`) has its own
+  const volume = engineMode() === 'dual' || !!s.output
+  const outputs = useAudioOutputs()
+  const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const swap = compact && panel !== null
   const airPlay = useAirPlay(it.key)
 
@@ -273,7 +278,10 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
 
   return (
     <div
-      ref={rootRef}
+      ref={(el) => {
+        rootRef.current = el
+        setRoot(el)
+      }}
       role="dialog"
       aria-modal="true"
       aria-label={t('player.nowPlaying')}
@@ -312,6 +320,12 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
             <div className={styles.metaText}>
               <h2 className={styles.title}>{it.title}</h2>
               {artist}
+              {s.output && (
+                <span className={styles.output}>
+                  <Icon name="airplayAudio" size={14} />
+                  {t('player.output.playingOn', { name: s.output })}
+                </span>
+              )}
             </div>
             {it.lossless && <span className={styles.badge}>Lossless</span>}
           </div>
@@ -434,6 +448,9 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
                   <Icon name="airplay" size={20} />
                 </button>
               )}
+              {outputs.buttons.map((b) => (
+                <OutputTool key={b.key} button={b} on={!!s.output} />
+              ))}
               <SleepMenu tone="player" placement="top-end" />
             </div>
           ) : (
@@ -458,6 +475,9 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
                   <Icon name="airplay" size={20} />
                 </button>
               )}
+              {outputs.buttons.map((b) => (
+                <OutputTool key={b.key} button={b} on={!!s.output} />
+              ))}
               <button
                 type="button"
                 className={`${styles.tool} ${panel === 'queue' ? styles.on : ''}`}
@@ -473,6 +493,17 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
 
         {!compact && panel && <div className={styles.panel}>{panelView}</div>}
       </div>
+      {/* an output's picker mounts inside the dialog (its focus and Esc stay here) */}
+      <SheetContainer.Provider value={root}>{outputs.node}</SheetContainer.Provider>
     </div>
+  )
+}
+
+/** «Воспроизвести на…»: an addon's output (`on` while a remote plays the listening). */
+function OutputTool({ button: b, on }: { button: OutputButton; on: boolean }) {
+  return (
+    <button type="button" className={`${styles.tool} ${on ? styles.on : ''}`} aria-label={b.label} title={b.label} aria-pressed={on} onClick={b.run}>
+      <Icon name={b.icon} size={20} />
+    </button>
   )
 }

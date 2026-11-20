@@ -43,8 +43,10 @@ import { t } from '../../i18n'
 import { nextIndex, previousIndex, shuffled, uniqueKeys, withStart, type QueueItem, type RepeatMode } from './queue'
 import { heldPosition, type Hold } from '../familyMarks'
 import { itemGain, loadNormalize, saveNormalize, type NormalizeMode } from './normalize'
+import { remoteItems, type AudioRemote, type RemoteHandle, type RemoteSnapshot, type RemoteUpdate } from './remote'
 
 export type { QueueItem, RepeatMode } from './queue'
+export type { AudioRemote, RemoteHandle, RemoteItem, RemoteSnapshot, RemoteUpdate } from './remote'
 
 export interface AudioState {
   queue: QueueItem[]
@@ -62,6 +64,8 @@ export interface AudioState {
   error?: string
   /** A kid's «Экранное время» stopped the listening: what the kid reads (AudioScreenStop). */
   screenStop?: string
+  /** «Воспроизвести на…»: where a remote plays the listening («Living room»); undefined while this device plays it. */
+  output?: string
 }
 
 export interface PlayOptions {
@@ -177,6 +181,14 @@ let pageHooks = false
 let owner: number | null = null
 /** The last audiobook save under way, for a sign-out to wait on. */
 let lastSave: Promise<unknown> | null = null
+/** «Воспроизвести на…»: the remote that makes the sound instead of the elements (remote.ts). */
+let remote: AudioRemote | null = null
+/** Bumped by every attach and release: a stale handle does nothing. */
+let remoteSeq = 0
+/** This device's volume before a remote took the listening: it comes back with the listening. */
+let localVolume = 1
+/** The remote's syncs, one after another (each waits for the media key). */
+let remoteChain: Promise<void> = Promise.resolve()
 
 function set(patch: Partial<AudioState>) {
   state = { ...state, ...patch }
@@ -638,7 +650,8 @@ function startTicker() {
   ticks = 0
   ticker = setInterval(() => {
     const s = active()
-    if (s) session.setPosition(positionOf(s), durationOf(s), state.rate)
+    if (remote) session.setPosition(state.positionSec, state.durationSec, 1)
+    else if (s) session.setPosition(positionOf(s), durationOf(s), state.rate)
     // a book's lock screen follows the chapter (also inside one M4B)
     const it = item()
     if (it && handlersSet && state.kind === 'audiobook' && bookChapter(it, state.positionSec)?.title !== shownChapter) setSessionMetadata(it)
@@ -655,6 +668,14 @@ function resume() {
   const s = active()
   const it = item()
   if (!s || !it) return
+  if (remote) {
+    set({ playing: true, error: undefined, screenStop: undefined })
+    claimSession()
+    session.setPlaying(true)
+    startTicker()
+    remoteCall((r) => r.play())
+    return
+  }
   if (state.error || state.screenStop || s.el.error) {
     // after an error (or a screen-time stop: the server says again) the element is stuck on its failed source: fetch again
     // where it was (a transcode starts right there)
@@ -686,6 +707,18 @@ function start(i: number, autoplay: boolean, at?: number) {
   retries = 0
   counted = false
   listened = 0
+  if (remote) {
+    // the remote plays it: the elements stay silent
+    const from = at ?? it.startSec ?? 0
+    lastPos = from
+    set({ index: i, positionSec: from, durationSec: it.durationSec, buffering: autoplay, playing: autoplay, error: undefined, screenStop: undefined })
+    if (autoplay || handlersSet) claimSession()
+    session.setPlaying(autoplay)
+    if (autoplay) startTicker()
+    else stopTicker()
+    syncRemote(true)
+    return
+  }
   let s = active()
   if (!s) return
   const o = idle()
@@ -745,12 +778,7 @@ function onTime(s: Slot) {
     listened += delta
     bookHeard = true
   }
-  const need = dur > 0 ? Math.min(PLAY_COUNT_SEC, dur / 2) : PLAY_COUNT_SEC
-  if (it && !counted && state.kind === 'music' && it.trackId && listened >= need && ours()) {
-    counted = true
-    const id = it.trackId
-    recordPlay(id).catch((e: unknown) => console.warn('vault: play of track', id, 'not recorded', e))
-  }
+  countPlay(it, dur)
   // Near-gapless: the idle element loads the next track in time.
   const o = idle()
   if (o && dur > 0 && dur - pos <= PRELOAD_SEC) {
@@ -762,6 +790,116 @@ function onTime(s: Slot) {
     }
   }
   if (pos !== state.positionSec || dur !== state.durationSec) set({ positionSec: pos, durationSec: dur })
+}
+
+/** A listen of the current track counts once enough of it was heard. */
+function countPlay(it: QueueItem | undefined, dur: number) {
+  const need = dur > 0 ? Math.min(PLAY_COUNT_SEC, dur / 2) : PLAY_COUNT_SEC
+  if (it && !counted && state.kind === 'music' && it.trackId && listened >= need && ours()) {
+    counted = true
+    const id = it.trackId
+    recordPlay(id).catch((e: unknown) => console.warn('vault: play of track', id, 'not recorded', e))
+  }
+}
+
+// --- «Воспроизвести на…»: a remote makes the sound (remote.ts) ---
+
+/** The listening as the remote should have it (the queue's URLs carry the media key). */
+async function remoteSnapshot(): Promise<RemoteSnapshot> {
+  const items = await remoteItems(state.queue)
+  return {
+    kind: state.kind ?? 'music',
+    items,
+    index: state.index,
+    positionSec: state.positionSec,
+    playing: state.playing,
+    repeat: repeat(),
+    volume: state.volume,
+  }
+}
+
+/** Calls the remote after the calls before it (a sync waits for the media key); not once it is gone. */
+function remoteCall(fn: (r: AudioRemote) => void | Promise<void>) {
+  const r = remote
+  const seq = remoteSeq
+  if (!r) return
+  remoteChain = remoteChain.then(async () => {
+    if (remote !== r || seq !== remoteSeq) return
+    try {
+      await fn(r)
+    } catch (e) {
+      console.warn('vault: remote player', e)
+    }
+  })
+}
+
+/** Hands the queue to the remote: `jump` plays the current item from the position, else it plays on. */
+function syncRemote(jump: boolean) {
+  remoteCall(async (r) => {
+    const snap = await remoteSnapshot()
+    if (remote === r) r.sync(snap, jump)
+  })
+}
+
+/** What the remote says: the item it plays (by key), where, whether it sounds. */
+function remoteUpdate(u: RemoteUpdate) {
+  const patch: Partial<AudioState> = {}
+  let moved = false
+  if (u.name !== undefined && u.name !== state.output) patch.output = u.name
+  if (u.key !== undefined) {
+    const i = state.queue.findIndex((q) => q.key === u.key)
+    if (i >= 0 && i !== state.index) {
+      patch.index = i
+      patch.durationSec = state.queue[i]!.durationSec
+      counted = false
+      listened = 0
+      lastPos = u.positionSec ?? 0
+      moved = true
+    }
+  }
+  if (u.positionSec !== undefined && Number.isFinite(u.positionSec)) {
+    const pos = Math.max(0, u.positionSec)
+    const delta = pos - lastPos
+    lastPos = pos
+    if (state.playing && delta > 0 && delta < 5) {
+      listened += delta
+      bookHeard = true
+    }
+    patch.positionSec = pos
+  }
+  if (u.durationSec !== undefined && u.durationSec > 0) patch.durationSec = u.durationSec
+  if (u.playing !== undefined && u.playing !== state.playing) {
+    patch.playing = u.playing
+    session.setPlaying(u.playing)
+    if (u.playing) startTicker()
+    else {
+      stopTicker()
+      saveBook()
+    }
+  }
+  if (u.buffering !== undefined) patch.buffering = u.buffering
+  if (u.volume !== undefined && Number.isFinite(u.volume)) patch.volume = Math.min(Math.max(u.volume, 0), 1)
+  set(patch)
+  if (moved) claimSession()
+  countPlay(item(), state.durationSec)
+}
+
+/** The remote lets go (or the engine takes it back): this device plays on from where it was, or stays paused there. */
+function releaseRemote(resumeHere: boolean) {
+  const r = remote
+  remote = null
+  remoteSeq++
+  if (r) {
+    try {
+      r.stop()
+    } catch (e) {
+      console.warn('vault: remote player stop', e)
+    }
+  }
+  set({ output: undefined, buffering: false, volume: localVolume })
+  for (const s of slots) applyLevel(s)
+  if (state.index >= 0 && item()) start(state.index, resumeHere, state.positionSec)
+  else finish()
 }
 
 function onEnded(s: Slot) {
@@ -929,6 +1067,7 @@ export const audio = {
   pause() {
     wantPlay = false
     cancelRetry()
+    if (remote) remoteCall((r) => r.pause())
     active()?.el.pause()
     stopTicker()
     session.setPlaying(false)
@@ -976,6 +1115,13 @@ export const audio = {
     if (!s || !it || !Number.isFinite(sec)) return
     const dur = state.durationSec
     const t = Math.max(0, dur > 0 ? Math.min(sec, dur) : sec)
+    if (remote) {
+      lastPos = t
+      set({ positionSec: t })
+      session.setPosition(t, dur, 1)
+      remoteCall((r) => r.seek(t))
+      return
+    }
     const local = t - s.offset
     if (local >= 0 && inSeekable(s.el, local)) s.el.currentTime = local
     else if (s.transcoded) reloadAt(s, it, t)
@@ -1013,6 +1159,7 @@ export const audio = {
       original = state.queue
       set({ queue: shuffled(state.queue, state.index), index: state.index < 0 ? -1 : 0, shuffle: true })
       relevelIdle()
+    syncRemote(false)
       return
     }
     const key = item()?.key
@@ -1021,11 +1168,13 @@ export const audio = {
     const index = key ? Math.max(0, queue.findIndex((q) => q.key === key)) : state.index
     set({ queue, index, shuffle: false })
     relevelIdle()
+    syncRemote(false)
   },
 
   cycleRepeat() {
     const next: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'one', one: 'off' }
     set({ repeat: next[state.repeat] })
+    syncRemote(false)
   },
 
   setRate(r: number) {
@@ -1041,6 +1190,7 @@ export const audio = {
     const volume = Math.min(Math.max(v, 0), 1)
     set({ volume })
     for (const s of slots) applyLevel(s)
+    if (remote) remoteCall((r) => r.volume?.(volume))
   },
 
   /** The sleep timer's fade-out (0..1), applied over the volume; not part of the state. */
@@ -1076,6 +1226,7 @@ export const audio = {
     }
     set({ queue: [...q.slice(0, state.index + 1), ...add, ...q.slice(state.index + 1)] })
     relevelIdle()
+    syncRemote(false)
   },
 
   addToQueue(items: QueueItem[]) {
@@ -1085,6 +1236,7 @@ export const audio = {
     if (original) original = [...original, ...add]
     set({ queue: [...state.queue, ...add] })
     relevelIdle()
+    syncRemote(false)
   },
 
   removeAt(i: number) {
@@ -1096,9 +1248,11 @@ export const audio = {
     if (i < state.index) {
       set({ queue, index: state.index - 1 })
       relevelIdle()
+      syncRemote(false)
     } else if (i > state.index) {
       set({ queue })
       relevelIdle()
+      syncRemote(false)
     } else {
       const playing = state.playing
       set({ queue })
@@ -1135,6 +1289,7 @@ export const audio = {
     queue.splice(to, 0, it!)
     set({ queue, index: key ? queue.findIndex((q) => q.key === key) : state.index })
     relevelIdle()
+    syncRemote(false)
   },
 
   /** The <audio> element playing now (AirPlay picker, availability events); null before the first play. */
@@ -1155,6 +1310,59 @@ export const audio = {
     return bookHold
   },
 
+  /**
+   * «Воспроизвести на…»: `r` plays the listening from now on, as `name`
+   * («Living room»). This device's sound stops; the controls (here, the system
+   * media controls) reach the remote, which reports through the handle.
+   * A remote attached before is stopped. Nothing queued: the handle is
+   * already let go.
+   */
+  attachRemote(r: AudioRemote, name: string): RemoteHandle {
+    const prev = remote
+    remote = null
+    if (prev) {
+      try {
+        prev.stop()
+      } catch (e) {
+        console.warn('vault: remote player stop', e)
+      }
+    }
+    const seq = ++remoteSeq
+    const live = () => remote === r && seq === remoteSeq
+    const handle: RemoteHandle = {
+      get active() {
+        return live()
+      },
+      update: (u) => {
+        if (live()) remoteUpdate(u)
+      },
+      notice: (text) => {
+        if (live()) showNotice(text)
+      },
+      release: (opts) => {
+        if (live()) releaseRemote(opts?.resume ?? false)
+      },
+    }
+    if (!item()) {
+      remoteSeq++
+      return handle
+    }
+    // the elements fall silent where they are (their `pause` is not the user's)
+    wantPlay = false
+    cancelRetry()
+    for (const s of slots) s.el.pause()
+    // the slider shows the remote's volume once it says it; this device's comes back with the listening
+    if (!prev) localVolume = state.volume
+    remote = r
+    set({ output: name, buffering: state.playing })
+    if (state.playing) startTicker()
+    syncRemote(true)
+    return handle
+  },
+
+  /** Whether a remote plays the listening now. */
+  remote: (): boolean => remote !== null,
+
   /** Empties the queue: the mini player disappears. */
   stop() {
     saveBook()
@@ -1164,6 +1372,17 @@ export const audio = {
 
 /** Silences both elements, drops their sources and empties the queue and the system controls. */
 function teardown() {
+  if (remote) {
+    const r = remote
+    remote = null
+    remoteSeq++
+    state = { ...state, volume: localVolume }
+    try {
+      r.stop()
+    } catch (e) {
+      console.warn('vault: remote player stop', e)
+    }
+  }
   wantPlay = false
   cancelRetry()
   retries = 0
@@ -1218,6 +1437,10 @@ export function resetAudioForTests() {
   bookHeard = false
   bookHold = null
   owner = null
+  remote = null
+  remoteSeq++
+  remoteChain = Promise.resolve()
+  localVolume = 1
   state = initial()
   showNotice(null)
   for (const fn of listeners) fn()
