@@ -1,6 +1,7 @@
 // «ТВ-каналы» (/api/channels…): live channels made of the library, their
 // guide and the editor's options.
 import { qs, request } from "./client";
+import type { Quality, QualityInfo } from "./types";
 
 export type ChannelOrder = "shuffle" | "ordered";
 
@@ -411,8 +412,13 @@ export const generateChannels = (reset = false) =>
     reset ? "/api/channels/generate?reset=1" : "/api/channels/generate",
   );
 
-/** The web player's live stream of a channel. */
-export const liveUrl = (id: number) => `/api/channels/live/${id}/index.m3u8`;
+/** The web player's live stream of a channel, in a quality of the film player's menu («Авто»: the server decides, as for a film). */
+export const liveUrl = (id: number, quality: Quality = "auto") =>
+  `/api/channels/live/${id}/index.m3u8${quality === "auto" ? "" : `?q=${quality}`}`;
+
+/** What the live player's «Качество» means right now (as a film's: «Авто» at home is the channel's own stream). */
+export const getLiveQuality = (quality: Quality, signal?: AbortSignal) =>
+  request<QualityInfo>("GET", `/api/channels/live/quality${qs({ q: quality })}`, undefined, signal);
 
 /** How far a programme is (0…1) at `now`. */
 export function programProgress(p: ChannelProgram, now = Date.now()): number {

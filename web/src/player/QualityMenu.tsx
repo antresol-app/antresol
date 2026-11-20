@@ -15,6 +15,28 @@ export const QUALITIES: { value: Quality; readonly label: string }[] = [
   { value: '480', label: '480p' },
 ]
 
+const QUALITY_KEY = 'vault.player.quality'
+
+/** The quality chosen last on this device («Авто» by default): films and channels share it. */
+export function savedQuality(): Quality {
+  let q: string | null = null
+  try {
+    q = localStorage.getItem(QUALITY_KEY)
+  } catch {
+    /* storage blocked */
+  }
+  return QUALITIES.some((x) => x.value === q) ? (q as Quality) : 'auto'
+}
+
+/** Keeps the quality chosen for the next film or channel on this device. */
+export function saveQuality(q: Quality) {
+  try {
+    localStorage.setItem(QUALITY_KEY, q)
+  } catch {
+    /* private mode */
+  }
+}
+
 const label = (q: Quality) => QUALITIES.find((x) => x.value === q)?.label ?? t('common.auto')
 
 /** What «Авто» means right now, in plain words. */

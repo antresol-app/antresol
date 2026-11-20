@@ -57,12 +57,13 @@ import type Hls from 'hls.js'
 import type Mpegts from 'mpegts.js'
 import { APP_NAME } from '../../brand'
 import { getPlaybackPrefs, imageUrl } from '../../api/client'
-import { getChannelGuide, getChannels, liveUrl, setChannelFavorite, setLastChannel, type Channel, type ChannelProgram, type ChannelTrack } from '../../api/channels'
-import type { PlaybackPrefs } from '../../api/types'
+import { getChannelGuide, getChannels, getLiveQuality, liveUrl, setChannelFavorite, setLastChannel, type Channel, type ChannelProgram, type ChannelTrack } from '../../api/channels'
+import type { PlaybackPrefs, Quality, QualityInfo, StreamQualityInfo } from '../../api/types'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
 import { audio as audioEngine } from '../../player/audio/engine'
 import { nativeHls } from '../../player/hlsSupport'
+import { QualityMenu, saveQuality, savedQuality, StreamQualityMenu } from '../../player/QualityMenu'
 import { useVolume } from '../../player/useVolume'
 import { VolumeControl } from '../../player/VolumeControl'
 import { Button } from '../../ui/Button'
@@ -127,6 +128,12 @@ export function LivePlayer() {
   const [attempt, setAttempt] = useState(0)
   const [prefs, setPrefs] = useState<PlaybackPrefs | null>(null)
   const [session, setSession] = useState(() => channelTracks(channelId))
+  // «Качество»: ours — the film player's menu (shared with films on this
+  // device), a lower one a run of its own on the server; an external
+  // stream's — its own variants, when its master has several (hls.js)
+  const [quality, setQuality] = useState<Quality>(savedQuality)
+  const [qualityInfo, setQualityInfo] = useState<QualityInfo | null>(null)
+  const [extQuality, setExtQuality] = useState<StreamQualityInfo | null>(null)
   // paused (read from the video: a key, the picture-in-picture window or the system's controls may do it)
   const [paused, setPaused] = useState(false)
   // more than 10 s behind the live edge: «В эфир»
@@ -146,7 +153,7 @@ export function LivePlayer() {
   // what to play: the server's live stream, or an external channel's own
   // streams (known once the list is in; the key changes only when they do)
   const external = channel?.external ? externalStreams(channel) : null
-  const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${JSON.stringify(external.urls)}`) : 'own'
+  const source = !listed ? '' : external ? (external.blocked ? `blocked:${external.blocked}` : `ext:${JSON.stringify(external.urls)}`) : `own:${quality}`
   // the list ↑/↓ zap through: the one it was opened from
   const zapList = useMemo(() => {
     const l = applyFilter(channels, filter, favFirst)
@@ -183,6 +190,15 @@ export function LivePlayer() {
     getPlaybackPrefs(undefined, ac.signal).then(setPrefs, () => undefined)
     return () => ac.abort()
   }, [])
+  // what «Авто» means here (at home the channel's own stream, outside it «Качество вне дома»)
+  const ownChannel = Boolean(channel && !channel.external)
+  useEffect(() => {
+    setQualityInfo(null)
+    if (!ownChannel) return
+    const ac = new AbortController()
+    getLiveQuality(quality, ac.signal).then(setQualityInfo, () => undefined)
+    return () => ac.abort()
+  }, [quality, ownChannel])
   useEffect(() => {
     let ac = new AbortController()
     setPrograms([])
@@ -215,6 +231,8 @@ export function LivePlayer() {
     let gone = false
     setPhase('starting')
     setRenditions({ audio: [], subs: [] })
+    setExtQuality(null)
+    const own = source.startsWith('own:') ? (source.slice(4) as Quality) : null
     if (source.startsWith('blocked:')) {
       setPhase({ ext: source.slice('blocked:'.length) as ExtBlock })
       return
@@ -280,7 +298,7 @@ export function LivePlayer() {
       }
       if (started && !restarted) {
         restarted = true
-        if (!ext) startHls(liveUrl(channelId))
+        if (!ext) startHls(liveUrl(channelId, own ?? 'auto'))
         else if (asTs) startTs(ext[at]!.url)
         else startAt(at)
         return
@@ -345,6 +363,15 @@ export function LivePlayer() {
           fail(g, t('tv.failed'))
         })
         if (H.Events.MANIFEST_PARSED) h.on(H.Events.MANIFEST_PARSED, relist)
+        if (ext && H.Events.MANIFEST_PARSED) {
+          // an external stream's own variants (its master's), «Авто» first
+          const levels = () => {
+            if (gone || g !== gen) return
+            setExtQuality(streamLevels(h, t('common.auto')))
+          }
+          h.on(H.Events.MANIFEST_PARSED, levels)
+          if (H.Events.LEVEL_SWITCHED) h.on(H.Events.LEVEL_SWITCHED, levels)
+        }
         if (H.Events.AUDIO_TRACKS_UPDATED) h.on(H.Events.AUDIO_TRACKS_UPDATED, relist)
         if (H.Events.SUBTITLE_TRACKS_UPDATED) h.on(H.Events.SUBTITLE_TRACKS_UPDATED, relist)
         h.loadSource(url)
@@ -384,7 +411,7 @@ export function LivePlayer() {
       } else startHls(c.url)
     }
     if (ext) startAt(0)
-    else startHls(liveUrl(channelId))
+    else startHls(liveUrl(channelId, own ?? 'auto'))
     // the picture moves: playing (a message an error left goes: something plays)
     const onPlaying = () => {
       if (gone) return
@@ -816,6 +843,25 @@ export function LivePlayer() {
       placement="bottom-end"
     />
   )
+  const chooseExtQuality = (q: string) => {
+    const h = hlsRef.current
+    if (!h) return
+    h.currentLevel = q === t('common.auto') ? -1 : levelOf(h, q)
+    setExtQuality(streamLevels(h, t('common.auto')))
+  }
+  const qualityMenu = !listed ? null : channel?.external ? (
+    extQuality && <StreamQualityMenu info={extQuality} onChange={chooseExtQuality} onOpenChange={setMenuOpen} />
+  ) : (
+    <QualityMenu
+      quality={quality}
+      info={qualityInfo}
+      onChange={(q) => {
+        saveQuality(q)
+        setQuality(q)
+      }}
+      onOpenChange={setMenuOpen}
+    />
+  )
   const pipButton = pipSupported && <IconButton icon="pip" label={t('tv.pip')} size="sm" material="clear" onClick={togglePip} />
   const fullButton = fsReady && (
     <IconButton icon={full ? 'collapse' : 'expand'} label={full ? t('tv.exitFullscreen') : t('tv.fullscreen')} tooltip={`${full ? t('tv.exitFullscreen') : t('tv.fullscreen')} (F)`} size="sm" material="clear" onClick={() => (toggleFull(), poke())} />
@@ -1002,7 +1048,10 @@ export function LivePlayer() {
           <footer className={styles.bottom}>
             <div className={styles.tools}>
               <div className={styles.toolsLeft}>{liveMark}</div>
-              <div className={styles.toolsRight}>{fullButton}</div>
+              <div className={styles.toolsRight}>
+                {qualityMenu}
+                {fullButton}
+              </div>
             </div>
           </footer>
         ) : (
@@ -1011,6 +1060,7 @@ export function LivePlayer() {
             <div className={styles.tools}>
               <div className={styles.toolsLeft}>{volumeControl}</div>
               <div className={styles.toolsRight}>
+                {qualityMenu}
                 {channelsButton}
                 {infoButton}
                 {fullButton}
@@ -1048,4 +1098,30 @@ export function LivePlayer() {
       )}
     </div>
   )
+}
+
+/** A variant's label: its height («720p»), else its bit rate. */
+function levelLabel(l: { height?: number; bitrate?: number }): string {
+  return l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)} kbps`
+}
+
+/** An external stream's «Качество»: «Авто» and its variants, best first (none: one variant only). */
+function streamLevels(h: Hls, auto: string): StreamQualityInfo | null {
+  const labels: string[] = []
+  for (const l of [...(h.levels ?? [])].sort((a, b) => (b.height || 0) - (a.height || 0) || b.bitrate - a.bitrate)) {
+    const x = levelLabel(l)
+    if (!labels.includes(x)) labels.push(x)
+  }
+  if (labels.length < 2) return null
+  const cur = h.levels?.[h.currentLevel]
+  return { options: [auto, ...labels], current: h.autoLevelEnabled || !cur ? auto : levelLabel(cur) }
+}
+
+/** The variant of a label: the best one of that height. */
+function levelOf(h: Hls, label: string): number {
+  let best = -1
+  h.levels?.forEach((l, i) => {
+    if (levelLabel(l) === label && (best < 0 || l.bitrate > h.levels[best]!.bitrate)) best = i
+  })
+  return best
 }

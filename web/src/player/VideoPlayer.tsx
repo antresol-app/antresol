@@ -12,7 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { getItem, getPlaybackPrefs, imageUrl, setSubtitleOffset } from '../api/client'
 import { queueRemember } from './rememberQueue'
 import type { TrackActionItem } from '../addons/registry'
-import type { MediaFile, PlaybackPrefs, PlayRequest, PlayResponse, Quality, SubTrack, TrackChoice, TrackPrefs } from '../api/types'
+import type { MediaFile, PlaybackPrefs, PlayRequest, PlayResponse, SubTrack, TrackChoice, TrackPrefs } from '../api/types'
 import { Icon } from '../components/Icon'
 import { FamilyMarks, ReturnPill } from '../components/FamilyMarks'
 import { useFamily } from '../components/FamilyProgress'
@@ -23,7 +23,7 @@ import { activeCues, clock, langKey, parseVtt, type Cue } from './timeline'
 import { asPrefs, choiceOf, offsetCueTime, pickAudio, pickSubtitle } from './trackPrefs'
 import { clampSubtitleOffset, useSubtitleOffset } from './useSubtitleOffset'
 import look from './SubtitleLook.module.css'
-import { QualityMenu, QUALITIES, StreamQualityMenu } from './QualityMenu'
+import { QualityMenu, saveQuality, savedQuality, StreamQualityMenu } from './QualityMenu'
 import { TrackMenu } from './TrackMenu'
 import { VolumeControl } from './VolumeControl'
 import { useVolume } from './useVolume'
@@ -134,13 +134,6 @@ const SKIP = 10
 const PREF = {
   sub: 'vault.player.subLang',
   audio: 'vault.player.audioLang',
-  quality: 'vault.player.quality',
-}
-
-/** The quality chosen last time on this device («Авто» by default). */
-function preferredQuality(): Quality {
-  const q = pref(PREF.quality)
-  return QUALITIES.some((x) => x.value === q) ? (q as Quality) : 'auto'
 }
 
 /** How long to wait before asking again for subtitles the server is still extracting. */
@@ -229,7 +222,7 @@ export function VideoPlayer({
   /** The audio a part starts with: the voice that played, the series' one, this device's or the profile's language (trackPrefs). */
   const audioFor = (file: MediaFile) =>
     pickAudio(file.audio ?? [], { series: lastAudio.current ?? tracks?.series?.audio, prefs: prefsRef.current, device: pref(PREF.audio) })
-  const [initialQuality] = useState(preferredQuality)
+  const [initialQuality] = useState(savedQuality)
 
   const p = usePlayback({
     videoRef,
@@ -733,7 +726,7 @@ export function VideoPlayer({
                 quality={p.quality}
                 info={p.qualityInfo}
                 onChange={(q) => {
-                  setPref(PREF.quality, q)
+                  saveQuality(q)
                   p.chooseQuality(q)
                 }}
                 onOpenChange={setMenuOpen}
