@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -238,22 +239,10 @@ func LiveArgs(hw string, in LiveInput) []string {
 			audioIn[k] = strconv.Itoa(silence) + ":a:0"
 		}
 	}
-	subIn := make([]string, len(in.Subs))
-	for j, s := range in.Subs {
-		if s.Input == "" {
-			subIn[j] = "0:" + strconv.Itoa(s.Index)
-			continue
-		}
-		if in.StartSec > 0 {
-			a = append(a, "-ss", ff(in.StartSec))
-		}
-		a = append(a, "-protocol_whitelist", "file")
-		if f := SubDemuxer[s.Codec]; f != "" {
-			a = append(a, "-f", f)
-		}
-		a = append(a, "-i", "file:"+s.Input)
-		subIn[j] = strconv.Itoa(inputs) + ":0"
-		inputs++
+	// a file's subtitles are LiveSubArgs' own ffmpeg; a stream's stay here
+	var subs []string
+	if in.URL != "" {
+		subs = liveSubOutputs(in, &a, 0, inputs)
 	}
 
 	// the video
@@ -327,11 +316,68 @@ func LiveArgs(hw string, in LiveInput) []string {
 		a = append(a, "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000")
 		a = append(a, liveHLS(in, "a"+strconv.Itoa(k)+"-%d.ts", LiveAudioPlaylist(k))...)
 	}
+	return append(a, subs...)
+}
+
+// LiveSubArgs is the ffmpeg command line (without the binary) of the
+// subtitle outputs of a programme read from a file (nil: none, or a
+// stream's, which LiveArgs writes). A process of its own: a subtitle
+// stream ends only with a cue past the cut, so with -readrate the
+// programme's ffmpeg would go on reading in real time up to it — half a
+// minute and more after a short piece (a cue just after the cut, the next
+// one after the intro) — and the next programme would wait for it. This
+// one reads the file alongside at the same rate, and the channel stops it
+// once the programme's picture and sound are done.
+func LiveSubArgs(in LiveInput) []string {
+	if in.URL != "" || len(in.Subs) == 0 {
+		return nil
+	}
+	a := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}
+	first := 0
+	if slices.ContainsFunc(in.Subs, func(s LiveSub) bool { return s.Input == "" }) {
+		// the file's own subtitle streams: input 0, cut and read as the programme's
+		if in.StartSec > 0 {
+			a = append(a, "-ss", ff(in.StartSec))
+		}
+		if in.Throttle.Rate > 0 {
+			a = append(a, "-readrate", ff(in.Throttle.Rate), "-readrate_initial_burst", ff(max(in.Throttle.Burst, 0)))
+		}
+		if in.DurationSec > 0 {
+			a = append(a, "-t", ff(in.DurationSec))
+		}
+		a = append(a, "-i", "file:"+in.Input)
+		first = 1
+	}
+	outs := liveSubOutputs(in, &a, 0, first)
+	return append(a, outs...)
+}
+
+// liveSubOutputs adds to *inputs the subtitle files of in (as inputs
+// next, next+1…) and returns the outputs of all its subtitles, a stream
+// of the file being file:stream.
+func liveSubOutputs(in LiveInput, inputs *[]string, file, next int) []string {
+	subIn := make([]string, len(in.Subs))
+	for j, s := range in.Subs {
+		if s.Input == "" {
+			subIn[j] = strconv.Itoa(file) + ":" + strconv.Itoa(s.Index)
+			continue
+		}
+		if in.StartSec > 0 {
+			*inputs = append(*inputs, "-ss", ff(in.StartSec))
+		}
+		*inputs = append(*inputs, "-protocol_whitelist", "file")
+		if f := SubDemuxer[s.Codec]; f != "" {
+			*inputs = append(*inputs, "-f", f)
+		}
+		*inputs = append(*inputs, "-i", "file:"+s.Input)
+		subIn[j] = strconv.Itoa(next) + ":0"
+		next++
+	}
+	var a []string
 	for j, s := range in.Subs {
 		a = append(a, "-map", subIn[j])
 		if in.DurationSec > 0 {
-			// its own end: with -readrate, an input cut by -t before its
-			// end leaves a subtitle output waiting and ffmpeg never exits
+			// its own end (an input cut by -t still waits for a cue past it)
 			a = append(a, "-t", ff(in.DurationSec))
 		}
 		a = append(a, "-c:s", "webvtt", "-output_ts_offset", strconv.Itoa(LiveSubOffset),

@@ -119,13 +119,34 @@ func TestLiveArgsQSVUsesTheGPUWhenItCan(t *testing.T) {
 	in.Subs = []media.LiveSub{{Index: 4, Out: "s.vtt"}, {Input: "/o/x.srt", Codec: "subrip", Out: "t.vtt"}}
 	a = strings.Join(media.LiveArgs("qsv", in), " ")
 	for _, want := range []string{"-itsoffset 0.04 -ss 13.000 -protocol_whitelist file -format_whitelist", "-i file:/m/a.LostFilm.mka",
-		"-ss 12.500 -protocol_whitelist file -f srt -i file:/o/x.srt", "-map 1:a:0 -vn -sn -dn -af atempo=1.04,apad -t 101.000",
-		// a subtitle output ends by itself (-readrate and a cut input would leave ffmpeg waiting)
-		"-map 0:4 -t 100.000 -c:s webvtt -output_ts_offset 1000 -flush_packets 1 -f webvtt /o/s.vtt", "-map 2:0 -t 100.000 -c:s webvtt"} {
+		"-map 1:a:0 -vn -sn -dn -af atempo=1.04,apad -t 101.000"} {
 		if !strings.Contains(a, want) {
 			t.Errorf("missing %q in %s", want, a)
 		}
 	}
+	// the subtitles are an ffmpeg of their own: a subtitle stream waits for
+	// a cue past the cut, which would keep the programme's ffmpeg reading
+	if strings.Contains(a, "webvtt") || strings.Contains(a, "x.srt") {
+		t.Errorf("subtitles in the programme's ffmpeg: %s", a)
+	}
+	in.Throttle = media.Throttle{Rate: 1, Burst: 20}
+	s := strings.Join(media.LiveSubArgs(in), " ")
+	for _, want := range []string{"-ss 12.500 -readrate 1.000 -readrate_initial_burst 20.000 -t 100.000 -i file:/m/a.mkv",
+		"-ss 12.500 -protocol_whitelist file -f srt -i file:/o/x.srt",
+		"-map 0:4 -t 100.000 -c:s webvtt -output_ts_offset 1000 -flush_packets 1 -f webvtt /o/s.vtt", "-map 1:0 -t 100.000 -c:s webvtt"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in %s", want, s)
+		}
+	}
+	if strings.Contains(s, "-map 0:v") || strings.Contains(s, "hwaccel") {
+		t.Errorf("the subtitles' ffmpeg reads more than subtitles: %s", s)
+	}
+	// a file of subtitles alone: no input for the programme's file
+	in.Subs = []media.LiveSub{{Input: "/o/x.srt", Codec: "subrip", Out: "t.vtt"}}
+	if s := strings.Join(media.LiveSubArgs(in), " "); strings.Contains(s, "a.mkv") || !strings.Contains(s, "-map 0:0 -t 100.000") {
+		t.Errorf("subtitle file only: %s", s)
+	}
+	in.Throttle = media.Throttle{}
 	in.Subs = nil
 	in.Audio, in.SrcWidth = []media.LiveAudio{{Index: -1}}, 0
 	a = strings.Join(media.LiveArgs("qsv", in), " ")
@@ -670,4 +691,98 @@ func TestLiveCopiedVoiceOverEndsWithTheProgramme(t *testing.T) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// TestLiveSubtitlesDoNotHoldTheProgrammeOpen: a programme's subtitle
+// stream with a cue just after the cut and the next one far later kept the
+// programme's ffmpeg reading (in real time) up to that later cue — ~30 s
+// past a cut piece of a few seconds — so the next programme started that
+// late. A new channel starts on its first episode's pieces between the
+// cut recap and intro: its first playlist waited out ReadyWait and the
+// iPhone gave up («Не удаётся показать канал»; owner, 2026-11-20, channel
+// «Billions»). The piece's end now starts the next programme at once, and
+// the next programme still has its subtitles.
+func TestLiveSubtitlesDoNotHoldTheProgrammeOpen(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil || testing.Short() {
+		t.Skip("no ffmpeg")
+	}
+	dir := t.TempDir()
+	srt := filepath.Join(dir, "a.ru.srt")
+	// a cue at 10 s, then nothing until 60 s (Billions S03E01's Russian track
+	// after its recap: 126.7 s, then 176.8 s)
+	if err := os.WriteFile(srt, []byte("1\n00:00:01,000 --> 00:00:02,000\nРаз\n\n2\n00:00:10,000 --> 00:00:13,000\nДва\n\n3\n00:01:00,000 --> 00:01:01,000\nТри\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	v := filepath.Join(dir, "a.mkv")
+	if out, err := exec.Command("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25:duration=80",
+		"-f", "lavfi", "-i", "sine=f=440:duration=80:sample_rate=48000", "-i", srt, "-map", "0", "-map", "1", "-map", "2",
+		"-metadata:s:s:0", "language=rus", "-c:v", "libx264", "-preset", "ultrafast", "-g", "50", "-c:a", "aac", "-c:s", "srt", v).CombinedOutput(); err != nil {
+		t.Fatalf("make: %v %s", err, out)
+	}
+	probe, err := media.Probe(context.Background(), "ffprobe", v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := Plan(probe, nil, nil, PlanOptions{})
+	if len(tr.Subs) != 1 {
+		t.Fatalf("subs %+v", tr.Subs)
+	}
+	// the run starts a second before a cut piece ends (5–7 s of the file),
+	// then another programme plays the file from its start
+	now := time.Now()
+	src := fixedSchedule{
+		{Entry: Entry{ItemID: 1, Start: now.Add(-time.Second), End: now.Add(time.Second), OffsetMs: 5_000}, Path: v, Probe: probe, Tracks: &tr},
+		{Entry: Entry{ItemID: 1, Start: now.Add(time.Second), End: now.Add(60 * time.Second)}, Path: v, Probe: probe, Tracks: &tr},
+	}
+	// read in real time, as on the server; the first playlist waits for two segments
+	live := &Live{FFmpeg: "ffmpeg", HW: "none", Dir: filepath.Join(dir, "live"), Source: src, ReadRate: 1, Lead: 20 * time.Second,
+		Width: 320, Height: 180, ReadySegments: 2, ReadyWait: 20 * time.Second}
+	defer live.Close()
+	ctx := context.Background()
+	asked := time.Now()
+	if _, err := live.Playlist(ctx, 1, "index.m3u8"); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(asked); took > 8*time.Second {
+		t.Fatalf("the first playlist took %s: the cut piece's ffmpeg held the next programme back", took.Round(time.Second))
+	}
+	pl, err := live.Playlist(ctx, 1, "video.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(string(pl), "#EXT-X-DISCONTINUITY\n")
+	if !ok {
+		t.Fatalf("no second programme yet:\n%s", pl)
+	}
+	_, seg, _ := strings.Cut(after, "\nseg")
+	seq, _, _ := strings.Cut(seg, ".ts")
+	// the next programme's subtitles: its cue at 1–2 s (a cue shows once the
+	// one after it is written)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		vtt, err := live.VTT(ctx, 1, "s-0-"+seq+".vtt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(vtt), "Раз") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("segment %s lacks its cue:\n%s", seq, vtt)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// fixedSchedule is a Source of programmes played once, in order.
+type fixedSchedule []Program
+
+func (f fixedSchedule) Program(_ context.Context, ch int64, t time.Time) (Program, error) {
+	for _, p := range f {
+		if t.Before(p.End) {
+			p.Channel = ch
+			return p, nil
+		}
+	}
+	return Program{}, ErrNothing
 }

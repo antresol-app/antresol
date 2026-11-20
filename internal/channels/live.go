@@ -989,7 +989,7 @@ func (l *Live) encodeTracks(ctx context.Context, c *liveChan, in media.LiveInput
 			os.Remove(sub.path)
 		}
 	}
-	return l.runFFmpeg(ctx, c, media.LiveArgs(hw, in), in.Playlist, prog, disc)
+	return l.runFFmpeg(ctx, c, media.LiveArgs(hw, in), media.LiveSubArgs(in), in.Playlist, prog, disc)
 }
 
 // maxSubFile bounds a subtitle file read for a programme.
@@ -998,7 +998,10 @@ const maxSubFile = 8 << 20
 // audioBitrate is each audio output's bit rate (media.LiveArgs).
 const audioBitrate = 192_000
 
-func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playlist string, prog *liveProg, disc bool) ([]liveSeg, bool, error) {
+// runFFmpeg runs a programme's ffmpeg (args) and, beside it, the one of
+// its subtitles (subArgs, media.LiveSubArgs; nil: none), which is stopped
+// once the programme's own has finished (subGrace after it at most).
+func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args, subArgs []string, playlist string, prog *liveProg, disc bool) ([]liveSeg, bool, error) {
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := exec.CommandContext(rctx, l.FFmpeg, args...)
@@ -1010,6 +1013,7 @@ func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playli
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	stopSubs := l.startSubs(rctx, c, subArgs)
 	var got []liveSeg // published
 	audio := make([]map[int64]float64, prog.outs)
 	var video []liveSeg // as ffmpeg listed them
@@ -1069,6 +1073,7 @@ func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playli
 	for {
 		select {
 		case err := <-done:
+			stopSubs()
 			collect(true)
 			// segments past the last published one (an audio output's
 			// extra second, a video segment whose audio never came) go
@@ -1113,6 +1118,49 @@ func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args []string, playli
 				log.Printf("channels: channel %d%s: no new segment for %s (programme from segment %d, %d made): %s",
 					c.id, c.key.label(), time.Since(lastAt).Round(time.Second), firstSeq(got), n, strings.TrimSpace(stderr.String()))
 			}
+		}
+	}
+}
+
+// subGrace: how long a programme's subtitle ffmpeg may go on after the
+// programme's own finished (it reads alongside at the same rate, so it
+// has the cues up to the programme's end by then or a moment later).
+const subGrace = time.Second
+
+// startSubs starts the subtitle ffmpeg of a programme (args nil: none) and
+// returns what stops it: it waits up to subGrace for it to end by itself,
+// then ends it. Its failure costs the programme its subtitles, never its
+// picture.
+func (l *Live) startSubs(ctx context.Context, c *liveChan, args []string) (stop func()) {
+	if len(args) == 0 {
+		return func() {}
+	}
+	sctx, cancel := context.WithCancel(ctx)
+	cmd := exec.CommandContext(sctx, l.FFmpeg, args...)
+	cmd.WaitDelay = 2 * time.Second
+	var stderr bytes.Buffer
+	cmd.Stderr = &limited{b: &stderr, n: 4096}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		log.Printf("channels: channel %d: subtitles: %v", c.id, err)
+		return func() {}
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	return func() {
+		t := time.NewTimer(subGrace)
+		defer t.Stop()
+		select {
+		case err := <-exited:
+			if err != nil && sctx.Err() == nil {
+				log.Printf("channels: channel %d: subtitles: %v: %s", c.id, err, strings.TrimSpace(stderr.String()))
+			}
+		case <-t.C:
+		}
+		cancel()
+		select {
+		case <-exited:
+		case <-time.After(3 * time.Second):
 		}
 	}
 }
