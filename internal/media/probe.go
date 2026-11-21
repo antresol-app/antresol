@@ -153,11 +153,63 @@ func hdrMetaOf(sd []ffprobeSideData) HDRMeta {
 // Probe runs ffprobe on path: a local file, or a loopback http URL (see
 // InputArgs; other URLs are refused).
 func Probe(ctx context.Context, ffprobe, path string) (ProbeResult, error) {
+	return probe(ctx, ffprobe, path, nil)
+}
+
+// inputProbeLimits are ffprobe's analysis limits for an input a client
+// started (ProbeInput): the defaults read 5 MB and analyse 5 s of a
+// stream, which over a loopback http input from a source that is still
+// downloading is seconds of the start's wait.
+var inputProbeLimits = []string{"-probesize", "2M", "-analyzeduration", "1M"}
+
+// ProbeInput is Probe for an input a client is about to play: it reads
+// less (inputProbeLimits). When that leaves the streams incomplete (a
+// video without its size, an audio stream without channels, no audio at
+// all, or an HDR10 picture whose metadata look found no frame), the file
+// is probed once more with the defaults, so a late audio track or a big
+// first frame is never lost to the quick look.
+func ProbeInput(ctx context.Context, ffprobe, path string) (ProbeResult, error) {
+	r, err := probe(ctx, ffprobe, path, inputProbeLimits)
+	if err != nil || !r.incomplete() {
+		return r, err
+	}
+	if full, ferr := probe(ctx, ffprobe, path, nil); ferr == nil {
+		return full, nil
+	}
+	return r, nil // the quick look stands when the full one fails
+}
+
+// incomplete: ffprobe's quick look may have stopped before it saw every
+// stream's first packets.
+func (r ProbeResult) incomplete() bool {
+	if r.Video == nil && len(r.Audio) == 0 {
+		return true
+	}
+	if r.Video != nil && (r.Video.Width == 0 || r.Video.Height == 0 || r.Video.PixFmt == "") {
+		return true
+	}
+	if r.Video != nil && len(r.Audio) == 0 {
+		return true
+	}
+	if r.Video.NeedsHDRMeta() {
+		return true // the first frame's look did not reach a frame
+	}
+	for _, a := range r.Audio {
+		if a.Channels == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// probe is Probe with extra ffprobe limits (nil: the defaults).
+func probe(ctx context.Context, ffprobe, path string, limits []string) (ProbeResult, error) {
 	opts, operand, err := InputArgs(path)
 	if err != nil {
 		return ProbeResult{}, err
 	}
 	args := append([]string{"-v", "error"}, opts...)
+	args = append(args, limits...)
 	args = append(args, "-print_format", "json", "-show_format", "-show_streams", operand)
 	out, err := exec.CommandContext(ctx, ffprobe, args...).Output()
 	if err != nil {
@@ -170,7 +222,7 @@ func Probe(ctx context.Context, ffprobe, path string) (ProbeResult, error) {
 	if err == nil && r.Video != nil && r.Video.NeedsHDRMeta() {
 		// HDR10 metadata is mostly in the bitstream (SEI), seen only by
 		// decoding: the first frame tells
-		if m, err := ProbeHDRMeta(ctx, ffprobe, path); err == nil {
+		if m, err := probeHDRMeta(ctx, ffprobe, path, limits); err == nil {
 			r.Video.SetHDRMeta(m)
 		}
 	}
@@ -180,11 +232,16 @@ func Probe(ctx context.Context, ffprobe, path string) (ProbeResult, error) {
 // ProbeHDRMeta looks for HDR10 metadata of path's video: the stream's side
 // data (the container's) and that of its first decoded frame (SEI).
 func ProbeHDRMeta(ctx context.Context, ffprobe, path string) (HDRMeta, error) {
+	return probeHDRMeta(ctx, ffprobe, path, nil)
+}
+
+func probeHDRMeta(ctx context.Context, ffprobe, path string, limits []string) (HDRMeta, error) {
 	opts, operand, err := InputArgs(path)
 	if err != nil {
 		return HDRMeta{}, err
 	}
 	args := append([]string{"-v", "error"}, opts...)
+	args = append(args, limits...)
 	args = append(args, "-select_streams", "V:0", "-read_intervals", "%+#1",
 		"-print_format", "json", "-show_streams", "-show_frames", operand)
 	out, err := exec.CommandContext(ctx, ffprobe, args...).Output()

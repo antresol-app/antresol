@@ -201,13 +201,48 @@ func TestRemuxFarRequestRestarts(t *testing.T) {
 	}
 }
 
+// The first listed segment is short: it ends at the first keyframe at or
+// after firstRemuxSegment, and the 6 s steps go on from there as before.
+func TestRemuxGridShortFirstSegment(t *testing.T) {
+	// a keyframe every second: the first segment is 2 s, then steps of about 6 s
+	var kf []float64
+	for i := 0; i <= 30; i++ {
+		kf = append(kf, float64(i))
+	}
+	g, ok := newRemuxGrid(KeyIndex{Keyframes: kf, Duration: 30}, 0, 30)
+	if !ok {
+		t.Fatal("grid")
+	}
+	if want := []float64{0, 2, 6, 12, 18, 24}; len(g.bounds) != len(want) {
+		t.Fatalf("bounds %v, want %v", g.bounds, want)
+	} else {
+		for i := range want {
+			if g.bounds[i] != want[i] {
+				t.Fatalf("bounds %v, want %v", g.bounds, want)
+			}
+		}
+	}
+	pl := g.playlist(false)
+	if !strings.Contains(pl, "#EXTINF:2.000000,\nvseg00000.ts\n#EXTINF:4.000000,\nvseg00001.ts\n#EXTINF:6.000000,\nvseg00002.ts\n") ||
+		!strings.Contains(pl, "#EXT-X-TARGETDURATION:6\n") {
+		t.Fatalf("playlist:\n%s", pl)
+	}
+	// keyframes every 8 s: nothing shorter to cut at, the first segment is the first GOP
+	g, _ = newRemuxGrid(KeyIndex{Keyframes: []float64{0, 8, 16, 24}, Duration: 30}, 0, 30)
+	if len(g.bounds) != 4 || g.bounds[1] != 8 {
+		t.Fatalf("long GOPs: %v", g.bounds)
+	}
+}
+
 func TestRemuxGridOnKeyframes(t *testing.T) {
 	ki := KeyIndex{Keyframes: []float64{0, 1.3, 2.1, 5.9, 7.7, 8.0, 15.2, 22.9, 23.4, 31.0, 44.4, 45.0}, Duration: 50}
 	g, ok := newRemuxGrid(ki, 0, 50)
 	if !ok {
 		t.Fatal("grid")
 	}
-	// first keyframe at or after 6, 12, 18, 24, 30, 36…: 7.7, 15.2, 22.9, 31.0, 44.4
+	// the first segment ends at the first keyframe at or after 2 s (2.1);
+	// the rest at the first keyframe at or after 6, 12, 18, 24, 30, 36…:
+	// 7.7, 15.2, 22.9, 31.0, 44.4
 	same := func(a, b []float64) bool {
 		if len(a) != len(b) {
 			return false
@@ -219,7 +254,7 @@ func TestRemuxGridOnKeyframes(t *testing.T) {
 		}
 		return true
 	}
-	if want := []float64{0, 7.7, 15.2, 22.9, 31.0, 44.4}; !same(g.bounds, want) || g.end != 50 {
+	if want := []float64{0, 2.1, 7.7, 15.2, 22.9, 31.0, 44.4}; !same(g.bounds, want) || g.end != 50 {
 		t.Fatalf("bounds %v end %v", g.bounds, g.end)
 	}
 	// from a keyframe mid-file, relative to it
@@ -723,21 +758,23 @@ func TestRemuxUnmatchedSegmentRestartsOnce(t *testing.T) {
 	if _, err := m.Segment(id, names[0]); err != nil {
 		t.Fatal(err)
 	}
+	// the segment at 22.3 s (the third after the short first one)
+	const k = 4
 	m.mu.Lock()
 	s := m.sessions[id]
-	s.remux.grid.bounds[3] += 0.1 // no GOP starts there
+	s.remux.grid.bounds[k] += 0.1 // no GOP starts there
 	m.mu.Unlock()
-	// ffmpeg has passed segment 3 (the read burst), still running
+	// ffmpeg has passed segment k (the read burst), still running
 	deadline := time.Now().Add(20 * time.Second)
-	for m.coveredEnd(s) < s.remux.grid.segEnd(3)+1 {
+	for m.coveredEnd(s) < s.remux.grid.segEnd(k)+1 {
 		if time.Now().After(deadline) {
-			t.Fatal("ffmpeg did not pass segment 3")
+			t.Fatal("ffmpeg did not pass segment k")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	for range 4 {
-		if _, err := m.Segment(id, names[3]); err == nil {
-			parts, _ := m.remuxParts(s, 3)
+		if _, err := m.Segment(id, names[k]); err == nil {
+			parts, _ := m.remuxParts(s, k)
 			cur := currentRun(s.dir)
 			var placed []string
 			for j, g := range cur.names {
@@ -757,7 +794,7 @@ func TestRemuxUnmatchedSegmentRestartsOnce(t *testing.T) {
 		t.Fatalf("4 retries of an unmatched segment started %d runs", runs)
 	}
 	// playback goes on past it
-	if _, err := m.Segment(id, names[4]); err != nil {
+	if _, err := m.Segment(id, names[k+1]); err != nil {
 		t.Fatalf("next segment: %v", err)
 	}
 }

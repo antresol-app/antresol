@@ -20,7 +20,9 @@ import (
 // A remux (copied video) gets a complete VOD playlist too, built from the
 // container's keyframe index (KeyIndex): segment k covers [B_k, B_k+1),
 // where B_k is the first keyframe at or after each 6 s step from the stream
-// start, so every EXTINF is exact.
+// start (the first segment ends at the first keyframe at or after
+// firstRemuxSegment: playback starts once that much of the film is
+// written, so a short one starts sooner), so every EXTINF is exact.
 //
 // ffmpeg cannot be told where to cut a copied video, so it is told to cut at
 // every keyframe (-hls_time 0.001: one file per GOP, the same files whatever
@@ -50,6 +52,12 @@ const snapLimit = 0.2
 // runSpan separates the GOP file numbers of ffmpeg runs (run r writes
 // seg<r*runSpan + i>), so a restart never reuses a name.
 const runSpan = 100_000
+
+// firstRemuxSegment: the first listed segment ends at the first keyframe at
+// or after this many seconds (the rest follow the 6 s steps). A segment is
+// listed once ffmpeg has written the GOP that follows it, so a short first
+// one starts playback after less of the film is read.
+const firstRemuxSegment = 2.0
 
 // remuxSliver: a last segment shorter than this joins the one before it.
 const remuxSliver = 0.5
@@ -81,7 +89,7 @@ func newRemuxGrid(ki KeyIndex, streamStart, duration float64) (*remuxGrid, bool)
 		return nil, false
 	}
 	g := &remuxGrid{bounds: []float64{0}, end: end}
-	next := float64(segmentSeconds)
+	next := firstRemuxSegment
 	for _, k := range ki.Keyframes {
 		rel := k - streamStart
 		if rel < next-1e-6 || rel >= end-remuxSliver {

@@ -386,10 +386,11 @@ func (p *inputPlay) withProbeSlot(ctx context.Context, f func() error) error {
 // never read the input).
 var errSlotWait = errors.New("api: no probe slot")
 
-// runProbe probes src: Deps.Probe when set, else ffprobe.
+// runProbe probes src: Deps.Probe when set, else ffprobe (the quick look
+// of a started input, media.ProbeInput).
 func (p *inputPlay) runProbe(ctx context.Context, src string) (media.ProbeResult, error) {
 	if p.Probe != nil {
 		return p.Probe(ctx, src)
 	}
-	return media.Probe(ctx, p.ffprobe(), src)
+	return media.ProbeInput(ctx, p.ffprobe(), src)
 }
