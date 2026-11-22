@@ -117,20 +117,41 @@
 .deck {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--np-gap);
   min-width: 0;
-  /* the title, timeline and controls line up with the cover's edges; the
-     cover takes what the rows under it (--np-rows) leave of the height */
-  --np-rows: 344px;
-  width: min(100%, 46vh, calc(100cqh - var(--np-rows)));
+  /* The rows under the cover tighten with the window's height (full size from
+     800 px up) and the cover takes what they leave. --np-rows is what the
+     title, timeline, controls, volume and tools take (measured: 342.5 px at
+     full size); while that estimate holds, the title, timeline and controls
+     line up with the cover's edges. The column never gets narrower than
+     --np-deck-min (the controls need it): in a very short window the cover is
+     smaller than the column and stays centred over it. */
+  --np-gap: clamp(10px, 2.25dvh, 18px);
+  --np-play: clamp(60px, 9.5dvh, 76px);
+  --np-skip: calc(var(--np-play) - 12px);
+  --np-rows: calc(177px + 5 * var(--np-gap) + var(--np-play));
+  --np-deck-min: 252px;
+  --np-art-min: 96px;
+  width: min(100%, max(var(--np-deck-min), min(46vh, calc(100cqh - var(--np-rows)))));
+  /* If a row is ever taller than the estimate (a longer font, «Playing on …»,
+     a 44 pt tool row), the cover gives that height up (.artBox shrinks), never
+     the rows: nothing under it is cut. Below --np-art-min the rows win and the
+     body scrolls. */
+  max-height: 100cqh;
   justify-self: center;
 }
 .artBox {
   display: flex;
   justify-content: center;
+  /* the cover's square at full width, shrinking with the room (flex-shrink),
+     never below --np-art-min; the cover inside fits whichever side is shorter */
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: var(--np-art-min);
+  container-type: size;
 }
 .art {
-  width: 100%;
+  width: min(100cqw, 100cqh);
   aspect-ratio: 1;
   border-radius: 14px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
@@ -251,13 +272,13 @@ a.artist:hover {
   transform: scale(0.88);
 }
 .skip {
-  width: 64px;
-  height: 64px;
+  width: var(--np-skip);
+  height: var(--np-skip);
   border-radius: 50%;
 }
 .play {
-  width: 76px;
-  height: 76px;
+  width: var(--np-play);
+  height: var(--np-play);
   border-radius: 50%;
 }
 @media (hover: hover) {
@@ -388,6 +409,8 @@ a.artist:hover {
   }
   .artBox {
     flex: 1;
+    width: auto;
+    aspect-ratio: auto;
     min-height: 0;
     align-items: center;
     touch-action: none;

@@ -2,9 +2,13 @@
 // Windows cut the bottom row (lyrics, sound, queue) in half, because the cover
 // was sized from the viewport's height alone (46vh) and the rows under it did
 // not count. Every control must lie inside the viewport, with the cover shown
-// and with lyrics open. Set NP_SHOTS=<dir> to keep a screenshot of each size.
+// and with lyrics open. The rows' height is an estimate in CSS (--np-rows), so
+// the test also makes them taller than it (a longer font, «Playing on …») and
+// takes the room away altogether: the cover gives the height up, and when even
+// its minimum does not fit the body scrolls to the last row.
+// Set NP_SHOTS=<dir> to keep a screenshot of each size.
 import path from 'node:path'
-import type { Browser, Locator } from '@playwright/test'
+import type { Browser, Locator, Page } from '@playwright/test'
 import { MUSIC } from './music-media'
 import { expect, scanLibrary, setupAdmin, test } from './vault'
 
@@ -12,7 +16,10 @@ test.use({ library: 'music' })
 test.describe.configure({ timeout: 120_000 })
 
 const SIZES = [
+  { width: 1280, height: 501, phone: false },
   { width: 1280, height: 640, phone: false },
+  { width: 1280, height: 650, phone: false },
+  { width: 1280, height: 720, phone: false },
   { width: 1366, height: 650, phone: false },
   { width: 1440, height: 900, phone: false },
   { width: 1920, height: 1080, phone: false },
@@ -51,6 +58,13 @@ async function expectAllInside(full: Locator, v: { width: number; height: number
   }
 }
 
+/** Rows taller than the CSS estimate: the title block grows by `px` (a wider font, a «Playing on …» line). Returns the undo. */
+async function growRows(page: Page, px: number) {
+  const style = await page.addStyleTag({ content: `[role="dialog"] [class*="_meta_"] { padding-bottom: ${px}px }` })
+  await page.waitForTimeout(150)
+  return () => style.evaluate((el) => el.parentNode?.removeChild(el))
+}
+
 test('the full player fits the viewport at every size', async ({ browser, browserName, baseURL, page: first }) => {
   test.skip(browserName !== 'chromium', 'layout only; one engine is enough')
   await setupAdmin(first.request)
@@ -79,6 +93,16 @@ test('the full player fits the viewport at every size', async ({ browser, browse
     const art = full.locator('img:not([aria-hidden] img)').first()
     if (await art.isVisible()) expect((await art.boundingBox())!.width).toBeGreaterThan(100)
 
+    if (!v.phone) {
+      // rows 30 px taller than the estimate: the cover is smaller, the rows still all there
+      const before = (await art.boundingBox())!.width
+      const undo = await growRows(page, 30)
+      await shot('-tall-rows')
+      await expectAllInside(full, v)
+      expect((await art.boundingBox())!.width).toBeLessThan(before + 0.5)
+      await undo()
+    }
+
     await full.getByRole('button', { name: 'Текст', exact: true }).click()
     await expect(full.getByRole('button', { name: 'Текст', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await page.waitForTimeout(400)
@@ -86,4 +110,36 @@ test('the full player fits the viewport at every size', async ({ browser, browse
     await expectAllInside(full, v)
     await page.context().close()
   }
+})
+
+test('with no room left the full player scrolls to its last row instead of cutting it', async ({ browser, baseURL, page: first }) => {
+  await setupAdmin(first.request)
+  await scanLibrary(first.request, (s) => s.albums >= 2)
+  const cookies = await first.context().cookies()
+  const albums = (await (await first.request.get('/api/music/albums?sort=title')).json()) as { items: { id: number; title: string }[] }
+  const v = { width: 1280, height: 650, phone: false } as const
+  const page = await sizedPage(browser, baseURL!, v)
+  await page.context().addCookies(cookies)
+  await page.goto(`/music/album/${albums.items.find((a) => a.title === MUSIC.album)!.id}`)
+  await page.getByRole('button', { name: 'Слушать' }).click()
+  await page.getByRole('complementary', { name: 'Сейчас играет' }).getByRole('button', { name: /Открыть плеер/ }).click()
+  const full = page.getByRole('dialog', { name: 'Сейчас играет' })
+  await expect(full.getByRole('button', { name: 'Очередь' })).toBeVisible()
+
+  await growRows(page, 400)
+  await page.waitForTimeout(300)
+  if (process.env.NP_SHOTS) await page.screenshot({ path: path.join(process.env.NP_SHOTS, 'no-room.png') })
+  // the cover is at its minimum, not gone
+  const art = full.locator('img:not([aria-hidden] img)').first()
+  expect((await art.boundingBox())!.width).toBeGreaterThan(90)
+  // the body scrolls; the last row comes into view whole
+  const queue = full.getByRole('button', { name: 'Очередь' })
+  await queue.scrollIntoViewIfNeeded()
+  const box = (await queue.boundingBox())!
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(v.height + 0.5)
+  // and the first rows are reachable at the top: the cover is not pushed out of the window above
+  await full.evaluate((root) => root.querySelectorAll('*').forEach((e) => (e.scrollTop = 0)))
+  expect((await art.boundingBox())!.y).toBeGreaterThanOrEqual(0)
+  await page.context().close()
 })
