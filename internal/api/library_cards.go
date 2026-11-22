@@ -122,6 +122,9 @@ type lib struct {
 	// concurrent requests for the title (the guide's episodes and choice)
 	// wait for it and share it (ensureFresh).
 	refreshes singleflight.Group
+	// scans are the rest of those refreshes (the addons' scanners), in the
+	// background, one per title (finishInBackground).
+	scans detached[struct{}]
 	// trailerKeys are the trailer keys the server listed (nil: no trailer
 	// provider, nothing to play)
 	trailerKeys *trailers.Listed

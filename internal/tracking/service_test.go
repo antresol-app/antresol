@@ -533,3 +533,136 @@ func TestNewEpisodeMailedOnlyWhereTheProfileMayOpenIt(t *testing.T) {
 		t.Fatalf("not logged: %s", logs.String())
 	}
 }
+
+// funcScanner is a scanner whose Scan is a function (blocking, counting).
+type funcScanner struct {
+	kind string
+	scan func(ctx context.Context) ([]Source, error)
+}
+
+func (f *funcScanner) Kind() string { return f.kind }
+func (f *funcScanner) Scan(ctx context.Context, _ Title, _ []Episode) ([]Source, error) {
+	return f.scan(ctx)
+}
+
+// TestRefreshEpisodesLeavesAddonScannersToFinish: the first half of a refresh
+// stores the episode list and the core's own rows and marks the title
+// refreshed, without waiting on an addon's scanner and without setting the
+// next check; Finish runs the addon and sets it.
+func TestRefreshEpisodesLeavesAddonScannersToFinish(t *testing.T) {
+	sk := &fakeSkeleton{status: "airing", eps: []Episode{{Season: 1, Number: 1, AirDate: "2026-03-01"}}}
+	lib := &fakeScanner{kind: "library", srcs: []Source{{Season: 1, Episode: 1, Ref: "7"}}}
+	s, _, _ := newService(t, sk, lib)
+	ti, _ := watched(t, s, "one")
+	alphaCalls := 0
+	alpha := &funcScanner{kind: "alpha", scan: func(context.Context) ([]Source, error) {
+		alphaCalls++
+		return []Source{{Season: 1, Episode: 1, Ref: "a"}}, nil
+	}}
+	s.SetScanners(func(context.Context) []Scanner { return []Scanner{alpha} })
+	ctx := context.Background()
+
+	p, err := s.RefreshEpisodes(ctx, ti.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alphaCalls != 0 {
+		t.Fatalf("an addon scanner ran in the episodes half")
+	}
+	eps, _ := s.Store.Episodes(ctx, ti.ID)
+	src, _ := s.Store.Sources(ctx, ti.ID)
+	got, _, _ := s.Store.TitleByID(ctx, ti.ID)
+	if len(eps) != 1 || len(src) != 1 || src[0].Kind != "library" {
+		t.Fatalf("episodes %+v sources %+v", eps, src)
+	}
+	if got.Status != "airing" || !got.Refreshed.Equal(tnow) || !got.NextCheck.IsZero() {
+		t.Fatalf("after the episodes half: %+v", got)
+	}
+
+	if err := p.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	src, _ = s.Store.Sources(ctx, ti.ID)
+	got, _, _ = s.Store.TitleByID(ctx, ti.ID)
+	if alphaCalls != 1 || len(src) != 2 {
+		t.Fatalf("addon calls %d, sources %+v", alphaCalls, src)
+	}
+	if !got.NextCheck.Equal(tnow.Add(6 * time.Hour)) {
+		t.Fatalf("next check %v", got.NextCheck)
+	}
+}
+
+// TestSplitRefreshKeepsTheLetterRule: an episode whose library row arrives
+// with the episodes half and whose addon row arrives in Finish is still new
+// (it had no source before the refresh), exactly as in one Refresh.
+func TestSplitRefreshKeepsTheLetterRule(t *testing.T) {
+	sk := &fakeSkeleton{status: "airing", eps: []Episode{
+		{Season: 1, Number: 7, AirDate: "2026-03-01"},
+		{Season: 1, Number: 8, AirDate: "2026-03-08"},
+	}}
+	lib := &fakeScanner{kind: "library", srcs: []Source{{Season: 1, Episode: 7, Ref: "7"}}}
+	alpha := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 7, Ref: "a7"}}}
+	s, n, _ := newService(t, sk, lib)
+	s.SetScanners(func(context.Context) []Scanner { return []Scanner{alpha} })
+	ti, _ := watched(t, s, "one")
+	ctx := context.Background()
+	if err := s.Refresh(ctx, ti.ID); err != nil { // the baseline
+		t.Fatal(err)
+	}
+	lib.srcs = append(lib.srcs, Source{Season: 1, Episode: 8, Ref: "8"})
+	alpha.srcs = append(alpha.srcs, Source{Season: 1, Episode: 8, Ref: "a8"})
+	p, err := s.RefreshEpisodes(ctx, ti.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 0 {
+		t.Fatalf("told before Finish: %+v", n.got)
+	}
+	if err := p.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 || n.got[0].Data.Episode != 8 {
+		t.Fatalf("events %+v", n.got)
+	}
+}
+
+// TestFinishCutShortTellsWhatItFoundAndSkipsTheCheck: when the context ends
+// while a later scanner is still running, the rows an earlier one stored are
+// told about (their kind has its baseline, no later round would), the title
+// stays marked refreshed, and its next check is not set (the refresher takes
+// it again).
+func TestFinishCutShortTellsWhatItFoundAndSkipsTheCheck(t *testing.T) {
+	sk := &fakeSkeleton{status: "airing", eps: []Episode{
+		{Season: 1, Number: 7, AirDate: "2026-03-01"},
+		{Season: 1, Number: 8, AirDate: "2026-03-08"},
+	}}
+	alpha := &fakeScanner{kind: "alpha", srcs: []Source{{Season: 1, Episode: 7, Ref: "a7"}}}
+	s, n, _ := newService(t, sk)
+	stuck := &funcScanner{kind: "beta", scan: func(ctx context.Context) ([]Source, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	s.SetScanners(func(context.Context) []Scanner { return []Scanner{alpha, stuck} })
+	ti, _ := watched(t, s, "one")
+	bg := context.Background()
+	if err := s.Store.MarkScanned(bg, ti.ID, "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	alpha.srcs = []Source{{Season: 1, Episode: 8, Ref: "a8"}}
+	p, err := s.RefreshEpisodes(bg, ti.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cctx, cancel := context.WithTimeout(bg, 50*time.Millisecond)
+	defer cancel()
+	if err := p.Finish(cctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Finish: %v", err)
+	}
+	if len(n.got) != 1 || n.got[0].Data.Episode != 8 {
+		t.Fatalf("events %+v", n.got)
+	}
+	got, _, _ := s.Store.TitleByID(bg, ti.ID)
+	if !got.Refreshed.Equal(tnow) || !got.NextCheck.IsZero() {
+		t.Fatalf("title %+v", got)
+	}
+}

@@ -416,6 +416,16 @@ func (s *Store) SetChecked(ctx context.Context, titleID int64, status string, ne
 	return err
 }
 
+// SetRefreshed records that a title's episode list was refreshed at now and
+// its airing status ("" keeps the stored one), leaving next_check as it is:
+// the refresh is not over until SetChecked says when to look again.
+func (s *Store) SetRefreshed(ctx context.Context, titleID int64, status string, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE tracked_titles SET status=COALESCE(NULLIF(?, ''), status), refreshed_at=? WHERE id=?`,
+		status, now.UTC().Format(time.RFC3339), titleID)
+	return err
+}
+
 // EnsureWatchlistTitles makes the title row of every library movie or
 // series with a TMDB id that some profile has on its watchlist (such a
 // title reads as planned and is tracked: interest); existing rows stay.

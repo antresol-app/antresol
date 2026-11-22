@@ -15,6 +15,7 @@ import (
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/tracking"
 	"github.com/go-chi/chi/v5"
 )
@@ -25,9 +26,18 @@ const (
 	feedDays        = 14               // its default window
 	feedMaxDays     = 90               // its widest window
 	calendarMaxDays = 42               // to - from of /api/tracking/calendar
-	onDemandBudget  = 15 * time.Second // an untracked title's refresh on its episodes page and choice routes
+	onDemandBudget  = 10 * time.Second // what an untracked title's episodes page and choice routes wait for: its TMDB episode list
 	onDemandFresh   = 6 * time.Hour    // an untracked title refreshed this recently is not fetched again
 )
+
+// onDemandScanBudget bounds the rest of such a refresh (the addons' scanners:
+// indexers that time out, one call to an addon can take 120 s), which runs
+// after the response, in the background. A var so a test can shorten it.
+var onDemandScanBudget = 5 * time.Minute
+
+// scanGrace is how long the request that started a background scan waits for
+// it, to answer after a scan that has nothing to wait for.
+const scanGrace = 100 * time.Millisecond
 
 func mountTracking(r chi.Router, h *lib) {
 	r.Get("/api/marks", h.listMarks)
@@ -194,11 +204,15 @@ func titleParams(w http.ResponseWriter, r *http.Request) (string, int64, bool) {
 }
 
 // ensureFresh returns the title (created, unmarked, when absent) after a
-// refresh within onDemandBudget when nobody tracks it and it was not
-// refreshed in onDemandFresh (or when force). Concurrent callers for one
-// title share one refresh (h.refreshes); it runs to its budget even when the
-// request that started it goes away. A failed refresh is logged: the stored
-// state is served.
+// refresh of its episode list within onDemandBudget when nobody tracks it and
+// it was not refreshed in onDemandFresh (or when force). Only that half of
+// the refresh is waited for (tracking.Service.RefreshEpisodes: TMDB and the
+// library's own rows): it marks the title refreshed, so the next visit is
+// served at once, whatever the addons' scanners do. They run on in the
+// background (Pending.Finish, bounded by onDemandScanBudget), one per title.
+// Concurrent callers for one title share one refresh (h.refreshes); it runs
+// to its budget even when the request that started it goes away. A failed
+// refresh is logged: the stored state is served.
 func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, poster string, force bool) (tracking.Title, error) {
 	st := h.Tracking.Store
 	t, err := st.EnsureTitle(ctx, kind, tmdbID, name, poster)
@@ -225,9 +239,12 @@ func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, 
 		if now, _, err := st.TitleByID(rctx, t.ID); err == nil && !force && now.Refreshed.After(t.Refreshed) {
 			return nil, nil
 		}
-		if err := h.Tracking.Refresh(rctx, t.ID); err != nil {
+		p, err := h.Tracking.RefreshEpisodes(rctx, t.ID)
+		if err != nil {
 			log.Printf("tracking: on-demand refresh %s %d: %v", kind, tmdbID, err)
+			return nil, nil
 		}
+		h.finishInBackground(key, p)
 		return nil, nil
 	})
 	select {
@@ -237,6 +254,20 @@ func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, 
 	}
 	t, _, err = st.TitleByID(ctx, t.ID)
 	return t, err
+}
+
+// finishInBackground runs the rest of an on-demand refresh (the addons'
+// scanners, the letters) outside any request, one at a time per title (a
+// refresh whose title is still being scanned leaves it to that scan). The
+// caller does not wait for a scan: do's short wait only lets a refresh that
+// needs no addon (none installed) be over before the answer.
+func (h *lib) finishInBackground(key string, p *tracking.Pending) {
+	_, _ = h.scans.do(context.Background(), key, scanGrace, onDemandScanBudget, func(ctx context.Context) (struct{}, error) {
+		if err := p.Finish(ctx); err != nil {
+			log.Printf("tracking: on-demand scan %s: %v", key, err)
+		}
+		return struct{}{}, nil
+	})
 }
 
 func (h *lib) putMark(w http.ResponseWriter, r *http.Request) {
@@ -631,7 +662,9 @@ func (h *lib) choiceKindOK(u auth.User, kind string) bool {
 // WatchStates (watched if any says so, the largest position). new: the
 // episode is unwatched, has a source other than the library's, and is news
 // by the feed's rule (tracking.IsNews over its earliest source of any kind,
-// since the feed's default window, feedDays). 404 when the rating gate
+// since the feed's default window, feedDays). name of the title (off the
+// library) and of the episodes is in the request's language where TMDB has
+// it (trackingTranslation), else the stored one. 404 when the rating gate
 // hides the title.
 func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -689,8 +722,9 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 		byKey[[2]int{season, number}] = e
 		return e
 	}
+	tr := h.trackingTranslation(ctx, t, res, eps)
 	for _, e := range eps {
-		add(e.Season, e.Number, e.Name, e.AirDate).Still = tracking.StillURL(e.Still)
+		add(e.Season, e.Number, translatedTrackedEpisode(tr, e), e.AirDate).Still = tracking.StillURL(e.Still)
 	}
 	extra := false
 	for _, s := range srcs {
@@ -723,7 +757,57 @@ func (h *lib) trackingEpisodes(w http.ResponseWriter, r *http.Request) {
 			return a.Season < b.Season || a.Season == b.Season && a.Number < b.Number
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"title": titleJSON(t, res.item), "episodes": out})
+	title := titleJSON(t, res.item)
+	if tr != nil && res.item == nil && tr.Title != "" {
+		title.Name = tr.Title // a library title keeps its library name
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"title": title, "episodes": out})
+}
+
+// trackingTranslation is TMDB's text of a tracked title in the viewer's
+// language (the request's, as the library pages read it): its name and its
+// episodes' names, for the episode list, which is stored once in the
+// household's metadata language. nil: serve the stored text: the viewer
+// reads that language, nothing in the answer needs a translation (a movie
+// of the library), no translator is set, or TMDB has none (down, or no
+// text in that language). The text is cached for a month per language; a
+// missing one is fetched here within Translations' short wait, so only the
+// first visit in a language pays for it.
+func (h *lib) trackingTranslation(ctx context.Context, t tracking.Title, res gateResult, eps []tracking.Episode) *tmdb.Translation {
+	if h.Translations == nil {
+		return nil
+	}
+	tag := i18n.TMDB(i18n.FromContext(ctx))
+	if primaryLang(h.Translations.Language()) == primaryLang(tag) {
+		return nil
+	}
+	kind, seasons := "movie", []int(nil)
+	if t.Kind == "series" {
+		kind = "tv"
+		for _, e := range eps {
+			if e.Season > 0 && !slices.Contains(seasons, e.Season) {
+				seasons = append(seasons, e.Season)
+			}
+		}
+		slices.Sort(seasons)
+	} else if res.item != nil {
+		return nil // the movie's name is the library's, and it has no episode names
+	}
+	tr, ok := h.Translations.Get(ctx, kind, int(t.TMDBID), tag, seasons)
+	if !ok {
+		return nil
+	}
+	return &tr
+}
+
+// translatedTrackedEpisode is the name of episode e in tr, else the stored one.
+func translatedTrackedEpisode(tr *tmdb.Translation, e tracking.Episode) string {
+	if tr != nil {
+		if x, ok := tr.Episode(e.Season, e.Number); ok && x.Name != "" {
+			return x.Name
+		}
+	}
+	return e.Name
 }
 
 // libraryEpisodeName is the name of a library episode item ("" when unknown).

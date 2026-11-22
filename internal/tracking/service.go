@@ -65,8 +65,8 @@ var ErrUnchanged = errors.New("tracking: scanner skipped this title")
 type Service struct {
 	Store    *Store
 	Skeleton Skeleton
-	// Scanners are the core's own (library); the addons' come through
-	// SetScanners.
+	// Scanners are the core's own (library): local reads, run with the
+	// episode list (RefreshEpisodes); the addons' come through SetScanners.
 	Scanners []Scanner
 	Notify   Notifier
 	// Interest lists the profiles to tell about a title's new episodes.
@@ -111,22 +111,23 @@ type Service struct {
 }
 
 // SetScanners adds scanners that come and go (the addons' scan kinds): f
-// is called on every refresh and its scanners run after Scanners. One
-// whose kind an earlier scanner has (library, or a repeat) is not
-// run. Call it before Run.
+// is called on every refresh and its scanners run after Scanners, in
+// Finish (an addon can be slow; a page does not wait for it). One whose
+// kind an earlier scanner has (library, or a repeat) is not run. Call it
+// before Run.
 func (s *Service) SetScanners(f func(ctx context.Context) []Scanner) { s.scanners = f }
 
-// roundScanners are the scanners of one refresh: Scanners, then those of
-// SetScanners whose kind is not taken yet.
-func (s *Service) roundScanners(ctx context.Context) []Scanner {
+// addonScanners are the scanners of SetScanners whose kind no earlier
+// scanner has (Scanners', or a repeat).
+func (s *Service) addonScanners(ctx context.Context) []Scanner {
 	if s.scanners == nil {
-		return s.Scanners
+		return nil
 	}
-	out := slices.Clone(s.Scanners)
 	taken := map[string]bool{"library": true}
 	for _, sc := range s.Scanners {
 		taken[sc.Kind()] = true
 	}
+	var out []Scanner
 	for _, sc := range s.scanners(ctx) {
 		if taken[sc.Kind()] {
 			continue
@@ -248,16 +249,47 @@ func (s *Service) refreshDue(ctx context.Context) {
 // title is its baseline and tells nobody (a scanner down at the title's
 // first refresh, or added later, does not mail the back catalogue), and an
 // episode aired more than mailMaxAge ago is never mailed.
+//
+// It is RefreshEpisodes and then Finish: the page of an untracked title
+// waits for the first and leaves the second to the background.
 func (s *Service) Refresh(ctx context.Context, titleID int64) error {
-	if s.Skeleton == nil {
-		return errNoSkeleton
-	}
-	t, ok, err := s.Store.TitleByID(ctx, titleID)
+	p, err := s.RefreshEpisodes(ctx, titleID)
 	if err != nil {
 		return err
 	}
+	return p.Finish(ctx)
+}
+
+// Pending is a refresh half done: the title's episode list is stored and the
+// title is marked refreshed, and the core's own scanners (Scanners: the
+// library's local reads) have run. Finish does the rest.
+type Pending struct {
+	s        *Service
+	t        Title
+	eps      []Episode
+	status   string
+	had      map[[2]int]bool // the episodes that had a source of any kind before this refresh
+	scanned  map[string]bool // the kinds that scanned the title successfully before it
+	added    []Source        // every row this refresh added so far
+	mailable []Source        // those of a kind that has a baseline: the ones to tell about
+}
+
+// RefreshEpisodes is the first half of Refresh: the title's episode list,
+// info and airing status from the skeleton, stored, the title marked
+// refreshed (refreshed_at and the status, not next_check), and the core's
+// own Scanners run. It is what a page needs; it never waits on an addon.
+// Finish completes the refresh (until it has run, or when it is cut short,
+// the title is still due for the refresher).
+func (s *Service) RefreshEpisodes(ctx context.Context, titleID int64) (*Pending, error) {
+	if s.Skeleton == nil {
+		return nil, errNoSkeleton
+	}
+	t, ok, err := s.Store.TitleByID(ctx, titleID)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
-		return fmt.Errorf("tracking: title %d not found", titleID)
+		return nil, fmt.Errorf("tracking: title %d not found", titleID)
 	}
 	var eps []Episode
 	var status string
@@ -268,23 +300,23 @@ func (s *Service) Refresh(ctx context.Context, titleID int64) error {
 		eps, status, err = s.Skeleton.Episodes(ctx, t)
 	}
 	if err != nil {
-		return fmt.Errorf("tracking: episodes of %d: %w", titleID, err)
+		return nil, fmt.Errorf("tracking: episodes of %d: %w", titleID, err)
 	}
 	if info != (TitleInfo{}) {
 		if err := s.Store.SetInfo(ctx, titleID, info); err != nil {
-			return err
+			return nil, err
 		}
 		t, _, err = s.Store.TitleByID(ctx, titleID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := s.Store.ReplaceEpisodes(ctx, titleID, eps); err != nil {
-		return err
+		return nil, err
 	}
 	old, err := s.Store.Sources(ctx, titleID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	had := map[[2]int]bool{}
 	for _, x := range old {
@@ -292,12 +324,25 @@ func (s *Service) Refresh(ctx context.Context, titleID int64) error {
 	}
 	scanned, err := s.Store.ScannedKinds(ctx, titleID)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	p := &Pending{s: s, t: t, eps: eps, status: status, had: had, scanned: scanned}
+	if err := p.scan(ctx, s.Scanners); err != nil {
+		return nil, err
+	}
+	if err := s.Store.SetRefreshed(ctx, titleID, status, s.now()); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// scan runs scanners over the title, storing what each finds and keeping
+// what is to be told.
+func (p *Pending) scan(ctx context.Context, scanners []Scanner) error {
+	s := p.s
 	now := s.now()
-	var added, mailable []Source
-	for _, sc := range s.roundScanners(ctx) {
-		srcs, err := sc.Scan(ctx, t, eps)
+	for _, sc := range scanners {
+		srcs, err := sc.Scan(ctx, p.t, p.eps)
 		if errors.Is(err, ErrUnchanged) {
 			continue
 		}
@@ -305,30 +350,59 @@ func (s *Service) Refresh(ctx context.Context, titleID int64) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			s.log().Warn("tracking: scan", "title", titleID, "kind", sc.Kind(), "err", err)
+			s.log().Warn("tracking: scan", "title", p.t.ID, "kind", sc.Kind(), "err", err)
 			continue
 		}
-		a, err := s.Store.UpsertSources(ctx, titleID, sc.Kind(), srcs, now)
+		a, err := s.Store.UpsertSources(ctx, p.t.ID, sc.Kind(), srcs, now)
 		if err != nil {
 			return err
 		}
-		added = append(added, a...)
-		if scanned[sc.Kind()] {
-			mailable = append(mailable, a...)
-		} else if err := s.Store.MarkScanned(ctx, titleID, sc.Kind()); err != nil {
+		p.added = append(p.added, a...)
+		if p.scanned[sc.Kind()] {
+			p.mailable = append(p.mailable, a...)
+		} else if err := s.Store.MarkScanned(ctx, p.t.ID, sc.Kind()); err != nil {
 			return err
 		}
 	}
-	s.notifyNew(ctx, t, eps, mailable, had, now)
-	if len(added) > 0 {
+	return nil
+}
+
+// notifyWait bounds telling about what a refresh found when its own context
+// ended first.
+const notifyWait = 15 * time.Second
+
+// Finish is the second half of Refresh: the addons' scanners, then the
+// letters and OnAdded for everything the refresh found (the core scanners'
+// rows too), then the next check. When ctx ends mid-scan the rows already
+// stored are still told about (their kinds' baseline is set, so a later
+// round would not tell them) but the title is not checked: the refresher
+// takes it again.
+func (p *Pending) Finish(ctx context.Context) error {
+	s := p.s
+	err := p.scan(ctx, s.addonScanners(ctx))
+	nctx := ctx
+	if err != nil {
+		if ctx.Err() == nil {
+			return err
+		}
+		var cancel context.CancelFunc
+		nctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), notifyWait)
+		defer cancel()
+	}
+	now := s.now()
+	s.notifyNew(nctx, p.t, p.eps, p.mailable, p.had, now)
+	if len(p.added) > 0 {
 		for _, h := range s.OnAdded {
-			if err := h(ctx, t, added); err != nil {
-				s.log().Warn("tracking: on added", "title", titleID, "err", err)
+			if err := h(nctx, p.t, p.added); err != nil {
+				s.log().Warn("tracking: on added", "title", p.t.ID, "err", err)
 			}
 		}
 	}
-	t.Status = status
-	return s.Store.SetChecked(ctx, titleID, status, NextCheck(t, eps, now), now)
+	if err != nil {
+		return err
+	}
+	p.t.Status = p.status
+	return s.Store.SetChecked(ctx, p.t.ID, p.status, NextCheck(p.t, p.eps, now), now)
 }
 
 // notifyNew queues one event per interested profile for each episode among

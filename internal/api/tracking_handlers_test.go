@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1053,5 +1054,248 @@ func TestOnDemandRefreshSharedByConcurrentRequests(t *testing.T) {
 	defer e.sk.mu.Unlock()
 	if e.sk.calls != 1 {
 		t.Fatalf("refreshes %d, want 1", e.sk.calls)
+	}
+}
+
+// addonScan is an addon scanner of the tests: it counts its calls, says when
+// one starts, and blocks until released or its context ends.
+type addonScan struct {
+	kind    string
+	started chan struct{} // closed at the first call
+	release chan struct{} // closes to let a call return
+	once    sync.Once
+	mu      sync.Mutex
+	calls   int
+	err     error // what a released call returns besides its rows
+}
+
+func newAddonScan(kind string) *addonScan {
+	return &addonScan{kind: kind, started: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (a *addonScan) Kind() string { return a.kind }
+func (a *addonScan) Scan(ctx context.Context, _ tracking.Title, _ []tracking.Episode) ([]tracking.Source, error) {
+	a.mu.Lock()
+	a.calls++
+	a.mu.Unlock()
+	a.once.Do(func() { close(a.started) })
+	select {
+	case <-a.release:
+		return []tracking.Source{{Season: 1, Episode: 1, Ref: "x"}}, a.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (a *addonScan) callCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls
+}
+
+// titleRow is the stored refresh state of the title.
+func (e *trackEnv) titleRow(tmdbID int64) tracking.Title {
+	t, ok, err := e.svc.Store.TitleByTMDB(context.Background(), "series", tmdbID)
+	if err != nil || !ok {
+		e.t.Fatalf("title %d: %v %v", tmdbID, ok, err)
+	}
+	return t
+}
+
+// eventually waits for cond for up to a few seconds.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestOnDemandPageDoesNotWaitForAddonScanners: a title page asks for the
+// episodes and the choice of an untracked title at once while an addon
+// scanner is stuck. The answers come with the episode list, the title is
+// marked refreshed (its next check stays unset: the scan is not over), the
+// scanner is started once, a later visit is served with no new fetch, and
+// when the scanner ends its rows and the next check are stored.
+func TestOnDemandPageDoesNotWaitForAddonScanners(t *testing.T) {
+	e := newTrackEnv(t)
+	slow := newAddonScan("alpha")
+	e.svc.SetScanners(func(context.Context) []tracking.Scanner { return []tracking.Scanner{slow} })
+
+	begin := time.Now()
+	var wg sync.WaitGroup
+	codes := make([]int, 4)
+	bodies := make([]string, 4)
+	for i, path := range []string{"episodes", "choice", "episodes", "choice"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := e.do("GET", "/api/tracking/series/55/"+path, "", e.admin)
+			codes[i], bodies[i] = w.Code, w.Body.String()
+		}()
+	}
+	wg.Wait()
+	if d := time.Since(begin); d > 3*time.Second {
+		t.Fatalf("the page waited %v for a scanner", d)
+	}
+	for i, c := range codes {
+		if c != 200 {
+			t.Fatalf("request %d: %d %s", i, c, bodies[i])
+		}
+	}
+	if !strings.Contains(bodies[0], "Вторая") {
+		t.Fatalf("episodes: %s", bodies[0])
+	}
+	<-slow.started
+	got := e.titleRow(55)
+	if got.Refreshed.IsZero() || got.Status != "airing" || !got.NextCheck.IsZero() {
+		t.Fatalf("title after the page: %+v", got)
+	}
+
+	// the next visit: no new flight, neither a fetch nor a scan
+	w := e.do("GET", "/api/tracking/series/55/episodes", "", e.admin)
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	e.sk.mu.Lock()
+	fetched := e.sk.calls
+	e.sk.mu.Unlock()
+	if fetched != 1 || slow.callCount() != 1 {
+		t.Fatalf("fetches %d, scans %d, want 1 and 1", fetched, slow.callCount())
+	}
+
+	close(slow.release)
+	eventually(t, "the background scan to finish", func() bool { return !e.titleRow(55).NextCheck.IsZero() })
+	srcs, err := e.svc.Store.Sources(context.Background(), e.titleRow(55).ID)
+	if err != nil || len(srcs) != 1 || srcs[0].Kind != "alpha" {
+		t.Fatalf("sources %+v %v", srcs, err)
+	}
+}
+
+// TestOnDemandTimedOutScannerStillMarksRefreshed: a scanner that outlives the
+// background budget is cut; the title stays refreshed (the episode list was
+// fetched), so the next visit is instant, and its next check stays unset for
+// the refresher.
+func TestOnDemandTimedOutScannerStillMarksRefreshed(t *testing.T) {
+	old := onDemandScanBudget
+	onDemandScanBudget = 60 * time.Millisecond
+	t.Cleanup(func() { onDemandScanBudget = old })
+	e := newTrackEnv(t)
+	stuck := newAddonScan("alpha")
+	e.svc.SetScanners(func(context.Context) []tracking.Scanner { return []tracking.Scanner{stuck} })
+
+	if w := e.do("GET", "/api/tracking/series/55/episodes", "", e.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	<-stuck.started
+	// let the budget end the scan (a scan that is still running is no failure to wait for)
+	time.Sleep(200 * time.Millisecond)
+	got := e.titleRow(55)
+	if got.Refreshed.IsZero() || !got.NextCheck.IsZero() {
+		t.Fatalf("title %+v", got)
+	}
+	w := e.do("GET", "/api/tracking/series/55/episodes", "", e.admin)
+	e.sk.mu.Lock()
+	defer e.sk.mu.Unlock()
+	if w.Code != 200 || e.sk.calls != 1 || stuck.callCount() != 1 {
+		t.Fatalf("%d: fetches %d, scans %d, want 1 and 1", w.Code, e.sk.calls, stuck.callCount())
+	}
+}
+
+// TestOnDemandFailedScannerStillMarksRefreshed: the same for a scanner that
+// fails at once (an indexer down).
+func TestOnDemandFailedScannerStillMarksRefreshed(t *testing.T) {
+	e := newTrackEnv(t)
+	down := newAddonScan("alpha")
+	down.err = errors.New("indexer down")
+	close(down.release)
+	e.svc.SetScanners(func(context.Context) []tracking.Scanner { return []tracking.Scanner{down} })
+
+	if w := e.do("GET", "/api/tracking/series/55/episodes", "", e.admin); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	eventually(t, "the scan to finish", func() bool { return !e.titleRow(55).NextCheck.IsZero() })
+	e.do("GET", "/api/tracking/series/55/episodes", "", e.admin)
+	e.sk.mu.Lock()
+	defer e.sk.mu.Unlock()
+	if e.sk.calls != 1 || down.callCount() != 1 {
+		t.Fatalf("fetches %d, scans %d, want 1 and 1", e.sk.calls, down.callCount())
+	}
+}
+
+type episodesNames struct {
+	Title struct {
+		Name string `json:"name"`
+	} `json:"title"`
+	Episodes []struct {
+		Season int    `json:"season"`
+		Number int    `json:"number"`
+		Name   string `json:"name"`
+	} `json:"episodes"`
+}
+
+func (e *trackEnv) episodesIn(path, lang string) episodesNames {
+	w := e.do("GET", path, "", e.admin, "Accept-Language", lang)
+	if w.Code != 200 {
+		e.t.Fatalf("%s (%s): %d %s", path, lang, w.Code, w.Body)
+	}
+	return decodeJSON[episodesNames](e.t, w.Body.Bytes())
+}
+
+// TestEpisodesNamesInTheViewersLanguage: the episode list of a title off the
+// library is stored in the household's metadata language (ru); a viewer who
+// reads another gets TMDB's names and title in it where the translation has
+// them, the stored name where it has none, and a viewer of the stored
+// language never makes TMDB be asked.
+func TestEpisodesNamesInTheViewersLanguage(t *testing.T) {
+	f := &fakeTranslator{}
+	e := newTrackEnvWith(t, func(d *Deps) { d.Translations = f })
+	e.sk.info = tracking.TitleInfo{Name: "Новинка", Poster: "/n.jpg"}
+
+	ru := e.episodesIn("/api/tracking/series/55/episodes", "ru")
+	if ru.Title.Name != "Новинка" || ru.Episodes[0].Name != "Первая" || ru.Episodes[1].Name != "Вторая" || len(f.gets) != 0 {
+		t.Fatalf("ru: %+v, asked %v", ru, f.gets)
+	}
+	en := e.episodesIn("/api/tracking/series/55/episodes", "en")
+	if en.Title.Name != "Shogun" || en.Episodes[0].Name != "Anjin" || en.Episodes[1].Name != "Вторая" {
+		t.Fatalf("en: %+v", en)
+	}
+	if strings.Join(f.gets, ",") != "tv/en-US" {
+		t.Fatalf("gets %v", f.gets)
+	}
+	// the stored names stay as they were for the next viewer
+	if ru = e.episodesIn("/api/tracking/series/55/episodes", "ru"); ru.Episodes[0].Name != "Первая" || len(f.gets) != 1 {
+		t.Fatalf("ru again: %+v, asked %v", ru, f.gets)
+	}
+}
+
+// TestEpisodesNamesTMDBDownKeepsStored: no translation (TMDB down, no key):
+// the page is served with the stored names.
+func TestEpisodesNamesTMDBDownKeepsStored(t *testing.T) {
+	f := &fakeTranslator{down: true}
+	e := newTrackEnvWith(t, func(d *Deps) { d.Translations = f })
+	en := e.episodesIn("/api/tracking/series/55/episodes", "en")
+	if en.Episodes[0].Name != "Первая" || len(f.gets) != 1 {
+		t.Fatalf("%+v, asked %v", en, f.gets)
+	}
+	// and with no translator at all
+	e2 := newTrackEnv(t)
+	if en = e2.episodesIn("/api/tracking/series/55/episodes", "en"); en.Episodes[0].Name != "Первая" {
+		t.Fatalf("no translator: %+v", en)
+	}
+}
+
+// TestEpisodesNamesOfLibraryTitle: a library title keeps its library name;
+// its episode list is translated like any other.
+func TestEpisodesNamesOfLibraryTitle(t *testing.T) {
+	f := &fakeTranslator{}
+	e := newTrackEnvWith(t, func(d *Deps) { d.Translations = f })
+	e.series("Сёгун", "16+", 42)
+	en := e.episodesIn("/api/tracking/series/42/episodes", "en")
+	if en.Title.Name != "Сёгун" || en.Episodes[0].Name != "Anjin" {
+		t.Fatalf("%+v", en)
 	}
 }
