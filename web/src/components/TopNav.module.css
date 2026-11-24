@@ -24,7 +24,7 @@
    under the bar, a soft blur and dim fade in behind it. */
 .header::after {
   /* Starts above the viewport so the blur has no visible top edge (halo). */
-  inset: -48px 0 -28px 0;
+  inset: -48px 0 calc(-1 * var(--scroll-edge-fade)) 0;
   opacity: 0;
   transition: opacity var(--d-base) var(--ease-out);
   pointer-events: none;

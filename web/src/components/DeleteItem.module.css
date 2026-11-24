@@ -49,6 +49,10 @@
   white-space: nowrap;
 }
 
+.skipTrash {
+  align-self: center;
+  margin-top: var(--s-2);
+}
 .notes {
   width: 100%;
   margin: var(--s-3) 0 0;

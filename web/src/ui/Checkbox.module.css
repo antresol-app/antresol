@@ -1,0 +1,40 @@
+/* ui/Checkbox: the native box in the accent, its label beside it; the
+   whole row is the target */
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2h);
+  min-height: var(--control-h-sm);
+  color: var(--label);
+  font: var(--t-subhead);
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.checkbox[data-disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+.destructive:has(.box:checked) {
+  color: var(--destructive-text);
+}
+.destructive .box {
+  accent-color: var(--red);
+}
+.label {
+  min-width: 0;
+}
+/* a finger's 44 pt (HIG): the row grows, a desktop keeps the control height */
+@media (pointer: coarse), (max-width: 699px) {
+  .checkbox {
+    min-height: var(--touch-target);
+  }
+}

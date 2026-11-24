@@ -91,6 +91,28 @@ describe('DeleteItem', () => {
     expect(calls).toContain('POST /api/items/5/delete')
   })
 
+  it('«Удалить навсегда, минуя корзину»: off by default; checked, it says so and asks the server to skip the trash', async () => {
+    plan = { id: 5, kind: 'movie', title: 'Брат', size: 2 * GB, files: 1, seasons: [], notes: [] }
+    const onDeleted = vi.fn()
+    render(
+      <>
+        <DeleteItem itemId={5} title="Брат" onDeleted={onDeleted} />
+        <Notice />
+      </>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    const sheet = await screen.findByRole('alertdialog', { name: 'Удалить «Брат»?' })
+    const skip = await within(sheet).findByRole('checkbox', { name: 'Удалить навсегда, минуя корзину' })
+    expect(skip).not.toBeChecked()
+    fireEvent.click(skip)
+    expect(within(sheet).getByText('Файлы сразу удалятся с диска. Это действие нельзя отменить.')).toBeInTheDocument()
+    expect(within(sheet).getByText('Освободится 2,0 ГБ.')).toBeInTheDocument()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить' }))
+    await waitFor(() => expect(onDeleted).toHaveBeenCalled())
+    expect(calls).toContain('POST /api/items/5/delete?permanent=1')
+    expect(screen.getByRole('status')).toHaveTextContent('«Брат» удалено навсегда')
+  })
+
   it('the server’s note about late files is in the confirmation', async () => {
     plan = { id: 5, kind: 'movie', title: 'Брат', size: GB, files: 1, seasons: [], notes: [] }
     vi.stubGlobal(

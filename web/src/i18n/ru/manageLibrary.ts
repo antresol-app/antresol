@@ -147,6 +147,8 @@ export default {
   'mfiles.filter.read.idle12': 'Не открывали больше года',
   'mfiles.deleteConfirm': 'Удалить «{title}»?',
   'mfiles.deleteText': 'Освободится {size}. Файлы попадут в Корзину — их можно вернуть в «Файлах».',
+  'mfiles.deleteTextPermanent': 'Освободится {size}. Файлы сразу удалятся с диска — это действие нельзя отменить.',
+  'mfiles.deletedForever': '«{title}» удалено навсегда.',
   'mfiles.deleteAnyway': 'Удалить всё равно',
   'mfiles.heldTitle': 'Эти файлы используются',
   'mfiles.heldText': 'Их использует расширение, и оно перестанет с ними работать:',

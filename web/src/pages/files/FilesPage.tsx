@@ -748,13 +748,38 @@ export function FilesPage() {
       )
     }
     const parent = trash || !path ? { label: tr('files.browse'), to: '/files' } : crumbs[crumbs.length - 2]!
+    const back = (
+      <Link to={parent.to} className={styles.pback}>
+        <Glyph name="chevronLeft" size={20} strokeWidth={2.4} />
+        <span>{parent.label}</span>
+      </Link>
+    )
+    if (trash) {
+      // the trash puts its own «⋯» (Выбрать, Очистить корзину) or «Готово» in the bar
+      return (
+        <div className={styles.phone} onKeyDown={onKeyDown}>
+          <TrashView
+            roots={roots ?? []}
+            compact
+            onChanged={changed}
+            toolbar={(buttons) => (
+              <>
+                <div className={styles.pbar}>
+                  {back}
+                  {buttons}
+                </div>
+                <h1 className={styles.largeTitle}>{folderName}</h1>
+              </>
+            )}
+          />
+          {overlays}
+        </div>
+      )
+    }
     return (
       <div className={styles.phone} onKeyDown={onKeyDown}>
         <div className={styles.pbar}>
-          <Link to={parent.to} className={styles.pback}>
-            <Glyph name="chevronLeft" size={20} strokeWidth={2.4} />
-            <span>{parent.label}</span>
-          </Link>
+          {back}
           {!trash && (
             <Menu
               label={tr('files.viewSort')}
@@ -789,15 +814,9 @@ export function FilesPage() {
           )}
         </div>
         <h1 className={styles.largeTitle}>{folderName}</h1>
-        {trash ? (
-          <TrashView roots={roots ?? []} compact onChanged={changed} toolbar={() => null} />
-        ) : (
-          <>
-            <SearchField value={query} onChange={setQuery} placeholder={tr('common.search')} className={styles.psearch} />
-            <div className={styles.pcontent}>{body}</div>
-            {dir.data && <p className={styles.pstatus}>{status}</p>}
-          </>
-        )}
+        <SearchField value={query} onChange={setQuery} placeholder={tr('common.search')} className={styles.psearch} />
+        <div className={styles.pcontent}>{body}</div>
+        {dir.data && <p className={styles.pstatus}>{status}</p>}
         {overlays}
       </div>
     )

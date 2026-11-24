@@ -11,6 +11,7 @@ import { IconButton, type IconButtonSize } from '../ui/IconButton'
 import { episodesCount, seasonLabel } from './EpisodeList'
 import { Icon } from './Icon'
 import { Sheet } from '../ui/Sheet'
+import { Checkbox } from '../ui/Checkbox'
 import { showNotice } from '../state/notice'
 import { useT } from '../i18n'
 import styles from './DeleteItem.module.css'
@@ -77,6 +78,8 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
   const [scope, setScope] = useState(itemId)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState('')
+  // «Удалить навсегда, минуя корзину» (Shift+Delete): off unless asked
+  const [permanent, setPermanent] = useState(false)
 
   useEffect(() => {
     const ac = new AbortController()
@@ -102,12 +105,12 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
     setBusy(true)
     setProblem('')
     try {
-      const result = await deleteItem(scope)
+      const result = await deleteItem(scope, permanent)
       // «Файлы» keeps listings and the disk usage: they changed (its own
       // chunk: loaded here only if it is not yet)
       void import('../pages/files/useDir').then((m) => m.invalidateDirs())
       void import('../pages/files/StorageBar').then((m) => m.resetUsageCache())
-      const done = t('comp.delete.done', { name: season ? seasonLabel(season) : name })
+      const done = t(permanent ? 'comp.delete.doneForever' : 'comp.delete.done', { name: season ? seasonLabel(season) : name })
       if (result.note) showNotice(`${done}. ${result.note}`, 8000)
       else showNotice(done)
       onClose()
@@ -127,8 +130,8 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
       t('comp.delete.nothing')
     ) : (
       <>
-        <span className={styles.line}>{t('comp.delete.message')}</span>
-        {size > 0 && <span className={styles.line}>{t('comp.delete.frees', { size: formatSize(size) })}</span>}
+        <span className={styles.line}>{t(permanent ? 'comp.delete.permanentMessage' : 'comp.delete.message')}</span>
+        {size > 0 && <span className={styles.line}>{t(permanent ? 'comp.delete.permanentFrees' : 'comp.delete.frees', { size: formatSize(size) })}</span>}
       </>
     )
 
@@ -161,6 +164,7 @@ export function DeleteItemSheet({ itemId, title, onClose, onDeleted }: { itemId:
           ))}
         </fieldset>
       )}
+      {plan && !nothing && <Checkbox className={styles.skipTrash} label={t('comp.delete.skipTrash')} checked={permanent} onChange={setPermanent} disabled={busy} tone="destructive" />}
       {notes.length > 0 && (
         <ul className={styles.notes}>
           {notes.map((n) => (

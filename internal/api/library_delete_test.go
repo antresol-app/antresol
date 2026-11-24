@@ -82,3 +82,48 @@ func TestItemDeleteAPI(t *testing.T) {
 		t.Fatalf("deleted series detail: %d", w.Code)
 	}
 }
+
+// ?permanent=1 («Delete permanently, skip the Trash»): the files are gone
+// from the disk and the trash lists nothing.
+func TestItemDeletePermanent(t *testing.T) {
+	e := newFilesEnv(t)
+	ctx := context.Background()
+	mv := filepath.Join(e.root, "media/movies")
+	e.svc.Items.Roots = []string{mv}
+	f := filepath.Join(mv, "Брат (1997)/Брат.mkv")
+	os.MkdirAll(filepath.Dir(f), 0o755)
+	if err := os.WriteFile(f, []byte("xxxx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scan := &library.Scanner{Repo: e.repo, Movies: mv}
+	if _, err := scan.ScanVideo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	it, _, err := e.repo.ItemByPath(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/items/" + strconv.FormatInt(it.ID, 10) + "/delete?permanent=1"
+	user := e.login(`{"name":"Мама"}`)
+	if w := e.do("POST", path, "", user); w.Code != 403 {
+		t.Fatalf("user: %d", w.Code)
+	}
+	w := e.do("POST", path, "", e.admin)
+	var res DeleteResult
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil || w.Code != 200 || res.Trashed != 0 {
+		t.Fatalf("delete: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("file still there: %v", err)
+	}
+	if items, _ := e.svc.Ops.ListTrash(ctx); len(items) != 0 {
+		t.Fatalf("trash: %+v", items)
+	}
+	trash, _ := os.ReadDir(filepath.Join(e.root, ".vault-trash"))
+	for _, d := range trash {
+		left, _ := os.ReadDir(filepath.Join(e.root, ".vault-trash", d.Name()))
+		if len(left) > 0 {
+			t.Fatalf("left in the trash: %s %v", d.Name(), left)
+		}
+	}
+}

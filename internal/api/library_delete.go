@@ -19,6 +19,8 @@ import (
 //
 //	GET  /api/items/{id}/delete  what would go: {id, kind, title, size, files, seasons, notes}
 //	POST /api/items/{id}/delete  delete it: {items, size, trashed, parentId, parentShown}
+//	                             ?permanent=1: and delete its files from the trash for
+//	                             good (files.Ops.Purge, the Trash page's checks)
 //
 // A series lists its seasons; deleting one season is a POST of the season's id.
 type itemDeleteAPI struct {
@@ -177,6 +179,16 @@ func (h *itemDeleteAPI) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	h.changed(res.Items)
 	out := DeleteResult{Items: res.Items, Size: res.Size, Trashed: len(res.Trashed), ParentID: it.ParentID, Note: lateNote(r, res.Late)}
+	if r.URL.Query().Get("permanent") == "1" && len(res.Trashed) > 0 {
+		if err := h.svc.Ops.Purge(ctx, trashIDs(res.Trashed)); err != nil {
+			// the library forgot the item already; the files are in the trash
+			log.Printf("api: delete item %d permanently: %v", id, err)
+			writeErr(w, r, http.StatusConflict, "Удалено из медиатеки, но не всё удалось стереть с диска: остальное в Корзине в «Файлах»")
+			return
+		}
+		out.Trashed = 0
+		out.Note = ""
+	}
 	if it.ParentID != 0 {
 		_, err := h.svc.Library.Item(ctx, it.ParentID)
 		out.ParentShown = err == nil

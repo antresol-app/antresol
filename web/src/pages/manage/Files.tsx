@@ -16,6 +16,7 @@ import { DiskMeter, segmentsOf } from '../../components/DiskMeter'
 import { Icon } from '../../components/Icon'
 import { SegmentedControl } from '../../ui/SegmentedControl'
 import { Sheet } from '../../ui/Sheet'
+import { Checkbox } from '../../ui/Checkbox'
 import { mediaKindIcon, mediaSegmentIcon, useMediaSegments, useUrlView, ViewMenu, ViewToolbar, type ViewSpec } from '../../components/ViewMenu'
 import { itemHref } from '../../components/Card'
 import { resetUsageCache } from '../files/StorageBar'
@@ -132,6 +133,8 @@ export function Files() {
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [busy, setBusy] = useState(false)
+  // «Удалить навсегда, минуя корзину»: off for each new confirmation
+  const [permanent, setPermanent] = useState(false)
   const [done, setDone] = useState('')
   const [view, setView] = useUrlView(FILE_VIEW)
   const [shown, setShown] = useState(PAGE)
@@ -157,7 +160,7 @@ export function Files() {
     try {
       const warnings: string[] = []
       for (const tr of item.trash) {
-        const r = await trashFiles(tr.root, tr.paths, force)
+        const r = await trashFiles(tr.root, tr.paths, force, permanent)
         if (r.needsConfirm) warnings.push(...r.warnings)
         else if (r.error) throw new ApiError(400, r.error)
       }
@@ -166,12 +169,14 @@ export function Files() {
         return
       }
       setConfirm(null)
-      setDone(t('mfiles.inTrash', { title: item.title }))
+      setDone(t(permanent ? 'mfiles.deletedForever' : 'mfiles.inTrash', { title: item.title }))
+      setPermanent(false)
       resetUsageCache()
       setReport((r) => r && { items: r.items.filter((x) => x.id !== item.id) })
       window.setTimeout(load, 1500) // the scanner drops the item from the library
     } catch (e) {
       setConfirm(null)
+      setPermanent(false)
       setError(errorText(e, t('mfiles.deleteFailed')))
     } finally {
       setBusy(false)
@@ -261,7 +266,7 @@ export function Files() {
               </p>
               <ul className={m.group}>
                 {list.slice(0, shown).map((it) => (
-                  <ItemRow key={it.id} it={it} onDelete={() => (setDone(''), setConfirm({ item: it }))} />
+                  <ItemRow key={it.id} it={it} onDelete={() => (setDone(''), setPermanent(false), setConfirm({ item: it }))} />
                 ))}
               </ul>
               {list.length > shown && (
@@ -291,17 +296,19 @@ export function Files() {
                 </ul>
               </>
             ) : (
-              t('mfiles.deleteText', { size: formatSize(confirm.item.size) })
+              t(permanent ? 'mfiles.deleteTextPermanent' : 'mfiles.deleteText', { size: formatSize(confirm.item.size) })
             )
           }
           icon={<Icon name={confirm.warnings ? 'warning' : 'trash'} size={34} strokeWidth={1.6} />}
           busy={busy}
-          onCancel={() => setConfirm(null)}
+          onCancel={() => (setConfirm(null), setPermanent(false))}
           actions={[
-            { label: t('common.cancel'), kind: 'cancel', run: () => setConfirm(null) },
+            { label: t('common.cancel'), kind: 'cancel', run: () => (setConfirm(null), setPermanent(false)) },
             { label: confirm.warnings ? t('mfiles.deleteAnyway') : t('common.delete'), kind: 'destructive', run: () => void remove(confirm.item, Boolean(confirm.warnings)) },
           ]}
-        />
+        >
+          {!confirm.warnings && <Checkbox className={styles.skipTrash} label={t('comp.delete.skipTrash')} checked={permanent} onChange={setPermanent} disabled={busy} tone="destructive" />}
+        </Sheet>
       )}
     </section>
   )

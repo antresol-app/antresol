@@ -316,3 +316,28 @@ func TestFilesHeldAliasIsConflict(t *testing.T) {
 		}
 	}
 }
+
+// "permanent": true trashes and then deletes for good; without it the item stays in the trash.
+func TestTrashPermanent(t *testing.T) {
+	e := newFilesEnv(t)
+	if err := os.WriteFile(filepath.Join(e.root, "media/movies/b.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := e.login(`{"name":"Мама"}`)
+	if w := e.do("POST", "/api/files/trash", `{"root":"movies","paths":["a.mkv"],"permanent":true}`, user); w.Code != 403 {
+		t.Fatalf("user: %d", w.Code)
+	}
+	if w := e.do("POST", "/api/files/trash", `{"root":"movies","paths":["a.mkv"],"permanent":true}`, e.admin); w.Code != 200 || strings.Contains(w.Body.String(), `"error"`) {
+		t.Fatalf("permanent: %d %s", w.Code, w.Body)
+	}
+	if w := e.do("POST", "/api/files/trash", `{"root":"movies","paths":["b.mkv"]}`, e.admin); w.Code != 200 {
+		t.Fatalf("trash: %d %s", w.Code, w.Body)
+	}
+	items, err := e.svc.Ops.ListTrash(context.Background())
+	if err != nil || len(items) != 1 || items[0].Name != "b.mkv" {
+		t.Fatalf("trash: %+v %v", items, err)
+	}
+	if _, err := os.Stat(filepath.Join(e.root, "media/movies/a.mkv")); !os.IsNotExist(err) {
+		t.Fatalf("a.mkv: %v", err)
+	}
+}

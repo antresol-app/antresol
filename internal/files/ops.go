@@ -928,20 +928,67 @@ func (o *Ops) Restore(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Delete removes a trash item from disk for good.
+// Delete removes a trash item from disk for good. Only what is inside its
+// trash goes: the item's folder in the trash must resolve (symlinks
+// followed) to a place inside that trash, so a link planted along the way
+// never sends RemoveAll elsewhere; the item itself, if a link, goes as a
+// link (RemoveAll does not follow it).
 func (o *Ops) Delete(ctx context.Context, id int64) error {
 	r, err := o.trashRow(ctx, id)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(r.abs); err != nil {
+	gone, err := insideTrash(r.trash, r.abs)
+	if err != nil && !gone {
 		return err
+	}
+	if !gone {
+		if err := os.RemoveAll(r.abs); err != nil {
+			return err
+		}
 	}
 	if _, err := o.DB.ExecContext(ctx, `DELETE FROM trash WHERE id=?`, id); err != nil {
 		return err
 	}
 	removeEmpty(filepath.Dir(r.abs), r.trash)
 	return nil
+}
+
+// Purge removes trash items from disk for good (Delete, one by one); it
+// stops at the first failure. «Delete permanently, skip the Trash» is a
+// trash followed by this, so both ways share Delete's checks.
+func (o *Ops) Purge(ctx context.Context, ids []int64) error {
+	for _, id := range ids {
+		if id == 0 {
+			// moved but its row's id is unknown: it stays in the trash
+			return ErrNotFound
+		}
+		if err := o.Delete(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// insideTrash checks that abs's parent, symlinks resolved, is trash itself
+// or inside it (trash resolved too). gone: the parent is not there at all
+// (the item went already; only its row is left).
+func insideTrash(trash, abs string) (gone bool, err error) {
+	realTrash, err := filepath.EvalSymlinks(trash)
+	if err != nil {
+		return errors.Is(err, os.ErrNotExist), osErr(err)
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !within(realTrash, parent) {
+		return false, ErrOutside
+	}
+	return false, nil
 }
 
 // ensureTrash makes the trash folder trash when it is missing. A server

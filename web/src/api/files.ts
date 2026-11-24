@@ -38,8 +38,9 @@ export const moveFile = (root: string, path: string, toRoot: string, toPath: str
   request<ChangeResult>('POST', '/api/files/move', { root, path, toRoot, toPath, confirm })
 /** Roots that never accept moved files (the app manages the stream cache). */
 export const NOT_MOVE_TARGETS = new Set(['stream-cache'])
-export const trashFiles = (root: string, paths: string[], confirm = false) =>
-  request<TrashResult>('POST', '/api/files/trash', { root, paths, confirm })
+/** permanent: «Удалить навсегда, минуя корзину» — what reached the trash is then deleted for good. */
+export const trashFiles = (root: string, paths: string[], confirm = false, permanent = false) =>
+  request<TrashResult>('POST', '/api/files/trash', { root, paths, confirm, ...(permanent ? { permanent } : {}) })
 
 export const getTrash = (signal?: AbortSignal) => request<TrashItem[]>('GET', '/api/files/trash', undefined, signal)
 export const restoreTrash = (id: number) => request<{ ok: boolean }>('POST', '/api/files/trash/restore', { id })

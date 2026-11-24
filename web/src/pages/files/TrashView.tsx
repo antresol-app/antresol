@@ -1,6 +1,14 @@
 // «Корзина» (admin): what was moved to the trash, where it came from and when.
-// Restore puts it back; «Удалить навсегда» and «Очистить корзину» ask first.
+// Restore puts it back; «Удалить навсегда» and «Очистить корзину» ask first,
+// naming what goes and how much it frees.
+// Phone (iOS «Файлы»): a row swipes to Восстановить / Удалить and a tap opens
+// the same menu; the «⋯» in the bar holds «Выбрать» (several rows, then the
+// bar under the list acts on them) and «Очистить корзину».
 import { Button } from '../../ui/Button'
+import { IconButton } from '../../ui/IconButton'
+import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
+import { SwipeRow } from '../../ui/SwipeRow'
+import { Icon } from '../../components/Icon'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ApiError, errorText } from '../../api/client'
 import { deleteTrash, getTrash, restoreTrash } from '../../api/files'
@@ -19,7 +27,7 @@ export interface TrashViewProps {
   compact?: boolean
   /** Something was restored or deleted (folders and storage refresh). */
   onChanged: () => void
-  /** Renders the toolbar with the page's own buttons. */
+  /** Renders the toolbar with the page's own buttons (a phone: the bar's «⋯» or «Готово»). */
   toolbar: (buttons: ReactNode) => ReactNode
 }
 
@@ -34,6 +42,8 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'empty'; items: TrashItem[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [focused, setFocused] = useState(false)
+  // phone: picking several rows (a tap toggles one instead of opening its menu)
+  const [picking, setPicking] = useState(false)
 
   const load = useCallback(() => {
     getTrash().then(
@@ -49,6 +59,7 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
   useEffect(load, [load])
 
   const order = useMemo(() => (items ?? []).map(key), [items])
+  const count = items?.length ?? 0
   const selected = (items ?? []).filter((t) => sel.selected.has(key(t)))
   const rootTitle = (id: string) => roots.find((r) => r.id === id)?.title ?? id
   const from = (t: TrashItem) => {
@@ -70,6 +81,7 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
     setConfirm(null)
     setError(failed.length ? tr('files.trash.failed', { errors: failed.join('; ') }) : undefined)
     setSel(emptySelection)
+    setPicking(false)
     load()
     onChanged()
   }
@@ -104,6 +116,34 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
     { id: 'delete', label: tr('files.trash.deleteForever'), icon: 'trash', destructive: true, run: () => setConfirm({ kind: 'delete', items: list }) },
   ]
 
+  const toggle = (t: TrashItem) => setSel((s) => clickSelect(s, order, key(t), { toggle: true }))
+  const allPicked = count > 0 && sel.selected.size === count
+
+  const phoneButtons = picking ? (
+    <span className={styles.pickBar}>
+      <Button variant="plain" size="small" onClick={() => setSel(allPicked ? emptySelection : selectAll(order))}>
+        {allPicked ? tr('files.deselectAll') : tr('files.selectAll')}
+      </Button>
+      <Button variant="plain" size="small" onClick={() => (setPicking(false), setSel(emptySelection))}>
+        {tr('common.done')}
+      </Button>
+    </span>
+  ) : (
+    <Menu
+      label={tr('files.trash.actions')}
+      placement="bottom-end"
+      trigger={(p) => <IconButton {...p} variant="plain" className={styles.more} icon={<Glyph name="ellipsisCircle" size={24} strokeWidth={1.6} />} label={tr('files.trash.actions')} />}
+    >
+      {(close) => (
+        <>
+          <MenuItem label={tr('files.select')} disabled={!count} onSelect={() => (setPicking(true), setSel(emptySelection), close())} />
+          <MenuSeparator />
+          <MenuItem label={tr('files.trash.emptyTrash')} destructive disabled={!count || busy} onSelect={() => (close(), items && setConfirm({ kind: 'empty', items }))} />
+        </>
+      )}
+    </Menu>
+  )
+
   const buttons = (
     <>
       <Button variant="secondary" material="glass" size="small" icon="restart" disabled={!selected.length || busy} onClick={() => restore(selected)}>
@@ -115,12 +155,14 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
     </>
   )
 
-  const count = items?.length ?? 0
   const label = confirm?.items.length === 1 ? tr('files.quoted', { name: confirm.items[0]!.name }) : objects(confirm?.items.length ?? 0)
+  // what goes and how much it frees (a folder whose size the trash does not know adds nothing)
+  const freed = (confirm?.items ?? []).reduce((n, t) => n + (t.size || 0), 0)
+  const whatGoes = freed > 0 ? `${label} (${formatSize(freed)})` : label
 
   return (
     <>
-      {toolbar(buttons)}
+      {toolbar(compact ? phoneButtons : buttons)}
       <div className={styles.body}>
         {error && (
           <p className={styles.error} role="alert">
@@ -133,6 +175,49 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
             <h2>{tr('files.trash.isEmpty')}</h2>
             <p>{tr('files.trash.emptyHint')}</p>
           </div>
+        ) : compact ? (
+          <ul className={styles.phoneList} aria-label={tr('files.trash')} aria-busy={!items || undefined}>
+            {(items ?? []).map((t) => {
+              const on = sel.selected.has(key(t))
+              return (
+                <SwipeRow
+                  key={t.id}
+                  className={styles.phoneRow}
+                  data-state={on ? 'selected' : undefined}
+                  actions={
+                    picking
+                      ? []
+                      : [
+                          { key: 'restore', label: tr('files.trash.restore'), icon: 'restart', tone: 'accent', disabled: busy, onSelect: () => restore([t]) },
+                          { key: 'delete', label: tr('common.delete'), icon: 'trash', tone: 'destructive', disabled: busy, onSelect: () => setConfirm({ kind: 'delete', items: [t] }) },
+                        ]
+                  }
+                >
+                  <button
+                    type="button"
+                    className={styles.phoneItem}
+                    aria-pressed={picking ? on : undefined}
+                    aria-haspopup={picking ? undefined : 'menu'}
+                    data-name={t.name}
+                    onClick={(e) => (picking ? toggle(t) : onMenu(e, t))}
+                  >
+                    {picking && (
+                      <span className={`${styles.pick} ${on ? styles.picked : ''}`} aria-hidden>
+                        {on && <Icon name="check" size={14} strokeWidth={3} />}
+                      </span>
+                    )}
+                    <FileIcon entry={{ name: t.name, isDir: t.isDir, kind: t.isDir ? 'folder' : 'other' }} size={36} />
+                    <span className={styles.text}>
+                      <span className={styles.title}>{t.name}</span>
+                      <span className={styles.sub}>
+                        {[from(t), formatDate(t.deletedAt), t.isDir && !t.size ? '' : formatSize(t.size)].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                  </button>
+                </SwipeRow>
+              )
+            })}
+          </ul>
         ) : (
           <div
             role="grid"
@@ -199,6 +284,19 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
           </div>
         )}
       </div>
+      {compact && picking && (
+        <div className={`${styles.pickActions} glass-float`} role="toolbar" aria-label={tr('files.selectedOf', { n: sel.selected.size, total: count })}>
+          <Button variant="secondary" size="small" icon="restart" disabled={!selected.length || busy} onClick={() => restore(selected)}>
+            {tr('files.trash.restore')}
+          </Button>
+          <span className={styles.pickCount} aria-hidden>
+            {objects(sel.selected.size)}
+          </span>
+          <Button variant="destructive" size="small" disabled={!selected.length || busy} onClick={() => setConfirm({ kind: 'delete', items: selected })}>
+            {tr('common.delete')}
+          </Button>
+        </div>
+      )}
       {!compact && <div className={styles.status}>{items ? (sel.selected.size ? tr('files.selectedOf', { n: sel.selected.size, total: count }) : objects(count)) : ''}</div>}
       {menu && (
         <ContextMenu
@@ -212,11 +310,7 @@ export function TrashView({ roots, compact, onChanged, toolbar }: TrashViewProps
       {confirm && (
         <Sheet
           title={confirm.kind === 'empty' ? tr('files.trash.emptyTitle') : tr('files.trash.deleteTitle', { what: label })}
-          message={
-            confirm.kind === 'empty'
-              ? tr('files.trash.emptyMessage', { objects: objects(confirm.items.length) })
-              : tr('files.trash.deleteMessage')
-          }
+          message={tr('files.trash.purgeMessage', { what: whatGoes })}
           icon={<Glyph name="warning" size={44} strokeWidth={1.5} style={{ color: 'var(--orange)' }} />}
           busy={busy}
           onCancel={() => setConfirm(null)}

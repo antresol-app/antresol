@@ -361,7 +361,8 @@ export const setWatched = (itemId: number, watched: boolean) =>
 export const getDeletePlan = (itemId: number, signal?: AbortSignal) =>
   request<DeletePlan>('GET', `/api/items/${itemId}/delete`, undefined, signal)
 /** Admin: deletes a library item (a season: its id); the files go to the trash of «Файлы». */
-export const deleteItem = (itemId: number) => request<DeleteResult>('POST', `/api/items/${itemId}/delete`)
+/** permanent: «Удалить навсегда, минуя корзину» — the files are then deleted from the disk at once. */
+export const deleteItem = (itemId: number, permanent = false) => request<DeleteResult>('POST', `/api/items/${itemId}/delete${permanent ? '?permanent=1' : ''}`)
 export const addToWatchlist = (itemId: number) => request<void>('POST', `/api/watchlist/${itemId}`)
 export const removeFromWatchlist = (itemId: number) => request<void>('DELETE', `/api/watchlist/${itemId}`)
 export const downloadUrl = (fileId: number) => `/api/download/${fileId}`

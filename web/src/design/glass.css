@@ -27,8 +27,8 @@
    never words (iOS 26) */
 .glass-float {
   background: var(--glass-fill-float);
-  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float));
-  backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float));
+  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate-float)) brightness(var(--glass-brightness-float));
+  backdrop-filter: blur(var(--glass-blur-float)) saturate(var(--glass-saturate-float)) brightness(var(--glass-brightness-float));
 }
 
 /* Liquid Glass, the lens (iOS 26): a modifier of .glass-float for the
@@ -56,8 +56,8 @@
 }
 /* the filter does the blur itself (full in the middle, light at the rim) */
 .glass-float.glass-liquid[style*='--liquid-lens'] {
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
-  backdrop-filter: saturate(var(--glass-saturate)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate-float)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
+  backdrop-filter: saturate(var(--glass-saturate-float)) brightness(var(--glass-brightness-float)) var(--liquid-lens);
 }
 /* the rim, and the same rim on the selected tab's droplet (it floats inside
    the bar's glass, so it bends nothing itself; TabBar stretches it) */
@@ -109,8 +109,9 @@
 }
 
 /* The scroll edge effect of a bar (iOS 26): content sliding under it is
-   blurred and dimmed, progressively masked so there is no hard edge. The bar
-   places its ::after and fades it in. */
+   blurred and dimmed, fully down to the bar's edge and fading out over the
+   --scroll-edge-fade below it, so there is no hard edge. The bar places its
+   ::after (reaching --scroll-edge-fade past its bottom) and fades it in. */
 .scroll-edge::after {
   content: '';
   position: absolute;
@@ -118,8 +119,8 @@
   background: var(--scroll-edge-fill);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-mask-image: linear-gradient(#000 65%, transparent);
-  mask-image: linear-gradient(#000 65%, transparent);
+  -webkit-mask-image: linear-gradient(#000 calc(100% - var(--scroll-edge-fade)), transparent);
+  mask-image: linear-gradient(#000 calc(100% - var(--scroll-edge-fade)), transparent);
   pointer-events: none;
 }
 

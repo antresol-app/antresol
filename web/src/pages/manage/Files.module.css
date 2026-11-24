@@ -95,3 +95,8 @@
     margin-block: calc(-1 * var(--s-3));
   }
 }
+
+/* the confirmation's «Удалить навсегда, минуя корзину» (ui/Checkbox) */
+.skipTrash {
+  align-self: center;
+}

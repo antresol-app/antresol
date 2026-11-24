@@ -160,3 +160,88 @@
   background: var(--fill-hover);
   color: var(--label);
 }
+
+/* Phone: iOS «Файлы» rows that swipe (ui/SwipeRow) to Восстановить and
+   Удалить; a tap opens the same menu, or picks the row while choosing */
+.phoneList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.phoneRow + .phoneRow {
+  border-top: 1px solid var(--separator);
+}
+.phoneItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--s-2) var(--s-1);
+  border: 0;
+  background: var(--bg);
+  color: var(--label);
+  text-align: start;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.phoneItem:active,
+.phoneRow[data-state='selected'] .phoneItem {
+  background: var(--fill-hover);
+}
+.phoneItem .title {
+  font: var(--t-callout);
+  white-space: nowrap;
+}
+/* the choosing circle: empty, or the accent with a check */
+.pick {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--label-3);
+  border-radius: 50%;
+  color: var(--label-inverse);
+}
+.picked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+/* the bar's «⋯» and «Выбрать все · Готово», in the accent as iOS draws bar buttons */
+.more {
+  color: var(--accent);
+}
+.pickBar {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+/* what to do with the chosen rows: a glass bar above the tab bar */
+.pickActions {
+  position: sticky;
+  bottom: calc(var(--bottom-bar-space) + var(--s-3));
+  z-index: var(--z-above);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding: var(--s-2);
+  border-radius: var(--r-pill);
+}
+.pickActions > * {
+  /* the buttons keep their words; the count gives way */
+  flex: none;
+}
+.pickActions > .pickCount {
+  flex: 1 1 0;
+  text-align: center;
+}
+.pickCount {
+  min-width: 0;
+  overflow: hidden;
+  font: var(--t-footnote);
+  color: var(--label-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

@@ -20,10 +20,14 @@
   color: var(--label-2);
 }
 .columns {
-  margin-top: var(--s-6);
+  /* the section spacing a group title keeps (Manage .groupTitle) */
+  margin-top: var(--s-8);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: 0 var(--s-6);
+  /* stacked (a phone), each column's title is its first child and so has
+     no margin of its own (Manage .groupTitle:first-child): the row gap is
+     the section spacing a title keeps from the group above it */
+  gap: var(--s-8) var(--s-6);
 }
 .userRow,
 .topRow {

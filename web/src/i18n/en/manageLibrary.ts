@@ -146,6 +146,8 @@ export default {
   'mfiles.filter.read.idle12': 'Not Opened in Over a Year',
   'mfiles.deleteConfirm': 'Delete “{title}”?',
   'mfiles.deleteText': 'This frees {size}. The files go to the Trash — you can restore them in Files.',
+  'mfiles.deleteTextPermanent': 'This frees {size}. The files are deleted from the disk at once — you can’t undo this.',
+  'mfiles.deletedForever': '“{title}” is deleted permanently.',
   'mfiles.deleteAnyway': 'Delete Anyway',
   'mfiles.heldTitle': 'These files are in use',
   'mfiles.heldText': 'An extension is using them, and it will stop using them:',

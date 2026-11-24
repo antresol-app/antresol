@@ -42,6 +42,8 @@ func init() {
 		"Этот файл можно только скачать":               "This file can only be downloaded",
 		"Ничего не выбрано":                            "Nothing selected",
 		"Не все объекты удалось переместить в корзину": "Not all items could be moved to the Trash",
+		"Не всё удалось удалить навсегда: остальное в Корзине": "Not everything could be deleted permanently: the rest is in the Trash",
+		"Удалено из медиатеки, но не всё удалось стереть с диска: остальное в Корзине в «Файлах»": "Removed from the library, but not everything could be erased from the disk: the rest is in the Trash in Files",
 		"Раздел не найден":                             "Location not found",
 		"Недопустимый путь":                            "Invalid path",
 		"Это не папка":                                 "This isn’t a folder",

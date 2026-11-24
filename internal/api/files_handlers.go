@@ -490,6 +490,10 @@ func (h *filesAPI) trash(w http.ResponseWriter, r *http.Request) {
 		Root    string
 		Paths   []string
 		Confirm bool
+		// Permanent: «Delete permanently, skip the Trash» — what reached
+		// the trash is then deleted for good (Ops.Purge, the Trash page's
+		// own checks).
+		Permanent bool
 	}
 	if !decode(w, r, &in) || !h.allowRoot(w, r, in.Root) {
 		return
@@ -512,10 +516,30 @@ func (h *filesAPI) trash(w http.ResponseWriter, r *http.Request) {
 		filesErr(w, r, "trash", err)
 		return
 	}
+	needsConfirm := len(res.Warnings) > 0 && !in.Confirm
+	if in.Permanent && !needsConfirm && len(res.Trashed) > 0 {
+		if err := h.svc.Ops.Purge(r.Context(), trashIDs(res.Trashed)); err != nil {
+			log.Printf("files trash: permanent delete: %v", err)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"trashed": res.Trashed, "warnings": res.Warnings, "needsConfirm": false,
+				"error": i18n.T(r.Context(), "Не всё удалось удалить навсегда: остальное в Корзине"),
+			})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trashed": res.Trashed, "warnings": res.Warnings,
-		"needsConfirm": len(res.Warnings) > 0 && !in.Confirm,
+		"needsConfirm": needsConfirm,
 	})
+}
+
+// trashIDs are the trash rows of items just moved there.
+func trashIDs(items []files.TrashItem) []int64 {
+	ids := make([]int64, len(items))
+	for i, t := range items {
+		ids[i] = t.ID
+	}
+	return ids
 }
 
 func (h *filesAPI) trashList(w http.ResponseWriter, r *http.Request) {

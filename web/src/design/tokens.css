@@ -150,10 +150,18 @@
   /* .glass-float: the bars that float over scrolling content at the bottom
      of a phone (the tab bar, its search, the player bar). iOS 26 blurs
      these far harder than a sidebar: titles sliding underneath must not be
-     readable through the labels, while their colour still shows. */
-  --glass-fill-float: rgba(36, 36, 40, 0.52);
+     readable through the labels, while their colour still shows — muted:
+     a tint of 0.62 (and --glass-saturate-float below) keeps one coloured
+     icon under a tab from reading as a stray selection. */
+  --glass-fill-float: rgba(36, 36, 40, 0.62);
   --glass-blur-float: 22px;
   --glass-saturate: 1.8;
+  /* the floating bars (the tab bar, its search, the player bar) boost the
+     colour behind them less: they sit over lists of small coloured icons,
+     and at 1.8 (with a 0.52 tint) one green settings icon under «Главная»
+     spread into a vivid blob that read as a stray selection (iPhone Safari,
+     2026-11-24; e2e/mobile-layout.spec.ts measures it) */
+  --glass-saturate-float: 1.2;
   /* a slight dim of what is behind the floating bars, so white labels hold
      over bright artwork without a darker tint */
   --glass-brightness-float: 0.92;
@@ -424,8 +432,14 @@
   /* under the top bar: the pill and the avatar stay legible over bright artwork */
   --scrim-top: linear-gradient(rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.32) 55%, rgba(0, 0, 0, 0));
   /* the scroll edge effect's dim (design/glass.css .scroll-edge), dense
-     enough that big titles scrolling underneath do not show through */
-  --scroll-edge-fill: linear-gradient(rgba(0, 0, 0, 0.9) 45%, rgba(0, 0, 0, 0.62) 78%, rgba(0, 0, 0, 0));
+     enough that big titles scrolling underneath do not show through. It is
+     dense down to the bar's own bottom edge and fades out only in the
+     --scroll-edge-fade the bar's ::after reaches below it: what scrolls
+     under the bar's buttons is never readable, even where the engine draws
+     no blur (iOS Safari over a fixed bar), and no card edge peeks between
+     the brand and the avatar */
+  --scroll-edge-fade: 28px;
+  --scroll-edge-fill: linear-gradient(rgba(0, 0, 0, 0.9) calc(100% - var(--scroll-edge-fade)), rgba(0, 0, 0, 0));
 
   /* ---------- Shape ---------- */
   --r-xs: 4px; /* progress bars, tiny marks */

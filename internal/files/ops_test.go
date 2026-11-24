@@ -195,3 +195,62 @@ func TestListTrashBadDate(t *testing.T) {
 		t.Fatal("bad deleted_at must be an error")
 	}
 }
+
+// Delete never follows a link planted inside the trash: an item whose
+// folder in the trash was swapped for a link to elsewhere stays, and so
+// does what the link points at.
+func TestDeleteRefusesSymlinkEscape(t *testing.T) {
+	o, mr, _ := testOps(t)
+	ctx := context.Background()
+	write(t, filepath.Join(mr, "media/movies/a.mkv"), 3)
+	res, err := o.Trash(ctx, "movies", []string{"a.mkv"}, false, 1)
+	if err != nil || len(res.Trashed) != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	it := res.Trashed[0]
+	dir := filepath.Dir(res.Trashed[0].at)
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "a.mkv")
+	write(t, victim, 5)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Delete(ctx, it.ID); !errors.Is(err, ErrOutside) {
+		t.Fatalf("delete through a link: %v", err)
+	}
+	if !exists(victim) {
+		t.Fatal("deleted a file outside the trash")
+	}
+	if items, _ := o.ListTrash(ctx); len(items) != 1 {
+		t.Fatalf("the row must stay: %+v", items)
+	}
+}
+
+// Purge deletes trashed items for good; a missing id stops it.
+func TestPurge(t *testing.T) {
+	o, mr, _ := testOps(t)
+	ctx := context.Background()
+	write(t, filepath.Join(mr, "media/movies/a.mkv"), 3)
+	write(t, filepath.Join(mr, "media/movies/B/b.mkv"), 4)
+	res, err := o.Trash(ctx, "movies", []string{"a.mkv", "B"}, false, 1)
+	if err != nil || len(res.Trashed) != 2 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if err := o.Purge(ctx, []int64{res.Trashed[0].ID, res.Trashed[1].ID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range res.Trashed {
+		if exists(it.at) {
+			t.Fatalf("%s left on disk", it.at)
+		}
+	}
+	if items, _ := o.ListTrash(ctx); len(items) != 0 {
+		t.Fatalf("left: %+v", items)
+	}
+	if err := o.Purge(ctx, []int64{12345}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("purge missing: %v", err)
+	}
+}

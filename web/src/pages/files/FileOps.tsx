@@ -11,6 +11,7 @@ import { FileIcon } from './FileIcon'
 import { Glyph } from './glyphs'
 import { MovePicker, NameField, Sheet, nameProblem, type MoveTarget } from './Sheet'
 import { Thumb } from './Thumb'
+import { Checkbox } from '../../ui/Checkbox'
 import { t, useT } from '../../i18n'
 
 export type Op =
@@ -74,6 +75,8 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [warnings, setWarnings] = useState<string[] | null>(null)
+  // trash: «Удалить навсегда, минуя корзину» (Shift+Delete), off unless asked
+  const [permanent, setPermanent] = useState(false)
   /** Moves still waiting for confirmation (the others are already done). */
   const [left, setLeft] = useState<FileEntry[] | null>(null)
   const [target, setTarget] = useState<MoveTarget>({ root, path: dir })
@@ -170,8 +173,13 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
           root,
           op.entries.map((e) => e.path),
           confirm,
+          permanent,
         )
         if (r.needsConfirm) return setWarnings(r.warnings)
+        if (permanent) {
+          onDone({ toast: { text: r.error ?? t('files.op.deletedForever', { what: what(op.entries) }) } })
+          return
+        }
         const ids = r.trashed.map((x) => x.id)
         onDone({
           toast: {
@@ -252,16 +260,17 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
     case 'trash':
       return (
         <Sheet
-          title={t('files.op.trashTitle', { what: what(op.entries) })}
-          message={t('files.op.trashHint')}
+          title={t(permanent ? 'files.op.deleteTitle' : 'files.op.trashTitle', { what: what(op.entries) })}
+          message={t(permanent ? 'comp.delete.permanentMessage' : 'files.op.trashHint')}
           icon={<Glyph name="trash" size={44} strokeWidth={1.4} style={{ color: 'var(--label-2)' }} />}
           busy={busy}
           onCancel={onClose}
           actions={[
             { label: t('common.cancelAction'), kind: 'cancel', run: onClose },
-            { label: t('files.op.toTrash'), kind: 'destructive', run: () => void wrap(() => submit(false)) },
+            { label: permanent ? t('common.delete') : t('files.op.toTrash'), kind: 'destructive', run: () => void wrap(() => submit(false)) },
           ]}
         >
+          <Checkbox label={t('comp.delete.skipTrash')} checked={permanent} onChange={setPermanent} disabled={busy} tone="destructive" />
           {error && <p style={{ marginTop: 10, color: 'var(--red)', font: 'var(--t-footnote)' }} role="alert">{error}</p>}
         </Sheet>
       )
