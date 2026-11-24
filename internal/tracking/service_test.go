@@ -113,7 +113,7 @@ func TestRefreshStoresSkeletonAndSources(t *testing.T) {
 		t.Fatalf("hooked %+v", hooked)
 	}
 	got, _, _ := s.Store.TitleByID(ctx, ti.ID)
-	if got.Status != "airing" || !got.Refreshed.Equal(tnow) || !got.NextCheck.Equal(tnow.Add(6*time.Hour)) {
+	if got.Status != "airing" || !got.Refreshed.Equal(tnow) || !inCadence(got.NextCheck, tnow, 6*time.Hour) {
 		t.Fatalf("title %+v", got)
 	}
 }
@@ -190,6 +190,13 @@ func TestScannerErrorKeepsOldRows(t *testing.T) {
 	}
 }
 
+// inCadence: next falls after now by the interval and no more than a fifth
+// of it again (the title's own jitter).
+func inCadence(next, now time.Time, interval time.Duration) bool {
+	d := next.Sub(now)
+	return d >= interval && d <= interval+interval/5
+}
+
 func TestNextCheckCadence(t *testing.T) {
 	now := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	cases := []struct {
@@ -207,8 +214,40 @@ func TestNextCheckCadence(t *testing.T) {
 		{"empty", "", nil, 72 * time.Hour},
 	}
 	for _, c := range cases {
-		if got := NextCheck(Title{Status: c.status}, c.eps, now); !got.Equal(now.Add(c.want)) {
-			t.Errorf("%s: %v, want +%v", c.name, got, c.want)
+		if got := NextCheck(Title{ID: 7, Status: c.status}, c.eps, now); !inCadence(got, now, c.want) {
+			t.Errorf("%s: %v, want +%v and up to a fifth more", c.name, got, c.want)
+		}
+	}
+}
+
+// Titles that were added together do not come due together again: each has
+// its own place in the spread of 0 to a fifth of its interval, the same at
+// every check, and neighbouring ids are far apart in it.
+func TestNextCheckSpreadsTitlesAddedTogether(t *testing.T) {
+	now := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	const interval = 6 * time.Hour
+	seen := map[time.Duration]int64{}
+	var buckets [10]int
+	for id := int64(1); id <= 50; id++ {
+		ti := Title{ID: id, Status: "airing"}
+		next := NextCheck(ti, nil, now)
+		if !inCadence(next, now, interval) {
+			t.Fatalf("title %d: next check %v", id, next)
+		}
+		if again := NextCheck(ti, nil, now); !again.Equal(next) {
+			t.Fatalf("title %d: %v then %v", id, next, again)
+		}
+		off := next.Sub(now) - interval
+		if other, dup := seen[off]; dup {
+			t.Fatalf("titles %d and %d share the offset %v", other, id, off)
+		}
+		seen[off] = id
+		buckets[min(int(off*10/(interval/5)), 9)]++
+	}
+	// 50 titles over ten equal parts of the spread: none is left empty
+	for i, n := range buckets {
+		if n == 0 {
+			t.Errorf("part %d of the spread has no title: %v", i, buckets)
 		}
 	}
 }
@@ -587,7 +626,7 @@ func TestRefreshEpisodesLeavesAddonScannersToFinish(t *testing.T) {
 	if alphaCalls != 1 || len(src) != 2 {
 		t.Fatalf("addon calls %d, sources %+v", alphaCalls, src)
 	}
-	if !got.NextCheck.Equal(tnow.Add(6 * time.Hour)) {
+	if !inCadence(got.NextCheck, tnow, 6*time.Hour) {
 		t.Fatalf("next check %v", got.NextCheck)
 	}
 }

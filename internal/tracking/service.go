@@ -521,21 +521,48 @@ func StillURL(p string) string {
 
 // NextCheck is when to refresh a title again: airing with an episode out
 // today or yesterday in 2h, airing otherwise in 6h, upcoming in 24h, ended
-// or unknown in 72h.
+// or unknown in 72h, and each title a little later by a share of that that
+// is its own (checkJitter), so titles added together do not stay due
+// together.
 func NextCheck(t Title, eps []Episode, now time.Time) time.Time {
+	d := checkInterval(t, eps, now)
+	return now.Add(d + checkJitter(t.ID, d))
+}
+
+// checkInterval is the cadence of NextCheck before its jitter.
+func checkInterval(t Title, eps []Episode, now time.Time) time.Duration {
 	switch t.Status {
 	case "airing":
 		today := now.Format(time.DateOnly)
 		yesterday := now.AddDate(0, 0, -1).Format(time.DateOnly)
 		for _, e := range eps {
 			if e.AirDate == today || e.AirDate == yesterday {
-				return now.Add(2 * time.Hour)
+				return 2 * time.Hour
 			}
 		}
-		return now.Add(6 * time.Hour)
+		return 6 * time.Hour
 	case "upcoming":
-		return now.Add(24 * time.Hour)
+		return 24 * time.Hour
 	default:
-		return now.Add(72 * time.Hour)
+		return 72 * time.Hour
 	}
+}
+
+// checkJitterShare is the denominator of the most a title's check is put
+// off: 1/5 of its interval.
+const checkJitterShare = 5
+
+// checkJitter is how much later than its interval a title's next check
+// falls: 0 up to a fifth of the interval, fixed by the title's id. Titles
+// that are imported together fall due together (a first refresh, then the
+// same cadence), and a round of them is a wave of work for the scanners
+// of the addons: one that searches many sites at once may pay a browser's
+// worth of memory for each. The offset is a hash of the id, not a random
+// draw: neighbouring ids land far apart (Fibonacci hashing), a title keeps
+// its place in the spread from one check to the next, and the tests need
+// no seam.
+func checkJitter(id int64, interval time.Duration) time.Duration {
+	h := uint64(id) * 0x9E3779B97F4A7C15
+	frac := float64(h>>11) / (1 << 53) // [0, 1)
+	return time.Duration(frac * float64(interval/checkJitterShare))
 }

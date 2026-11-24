@@ -29,9 +29,14 @@ services:
   service-name:
     image: <image from the extension's README>
     restart: unless-stopped
+    # past this the kernel stops the service, not the server
+    mem_limit: 1536m
 ```
 
-The block has no `ports:`: only the server reaches the service, nothing outside does.
+The block has no `ports:`: only the server reaches the service, nothing outside does. It has a
+memory cap (`mem_limit`): a service that runs a browser can grow until the machine is out of
+memory, and the cap makes the system stop that service instead of the server. Raise it if the
+service is stopped for lack of memory.
 
 ## The block for each extension
 

@@ -101,12 +101,21 @@ func ValidHelpers(hs []Helper) error {
 // http://<name>:<port>.
 func (h Helper) Address() string { return "http://" + h.Name + ":" + strconv.Itoa(h.Port) }
 
+// HelperMemLimit is the memory cap of a helper's compose block (compose's
+// mem_limit). A helper may run a browser, which can grow until the host is
+// out of memory and the server with it; with the cap the kernel stops the
+// helper instead.
+const HelperMemLimit = "1536m"
+
 // Compose is the block an admin adds under services: in compose.yml: no
-// ports (the service stays on the project's internal network).
+// ports (the service stays on the project's internal network), and
+// HelperMemLimit as its memory cap.
 func (h Helper) Compose() string {
 	return "  " + h.Name + ":\n" +
 		"    image: " + h.Image + "\n" +
-		"    restart: unless-stopped\n"
+		"    restart: unless-stopped\n" +
+		"    # past this the kernel stops the service, not the server\n" +
+		"    mem_limit: " + HelperMemLimit + "\n"
 }
 
 // HelpersFromManifest reads the "helpers" of a manifest (an addon embeds

@@ -64,7 +64,9 @@ func TestHelperComposeBlock(t *testing.T) {
 	got := goodHelper().Compose()
 	want := "  cache-svc:\n" +
 		"    image: ghcr.io/example/cache-svc:1.2.3\n" +
-		"    restart: unless-stopped\n"
+		"    restart: unless-stopped\n" +
+		"    # past this the kernel stops the service, not the server\n" +
+		"    mem_limit: 1536m\n"
 	if got != want {
 		t.Fatalf("compose block:\n%s\nwant:\n%s", got, want)
 	}
