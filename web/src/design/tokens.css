@@ -480,6 +480,8 @@
      a round button inside a list row; field is a form's text field. */
   --control-h-xs: 30px;
   --control-h-sm: 36px;
+  /* a toolbar button, the rounded square (ui/ToolButton): a bar's tool */
+  --control-h-tool: 40px;
   --control-h-md: 44px;
   --control-h-lg: 52px;
   --control-h-field: 48px;

@@ -255,14 +255,16 @@ a.artist:hover {
   justify-content: space-between;
   padding: 0 4px;
 }
+.controls,
+.bottom {
+  /* the kit's ToolButtons (the mode and tool buttons), in white over the cover */
+  --tool-color: rgba(255, 255, 255, 0.7);
+  --tool-hover-fill: rgba(255, 255, 255, 0.12);
+  --tool-hover-color: #fff;
+  --tool-on-fill: rgba(255, 255, 255, 0.9);
+  --tool-on-color: #111;
+}
 .controls button {
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: #fff;
-  -webkit-tap-highlight-color: transparent;
   transition:
     transform var(--d-fast) var(--ease-out),
     background-color var(--d-fast) var(--ease-out),
@@ -271,36 +273,30 @@ a.artist:hover {
 .controls button:active {
   transform: scale(0.88);
 }
+.skip,
+.play {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #fff;
+  -webkit-tap-highlight-color: transparent;
+}
 .skip {
   width: var(--np-skip);
   height: var(--np-skip);
-  border-radius: 50%;
 }
 .play {
   width: var(--np-play);
   height: var(--np-play);
-  border-radius: 50%;
 }
 @media (hover: hover) {
   .skip:hover,
   .play:hover {
     background: rgba(255, 255, 255, 0.1);
   }
-}
-.mode,
-.tool {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  color: rgba(255, 255, 255, 0.7);
-}
-.controls .mode {
-  color: rgba(255, 255, 255, 0.7);
-}
-.controls .mode.on,
-.tool.on {
-  background: rgba(255, 255, 255, 0.9);
-  color: #111;
 }
 
 .volume {
@@ -323,26 +319,9 @@ a.artist:hover {
   align-items: center;
   justify-content: space-around;
 }
-.tool {
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  transition:
-    background-color var(--d-fast) var(--ease-out),
-    color var(--d-fast) var(--ease-out);
-}
-@media (hover: hover) {
-  .tool:not(.on):hover,
-  .controls .mode:not(.on):hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
-}
 .close:focus-visible,
-.controls button:focus-visible,
-.tool:focus-visible {
+.skip:focus-visible,
+.play:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -417,8 +396,10 @@ a.artist:hover {
 }
 /* a finger's 44 pt target (HIG): the hit area grows, the look does not */
 @media (pointer: coarse) {
-  .mode,
-  .tool,
+  .controls,
+  .bottom {
+    --tool-h: var(--control-h-md);
+  }
   .close {
     min-width: var(--control-h-md);
     min-height: var(--control-h-md);

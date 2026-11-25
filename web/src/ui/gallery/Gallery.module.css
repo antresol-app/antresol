@@ -49,6 +49,18 @@
   align-items: center;
   gap: var(--s-3);
 }
+/* ToolButton in the full player's colours, over a cover */
+.toolOverArt {
+  padding: var(--s-3);
+  border-radius: var(--r-group);
+  background: var(--grad-3);
+  color: var(--label-over-art);
+  --tool-color: rgba(255, 255, 255, 0.7);
+  --tool-hover-fill: rgba(255, 255, 255, 0.12);
+  --tool-hover-color: #fff;
+  --tool-on-fill: rgba(255, 255, 255, 0.9);
+  --tool-on-color: #111;
+}
 .swatchGroup {
   display: flex;
   flex-direction: column;

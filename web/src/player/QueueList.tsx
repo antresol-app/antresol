@@ -2,6 +2,7 @@
 // «Убрать» and «Выше»/«Ниже» buttons (keyboard-friendly reordering; focus
 // follows the moved track).
 import { Artwork } from '../ui/Artwork'
+import { ToolButton } from '../ui/ToolButton'
 import { useLayoutEffect, useRef } from 'react'
 import { Icon } from '../components/Icon'
 import { audio, type QueueItem } from './audio/engine'
@@ -96,21 +97,16 @@ export function QueueList({ hideNow }: QueueListProps) {
                     <Text it={it} />
                   </button>
                   <span className={styles.tools}>
-                    <button type="button" data-dir="up" aria-label={t('player.queue.up', { title: it.title })} disabled={j === 0} onClick={() => move(it.key, i, i - 1, 'up')}>
-                      <Icon name="arrowUp" size={16} />
-                    </button>
-                    <button
-                      type="button"
+                    <ToolButton size="sm" icon="arrowUp" label={t('player.queue.up', { title: it.title })} data-dir="up" disabled={j === 0} onClick={() => move(it.key, i, i - 1, 'up')} />
+                    <ToolButton
+                      size="sm"
+                      icon="arrowDown"
+                      label={t('player.queue.down', { title: it.title })}
                       data-dir="down"
-                      aria-label={t('player.queue.down', { title: it.title })}
                       disabled={j === upcoming.length - 1}
                       onClick={() => move(it.key, i, i + 1, 'down')}
-                    >
-                      <Icon name="arrowDown" size={16} />
-                    </button>
-                    <button type="button" aria-label={t('player.queue.remove', { title: it.title })} onClick={() => audio.removeAt(i)}>
-                      <Icon name="close" size={16} />
-                    </button>
+                    />
+                    <ToolButton size="sm" icon="close" label={t('player.queue.remove', { title: it.title })} onClick={() => audio.removeAt(i)} />
                   </span>
                 </li>
               )

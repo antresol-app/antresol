@@ -15,6 +15,7 @@ import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
 import { Slider } from '../ui/Slider'
+import { ToolButton } from '../ui/ToolButton'
 import { useIsCompact } from '../state/useMediaQuery'
 import { nextPageKey, tapZone, type ComicDir } from './comicNav'
 import { GONE_TEXT, GONE_TITLE } from './comicText'
@@ -628,10 +629,9 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
       )}
 
       <header className={`${styles.bar} ${styles.top} glass-bar`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
-        <button type="button" className={styles.back} onClick={exit} aria-label={t('common.back')}>
-          <Icon name="chevronLeft" size={22} />
+        <ToolButton icon={<Icon name="chevronLeft" size={22} />} label={t('common.back')} className={styles.back} onClick={exit}>
           {!compact && <span>{book.series?.name || t('common.books')}</span>}
-        </button>
+        </ToolButton>
         <span className={styles.title}>{titleLine}</span>
         <Menu
           label={t('reader.comic.view')}
@@ -639,9 +639,7 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
           className={styles.viewMenu}
           onOpenChange={setMenuOpen}
           trigger={(p) => (
-            <button {...p} type="button" className={styles.tool} aria-label={t('reader.comic.view')}>
-              <Icon name="sliders" size={20} />
-            </button>
+            <ToolButton {...p} icon="sliders" label={t('reader.comic.view')} />
           )}
         >
           {(close) => (

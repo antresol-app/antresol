@@ -129,6 +129,10 @@
   gap: 8px;
   padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
   color: var(--label);
+  /* the kit's ToolButtons (the top bar's), in the bar's own colour */
+  --tool-color: var(--label);
+  --tool-hover-fill: rgba(255, 255, 255, 0.1);
+  --tool-hover-color: var(--label);
   /* .glass-bar, over the pages */
   transition:
     opacity var(--d-base) var(--ease-out),
@@ -159,46 +163,20 @@
   transform: translateY(8px);
 }
 
-.back,
-.tool {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  -webkit-tap-highlight-color: transparent;
-}
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
+/* «‹ Назад» (a ToolButton; the element in front outranks the kit's own rule): the accent
+   colour, the series name after the glyph, no wider than the bar leaves it */
+button.back {
+  --tool-color: #0a84ff;
+  --tool-hover-color: #0a84ff;
+  min-width: 0;
   max-width: 34%;
-  height: 40px;
   padding: 0 10px 0 4px;
-  border-radius: 10px;
   font: 500 17px / 1 var(--font-text);
-  color: #0a84ff;
 }
 .back span {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.tool {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-}
-.back:hover,
-.tool:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-.back:focus-visible,
-.tool:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
 }
 .title {
   flex: 1;

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState, type FocusEvent, type FormEve
 import { Icon } from '../components/Icon'
 import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
 import { Sheet } from '../ui/Sheet'
+import { ToolButton } from '../ui/ToolButton'
 import { TextField } from '../ui/TextField'
 import { useIsCompact } from '../state/useMediaQuery'
 import {
@@ -172,38 +173,28 @@ export function ReaderChrome(p: ReaderChromeProps) {
   return (
     <div className={styles.chrome} data-theme={p.theme} data-hidden={hidden || undefined} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
       <header className={`${styles.top} ${styles.bar} glass-bar`}>
-        <button type="button" className={styles.back} onClick={p.onBack}>
-          <Icon name="chevronLeft" size={22} strokeWidth={2.4} />
+        <ToolButton icon={<Icon name="chevronLeft" size={22} strokeWidth={2.4} />} label={t('common.books')} className={styles.back} onClick={p.onBack}>
           <span>{t('common.books')}</span>
-        </button>
+        </ToolButton>
         <h1 className={styles.title}>{p.title}</h1>
         <div className={styles.tools}>
           {p.extra}
           {p.search && (
-            <button type="button" className={styles.tool} aria-label={t('common.search')} onClick={() => setSheet('search')}>
-              <Icon name="search" size={20} />
-            </button>
+            <ToolButton icon="search" label={t('common.search')} onClick={() => setSheet('search')} />
           )}
           {p.annotations && (
-            <button type="button" className={styles.tool} aria-label={t('reader.annotations')} onClick={() => setSheet('marks')}>
-              <Icon name="quote" size={20} />
-            </button>
+            <ToolButton icon="quote" label={t('reader.annotations')} onClick={() => setSheet('marks')} />
           )}
           {p.onBookmark && (
-            <button
-              type="button"
-              className={styles.tool}
-              aria-label={p.bookmarked ? t('reader.bookmark.remove') : t('reader.bookmark.add')}
+            <ToolButton
+              icon={<Icon name={p.bookmarked ? 'bookmarkFill' : 'bookmark'} size={20} className={p.bookmarked ? styles.marked : undefined} />}
+              label={p.bookmarked ? t('reader.bookmark.remove') : t('reader.bookmark.add')}
               aria-pressed={!!p.bookmarked}
               onClick={p.onBookmark}
-            >
-              <Icon name={p.bookmarked ? 'bookmarkFill' : 'bookmark'} size={20} className={p.bookmarked ? styles.marked : undefined} />
-            </button>
+            />
           )}
           {p.toc && (
-            <button type="button" className={styles.tool} aria-label={t('reader.toc')} onClick={() => setSheet('toc')} disabled={p.toc.length === 0}>
-              <Icon name="list" size={21} />
-            </button>
+            <ToolButton icon={<Icon name="list" size={21} />} label={t('reader.toc')} onClick={() => setSheet('toc')} disabled={p.toc.length === 0} />
           )}
           {p.prefs && p.onPrefs && (
             <Menu
@@ -212,11 +203,15 @@ export function ReaderChrome(p: ReaderChromeProps) {
               onOpenChange={setMenu}
               className={styles.settings}
               trigger={(tp) => (
-                <button type="button" {...tp} className={styles.tool} aria-label={t('reader.appearance')}>
-                  <span className={styles.aa} aria-hidden>
-                    {t('reader.aa')}
-                  </span>
-                </button>
+                <ToolButton
+                  {...tp}
+                  icon={
+                    <span className={styles.aa} aria-hidden>
+                      {t('reader.aa')}
+                    </span>
+                  }
+                  label={t('reader.appearance')}
+                />
               )}
             >
               {() => <ReaderSettings prefs={p.prefs!} onChange={p.onPrefs!} compact={compact} />}
@@ -496,8 +491,8 @@ export function ReaderSettings({ prefs, onChange, compact }: { prefs: ReaderPref
 /** Plain icon button for the top bar (PDF zoom). */
 export function ChromeButton({ label, onClick, children, disabled }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean }) {
   return (
-    <button type="button" className={styles.tool} aria-label={label} onClick={onClick} disabled={disabled}>
+    <ToolButton label={label} onClick={onClick} disabled={disabled}>
       {children}
-    </button>
+    </ToolButton>
   )
 }

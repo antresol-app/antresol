@@ -86,10 +86,6 @@
   background: rgba(255, 255, 255, 0.14);
 }
 
-/* the «Пропускать сам» menu button, like the other tools */
-.trigger {
-  composes: tool from './VideoPlayer.module.css';
-}
 .menu {
   min-width: 240px;
 }

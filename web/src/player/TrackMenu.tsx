@@ -62,7 +62,7 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
       className={[styles.menu, showAudio ? styles.two : ''].join(' ')}
       onOpenChange={onOpenChange}
       trigger={(p) => (
-        <IconButton {...p} icon={<Icon name="captions" size={24} />} label={t('player.tracks.title')} variant="plain" className={styles.trigger} />
+        <IconButton {...p} icon="captions" label={t('player.tracks.title')} size="sm" material="clear" />
       )}
     >
       {(close) => (

@@ -1,0 +1,54 @@
+/* The kit's toolbar button (ToolButton.tsx). The bar it sits in paints it with
+   --tool-* custom properties; the tokens are its look on a plain page. A bar
+   whose tools are bigger on a touch screen sets --tool-h there. */
+.tool {
+  --h: var(--tool-h, var(--control-h-tool));
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-0);
+  min-width: var(--h);
+  height: var(--h);
+  padding: 0 var(--s-1h);
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--tool-color, var(--label-2));
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out);
+}
+.sm {
+  --h: var(--tool-h, var(--control-h-sm));
+}
+.tool > svg {
+  flex: none;
+}
+@media (hover: hover) {
+  .tool:hover:not(:disabled, .on) {
+    background: var(--tool-hover-fill, var(--fill-3));
+    color: var(--tool-hover-color, var(--label));
+  }
+}
+/* on: white with a dark glyph. .tool.on outranks a bar's own rule for its tools. */
+.tool.on {
+  background: var(--tool-on-fill, var(--label));
+  color: var(--tool-on-color, var(--label-inverse));
+}
+.tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* A finger's 44 pt target around the square: the hit area grows, the look does not (HIG). */
+@media (pointer: coarse) {
+  .tool::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--h) - var(--touch-target)) / 2 - var(--hairline-w));
+    border-radius: var(--r-field);
+  }
+}

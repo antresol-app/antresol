@@ -1,6 +1,3 @@
-.trigger {
-  composes: tool from './VideoPlayer.module.css';
-}
 .menu {
   min-width: 280px;
 }

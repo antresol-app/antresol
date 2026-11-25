@@ -6,14 +6,11 @@
   display: flex;
   align-items: center;
 }
-.mute {
-  composes: tool from './VideoPlayer.module.css';
-}
 
 /* the kit's Slider (ui/Slider) is this slider; only where it sits is said here */
 .volume .range {
   width: 96px;
-  margin: 0 var(--s-2) 0 0;
+  margin: 0 var(--s-2);
 }
 
 /* A window too narrow for the slider beside the other tools keeps the speaker. */

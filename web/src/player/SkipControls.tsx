@@ -219,7 +219,7 @@ export function SkipMenu({ kinds, value, onChange, onOpenChange }: SkipMenuProps
       className={styles.menu}
       onOpenChange={onOpenChange}
       trigger={(p) => (
-        <IconButton {...p} icon={<Icon name="next" size={22} />} label={label} variant="plain" className={styles.trigger} />
+        <IconButton {...p} icon="next" label={label} size="sm" material="clear" />
       )}
     >
       {() => (

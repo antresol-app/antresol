@@ -213,23 +213,12 @@
 .toolsRight {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s-2);
 }
-/* A round tool of the video bars: the kit's IconButton (plain, 44) in the bar's own
-   white, the picture's wash under the pointer or while its menu is open. The
-   speaker (VolumeControl) and the menus' triggers (TrackMenu, SkipControls) compose
-   it. Twice, so it outranks the button's own colour and hover. */
-.tool.tool {
-  color: var(--label-over-art);
-}
-.tool.tool:hover:not(:disabled),
-.tool.tool[aria-expanded='true'] {
-  background: rgba(255, 255, 255, 0.14);
-  color: var(--label-over-art);
-}
-/* AirPlay: the video plays on a receiver */
-.tool.tool[data-active],
-.tool.tool[data-active]:hover:not(:disabled) {
+/* AirPlay (an IconButton, clear glass, like the other tools of the bar): its glyph
+   takes the accent while the video plays on a receiver. button.airplay outranks
+   the kit's own colour whatever order the chunks load in. */
+button.airplay[data-active] {
   color: var(--accent);
 }
 

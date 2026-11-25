@@ -1,6 +1,4 @@
 /* Buttons here draw their own shape. */
-.back,
-.tool,
 .sizeButton,
 .swatch,
 .segment,
@@ -21,6 +19,10 @@
   --rc-label-2: rgba(60, 60, 67, 0.72);
   --rc-hover: rgba(0, 0, 0, 0.06);
   --rc-accent: #007aff;
+  /* the kit's ToolButtons (the top bar's), in the page's colours */
+  --tool-color: var(--rc-label);
+  --tool-hover-fill: var(--rc-hover);
+  --tool-hover-color: var(--rc-label);
   --rc-top: calc(52px + env(safe-area-inset-top));
   --rc-bottom: calc(40px + env(safe-area-inset-bottom));
   color-scheme: light;
@@ -91,20 +93,13 @@
   transform: translateY(8px);
 }
 
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-  height: 40px;
+/* «‹ Книги»: the accent colour, the word after the glyph (rules for a ToolButton:
+   the element in front outranks the kit's own one) */
+button.back {
+  --tool-color: var(--rc-accent);
+  --tool-hover-color: var(--rc-accent);
   padding: 0 10px 0 4px;
-  border-radius: 10px;
   font: 500 17px / 1 var(--font-text);
-  color: var(--rc-accent);
-}
-.back:hover,
-.tool:hover {
-  background: var(--rc-hover);
 }
 .title {
   flex: 1;
@@ -121,24 +116,6 @@
   align-items: center;
   gap: 2px;
   flex: none;
-}
-.tool {
-  display: grid;
-  place-items: center;
-  min-width: 40px;
-  height: 40px;
-  padding: 0 8px;
-  border-radius: 10px;
-  color: var(--rc-label);
-  font: 600 15px / 1 var(--font-text);
-}
-.tool:disabled {
-  opacity: 0.35;
-}
-.tool:focus-visible,
-.back:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 1px;
 }
 .aa {
   font: 600 17px / 1 var(--font-display);
@@ -387,7 +364,7 @@
 }
 
 @media (max-width: 699px) {
-  .back {
+  button.back {
     padding: 0 6px 0 0;
   }
   .title {

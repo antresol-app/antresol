@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { IconButton } from '../ui/IconButton'
+import { ToolButton } from '../ui/ToolButton'
 import { Sheet } from '../ui/Sheet'
 import { useAnnotations } from '../reader/useAnnotations'
 import type { Annotation } from '../api/types'
@@ -20,14 +21,12 @@ export function msOf(locator: string): number {
   return m ? Number(m[1]) : -1
 }
 
-export function AudiobookBookmarks({ bookId, className }: { bookId: number; className?: string }) {
+export function AudiobookBookmarks({ bookId }: { bookId: number }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   return (
     <>
-      <button type="button" className={className} aria-label={t('player.bookmarks')} onClick={() => setOpen(true)}>
-        <Icon name="bookmark" size={20} />
-      </button>
+      <ToolButton icon="bookmark" label={t('player.bookmarks')} onClick={() => setOpen(true)} />
       {open && <BookmarksSheet bookId={bookId} onClose={() => setOpen(false)} />}
     </>
   )

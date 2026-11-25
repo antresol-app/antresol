@@ -34,6 +34,7 @@ import { ProgressRing, StatusRing } from '../StatusRing'
 import { TextArea, TextField } from '../TextField'
 import { Toast } from '../Toast'
 import { Toggle } from '../Toggle'
+import { ToolButton } from '../ToolButton'
 import { FilterChips } from '../FilterChips'
 import { Notice } from '../Notice'
 import { VirtualList } from '../VirtualList'
@@ -105,6 +106,7 @@ export function Gallery() {
   const [mbs, setMbs] = useState(2)
   const [gb, setGb] = useState(10)
   const [wl, setWl] = useState(false)
+  const [tool, setTool] = useState(false)
   const [sheet, setSheet] = useState<'' | 'alert' | 'wide' | 'large' | 'three' | 'busy'>('')
   const [toast, setToast] = useState('')
   const [following, setFollowing] = useState(false)
@@ -236,6 +238,32 @@ export function Gallery() {
             <IconButton size="lg" icon="arrowDown" label="Начинается" />
             <ProgressRing diameter={52} mode="starting" pct={0} label="Прогресс" />
           </span>
+        </div>
+      </Section>
+
+      <Section
+        title="ToolButton"
+        note="The rounded-square toolbar button of a bar (the full player's rows, the readers' top bars, a queue row's tools). Bare glyph, wash under the pointer, white while toggled on. A bar paints it with --tool-* custom properties: the first two rows are the plain-page look, the last the full player's over a cover."
+      >
+        {(['md', 'sm'] as const).map((s) => (
+          <div key={s} className={styles.row}>
+            <code className={styles.label}>{s}</code>
+            <ToolButton size={s} icon="search" label="Поиск" />
+            <ToolButton size={s} icon="quote" label="Текст" toggled={tool} onClick={() => setTool(!tool)} />
+            <ToolButton size={s} icon="queue" label="Очередь (вкл.)" toggled />
+            <ToolButton size={s} icon="list" label="Оглавление" disabled />
+            <ToolButton size={s} icon="chevronLeft" label="Книги">
+              <span>Книги</span>
+            </ToolButton>
+          </div>
+        ))}
+        <div className={`${styles.row} ${styles.toolOverArt}`}>
+          <code className={styles.label}>over a cover</code>
+          <ToolButton icon="shuffle" label="Перемешать" />
+          <ToolButton icon="repeat" label="Повтор" toggled />
+          <ToolButton icon="quote" label="Текст" toggled={tool} onClick={() => setTool(!tool)} />
+          <ToolButton icon="queue" label="Очередь" />
+          <ToolButton icon="list" label="Оглавление" disabled />
         </div>
       </Section>
 

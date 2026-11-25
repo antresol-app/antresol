@@ -6,7 +6,6 @@
 // transport in the middle and the rest at the right, and other big web players keep it in
 // its left cluster. Shared by the film and the live channel player
 // (VideoPlayer.tsx, pages/tv/LivePlayer.tsx).
-import { Icon } from '../components/Icon'
 import { IconButton } from '../ui/IconButton'
 import { useT } from '../i18n'
 import { Slider } from '../ui/Slider'
@@ -34,11 +33,11 @@ export function VolumeControl({ volume, muted, onVolume, onToggleMute, muteLabel
   return (
     <div className={styles.volume}>
       <IconButton
-        icon={<Icon name={silent ? 'speakerMute' : 'speaker'} size={24} />}
+        icon={silent ? 'speakerMute' : 'speaker'}
         label={label}
         tooltip={title ?? `${label} (M)`}
-        variant="plain"
-        className={styles.mute}
+        size="sm"
+        material="clear"
         onClick={onToggleMute}
       />
       <Slider

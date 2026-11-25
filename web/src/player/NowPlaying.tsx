@@ -31,6 +31,7 @@ import { SpeedMenu } from './SpeedMenu'
 import { useAudioOutputs, type OutputButton } from './audioOutputs'
 import { SheetContainer } from '../ui/Sheet'
 import { Slider } from '../ui/Slider'
+import { ToolButton } from '../ui/ToolButton'
 import styles from './NowPlaying.module.css'
 import { useT, type Key } from '../i18n'
 
@@ -133,6 +134,7 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const swap = compact && panel !== null
   const airPlay = useAirPlay(it.key)
+  const showAirPlayPicker = () => (audio.element() as AirPlayElement | null)?.webkitShowPlaybackTargetPicker?.()
 
   // Focus moves in, the page under it stops scrolling; Esc closes.
   useEffect(() => {
@@ -358,9 +360,7 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
 
           {book ? (
             <div className={styles.controls}>
-              <button type="button" className={styles.mode} aria-label={t('player.previousChapter')} onClick={previousChapter}>
-                <Icon name="previous" size={22} />
-              </button>
+              <ToolButton icon={<Icon name="previous" size={22} />} label={t('player.previousChapter')} onClick={previousChapter} />
               <button type="button" className={styles.skip} aria-label={t('player.skipBack', { n: BOOK_BACK_SEC })} onClick={() => (ret.clear(), audio.skip(-BOOK_BACK_SEC))}>
                 <Icon name="back15" size={38} strokeWidth={1.7} />
               </button>
@@ -376,27 +376,16 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
               <button type="button" className={styles.skip} aria-label={t('player.skipForward', { n: BOOK_FORWARD_SEC })} onClick={() => (ret.clear(), audio.skip(BOOK_FORWARD_SEC))}>
                 <Icon name="forward30" size={38} strokeWidth={1.7} />
               </button>
-              <button
-                type="button"
-                className={styles.mode}
-                aria-label={t('player.nextChapter')}
+              <ToolButton
+                icon={<Icon name="next" size={22} />}
+                label={t('player.nextChapter')}
                 disabled={!!ch && ch.index >= chapters.length - 1}
                 onClick={nextChapter}
-              >
-                <Icon name="next" size={22} />
-              </button>
+              />
             </div>
           ) : (
             <div className={styles.controls}>
-              <button
-                type="button"
-                className={`${styles.mode} ${s.shuffle ? styles.on : ''}`}
-                aria-label={t('player.shuffle')}
-                aria-pressed={s.shuffle}
-                onClick={() => audio.setShuffle(!s.shuffle)}
-              >
-                <Icon name="shuffle" size={20} />
-              </button>
+              <ToolButton icon="shuffle" label={t('player.shuffle')} toggled={s.shuffle} onClick={() => audio.setShuffle(!s.shuffle)} />
               <button type="button" className={styles.skip} aria-label={t('player.previousTrack')} onClick={() => audio.previous()}>
                 <Icon name="previous" size={34} />
               </button>
@@ -412,14 +401,12 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
               <button type="button" className={styles.skip} aria-label={t('player.nextTrack')} onClick={() => audio.next()}>
                 <Icon name="next" size={34} />
               </button>
-              <button
-                type="button"
-                className={`${styles.mode} ${s.repeat !== 'off' ? styles.on : ''}`}
-                aria-label={t(REPEAT_LABEL[s.repeat])}
+              <ToolButton
+                icon={s.repeat === 'one' ? 'repeatOne' : 'repeat'}
+                label={t(REPEAT_LABEL[s.repeat])}
+                toggled={s.repeat !== 'off'}
                 onClick={() => audio.cycleRepeat()}
-              >
-                <Icon name={s.repeat === 'one' ? 'repeatOne' : 'repeat'} size={20} />
-              </button>
+              />
             </div>
           )}
 
@@ -434,12 +421,8 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
           {book ? (
             <div className={styles.bottom}>
               <SpeedMenu tone="player" placement="top-start" />
-              {s.bookId ? <AudiobookBookmarks bookId={s.bookId} className={styles.tool} /> : null}
-              {airPlay && (
-                <button type="button" className={styles.tool} aria-label="AirPlay" onClick={() => (audio.element() as AirPlayElement | null)?.webkitShowPlaybackTargetPicker?.()}>
-                  <Icon name="airplay" size={20} />
-                </button>
-              )}
+              {s.bookId ? <AudiobookBookmarks bookId={s.bookId} /> : null}
+              {airPlay && <ToolButton icon="airplay" label="AirPlay" onClick={showAirPlayPicker} />}
               {outputs.buttons.map((b) => (
                 <OutputTool key={b.key} button={b} on={!!s.output} />
               ))}
@@ -447,38 +430,13 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
             </div>
           ) : (
             <div className={styles.bottom}>
-              <button
-                type="button"
-                className={`${styles.tool} ${panel === 'lyrics' ? styles.on : ''}`}
-                aria-label={t('player.lyrics')}
-                aria-pressed={panel === 'lyrics'}
-                onClick={() => toggle('lyrics')}
-              >
-                <Icon name="quote" size={20} />
-              </button>
+              <ToolButton icon="quote" label={t('player.lyrics')} toggled={panel === 'lyrics'} onClick={() => toggle('lyrics')} />
               <NormalizeMenu tone="player" placement="top-start" />
-              {airPlay && (
-                <button
-                  type="button"
-                  className={styles.tool}
-                  aria-label="AirPlay"
-                  onClick={() => (audio.element() as AirPlayElement | null)?.webkitShowPlaybackTargetPicker?.()}
-                >
-                  <Icon name="airplay" size={20} />
-                </button>
-              )}
+              {airPlay && <ToolButton icon="airplay" label="AirPlay" onClick={showAirPlayPicker} />}
               {outputs.buttons.map((b) => (
                 <OutputTool key={b.key} button={b} on={!!s.output} />
               ))}
-              <button
-                type="button"
-                className={`${styles.tool} ${panel === 'queue' ? styles.on : ''}`}
-                aria-label={t('player.queue')}
-                aria-pressed={panel === 'queue'}
-                onClick={() => toggle('queue')}
-              >
-                <Icon name="queue" size={20} />
-              </button>
+              <ToolButton icon="queue" label={t('player.queue')} toggled={panel === 'queue'} onClick={() => toggle('queue')} />
             </div>
           )}
         </div>
@@ -494,8 +452,6 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
 /** «Воспроизвести на…»: an addon's output (`on` while a remote plays the listening). */
 function OutputTool({ button: b, on }: { button: OutputButton; on: boolean }) {
   return (
-    <button type="button" className={`${styles.tool} ${on ? styles.on : ''}`} aria-label={b.label} title={b.label} aria-pressed={on} onClick={b.run}>
-      <Icon name={b.icon} size={20} />
-    </button>
+    <ToolButton icon={b.icon} label={b.label} toggled={on} onClick={b.run} />
   )
 }

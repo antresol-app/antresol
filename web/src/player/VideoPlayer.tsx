@@ -761,25 +761,26 @@ export function VideoPlayer({
             />
             {airplayAvailable && (
               <IconButton
-                icon={<Icon name="airplay" size={24} />}
+                icon="airplay"
                 label="AirPlay"
-                variant="plain"
-                className={styles.tool}
+                size="sm"
+                material="clear"
+                className={styles.airplay}
                 onClick={showAirplayPicker}
                 aria-pressed={wireless}
                 data-active={wireless || undefined}
               />
             )}
             {pipSupported && (
-              <IconButton icon={<Icon name="pip" size={24} />} label={t('player.video.pip')} variant="plain" className={styles.tool} onClick={togglePip} />
+              <IconButton icon="pip" label={t('player.video.pip')} size="sm" material="clear" onClick={togglePip} />
             )}
             {canFullscreen && (
               <IconButton
-                icon={<Icon name={fullscreen ? 'collapse' : 'expand'} size={22} strokeWidth={2.1} />}
+                icon={fullscreen ? 'collapse' : 'expand'}
                 label={fullscreen ? t('player.video.exitFullScreen') : t('player.video.fullScreen')}
                 tooltip={t('player.video.fullScreenHint')}
-                variant="plain"
-                className={styles.tool}
+                size="sm"
+                material="clear"
                 onClick={toggleFullscreen}
               />
             )}

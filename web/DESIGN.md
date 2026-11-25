@@ -18,7 +18,7 @@ build).
    control heights, shadows and layers come from tokens. The exceptions are
    art (posters, avatar gradients, the identity tile) and video chrome
    measured against the picture (`src/player`, `src/reader`).
-2. **One component per job.** Need a round button? `IconButton`. A pop-up?
+2. **One component per job.** Need a round button? `IconButton` (a bar's square one: `ToolButton`). A pop-up?
    `Select`. A menu? `Menu`. A setting? `ListRow` in a `GroupedSection`. If
    the component cannot do it, extend the component (and the gallery), never
    copy it into a page.
@@ -112,7 +112,7 @@ bar's sections and the library menu. Numbers that change
   `--r-sheet` 20, `--r-pill`.
 - Control heights: `--control-h-xs` 30 (a round button inside a row),
   `--control-h-sm` 36 (pop-up buttons, number fields, small buttons,
-  segments), `--control-h-md` 44 (buttons, toolbars, round icon buttons),
+  segments), `--control-h-tool` 40 (a bar's `ToolButton`), `--control-h-md` 44 (buttons, toolbars, round icon buttons),
   `--control-h-lg` 52 (the item page's actions), `--control-h-field` 48
   (a form's text field). Glyphs: `--icon-xs` 16, `--icon-sm` 18,
   `--icon-md` 20, `--icon-lg` 24.
@@ -158,6 +158,7 @@ bar's sections and the library menu. Numbers that change
 | --- | --- | --- |
 | `Button` | any action with a text label | `primary` (white: the main action of a screen, one per screen), `secondary` (a grey fill: supporting actions), `plain` (accent text: an action inside a list — «Добавить язык»), `destructive` (the secondary look with a red label), `link` (inside a sentence — «Скрыть»). Sizes `small` 36 · `regular` 44 · `large` 52; optional leading `icon`; `loading`; never wider than what holds it (a long label is cut with an ellipsis); `material` of a secondary button: `fill` (default, in content), `glass` (on a bar), `clear` (over artwork — the hero's «Подробнее»). Also `ButtonLink`, `ButtonAnchor`. |
 | `IconButton` | every round, icon-only button | `size` xs 30 · sm 36 · md 44 · lg 52 — one size means one diameter, glyph size and colour; `material` `fill` (default) · `glass` · `clear` (over artwork or video); a row over a title's art (`ActionTiles`) gives its buttons `clear` (`MaterialContext`). `variant="plain"` inside a row (no fill until hovered); `tone="destructive"` (red glyph); `toggled` (white, aria-pressed); `label` is the accessible name and tooltip (`tooltip` when the state changes the words); `tile` shows the label under the glyph in the phone tile row. Also `IconButtonLink`, `IconButtonAnchor`. |
+| `ToolButton` | a bar's own tools: the full player's mode and tool rows, the readers' top bars («‹ Книги», search, contents, «Аа»), a queue row's tools | the rounded square, `--control-h-tool` 40 (`size="sm"` 36 inside a row) with `--r-field`; a bare glyph (`icon`: an Icon's name, or a glyph of the page's own) with an optional word after it (`children`: «Книги»), a wash under the pointer, `toggled` white with a dark glyph (aria-pressed). The bar paints it by setting `--tool-color`, `--tool-hover-fill`, `--tool-hover-color`, `--tool-on-fill`, `--tool-on-color` on itself (the full player's white over the cover; the reader's colours of each theme); the tokens are the look on a plain page; `--tool-h` sets the side where a bar wants bigger tools on a touch screen. Round buttons are `IconButton`s. |
 | `Artwork` | every picture of the library in a page (a cover, a track's or a playlist's art, a search row's thumb) | `width` it is drawn at (the srcset runs to twice it), `sizes` for a fluid one, `eager` for the page's main picture, `fallback` (a glyph on its tile) when there is none or it fails. Lazy and decoded off the main thread. |
 | `Card` | a block of a page on a surface (a chart, a figure, an empty state) | paddings `sm`/`md`/`lg`. A list of rows is a `GroupedSection`, not a Card. (`components/Card` is the library's poster tile, a different thing.) |
 | `GroupedSection`, `ListRow` | settings and every list of things with actions (downloads, profiles, statistics) | the System Settings list: a title over a solid group, a footnote under it; a row has optional `leading` media, `label`, `hint`, `status`, and the control/actions on the trailing edge. `stack`: the control goes under the text on phones (segmented controls); `wide`: always under (ordered lists, forms); `shrink`: the control gives way and cuts its choice. On a phone a plain row's control goes under the text by itself when the text would be narrower than `--row-text-min`, so a word is never split; a `ListLinkRow`'s value is cut by an ellipsis before the chevron or the label's longest word gives way. Pages that build rows by hand compose the same classes (`Manage.module.css`). `ListSelectRow`: a row that chooses (a source, a device, a playlist to add to) — the link row's button with the choice's check at the trailing edge; `selected` marks the chosen one (`aria-pressed`), without it the row only acts; `leading`, `hint`, `disabled`. |

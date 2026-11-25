@@ -57,8 +57,7 @@
   color: inherit;
   text-align: left;
 }
-button.main:focus-visible,
-.tools button:focus-visible {
+button.main:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 0;
 }
@@ -103,26 +102,18 @@ button.main:focus-visible,
 .tools {
   flex: none;
   display: flex;
+  /* the kit's ToolButtons, in white over the cover */
+  --tool-color: rgba(255, 255, 255, 0.72);
+  --tool-hover-fill: rgba(255, 255, 255, 0.12);
+  --tool-hover-color: #fff;
 }
-.tools button {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: var(--control-h-sm);
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: none;
-  color: rgba(255, 255, 255, 0.72);
-}
-.tools button:disabled {
-  opacity: 0.3;
+/* a finger's 44 pt target (HIG) */
+@media (pointer: coarse) {
+  .tools {
+    --tool-h: var(--control-h-md);
+  }
 }
 @media (hover: hover) {
-  .tools button:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
   /* mouse: the tools show on hover or keyboard focus */
   .tools {
     opacity: 0;
@@ -136,11 +127,4 @@ button.main:focus-visible,
   padding: 18px var(--s-2);
   font: var(--t-subhead);
   color: rgba(255, 255, 255, 0.6);
-}
-/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
-@media (pointer: coarse) {
-  .tools button {
-    width: var(--control-h-md);
-    height: var(--control-h-md);
-  }
 }
