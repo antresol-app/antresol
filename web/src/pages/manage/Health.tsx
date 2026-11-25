@@ -1,58 +1,85 @@
-// «Управление → Состояние» (admin): is everything working, on one page —
-// the versions (the server's and its latest public release, every addon's,
-// whether it runs and whether its web part loaded in this browser, and its newer release with «Обновить»: the same preview
-// sheet and update as «Расширения», AddSheet; a check still running or
-// failed says so, never «up to date»), the hardware (whether video
-// decodes and encodes on the GPU, whether intros can be analysed), the
-// folders (whether the server can read and write each), the network
-// (whether the server reaches GitHub and its metadata sources, and each
-// addon's helper services, /api/addons/helpers) and the
-// library (what the last scan found). «Проверить снова» asks everything
-// again. The server itself has no update button: it cannot replace its own
-// container (the image is pulled from outside, docker compose), so the page
-// gives the command. It replaced «Обновления» (/manage/updates leads here).
-// Each part reads an endpoint of its own: /api/updates, /api/addons,
-// /api/settings/transcoding, /api/settings/storage,
-// /api/admin/health/network, /api/library/status.
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+// «Управление → Состояние» (admin): is everything working, as one list in
+// the System Settings manner. Each check is a row — the ring of its state
+// (green check, orange or red «!», a grey dash), its name and a short value;
+// the groups are Доступ, Диск и папки, Видео, Каталог и интернет, ТВ и почта,
+// the versions (the server's and each addon's) and the addons' helper
+// services. A row with something to do is a chevron row: a tap opens the
+// sheet «Как починить» — what is wrong, how to fix it, and the one action or
+// the one command to copy. Nothing is explained where the state is obvious.
+// «Проверить снова» asks everything again; the key of TMDB and the mailbox are
+// tested only by the button in their sheets (a login that fails often is
+// throttled by the provider).
+// Data: /api/admin/selfcheck (what only the server knows: the connection, the
+// public address, the settings folder, space, ffmpeg, TMDB, the clock, the
+// TV sources, the mail) and the endpoints the page always asked: /api/updates,
+// /api/addons, /api/addons/helpers, /api/settings/transcoding,
+// /api/settings/storage, /api/admin/health/network, /api/library/status.
+// healthChecks.ts turns them into rows. The server cannot update itself (its
+// image is pulled from outside), so its sheet gives the command.
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useNavigate } from 'react-router'
 import { APP_NAME } from '../../brand'
-import { errorText, getAddonHelpers, getAddons, getCoreUpdate, getLibraryStatus, getNetworkHealth, getTranscoding, safeHttpUrl } from '../../api/client'
-import { getStorage, type StorageView } from '../../api/storage'
+import { errorText, getAddonHelpers, getAddons, getCoreUpdate, getLibraryStatus, getNetworkHealth, getTranscoding } from '../../api/client'
 import { EXTERNAL_PATH, getExternal, saveExternal } from '../../api/external'
+import { getSelfCheck, runSelfCheckTest, type SelfCheckView, type TestableCheck } from '../../api/selfcheck'
+import { getStorage, type StorageView } from '../../api/storage'
 import type { AddonInfo, CoreUpdate, HelperHealth, LibraryStatus, NetCheck, TranscodingView } from '../../api/types'
-import { StoragePerms } from '../../components/storage/StoragePerms'
-import { t as tr, useT, type Key } from '../../i18n'
+import { CopyBlock } from '../../components/storage/CopyBlock'
+import { locale, t as tr, useT, type Key } from '../../i18n'
 import { showNotice } from '../../state/notice'
 import { useSession } from '../../state/session'
-import { Button, ButtonAnchor, ButtonLink } from '../../ui/Button'
-import { GroupedSection, ListRow } from '../../ui/List'
+import { Button, ButtonLink } from '../../ui/Button'
+import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
-import { SettingsIcon } from '../../ui/SettingsIcon'
+import { Sheet, type SheetAction } from '../../ui/Sheet'
+import { Spinner } from '../../ui/Spinner'
+import { StatusRing, type RingState } from '../../ui/StatusRing'
 import { AddSheet, reloadSlots } from './Addons'
-import { scanLine } from './Tasks'
-import { statusLine } from './TranscodingSettings'
+import { buildRows, GROUPS, tally, tappable, type CheckRow, type Load, type RowState } from './healthChecks'
 import m from './Manage.module.css'
 import styles from './Health.module.css'
 
-/** The command that updates a Compose install (docs/updates.md). */
-export const COMPOSE_UPDATE = 'docker compose pull && docker compose up -d'
-
 const CHECKING_POLL_MS = 3000
+const RING = 28
 
-type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; value: T }
+/**
+ * Starts `call`, putting its state into `set` (a failure: `failed`'s words).
+ * An answer already on the page stays while it is asked again, so the rows do
+ * not jump; the promise ends when the new one is in.
+ */
+function fetchInto<T>(set: Dispatch<SetStateAction<Load<T>>>, call: (signal?: AbortSignal) => Promise<T>, failed: Key, signal?: AbortSignal): Promise<void> {
+  set((l) => (l.status === 'ready' ? l : { status: 'loading' }))
+  return call(signal).then(
+    (value) => void (!signal?.aborted && set({ status: 'ready', value })),
+    (e: unknown) => void (!signal?.aborted && set({ status: 'error', message: errorText(e, tr(failed)) })),
+  )
+}
 
-/** Starts `call`, putting its state into `set` (a failure: `failed`'s words). */
-function fetchInto<T>(set: (l: Load<T>) => void, call: (signal?: AbortSignal) => Promise<T>, failed: Key, signal?: AbortSignal) {
-  set({ status: 'loading' })
-  call(signal).then(
-    (value) => !signal?.aborted && set({ status: 'ready', value }),
-    (e: unknown) => !signal?.aborted && set({ status: 'error', message: errorText(e, tr(failed)) }),
+const RINGS: Record<Exclude<RowState, 'checking'>, [RingState, number]> = {
+  ok: ['done', 1],
+  warn: ['error', 1],
+  bad: ['bad', 1],
+  off: ['off', 0],
+  unknown: ['off', 0],
+}
+
+/** A row's state: its ring (named for assistive tech), or a spinner while it is being asked. */
+function StateIcon({ state, size = RING }: { state: RowState; size?: number }) {
+  const t = useT()
+  if (state === 'checking') return <Spinner size="sm" label={t('sc.checking')} />
+  const [ring, value] = RINGS[state]
+  return (
+    <span role="img" aria-label={t(`sc.state.${state}` as Key)} className={styles.lead}>
+      <StatusRing state={ring} value={value} size={size} />
+    </span>
   )
 }
 
 export function Health() {
   const t = useT()
+  const navigate = useNavigate()
   const { user } = useSession()
+  const [server, setServer] = useState<Load<SelfCheckView>>({ status: 'loading' })
   const [core, setCore] = useState<Load<CoreUpdate>>({ status: 'loading' })
   const [addons, setAddons] = useState<Load<AddonInfo[]>>({ status: 'loading' })
   const [hw, setHw] = useState<Load<TranscodingView>>({ status: 'loading' })
@@ -63,24 +90,33 @@ export function Health() {
   // the addons whose web part did not load in this browser (addons/loader)
   const [webFailed, setWebFailed] = useState<ReadonlyMap<string, string>>(new Map())
   const [updating, setUpdating] = useState<AddonInfo | null>(null)
+  // the row whose sheet is open, and the test (TMDB, the mailbox) that is running
+  const [open, setOpen] = useState<string | null>(null)
+  const [testing, setTesting] = useState<TestableCheck | null>(null)
   const withAddons = Boolean(user?.addons)
 
+  // everything is being asked (the first time, or «Проверить снова»)
+  const [asking, setAsking] = useState(true)
   const load = useCallback(
     (signal?: AbortSignal, fresh = false) => {
-      fetchInto(setCore, getCoreUpdate, 'updates.checkFailed', signal)
-      fetchInto(setHw, getTranscoding, 'settings.tc.loadFailed', signal)
-      fetchInto(setStorage, getStorage, 'health.foldersFailed', signal)
-      fetchInto(setNet, getNetworkHealth, 'health.networkFailed', signal)
-      fetchInto(setLibrary, () => getLibraryStatus(), 'health.libraryFailed', signal)
+      setAsking(true)
+      const asked = [
+        fetchInto(setServer, (s) => getSelfCheck(fresh, s), 'sc.failed', signal),
+        fetchInto(setCore, getCoreUpdate, 'updates.checkFailed', signal),
+        fetchInto(setHw, getTranscoding, 'settings.tc.loadFailed', signal),
+        fetchInto(setStorage, getStorage, 'health.foldersFailed', signal),
+        fetchInto(setNet, getNetworkHealth, 'health.networkFailed', signal),
+        fetchInto(setLibrary, () => getLibraryStatus(), 'health.libraryFailed', signal),
+      ]
       if (withAddons) {
-        fetchInto(setAddons, () => getAddons(fresh), 'updates.addonsFailed', signal)
-        fetchInto(setHelpers, getAddonHelpers, 'health.helpersFailed', signal)
+        asked.push(fetchInto(setAddons, () => getAddons(fresh), 'updates.addonsFailed', signal), fetchInto(setHelpers, getAddonHelpers, 'health.helpersFailed', signal))
         // the loader is its own chunk, already in once addons load
         void import('../../addons/loader').then(
           (l) => !signal?.aborted && setWebFailed(new Map(l.addonWebFailures())),
           () => {},
         )
       }
+      void Promise.all(asked).then(() => !signal?.aborted && setAsking(false))
     },
     // the module's t: the loads do not follow the language (useT's changes each render)
     [withAddons],
@@ -108,9 +144,9 @@ export function Health() {
   }, [load])
   // A check the server is still running (GitHub slow) is asked again
   // quietly until it has an answer.
-  const checking = addons.status === 'ready' && addons.value.some((a) => a.updateState === 'checking')
+  const addonsChecking = addons.status === 'ready' && addons.value.some((a) => a.updateState === 'checking')
   useEffect(() => {
-    if (!checking) return
+    if (!addonsChecking) return
     let gone = false
     const timer = window.setTimeout(() => {
       getAddons().then(
@@ -122,14 +158,64 @@ export function Health() {
       gone = true
       window.clearTimeout(timer)
     }
-  }, [checking, addons])
+  }, [addonsChecking, addons])
 
-  const copy = () =>
-    navigator.clipboard?.writeText(COMPOSE_UPDATE).then(
-      () => showNotice(t('updates.copied')),
-      () => {},
-    )
-  const busy = [core, hw, storage, net].some((l) => l.status === 'loading')
+  const zone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', [])
+  const rows = useMemo(
+    () => buildRows({ server, core, addons: withAddons ? addons : null, helpers: withAddons ? helpers : null, hw, storage, net, library, webFailed, zone }, t),
+    [server, core, addons, helpers, hw, storage, net, library, webFailed, zone, withAddons, t],
+  )
+  const { bad, warn, checking } = tally(rows)
+  const summary = [bad > 0 && t('sc.summary.bad', { count: bad }), warn > 0 && t('sc.summary.warn', { count: warn })].filter(Boolean).join(' · ')
+  const shown = open ? rows.find((r) => r.id === open) : undefined
+
+  /** Asks the server to test TMDB's key or the mailbox, and puts its answer in the list. */
+  const test = (id: TestableCheck) => {
+    setTesting(id)
+    runSelfCheckTest(id)
+      .then(
+        (c) =>
+          setServer((s) => (s.status === 'ready' ? { status: 'ready', value: { ...s.value, checks: s.value.checks.map((x) => (x.id === c.id ? c : x)) } } : s)),
+        (e: unknown) => showNotice(errorText(e, tr('sc.failed'))),
+      )
+      .finally(() => setTesting(null))
+  }
+
+  const sheetActions = (row: CheckRow): SheetAction[] => {
+    const a = row.action
+    const close = () => setOpen(null)
+    if (!a) return [{ label: t('common.done'), kind: 'primary', run: close }]
+    switch (a.kind) {
+      case 'link':
+        return [{ label: t(a.label), kind: 'primary', run: () => navigate(a.to) }]
+      case 'test':
+        return [{ label: t(a.label), kind: 'primary', run: () => test(a.id) }]
+      case 'update':
+        return [
+          {
+            label: t(a.label),
+            kind: 'primary',
+            run: () => {
+              close()
+              setUpdating(a.addon)
+            },
+          },
+        ]
+      case 'recheck':
+        return [
+          {
+            label: t(a.label),
+            kind: 'primary',
+            run: () => {
+              close()
+              load(undefined, true)
+            },
+          },
+        ]
+    }
+  }
+
+  const stamp = server.status === 'ready' ? new Date(server.value.checkedAt).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : ''
 
   return (
     <section aria-labelledby="health-title">
@@ -138,10 +224,10 @@ export function Health() {
           <h2 id="health-title" className={m.title}>
             {t('manage.section.health')}
           </h2>
-          <p className={m.subtitle}>{t('health.subtitle')}</p>
+          <p className={m.subtitle}>{summary || (asking || checking > 0 ? t('sc.summary.checking') : t('sc.summary.ok'))}</p>
         </div>
         <div className={m.headerActions}>
-          <Button variant="secondary" size="small" icon="restart" loading={busy} onClick={() => load(undefined, true)}>
+          <Button variant="secondary" size="small" icon="restart" loading={asking} onClick={() => load(undefined, true)}>
             {t('updates.recheck')}
           </Button>
         </div>
@@ -166,150 +252,38 @@ export function Health() {
         </Notice>
       )}
 
-      <GroupedSection title={t('health.versions')}>
-        <CoreRow core={core} />
-        {withAddons && addons.status === 'loading' && <ListRow label={<span className={m.rowHint}>{t('updates.loading')}…</span>} />}
-        {withAddons && addons.status === 'error' && (
-          <Notice as="li" tone="destructive">
-            {addons.message}
-          </Notice>
-        )}
-        {withAddons &&
-          addons.status === 'ready' &&
-          addons.value.map((a) => (
-            <ListRow
-              key={a.id}
-              leading={<SettingsIcon glyph="puzzle" tint="green" />}
-              label={a.name}
-              hint={
-                <>
-                  {a.update && !a.pinned ? (
-                    <span className={styles.newer}>{t('addons.versionUpdate', { version: a.version, update: a.update })}</span>
-                  ) : (
-                    t('addons.version', { version: a.version })
-                  )}{' '}
-                  · <span className={addonTone(a)}>{t(`addons.status.${a.status}` as Key)}</span>
-                </>
-              }
-              status={
-                <>
-                  {/* a newer release is already in the version line */}
-                  {!a.update && <AddonUpdateStatus a={a} />}
-                  {a.status === 'incompatible' && a.minCore && (
-                    <>
-                      {!a.update && <br />}
-                      <span className={styles.problem}>{t('addons.needsCore', { version: a.minCore })}</span>
-                    </>
-                  )}
-                  {webFailed.has(a.id) && (
-                    <>
-                      {!a.update && <br />}
-                      <span className={styles.problem}>{t('health.webFailed', { error: webFailed.get(a.id) ?? '' })}</span>
-                    </>
-                  )}
-                </>
-              }
-            >
-              {a.update && !a.pinned && (
-                <Button size="small" variant="secondary" aria-label={t('addons.updateNamed', { name: a.name })} onClick={() => setUpdating(a)}>
-                  {t('addons.update')}
-                </Button>
-              )}
-              {!a.update && !a.pinned && a.updateState === 'failed' && (
-                <Button size="small" variant="secondary" aria-label={t('updates.recheckNamed', { name: a.name })} onClick={() => load(undefined, true)}>
-                  {t('updates.recheck')}
-                </Button>
-              )}
-            </ListRow>
-          ))}
-      </GroupedSection>
+      {GROUPS.map((g) => {
+        const list = rows.filter((r) => r.group === g.id)
+        if (list.length === 0) return null
+        return (
+          <GroupedSection key={g.id} title={t(g.title)}>
+            {list.map((r) => (
+              <CheckRowView key={r.id} row={r} onOpen={() => setOpen(r.id)} />
+            ))}
+          </GroupedSection>
+        )
+      })}
+      {stamp && <p className={styles.stamp}>{t('sc.checkedAt', { time: stamp })}</p>}
 
-      {withAddons && helpers.status !== 'loading' && (helpers.status === 'error' || helpers.value.length > 0) && (
-        <GroupedSection title={t('health.helpers')} footer={t('health.helpersFooter')}>
-          {helpers.status === 'error' ? (
-            <ListRow label={t('health.helpers')} status={<Tone ok={false}>{helpers.message}</Tone>} />
-          ) : (
-            <>
-              {helpers.value.filter((h) => !unset(h)).map((h) => {
-                const owner = addons.status === 'ready' ? addons.value.find((a) => a.id === h.addon)?.name : undefined
-                const name = h.title || h.name
-                return (
-                  <ListRow
-                    key={`${h.addon}:${h.name}`}
-                    leading={<SettingsIcon glyph="antenna" tint="cyan" />}
-                    label={owner ? `${name} · ${owner}` : name}
-                    hint={helperHint(t, h)}
-                    status={<Tone ok={h.ok}>{h.ok ? t(h.live ? 'health.helperOkLive' : 'health.helperOk') : helperProblemText(t, h)}</Tone>}
-                  />
-                )
-              })}
-              {helpers.value.some(unset) && (
-                <ListRow
-                  key="unset"
-                  leading={<SettingsIcon glyph="antenna" tint="gray" />}
-                  label={t('health.helpersUnset')}
-                  hint={helpers.value
-                    .filter(unset)
-                    .map((h) => h.title || h.name)
-                    .join(', ')}
-                />
-              )}
-            </>
+      {shown && tappable(shown) && (
+        <Sheet
+          title={shown.title}
+          size="wide"
+          role="dialog"
+          icon={<StateIcon state={shown.state} size={44} />}
+          message={shown.detail}
+          busy={testing !== null && shown.action?.kind === 'test' && shown.action.id === testing}
+          onCancel={() => setOpen(null)}
+          actions={sheetActions(shown)}
+        >
+          {(shown.fix || shown.command) && (
+            <div className={styles.fix}>
+              <h3 className={styles.fixTitle}>{t('sc.fixTitle')}</h3>
+              {shown.fix && <p className={styles.fixText}>{shown.fix}</p>}
+              {shown.command && <CopyBlock text={shown.command} stacked />}
+            </div>
           )}
-        </GroupedSection>
-      )}
-
-      {core.status === 'ready' && core.value.newer && (
-        <GroupedSection title={t('updates.howTitle')} footer={core.value.docker ? t('updates.howFoot') : undefined}>
-          <ListRow wide label={core.value.docker ? t('updates.howDocker') : t('updates.howBinary')}>
-            {core.value.docker && (
-              <div className={styles.command}>
-                <code className={styles.code}>{COMPOSE_UPDATE}</code>
-                <Button size="small" variant="secondary" onClick={() => void copy()}>
-                  {t('updates.copy')}
-                </Button>
-              </div>
-            )}
-          </ListRow>
-        </GroupedSection>
-      )}
-
-      <GroupedSection title={t('health.hardware')}>
-        <Line icon={<SettingsIcon glyph="cpu" tint="gray" />} label={t('health.decoding')} load={hw} text={(v) => statusLine(v, t)} ok={hwOk} />
-        {hw.status === 'ready' && hw.value.fingerprint !== undefined && (
-          <ListRow
-            leading={<SettingsIcon glyph="playRect" tint="red" />}
-            label={t('settings.tc.fingerprint')}
-            status={<Tone ok={hw.value.fingerprint}>{t(hw.value.fingerprint ? 'settings.tc.fingerprint.ok' : 'settings.tc.fingerprint.missing')}</Tone>}
-          />
-        )}
-      </GroupedSection>
-
-      <GroupedSection title={t('health.network')} footer={t('health.networkFooter')}>
-        {net.status !== 'ready' ? (
-          <Line icon={<SettingsIcon glyph="globe" tint="blue" />} label={t('health.network')} load={net} text={() => ''} ok={() => true} />
-        ) : (
-          net.value.map((n) => (
-            <ListRow
-              key={n.id}
-              leading={<SettingsIcon glyph="globe" tint="blue" />}
-              label={n.name}
-              status={<Tone ok={n.ok}>{n.ok ? t('health.reached', { ms: n.ms }) : t('health.unreached', { error: n.error ?? '' })}</Tone>}
-            />
-          ))
-        )}
-      </GroupedSection>
-
-      <GroupedSection title={t('health.library')}>
-        <Line icon={<SettingsIcon glyph="stack" tint="indigo" />} label={t('tasks.scan')} load={library} text={(s) => scanLine(s, t)} ok={(s) => !s.error} />
-      </GroupedSection>
-
-      {storage.status === 'ready' ? (
-        <StoragePerms view={storage.value} title={t('health.folders')} />
-      ) : (
-        <GroupedSection title={t('health.folders')}>
-          <Line icon={<SettingsIcon glyph="folder" tint="teal" />} label={t('health.folders')} load={storage} text={() => ''} ok={() => true} />
-        </GroupedSection>
+        </Sheet>
       )}
 
       {updating && (
@@ -327,98 +301,15 @@ export function Health() {
   )
 }
 
-/** The GPU works as chosen (the CPU by choice is fine too). */
-function hwOk(v: TranscodingView): boolean {
-  const s = v.status
-  if (s.mode === 'none') return s.requested === 'none'
-  const own = s.probes.find((p) => p.mode === s.mode)
-  return !own || own.ok
-}
-
-/** An addon's state in its colour: running fine, crashed or not fitting a problem, the rest plain. */
-function addonTone(a: AddonInfo): string | undefined {
-  if (a.status === 'running') return styles.fine
-  if (a.status === 'crashed' || a.status === 'incompatible' || a.pinFailed) return styles.problem
-  return undefined
-}
-
-/** A status in its colour: fine or a problem. */
-function Tone({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return <span className={ok ? styles.fine : styles.problem}>{children}</span>
-}
-
-/** One row of a load: checking, its failure, or its line in its colour. */
-function Line<T>({ icon, label, load, text, ok }: { icon: ReactNode; label: string; load: Load<T>; text: (v: T) => string; ok: (v: T) => boolean }) {
-  const t = useT()
-  if (load.status === 'loading') return <ListRow leading={icon} label={label} hint={`${t('updates.loading')}…`} />
-  if (load.status === 'error') return <ListRow leading={icon} label={label} status={<Tone ok={false}>{load.message}</Tone>} />
-  return <ListRow leading={icon} label={label} status={<Tone ok={ok(load.value)}>{text(load.value)}</Tone>} />
-}
-
-/** An addon's update status: never «up to date» when the check did not say so. */
-export function AddonUpdateStatus({ a }: { a: AddonInfo }) {
-  const t = useT()
-  if (a.pinned) return <>{t('updates.addonPinned')}</>
-  if (a.update) return <span className={styles.newer}>{t('updates.available', { version: a.update })}</span>
-  switch (a.updateState) {
-    case 'checking':
-      return <>{t('updates.addonChecking')}</>
-    case 'needsCore':
-      return <span className={styles.problem}>{a.updateError}</span>
-    case 'failed':
-      return <span className={styles.problem}>{a.updateError ? t('updates.addonCheckFailed', { reason: a.updateError }) : t('updates.checkFailed')}</span>
-  }
-  return <>{t('updates.upToDate')}</>
-}
-
-/** The server's row: what runs, what is the latest, the release's notes. */
-function CoreRow({ core }: { core: Load<CoreUpdate> }) {
-  const t = useT()
-  const icon = <SettingsIcon glyph="updates" tint="gray" />
-  if (core.status === 'loading') return <ListRow leading={icon} label={APP_NAME} hint={`${t('updates.loading')}…`} />
-  if (core.status === 'error') return <ListRow leading={icon} label={APP_NAME} status={core.message} />
-  const c = core.value
-  const latest = c.latest.replace(/^v/, '')
-  const versioned = /^\d+\.\d+\.\d+/.test(c.version)
-  let status = t('updates.checkFailed')
-  if (c.checked) status = c.newer ? t('updates.available', { version: latest }) : versioned ? t('updates.upToDate') : t('updates.devBuild', { version: latest })
+/** One check: a chevron row when it has something to open, else a plain row with its value. */
+function CheckRowView({ row, onOpen }: { row: CheckRow; onOpen: () => void }) {
+  const tone = row.state === 'warn' ? styles.warn : row.state === 'bad' ? styles.bad : ''
+  const value = <span className={[styles.value, tone].filter(Boolean).join(' ')}>{row.value}</span>
+  const lead = <StateIcon state={row.state} />
+  if (tappable(row)) return <ListLinkRow leading={lead} label={row.title} value={value} onOpen={onOpen} />
   return (
-    <ListRow leading={icon} label={APP_NAME} hint={t('updates.installed', { version: c.commit && !versioned ? `${c.version} (${c.commit.slice(0, 7)})` : c.version })} status={c.newer ? <span className={styles.newer}>{status}</span> : status}>
-      {c.checked && safeHttpUrl(c.releaseUrl) && (
-        <ButtonAnchor size="small" variant={c.newer ? 'primary' : 'secondary'} href={safeHttpUrl(c.releaseUrl)} target="_blank" rel="noopener noreferrer">
-          {t('updates.notes')}
-        </ButtonAnchor>
-      )}
+    <ListRow shrink leading={lead} label={row.title}>
+      {value}
     </ListRow>
   )
-}
-
-/** Which address of a helper is in use: the compose one is shown, an admin's never (it may carry a secret). */
-/** A helper the addon has no address for (an optional one nobody set up): one quiet line for all of them, not a failure each. */
-const unset = (h: HelperHealth) => h.source === 'none' && !h.address
-
-function helperHint(t: ReturnType<typeof useT>, h: HelperHealth) {
-  if (h.source === 'settings') return t('health.helperSettings')
-  if (h.custom) return t('health.helperCustom')
-  if (h.source === 'none' && !h.address) return t('health.helperNone')
-  return <span className={styles.mono}>{h.address}</span>
-}
-
-/** Why a helper does not answer, in the page's words (the raw error only when nothing better is known). */
-function helperProblemText(t: ReturnType<typeof useT>, h: HelperHealth): string {
-  switch (h.problem) {
-    case 'dns':
-      return t('health.helperDns', { name: h.name })
-    case 'refused':
-      return t('health.helperRefused', { name: h.name })
-    case 'timeout':
-      return t('health.helperTimeout', { name: h.name })
-    case 'status':
-      return t('health.helperStatus', { name: h.name })
-    case 'auth':
-      return t('health.helperAuth', { name: h.name })
-    case 'unset':
-      return t('health.helperUnset', { name: h.name })
-  }
-  return t('health.helperDown', { name: h.name, error: h.error ?? '' })
 }

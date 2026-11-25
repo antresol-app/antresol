@@ -471,3 +471,62 @@ func TestSendTextOnly(t *testing.T) {
 		t.Errorf("body %q", b)
 	}
 }
+
+// Check signs in and says goodbye: no sender, recipient or message reaches
+// the server, and the login crosses TLS only.
+func TestCheckSignsInWithoutAMessage(t *testing.T) {
+	f := &fakeSMTP{}
+	host, port := startFake(t, f)
+	if err := Check(ctx5(t), cfg(host, port)); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cred, _ := base64.StdEncoding.DecodeString(f.plain)
+	if !f.tlsOn || string(cred) != "\x00sender@example.com\x00s3cret" {
+		t.Errorf("login: tls %v, %q", f.tlsOn, cred)
+	}
+	if f.from != "" || f.rcpt != "" || f.data != "" {
+		t.Errorf("a message was started: %q %q %q", f.from, f.rcpt, f.data)
+	}
+}
+
+func TestCheckImplicitTLS(t *testing.T) {
+	f := &fakeSMTP{implicit: true}
+	host, port := startFake(t, f)
+	old := implicitTLSPort
+	implicitTLSPort = port
+	t.Cleanup(func() { implicitTLSPort = old })
+	if err := Check(ctx5(t), cfg(host, port)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// What Send meets first, Check meets first: the login, no TLS, nobody there.
+func TestCheckFailures(t *testing.T) {
+	host, port := startFake(t, &fakeSMTP{authCode: "535 5.7.8 bad credentials"})
+	if err := Check(ctx5(t), cfg(host, port)); !errors.Is(err, ErrAuth) {
+		t.Errorf("a refused login: %v", err)
+	}
+	f := &fakeSMTP{noTLS: true}
+	host, port = startFake(t, f)
+	if err := Check(ctx5(t), cfg(host, port)); !errors.Is(err, ErrNoTLS) {
+		t.Errorf("no STARTTLS: %v", err)
+	}
+	f.mu.Lock()
+	if f.plain != "" {
+		t.Error("password sent in the clear")
+	}
+	f.mu.Unlock()
+	// a port nobody listens on: the dial's own error, not one of ours
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p, _ := net.SplitHostPort(ln.Addr().String())
+	ln.Close()
+	n, _ := strconv.Atoi(p)
+	if err := Check(ctx5(t), cfg("127.0.0.1", n)); err == nil || errors.Is(err, ErrAuth) || errors.Is(err, ErrNoTLS) {
+		t.Errorf("nobody listening: %v", err)
+	}
+}

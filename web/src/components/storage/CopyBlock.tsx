@@ -26,12 +26,13 @@ async function copyText(text: string, node: HTMLElement | null): Promise<boolean
   }
 }
 
-export function CopyBlock({ text, label }: { text: string; label?: string }) {
+/** `stacked`: the button under the text, whatever the width (a sheet's narrow column). */
+export function CopyBlock({ text, label, stacked }: { text: string; label?: string; stacked?: boolean }) {
   const t = useT()
   const ref = useRef<HTMLPreElement>(null)
   const [copied, setCopied] = useState(false)
   return (
-    <div className={styles.copyBlock}>
+    <div className={[styles.copyBlock, stacked ? styles.copyStacked : ''].filter(Boolean).join(' ')}>
       <pre className={styles.code} ref={ref} tabIndex={0} aria-label={label}>
         {text}
       </pre>

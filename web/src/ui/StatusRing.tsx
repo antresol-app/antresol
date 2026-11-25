@@ -12,7 +12,7 @@ import { formatPercent } from '../i18n'
 import { Icon } from '../components/Icon'
 import styles from './StatusRing.module.css'
 
-export type RingState = 'active' | 'paused' | 'error' | 'done'
+export type RingState = 'active' | 'paused' | 'error' | 'done' | 'bad' | 'off'
 
 /** 0..100, rounded down so a nearly finished download never reads 100 early. */
 export function percent(done: number, size: number): number {
@@ -43,7 +43,7 @@ export function StatusRing({ state, value, size = SIZE }: { state: RingState; va
   return (
     <span className={styles.ring} data-state={state} style={{ width: size, height: size }} aria-hidden>
       <Ring d={size} stroke={STROKE} pct={pct} />
-      <span className={styles.middle}>{state === 'done' ? <Icon name="check" size={18} strokeWidth={3} /> : state === 'error' ? '!' : `${pct}%`}</span>
+      <span className={styles.middle}>{state === 'done' ? <Icon name="check" size={size > 30 ? 18 : 14} strokeWidth={3} /> : state === 'error' || state === 'bad' ? '!' : state === 'off' ? '–' : `${pct}%`}</span>
     </span>
   )
 }

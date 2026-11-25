@@ -45,6 +45,13 @@
 .copyBlock > button {
   flex: none;
 }
+.copyStacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+.copyStacked > button {
+  align-self: flex-start;
+}
 .code {
   flex: 1;
   min-width: 0;

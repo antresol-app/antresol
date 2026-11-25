@@ -148,6 +148,64 @@ func (n *Network) IsTrusted(r *http.Request) bool {
 	return true
 }
 
+// Why a request is not from the home network (Diagnosis.Reason).
+const (
+	// ReasonProxy: it carries X-Forwarded-For or X-Real-IP, but its peer is
+	// not in Proxies: a proxy the server was not told about.
+	ReasonProxy = "proxy"
+	// ReasonBare: its peer is a listed proxy that forwards no client
+	// address the server can read.
+	ReasonBare = "bare"
+	// ReasonHost: a home address that asked for the server by a name that
+	// is not its own (HostPolicy).
+	ReasonHost = "host"
+	// ReasonAway: an address that is not on the home network.
+	ReasonAway = "away"
+)
+
+// Diagnosis is IsTrusted with its reason, for «Состояние».
+type Diagnosis struct {
+	Home bool
+	// Reason: one of the Reason constants when not Home.
+	Reason string
+	// Peer is the TCP peer's address (a proxy's, when there is one); Host
+	// the name the request used, without its port.
+	Peer, Host string
+}
+
+// Diagnose says what IsTrusted says and why: Home equals IsTrusted(r).
+func (n *Network) Diagnose(r *http.Request) Diagnosis {
+	d := Diagnosis{Host: strings.ToLower(strings.TrimSuffix(strings.Trim(hostOnly(r.Host), "[]"), "."))}
+	peer, err := parseAddr(r.RemoteAddr)
+	if err == nil {
+		d.Peer = peer.String()
+	}
+	a, ok := n.ClientIP(r)
+	switch {
+	case err != nil:
+		d.Reason = ReasonAway
+	case !ok && n.isProxy(peer):
+		d.Reason = ReasonBare
+	case !ok:
+		d.Reason = ReasonProxy
+	case !n.trustedAddr(a):
+		d.Reason = ReasonAway
+	case n != nil && n.Hosts != nil && !n.Hosts.Allows(r.Host):
+		d.Reason = ReasonHost
+	default:
+		d.Home = true
+	}
+	return d
+}
+
+// hostOnly is a Host header without its port.
+func hostOnly(hostport string) string {
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return hostport
+}
+
 // ClientKey identifies the client for throttling: the address, or its /64
 // for IPv6 (one home gets a whole /64).
 func (n *Network) ClientKey(r *http.Request) string {

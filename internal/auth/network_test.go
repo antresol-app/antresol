@@ -157,3 +157,58 @@ func TestLoginKeys(t *testing.T) {
 		t.Errorf("no profile: %v", keys)
 	}
 }
+
+// TestNetworkDiagnose: the reason is the one IsTrusted acts on, whatever the
+// request: Home always equals IsTrusted.
+func TestNetworkDiagnose(t *testing.T) {
+	n := &Network{
+		Proxies: []netip.Prefix{netip.MustParsePrefix("172.18.0.1/32")},
+		Hosts:   &HostPolicy{Public: func() string { return "https://media.example.org" }},
+	}
+	type req struct{ peer, host, xff, xri string }
+	for name, c := range map[string]struct {
+		req    req
+		home   bool
+		reason string
+		peer   string
+		host   string
+	}{
+		"a home address":               {req{"192.168.1.20:5000", "antresol.local:8420", "", ""}, true, "", "192.168.1.20", "antresol.local"},
+		"a proxy forwarding a home":    {req{"172.18.0.1:5000", "media.example.org", "192.168.1.20", ""}, true, "", "172.18.0.1", "media.example.org"},
+		"a proxy forwarding a far":     {req{"172.18.0.1:5000", "media.example.org", "93.184.216.34", ""}, false, ReasonAway, "172.18.0.1", "media.example.org"},
+		"a direct far address":         {req{"93.184.216.34:5000", "media.example.org", "", ""}, false, ReasonAway, "93.184.216.34", "media.example.org"},
+		"a proxy nobody listed":        {req{"172.19.0.9:5000", "media.example.org", "192.168.1.20", ""}, false, ReasonProxy, "172.19.0.9", "media.example.org"},
+		"an unlisted X-Real-IP":        {req{"172.19.0.9:5000", "media.example.org", "", "192.168.1.20"}, false, ReasonProxy, "172.19.0.9", "media.example.org"},
+		"a listed proxy, no address":   {req{"172.18.0.1:5000", "media.example.org", "", ""}, false, ReasonBare, "172.18.0.1", "media.example.org"},
+		"a listed proxy, junk":         {req{"172.18.0.1:5000", "media.example.org", "not-an-address", ""}, false, ReasonBare, "172.18.0.1", "media.example.org"},
+		"a home address, foreign name": {req{"192.168.1.20:5000", "evil.example.com", "", ""}, false, ReasonHost, "192.168.1.20", "evil.example.com"},
+		"no usable peer":               {req{"nonsense", "antresol", "", ""}, false, ReasonAway, "", "antresol"},
+	} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr, r.Host = c.req.peer, c.req.host
+		if c.req.xff != "" {
+			r.Header.Set("X-Forwarded-For", c.req.xff)
+		}
+		if c.req.xri != "" {
+			r.Header.Set("X-Real-IP", c.req.xri)
+		}
+		d := n.Diagnose(r)
+		if d.Home != c.home || d.Reason != c.reason || d.Peer != c.peer || d.Host != c.host {
+			t.Errorf("%s: %+v", name, d)
+		}
+		if d.Home != n.IsTrusted(r) {
+			t.Errorf("%s: Diagnose says home=%v, IsTrusted says %v", name, d.Home, n.IsTrusted(r))
+		}
+	}
+	// no Network at all: loopback and private addresses, nothing else
+	var none *Network
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "10.1.2.3:1"
+	if d := none.Diagnose(r); !d.Home {
+		t.Errorf("nil network: %+v", d)
+	}
+	r.Header.Set("X-Forwarded-For", "10.1.2.4")
+	if d := none.Diagnose(r); d.Home || d.Reason != ReasonProxy {
+		t.Errorf("nil network, forwarded: %+v", d)
+	}
+}

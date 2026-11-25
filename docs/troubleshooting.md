@@ -21,7 +21,7 @@ The container runs as uid 1000. If the files belong to another user:
 - let uid 1000 write to the media folder, or
 - add `user: "<uid>:<gid>"` of the files' owner to the `antresol` service in `compose.yml`.
 
-**Settings → Server → Health → Folders** prints the exact command (and so does **Library → Server
+**Settings → Server → Health → Library Folders** prints the exact command (and so does **Library → Server
 folders → Check**).
 
 ## Apps do not find the server
@@ -78,7 +78,7 @@ The extension needs a helper service in `compose.yml`. See [Helper services](add
 
 ## Video stutters or does not use the graphics card
 
-Check **Settings → Server → Health → Hardware** or **Processing**: they show whether a graphics
+Check **Settings → Server → Health → Graphics Card** or **Processing**: they show whether a graphics
 card was found. How to give it to the container: [Hardware transcoding](hardware-transcoding.html).
 
 ## Still stuck

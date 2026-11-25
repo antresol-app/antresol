@@ -476,6 +476,12 @@ export function Gallery() {
           <StatusRing state="paused" value={0.35} />
           <StatusRing state="error" value={0} />
           <StatusRing state="done" value={1} />
+          <StatusRing state="bad" value={1} />
+          <StatusRing state="off" value={0} />
+          <StatusRing state="done" value={1} size={28} />
+          <StatusRing state="error" value={1} size={28} />
+          <StatusRing state="bad" value={1} size={28} />
+          <StatusRing state="off" value={0} size={28} />
         </div>
         <div className={styles.bars}>
           <ProgressBar value={0.64} />

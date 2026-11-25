@@ -1,33 +1,52 @@
-/* «Состояние»: the command to copy, the word for a newer release, what
-   works and what does not. */
-.command {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2) var(--s-3);
-  width: 100%;
+/* «Состояние»: a check is a row — the state's ring, its name, a short value —
+   and what to do about it is in the sheet a tap opens. Tokens only. */
+.lead {
+  display: grid;
+  place-items: center;
+  flex: none;
 }
-.code {
-  flex: 1 1 auto;
+/* the value at the trailing edge: one line, cut by an ellipsis before the chevron */
+.value {
+  display: block;
   min-width: 0;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-field);
-  background: var(--fill-3);
-  font: var(--t-footnote);
-  font-family: var(--font-mono);
-  color: var(--label);
-  overflow-wrap: anywhere;
-  user-select: all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--t-callout);
+  color: var(--label-2);
 }
-.newer {
-  color: var(--accent);
-}
-.problem {
+.warn {
   color: var(--warning);
 }
-.fine {
-  color: var(--success);
+.bad {
+  color: var(--destructive-text);
 }
-.mono {
-  font-family: var(--font-mono);
+.stamp {
+  margin: var(--s-4) 0 0;
+  font: var(--t-footnote);
+  color: var(--label-3);
+  text-align: center;
+}
+
+/* the sheet's fix: what to do, and the command to copy */
+.fix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-field);
+  background: var(--fill-4);
+  text-align: start;
+}
+.fixTitle {
+  margin: 0;
+  font: var(--t-footnote-em);
+  color: var(--label-2);
+}
+.fixText {
+  margin: 0;
+  font: var(--t-subhead);
+  color: var(--label);
+  text-wrap: pretty;
 }

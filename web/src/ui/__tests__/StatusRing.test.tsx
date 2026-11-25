@@ -19,6 +19,8 @@ describe('StatusRing', () => {
       ['paused', 0.35],
       ['error', 0],
       ['done', 1],
+      ['bad', 1],
+      ['off', 0],
     ]
     const shapes = states.map(([state, value]) => {
       const { container, unmount } = render(<StatusRing state={state} value={value} />)
@@ -50,5 +52,24 @@ describe('StatusRing', () => {
     expect(arc().getAttribute('stroke-dasharray')).toBe('99 1')
     rerender(<StatusRing state="done" value={0.5} />)
     expect(arc().getAttribute('stroke-dasharray')).toBe('100 0')
+  })
+
+  it('a broken thing shows «!» in the red, one not set up a dash, neither a percent', () => {
+    const { container, rerender } = render(<StatusRing state="bad" value={1} />)
+    expect(container).toHaveTextContent('!')
+    expect(container).not.toHaveTextContent('%')
+    expect(container.querySelector('[data-state="bad"]')).not.toBeNull()
+    rerender(<StatusRing state="off" value={0} />)
+    expect(container).toHaveTextContent('–')
+    expect(container).not.toHaveTextContent('%')
+    expect(container.querySelector('[data-state="off"]')).not.toBeNull()
+  })
+
+  it('the check scales with a smaller ring', () => {
+    const { container, rerender } = render(<StatusRing state="done" value={1} />)
+    const side = () => container.querySelector('[data-icon="check"]')!.closest('svg')!.getAttribute('width')
+    const big = side()
+    rerender(<StatusRing state="done" value={1} size={24} />)
+    expect(Number(side())).toBeLessThan(Number(big))
   })
 })

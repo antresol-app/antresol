@@ -1,17 +1,26 @@
 # Health and updates
 
-**Settings → Server → Health** is one page about whether everything works:
+**Settings → Server → Health** is one list about whether everything works. Each check is a row:
+a ring (a green check, an orange or red "!", a grey dash for something you did not set up) and a
+short value. A row that needs something opens with a tap: the sheet says what is wrong and gives
+one action or one command to copy. The groups:
 
-- **Versions and Updates**: the server's version, the installed extensions, and what is newer;
+- **Access**: how the server sees your connection (at home or not, and why: a proxy it was not
+  told about, a name it does not know), the public address, and whether HTTPS reaches the server;
+- **Disk and Folders**: whether the server can write to the media folders (if not, a ready
+  command), how much room is left on the media disk and on the settings disk, how the last scan
+  ended;
+- **Video**: whether ffmpeg is there, the graphics card, intro detection;
+- **Catalog and Internet**: the TMDB key, whether the server reaches GitHub and the sites with
+  descriptions, the clock and time zone;
+- **TV and Mail**: whether the TV sources refresh, whether mail is set up;
+- **Versions and Updates**: the server's version and each extension's, and what is newer;
 - **Addon Services**: whether the extensions' [helper services](addon-services.html) answer (the
-  section is there when extensions declare such services);
-- **Hardware**: whether a graphics card was found and whether intros are detected in series;
-- **Network**: whether the server reaches GitHub and the sites with descriptions;
-- **Library**: how the last scan ended;
-- **Folders**: whether the server can write to the media folders. If not, a ready command sits
-  under the line.
+  group is there when extensions declare such services).
 
-**Check Again** asks everything again.
+What you did not set up (mail, a public address, a graphics card) is grey and never counts as a
+fault. The TMDB key and the mailbox's sign-in are tested only by the button in their sheet (no
+letter is sent). **Check Again** asks everything again.
 
 ![Health](images/guide/en/health.png)
 
@@ -24,8 +33,8 @@ docker compose pull
 docker compose up -d
 ```
 
-When a new version comes out, the page shows these commands by itself in "How to Update the
-Server" (with a **Copy** button): the server cannot replace its own container. Settings and the
+When a new version comes out, the row of the server says so, and its sheet has this command with a
+**Copy** button: the server cannot replace its own container. Settings and the
 database live in the `antresol-config` volume and are kept. Before updating, read what is new:
 [Releases](releases.html). If a version needs anything from you, it says so there.
 
@@ -37,8 +46,8 @@ Apps and scripts can read the same answer at `GET /api/updates` (an administrato
 
 ## Update an extension
 
-Under **Versions and Updates**, click **Update** next to an extension with a newer version. No
-server restart.
+Under **Versions and Updates**, tap the row of an extension with a newer version and press
+**Update**. No server restart.
 
 ## What the server does in the background
 

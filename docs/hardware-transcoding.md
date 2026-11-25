@@ -24,7 +24,7 @@ If `compose.yml` sets `user:`, also uncomment `group_add` and put the device's g
 
 **Settings → Server → Processing → Transcoding.** The "Now" line shows which card is working, or
 why there is none, with a ready fix. The same, in short, is under **Settings → Server → Health →
-Hardware**.
+Graphics Card**.
 
 ![Processing: transcoding](images/guide/en/settings-processing.png)
 

@@ -593,6 +593,7 @@ func run() error {
 		},
 		// «Состояние → Сеть»: the services the server reaches out to
 		NetTargets: netTargets(cfg),
+		TMDBClient: metaSrc.TMDB,
 		Storage: &api.StorageInfo{Env: envFolders, TranscodeDir: cfg.TranscodeDir, ConfigDir: cfg.DataDir,
 			Private: []string{cfg.ImportDir, cfg.AddonsDir},
 			Offline: storageOffline(cfg), Restart: restartFunc(restart),

@@ -67,6 +67,87 @@ var implicitTLSPort = 465
 // tlsConfig: a variable so that tests can trust their own certificate.
 var tlsConfig = func(host string) *tls.Config { return &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12} }
 
+// connect dials cfg's server and brings the session to where a login can
+// follow: TLS from the start on the implicit port, else STARTTLS (refused
+// when the server offers none). done closes everything; ctx bounds it all.
+func connect(ctx context.Context, cfg Config) (c *smtp.Client, done func(), err error) {
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if d, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(d)
+	}
+	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
+	fail := func(err error) (*smtp.Client, func(), error) {
+		stop()
+		conn.Close()
+		return nil, nil, err
+	}
+
+	var nc net.Conn = conn
+	if cfg.Port == implicitTLSPort {
+		tc := tls.Client(conn, tlsConfig(cfg.Host))
+		if err := tc.HandshakeContext(ctx); err != nil {
+			return fail(err)
+		}
+		nc = tc
+	}
+	c, err = smtp.NewClient(nc, cfg.Host)
+	if err != nil {
+		return fail(err)
+	}
+	done = func() {
+		c.Close()
+		stop()
+		conn.Close()
+	}
+	if cfg.Port != implicitTLSPort {
+		if ok, _ := c.Extension("STARTTLS"); !ok {
+			done()
+			return nil, nil, ErrNoTLS
+		}
+		if err := c.StartTLS(tlsConfig(cfg.Host)); err != nil {
+			done()
+			return nil, nil, err
+		}
+	}
+	return c, done, nil
+}
+
+// login signs in with cfg's account (none: the server takes the mail as it is).
+func login(c *smtp.Client, cfg Config) error {
+	if cfg.Username == "" {
+		return nil
+	}
+	if err := c.Auth(smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)); err != nil {
+		if smtpCode(err)/100 == 5 {
+			return fmt.Errorf("%w: %v", ErrAuth, err)
+		}
+		return err
+	}
+	return nil
+}
+
+// Check signs in to the server as Send would and says goodbye: no message
+// is made or sent. It fails with what Send would meet first (the server not
+// answering, no TLS, the login refused), so a wrong setting is found
+// without a letter.
+func Check(ctx context.Context, cfg Config) error {
+	c, done, err := connect(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer done()
+	if err := login(c, cfg); err != nil {
+		return err
+	}
+	c.Quit()
+	return nil
+}
+
 // Send delivers m to the server; ctx bounds the whole exchange.
 func Send(ctx context.Context, cfg Config, m Message) error {
 	from, err := mail.ParseAddress(cfg.From)
@@ -77,53 +158,19 @@ func Send(ctx context.Context, cfg Config, m Message) error {
 	if err != nil {
 		return fmt.Errorf("%w: recipient: %v", ErrRecipient, err)
 	}
-	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	c, done, err := connect(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-	if d, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(d)
-	}
-	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
-	defer stop()
-
-	var nc net.Conn = conn
-	if cfg.Port == implicitTLSPort {
-		tc := tls.Client(conn, tlsConfig(cfg.Host))
-		if err := tc.HandshakeContext(ctx); err != nil {
-			return err
-		}
-		nc = tc
-	}
-	c, err := smtp.NewClient(nc, cfg.Host)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	if cfg.Port != implicitTLSPort {
-		if ok, _ := c.Extension("STARTTLS"); !ok {
-			return ErrNoTLS
-		}
-		if err := c.StartTLS(tlsConfig(cfg.Host)); err != nil {
-			return err
-		}
-	}
+	defer done()
 	// the message grows by base64 (4/3) and its line breaks
 	if ok, limit := c.Extension("SIZE"); ok {
 		if n, err := strconv.ParseInt(strings.TrimSpace(limit), 10, 64); err == nil && n > 0 && m.Size/3*4*78/76+4096 > n {
 			return ErrTooLarge
 		}
 	}
-	if cfg.Username != "" {
-		if err := c.Auth(smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)); err != nil {
-			if smtpCode(err)/100 == 5 {
-				return fmt.Errorf("%w: %v", ErrAuth, err)
-			}
-			return err
-		}
+	if err := login(c, cfg); err != nil {
+		return err
 	}
 	if err := c.Mail(from.Address); err != nil {
 		return classify(err, ErrRecipient)

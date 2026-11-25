@@ -25,6 +25,7 @@ import addons from './ru/addons'
 import pairing from './ru/pairing'
 import setupWizard from './ru/setupWizard'
 import apiKeys from './ru/apiKeys'
+import selfcheck from './ru/selfcheck'
 import full from './ru/full'
 
 export const ru = {
@@ -49,5 +50,6 @@ export const ru = {
   ...pairing,
   ...setupWizard,
   ...apiKeys,
+  ...selfcheck,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }

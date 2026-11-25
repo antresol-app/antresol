@@ -210,6 +210,10 @@ type Deps struct {
 	// client with netTimeout).
 	NetTargets []NetTarget
 	NetClient  *http.Client
+	// TMDBClient is the client of the server's TMDB key, which «Состояние»
+	// asks whether the key is accepted (POST /api/admin/selfcheck/tmdb); nil
+	// without a key.
+	TMDBClient *tmdb.Client
 
 	// CastPhotos keeps the cast's TMDB photos in the image cache and
 	// fetches a missing one on its first view; nil: cast photos 404.
@@ -571,6 +575,7 @@ func mountServerRoutes(r chi.Router, deps Deps, guard *auth.Guard) {
 			mountStorage(r, deps)
 			mountVoclean(r, deps)
 			mountTasks(r, deps)
+			mountSelfCheck(r, deps)
 		})
 	}
 	if deps.Sessions != nil && deps.Users != nil && deps.MediaImport != nil {

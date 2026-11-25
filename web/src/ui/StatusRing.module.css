@@ -15,6 +15,12 @@
 .ring[data-state='done'] {
   color: var(--success);
 }
+.ring[data-state='bad'] {
+  color: var(--destructive-text);
+}
+.ring[data-state='off'] {
+  color: var(--label-3);
+}
 
 .ring {
   position: relative;
@@ -94,10 +100,17 @@
   letter-spacing: -0.02em;
   color: var(--label-2);
 }
-.ring[data-state='error'] .middle {
+.ring[data-state='error'] .middle,
+.ring[data-state='bad'] .middle {
   font: 700 17px / 1 var(--font-text);
+  color: inherit;
+}
+.ring[data-state='error'] .middle {
   color: var(--warning);
 }
 .ring[data-state='done'] .middle {
   color: var(--success);
+}
+.ring[data-state='off'] .middle {
+  color: var(--label-3);
 }

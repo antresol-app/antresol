@@ -23,6 +23,7 @@ import addons from './en/addons'
 import pairing from './en/pairing'
 import setupWizard from './en/setupWizard'
 import apiKeys from './en/apiKeys'
+import selfcheck from './en/selfcheck'
 import full from './en/full'
 
 export const en: EnOf<typeof ru> = {
@@ -47,5 +48,6 @@ export const en: EnOf<typeof ru> = {
   ...pairing,
   ...setupWizard,
   ...apiKeys,
+  ...selfcheck,
   ...(__LIBRARY_EDITION__ ? ({} as typeof full) : full),
 }
