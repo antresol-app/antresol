@@ -285,8 +285,11 @@ func run() error {
 	metaLang := ""
 	// the public address: VAULT_PUBLIC_URL, else «Адрес сервера» as saved
 	publicAddr := publicurl.New(cfg.PublicURL)
+	// «Запросы детей»: the core's own switch, no addon needed
+	requestsSwitch := &api.RequestsSwitch{}
 	applySettings := func(s api.AppSettings) {
 		ext.applySettings(s)
+		requestsSwitch.Apply(s)
 		publicAddr.SetSaved(s.PublicURL)
 		// «Превью при перемотке» turned on: the queue starts now
 		if s.Trickplay {
@@ -617,7 +620,10 @@ func run() error {
 			return err == nil && l.Any()
 		}}
 	deps.ExtIPTV = extTV
-	// kids' requests: titles from TMDB, answered by the library
+	// kids' requests: titles from TMDB, answered by the library; they are on
+	// with the TMDB key, unless the admin turned «Запросы детей» off, in
+	// both builds and with no addon at all
+	deps.RequestsOpen = requestsSwitch.Open
 	if metaSrc.TMDB != nil {
 		deps.Requests = api.TMDBRequests(metaSrc.TMDB, repo)
 		deps.Titles = metaSrc.TMDB // the title page of one not in the library
@@ -737,13 +743,8 @@ func run() error {
 		// the profiles an addon names for a title's new episodes
 		// (notify.interest), beside those who marked it
 		notifier.Interest = append(notifier.Interest, holds.Hooks.Interest())
-		// kids' requests are open while an addon opens them (requests.open,
-		// kept 60 s; any addon's status change asks again), in both builds
-		addonReqs := api.NewAddonRequests(holds.Hooks)
-		addonMgr.Sup.OnStatus(addonReqs.StatusChanged)
 		// a restarted, stopped or crashed addon's hooks are no longer down
 		addonMgr.Sup.OnStatus(holds.Hooks.StatusChanged)
-		deps.RequestsOpen = addonReqs.Open
 		// ffmpeg and ffprobe read inputs only through the loopback relay
 		if deps.InputBase = inputLoopbackBase(cfg.Listen); deps.InputBase == "" {
 			log.Printf("addon inputs cannot play: VAULT_LISTEN is not reachable on loopback")
@@ -798,7 +799,9 @@ func run() error {
 		}
 		chans.SetFetch(&addons.ChannelFetcher{H: holds.Hooks}, channels.TMDBFetchCatalog{C: metaSrc.TMDB}, remove)
 	}
-	notifier.RequestsOpen = deps.RequestsOpen // «Запросы» in the letters wherever requests are open
+	if deps.Requests != nil {
+		notifier.RequestsOpen = deps.RequestsOpen // «Запросы» in the letters wherever requests are open
+	}
 	webAPI, player := api.NewRouterWithPlayer(deps)
 	subsonicAPI := &subsonic.Server{Users: users, Library: repo, Music: musicStore, Network: network, Throttle: throttle,
 		Version: version.Version, ImageDir: filepath.Join(cfg.DataDir, "images"),

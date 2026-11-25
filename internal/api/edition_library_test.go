@@ -139,24 +139,33 @@ func TestLibraryEditionNoDiskBreakdown(t *testing.T) {
 	}
 }
 
-// TestLibraryEditionRequestsClosed: kids' requests are core, but closed in
-// the core build for now (nothing sets Deps.RequestsOpen): the admin's
-// list is empty and /api/me offers nothing.
-func TestLibraryEditionRequestsClosed(t *testing.T) {
+// TestLibraryEditionRequestsOpen: kids' requests are core code and need no
+// addon: with a catalog and the server's switch (RequestsSwitch, on by
+// default) /api/me offers «Запросы» to the admin and «Попросить» to a kid,
+// and a kid asks. Without a catalog the admin's list is empty and nothing is
+// offered (TestRequestListsWithoutCatalog).
+func TestLibraryEditionRequestsOpen(t *testing.T) {
+	old := kidAskInterval
+	kidAskInterval = 0
+	t.Cleanup(func() { kidAskInterval = old })
+	sw := &RequestsSwitch{}
 	e := newLibEnvWith(t, func(d *Deps, db *sql.DB) {
 		d.DB = db
 		d.Requests = fakeRequests{}
+		d.RequestsOpen = sw.Open
 	})
-	w := e.do("GET", "/api/requests", "", e.admin)
-	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+	if w := e.do("GET", "/api/requests", "", e.admin); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
 		t.Fatalf("requests: %d %s", w.Code, w.Body)
 	}
-	var me struct {
-		Requests   bool `json:"requests"`
-		CanRequest bool `json:"canRequest"`
+	kid := e.kid("")
+	if got := e.meRequests(e.admin); !got.Requests || got.CanRequest {
+		t.Fatalf("admin: %+v", got)
 	}
-	if w := e.do("GET", "/api/me", "", e.admin); json.Unmarshal(w.Body.Bytes(), &me) != nil || me.Requests || me.CanRequest || !jsonKeys(t, w.Body.Bytes())["requests"] {
-		t.Fatalf("me: %s", w.Body)
+	if got := e.meRequests(kid); got.Requests || !got.CanRequest {
+		t.Fatalf("kid: %+v", got)
+	}
+	if got := e.askMovie(kid, "603"); got.Status != "pending" {
+		t.Fatalf("ask: %+v", got)
 	}
 }
 

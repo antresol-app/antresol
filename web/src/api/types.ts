@@ -812,6 +812,8 @@ export interface Settings {
   remoteQuality: 'original' | '1080' | '720' | '480'
   /** «Музыка вне дома»: the original, AAC 256 or AAC 128 кбит/с. */
   remoteMusic: 'lossless' | 'high' | 'low'
+  /** «Запросы детей»: kid profiles may ask for titles the library lacks (on by default; absent on older servers). */
+  kidRequests?: boolean
   /** «Превью при перемотке»: the server makes scrub previews in the background (on by default). */
   trickplay?: boolean
   /** «Место для превью», GB (10 by default; the least recently viewed go first). */

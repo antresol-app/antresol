@@ -29,7 +29,8 @@ type authAPI struct {
 	libraryOnly bool
 	// addons is me.addons.
 	addons bool
-	// requestsOpen says whether kids' requests are offered here (nil: no).
+	// requestsOpen says whether kids' requests are on here; nil: the server
+	// has no requests at all (no TMDB key to ask about).
 	requestsOpen func(context.Context) bool
 }
 
@@ -42,9 +43,11 @@ const msgRemoteSetup = "Первую настройку можно сделат�
 type me struct {
 	auth.User
 	Remote bool `json:"remote"`
-	// CanRequest: a kid profile may ask for titles («Попросить»).
+	// CanRequest: a kid profile may ask for titles («Попросить»): requests
+	// are on («Запросы детей»).
 	CanRequest bool `json:"canRequest"`
-	// Requests: an admin has «Запросы» to answer.
+	// Requests: an admin has «Запросы» (the list and the switch) wherever
+	// the server can take requests, on or off.
 	Requests bool `json:"requests"`
 	// LibraryOnly: the server serves its library only. The web hides the
 	// screens of the sources build's other features.
@@ -99,8 +102,9 @@ func (a *authAPI) meOf(r *http.Request, u auth.User) me {
 	if ss, ok := auth.SessionFrom(r.Context()); ok && ss.UserID == u.ID {
 		m.DeviceHistory = historyOf(ss)
 	}
-	if a.requestsOpen != nil && (u.IsKid || u.IsAdmin) && a.requestsOpen(r.Context()) {
-		m.CanRequest, m.Requests = u.IsKid, u.IsAdmin && !u.IsKid
+	if a.requestsOpen != nil {
+		m.CanRequest = u.IsKid && a.requestsOpen(r.Context())
+		m.Requests = u.IsAdmin && !u.IsKid
 	}
 	return m
 }

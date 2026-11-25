@@ -609,10 +609,11 @@ type DiskSegment struct {
 	Bytes int64  `json:"bytes,omitempty"`
 }
 
-// RequestsOpenAnswer answers the requests.open hook: whether the addon
-// takes kids' requests on this server («Попросить» is offered while any
-// running addon says Open). The requests.* hooks come without a profile
-// (no X-Antresol-User): they answer for the household.
+// RequestsOpenAnswer answered the requests.open hook: whether the addon
+// takes kids' requests on this server. The server no longer asks: kids'
+// requests are its own setting, open without any addon. The other
+// requests.* hooks come without a profile (no X-Antresol-User): they answer
+// for the household.
 type RequestsOpenAnswer struct {
 	Open bool `json:"open"`
 }

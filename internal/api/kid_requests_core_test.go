@@ -209,6 +209,14 @@ func TestMeRequestsFlags(t *testing.T) {
 	if got := me(open, open.kid("")); got.Requests || !got.CanRequest {
 		t.Errorf("kid %+v", got)
 	}
+	// switched off («Запросы детей»): the kid asks nothing, the admin keeps the page and its switch
+	off := newCoreRequestsEnv(t, fakeRequests{}, func(d *Deps) { d.RequestsOpen = func(context.Context) bool { return false } })
+	if got := me(off, off.admin); !got.Requests || got.CanRequest {
+		t.Errorf("off admin %+v", got)
+	}
+	if got := me(off, off.kid("")); got.Requests || got.CanRequest {
+		t.Errorf("off kid %+v", got)
+	}
 	adult := open.login(`{"name":"Мама"}`)
 	if got := me(open, adult); got.Requests || got.CanRequest {
 		t.Errorf("adult %+v", got)

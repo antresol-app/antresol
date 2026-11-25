@@ -27,12 +27,11 @@ type hookCall struct {
 	user        string // X-Antresol-User
 }
 
-// reqEnv is the library env with kids' requests and fake addons answering
-// the requests.* hooks; the addons' Open is Deps.RequestsOpen.
+// reqEnv is the library env with kids' requests (open: no addon is needed)
+// and fake addons answering the requests.* hooks.
 type reqEnv struct {
 	*libEnv
 	fake  *fakeAddons
-	reqs  *AddonRequests
 	hooks *addons.Hooks
 
 	mu      sync.Mutex
@@ -48,10 +47,9 @@ func newReqEnv(t *testing.T, cat RequestCatalog, opt func(*Deps)) *reqEnv {
 		fake: &fakeAddons{installed: map[string]addons.Installed{}, status: map[string]addons.Status{},
 			sock: map[string]string{}, tokens: map[string]string{}, webRoot: t.TempDir()}}
 	e.hooks = &addons.Hooks{T: e.fake}
-	e.reqs = NewAddonRequests(e.hooks)
 	e.libEnv = newLibEnvWith(t, func(d *Deps, db *sql.DB) {
 		d.DB, d.Requests, d.Addons, d.AddonHooks = db, cat, e.fake, e.hooks
-		d.RequestsOpen = e.reqs.Open
+		d.RequestsOpen = func(context.Context) bool { return true }
 		if opt != nil {
 			opt(d)
 		}
@@ -92,7 +90,6 @@ func (e *reqEnv) addon(id, name string, perms []string, hooks ...string) {
 			Hooks: hooks, Permissions: perms}}
 	e.fake.status[id], e.fake.sock[id], e.fake.tokens["tok-"+id] = addons.StatusRunning, sock, id
 	e.fake.mu.Unlock()
-	e.reqs.StatusChanged(id, addons.StatusRunning) // as the supervisor's OnStatus
 }
 
 // answer makes addon id answer hook with code and body.
@@ -112,7 +109,6 @@ func (e *reqEnv) setStatus(id string, st addons.Status) {
 	e.fake.mu.Lock()
 	e.fake.status[id] = st
 	e.fake.mu.Unlock()
-	e.reqs.StatusChanged(id, st)
 }
 
 func (e *reqEnv) hookCalls(hook string) []hookCall {
@@ -138,75 +134,10 @@ func (e *reqEnv) canRequest(c *http.Cookie) bool {
 	}](e.t, w.Body.Bytes()).CanRequest
 }
 
-// No addon: closed; an addon answering open: open; that addon stopped:
-// closed at once, its status change dropping the cached answer.
-func TestRequestsOpen_FromAddon(t *testing.T) {
-	e := newReqEnv(t, fakeRequests{}, nil)
-	kid := e.kid("")
-	if e.canRequest(kid) {
-		t.Fatal("open without an addon")
-	}
-	e.addon("dl", "Каталог", nil, "requests.open")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
-	if !e.canRequest(kid) {
-		t.Fatal("closed with an addon that opens requests")
-	}
-	e.fake.mu.Lock()
-	e.fake.status["dl"] = addons.StatusStopped // the cached answer still says open
-	e.fake.mu.Unlock()
-	if !e.canRequest(kid) {
-		t.Fatal("the cached answer was not used")
-	}
-	e.reqs.StatusChanged("dl", addons.StatusStopped) // the supervisor's OnStatus
-	if e.canRequest(kid) {
-		t.Fatal("still open after the addon stopped")
-	}
-	if w := e.do("POST", "/api/requests", `{"kind":"movie","tmdbId":603}`, kid); w.Code != http.StatusForbidden {
-		t.Fatalf("ask while closed: %d %s", w.Code, w.Body)
-	}
-}
-
-// Two /api/me within the cache window ask the addon once.
-func TestRequestsOpen_Cached60s(t *testing.T) {
-	e := newReqEnv(t, fakeRequests{}, nil)
-	e.addon("dl", "Каталог", nil, "requests.open")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
-	kid := e.kid("")
-	if !e.canRequest(kid) || !e.canRequest(kid) {
-		t.Fatal("closed")
-	}
-	if n := len(e.hookCalls("requests.open")); n != 1 {
-		t.Fatalf("requests.open called %d times", n)
-	}
-	now := time.Now().Add(requestsOpenTTL + time.Second)
-	e.reqs.now = func() time.Time { return now }
-	e.canRequest(kid)
-	if n := len(e.hookCalls("requests.open")); n != 2 {
-		t.Fatalf("after the window: %d calls", n)
-	}
-}
-
-// A kid's notification topics include «Запросы» while an addon opens
-// requests (the notifier's RequestsOpen is the addons' Open).
-func TestNotifyTopics_KidRequestsOpen(t *testing.T) {
-	e := newReqEnv(t, fakeRequests{}, nil)
-	svc := &notify.Service{RequestsOpen: e.reqs.Open}
-	kid := auth.User{ID: 9, IsKid: true}
-	if slices.Contains(svc.TopicsFor(context.Background(), kid), notify.Requests) {
-		t.Fatal("requests topic without an addon")
-	}
-	e.addon("dl", "Каталог", nil, "requests.open")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
-	if !slices.Contains(svc.TopicsFor(context.Background(), kid), notify.Requests) {
-		t.Fatal("no requests topic while an addon opens requests")
-	}
-}
-
 // The requests.* hooks answer for the household: no profile header.
 func TestRequestHooks_NoUserHeader(t *testing.T) {
 	e := newReqEnv(t, fakeRequests{}, nil)
-	e.addon("dl", "Каталог", nil, "requests.open", "requests.title", "requests.search")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
+	e.addon("dl", "Каталог", nil, "requests.title", "requests.search")
 	e.answer("dl", "requests.title", 200, `{"title":"Группа крови","subtitle":"Кино","year":1988}`)
 	e.answer("dl", "requests.search", 200, `{"candidates":[]}`)
 	kid := e.kid("")
@@ -216,7 +147,7 @@ func TestRequestHooks_NoUserHeader(t *testing.T) {
 	if w := e.do("GET", "/api/requests/search?kind=music&q=kino", "", kid); w.Code != 200 {
 		t.Fatalf("search: %d %s", w.Code, w.Body)
 	}
-	for _, h := range []string{"requests.open", "requests.title", "requests.search"} {
+	for _, h := range []string{"requests.title", "requests.search"} {
 		cs := e.hookCalls(h)
 		if len(cs) == 0 {
 			t.Fatalf("%s not called", h)
@@ -232,8 +163,7 @@ func TestRequestHooks_NoUserHeader(t *testing.T) {
 // openAddon is an env whose addon "dl" opens requests and names titles.
 func openAddon(t *testing.T, title func(w http.ResponseWriter, body string)) *reqEnv {
 	e := newReqEnv(t, fakeRequests{}, nil)
-	e.addon("dl", "Каталог", []string{"requests"}, "requests.open", "requests.title")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
+	e.addon("dl", "Каталог", []string{"requests"}, "requests.title")
 	if title != nil {
 		e.mu.Lock()
 		e.answers["dl requests.title"] = title
@@ -393,9 +323,8 @@ func TestApprove_FromAddon(t *testing.T) {
 		svc = &notify.Service{DB: d.DB, Users: d.Users, Secret: []byte("s"), RequestsOpen: func(context.Context) bool { return true }}
 		d.Notify = svc
 	})
-	e.addon("dl", "Каталог", []string{"requests"}, "requests.open")
+	e.addon("dl", "Каталог", []string{"requests"})
 	e.addon("hello", "Привет", nil)
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
 	kid := e.kid("")
 	kidID := e.profileID("Вася")
 	if _, err := svc.SetPrefs(context.Background(), auth.User{ID: kidID, IsKid: true}, notify.Prefs{Email: "kid@example.com", Requests: true}); err != nil {

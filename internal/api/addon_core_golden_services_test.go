@@ -74,8 +74,7 @@ func serviceGoldens(t *testing.T) []string {
 	// a kid's album request, approved by what the admin started
 	{
 		e := newReqEnv(t, fakeRequests{}, nil)
-		e.addon("dl", "Каталог", []string{"requests"}, "requests.open")
-		e.answer("dl", "requests.open", 200, `{"open":true}`)
+		e.addon("dl", "Каталог", []string{"requests"})
 		if w := e.do("POST", "/api/requests", `{"kind":"music","extId":"mb-1","title":"Группа крови","subtitle":"Кино"}`, e.kid("")); w.Code != 200 {
 			t.Fatalf("ask: %d %s", w.Code, w.Body)
 		}

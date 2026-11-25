@@ -520,6 +520,8 @@ export const trickplaySheetUrl = (fileId: number, ix: TrickplayIndex, n: number)
 
 export const getSettings = (signal?: AbortSignal) => request<Settings>('GET', '/api/settings', undefined, signal)
 export const saveSettings = (s: Settings) => request<Settings>('PUT', '/api/settings', s)
+/** «Запросы детей» alone: the server keeps every setting a PUT leaves out. */
+export const setKidRequests = (on: boolean) => request<Settings>('PUT', '/api/settings', { kidRequests: on })
 /** «Проверить» of «ИИ-помощник»: one short question to the model (nothing is saved; an empty key: the stored one). */
 export const getTranscoding = (signal?: AbortSignal) => request<TranscodingView>('GET', '/api/settings/transcoding', undefined, signal)
 export const saveTranscoding = (s: Partial<TranscodingSettings> & { reset?: boolean }) => request<TranscodingView>('PUT', '/api/settings/transcoding', s)

@@ -52,5 +52,9 @@ Click your avatar → **Settings**. There are two parts on the left:
 
 - An adult profile can have a password. A profile without one opens only from the home network.
 - A kid profile sees only what suits its age.
+- A kid can ask a parent for a film or series the library does not have (**Ask**; the server needs
+  a TMDB key). You answer in **Settings → Server → Requests**: approve it and add the title to the
+  library by any means; the kid sees it as soon as it is there. **Kids can ask** at the top of that
+  page turns requests off.
 
 ![Family profiles](images/guide/en/profiles.png)

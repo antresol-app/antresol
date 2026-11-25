@@ -55,6 +55,10 @@ type AppSettings struct {
 	// TrickplayBudgetGB is «Место для превью»: the most the previews take
 	// (the least recently viewed go first); 10 GB by default.
 	TrickplayBudgetGB int `json:"trickplayBudgetGB"`
+	// KidRequests is «Запросы детей»: kid profiles may ask for titles the
+	// library lacks (kid_requests.go; on by default, and only where the
+	// server has a TMDB key to ask about).
+	KidRequests bool `json:"kidRequests"`
 	// AI is «ИИ-помощник» (ai_settings.go): the language models (light,
 	// medium, powerful) the AI tasks ask; empty: the server's VAULT_LLM_*
 	// or none.
@@ -155,6 +159,7 @@ func LoadAppSettings(ctx context.Context, conn *sql.DB, defaults AppSettings) (A
 	defaults = defaults.withSubtitleDefaults()
 	defaults.appSettingsFull = defaults.withDefaults()
 	defaults.Trickplay = true // stored settings without the field: on
+	defaults.KidRequests = true
 	defaults.TrickplayBudgetGB = defaultTrickplayBudgetGB
 	s := defaults
 	found, err := db.GetJSON(ctx, conn, appSettingsKey, &s)

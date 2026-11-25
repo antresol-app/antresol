@@ -237,9 +237,10 @@ type Deps struct {
 	// library): «Попросить» and the admin's «Запросы» (/api/requests*); nil
 	// disables them. Needs DB.
 	Requests RequestCatalog
-	// RequestsOpen says whether kids' requests are offered on this server
-	// (me.canRequest for a kid, me.requests for an admin); nil: closed.
-	// The server sets it to the addons' answer (AddonRequests.Open).
+	// RequestsOpen says whether kids' requests are on («Запросы детей»;
+	// me.canRequest for a kid); nil: the server has none (me.requests is
+	// then false for an admin too). The server sets it to RequestsSwitch.Open:
+	// on unless the admin turned it off, no addon needed.
 	RequestsOpen func(context.Context) bool
 	// Titles are TMDB's movies and series for the title page of one that
 	// is not in the library (GET /api/title/{kind}/{tmdbId}); nil without

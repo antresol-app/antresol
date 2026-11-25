@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,13 +45,12 @@ func fakeTMDB(t *testing.T, rating string) *tmdb.Client {
 	return &tmdb.Client{Key: "k", BaseURL: srv.URL + "/3"}
 }
 
-// newSearchEnv: requests open through the addon "dl" (which also searches
-// albums and books), movies and series from a fake TMDB.
+// newSearchEnv: requests open, and an addon "dl" that searches albums and
+// books, movies and series from a fake TMDB.
 func newSearchEnv(t *testing.T, rating string) *reqEnv {
 	tm := fakeTMDB(t, rating)
 	e := newReqEnv(t, fakeRequests{}, func(d *Deps) { d.Requests = TMDBRequests(tm, d.Library) })
-	e.addon("dl", "Каталог", nil, "requests.open", "requests.search")
-	e.answer("dl", "requests.open", 200, `{"open":true}`)
+	e.addon("dl", "Каталог", nil, "requests.search")
 	return e
 }
 
@@ -135,7 +135,7 @@ func TestRequestSearch_NotKid(t *testing.T) {
 
 // Requests closed: 403.
 func TestRequestSearch_Closed(t *testing.T) {
-	e := newReqEnv(t, fakeRequests{}, nil)
+	e := newReqEnv(t, fakeRequests{}, func(d *Deps) { d.RequestsOpen = func(context.Context) bool { return false } })
 	kid := e.kid("")
 	w := e.do("GET", "/api/requests/search?kind=video&q=x", "", kid)
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Запросы здесь не принимаются") {

@@ -26,6 +26,16 @@ export const FAKE_MOVIE_2 = {
   year: 2023,
 }
 const FAKE_MOVIES = [FAKE_MOVIE, FAKE_MOVIE_2]
+/**
+ * A rated (6+) movie the library lacks, found by «мульт» or «cartoon»: a kid
+ * profile may ask for it (kid-requests.spec).
+ */
+export const FAKE_KIDS_MOVIE = {
+  id: 4250,
+  title: 'Детский мультфильм',
+  original: 'Kids Cartoon',
+  year: 2022,
+}
 /** A TMDB series whose first season has aired (follow.spec: «Следить»). */
 export const FAKE_SERIES = {
   id: 4343,
@@ -166,7 +176,8 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
     if (p === '/3/search/movie') {
       const q = (u.searchParams.get('query') ?? '').toLowerCase()
       const second = q.includes('втор') || q.includes('second')
-      const hits = second ? [FAKE_MOVIE_2] : q.includes('тест') || q.includes('test') ? [FAKE_MOVIE] : []
+      const kids = q.includes('мульт') || q.includes('cartoon')
+      const hits = second ? [FAKE_MOVIE_2] : kids ? [FAKE_KIDS_MOVIE] : q.includes('тест') || q.includes('test') ? [FAKE_MOVIE] : []
       return json({
         results: hits.map((m) => ({
           id: m.id,
@@ -207,6 +218,21 @@ export async function startFakes(routes?: FakeRoutes): Promise<Fakes> {
           still_path: null,
           air_date: `${show.year}-02-${String(1 + i * 7).padStart(2, '0')}`,
         })),
+      })
+    }
+    const kidsFilm = /^\/3\/movie\/(\d+)(\/release_dates)?$/.exec(p)
+    if (kidsFilm && Number(kidsFilm[1]) === FAKE_KIDS_MOVIE.id) {
+      const rated = { results: [{ iso_3166_1: 'RU', release_dates: [{ certification: '6' }] }] }
+      if (kidsFilm[2]) return json(rated)
+      return json({
+        id: FAKE_KIDS_MOVIE.id,
+        title: FAKE_KIDS_MOVIE.title,
+        original_title: FAKE_KIDS_MOVIE.original,
+        release_date: `${FAKE_KIDS_MOVIE.year}-03-01`,
+        overview: 'Мультфильм для проверки просьб детей.',
+        genres: [{ name: 'Мультфильм' }],
+        runtime: 80,
+        release_dates: rated,
       })
     }
     const movie = /^\/3\/movie\/(\d+)$/.exec(p)

@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/antresol-app/antresol/addonkit"
 	"github.com/antresol-app/antresol/internal/addons"
@@ -19,18 +17,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Kids' requests through addons: an addon opens them (requests.open),
-// names the albums and books asked for (requests.title) and finds them
-// for a kid's search (requests.search); after an admin's download it
-// approves the requests of that title (POST /requests/approve). The hooks
-// are called without a profile: they answer for the household.
+// Kids' requests through addons: an addon names the albums and books
+// asked for (requests.title) and finds them for a kid's search
+// (requests.search); after an admin's download it approves the requests of
+// that title (POST /requests/approve). The hooks are called without a
+// profile: they answer for the household. The requests are open without
+// any addon (RequestsSwitch); requests.open is no longer asked.
 
 // RequestCandidate is a title a kid may ask for (GET /api/requests/search).
 type RequestCandidate = addonkit.RequestCandidate
-
-// requestsOpenTTL: how long the addons' requests.open answer is kept (a
-// status change of any addon drops it at once).
-const requestsOpenTTL = 60 * time.Second
 
 // maxAddonCandidates: the search results taken from one addon, at most.
 const maxAddonCandidates = 40
@@ -41,31 +36,17 @@ const (
 	msgRequestAddonDown = "Расширение «%s» не ответило"
 )
 
-// AddonRequests asks the addons about kids' requests. Open is
-// Deps.RequestsOpen; StatusChanged, the supervisor's OnStatus callback,
-// drops its cached answer. The zero value and nil hooks: closed, nothing
-// named, nothing found.
+// AddonRequests asks the addons to name the albums and books kids ask for
+// (requests.title) and to find them for a kid's search (requests.search).
+// Whether requests are open is the admin's setting (RequestsSwitch), not an
+// addon's answer. The zero value and nil hooks: nothing named, nothing found.
 type AddonRequests struct {
 	hooks *addons.Hooks
-	now   func() time.Time // test hook
-
-	mu    sync.Mutex
-	gen   uint64 // bumped by StatusChanged: an answer asked before is not kept
-	known bool
-	open  bool
-	at    time.Time
 }
 
 // NewAddonRequests asks the addons through h (nil: none).
 func NewAddonRequests(h *addons.Hooks) *AddonRequests {
-	return &AddonRequests{hooks: h, now: time.Now}
-}
-
-func (a *AddonRequests) clock() time.Time {
-	if a.now != nil {
-		return a.now()
-	}
-	return time.Now()
+	return &AddonRequests{hooks: h}
 }
 
 func (a *AddonRequests) log() *slog.Logger {
@@ -73,46 +54,6 @@ func (a *AddonRequests) log() *slog.Logger {
 		return a.hooks.Log
 	}
 	return slog.Default()
-}
-
-// Open says whether kids' requests are open: any running addon declaring
-// requests.open answers {open: true}. The answer is kept requestsOpenTTL.
-func (a *AddonRequests) Open(ctx context.Context) bool {
-	if a == nil || a.hooks == nil {
-		return false
-	}
-	a.mu.Lock()
-	if a.known && a.clock().Sub(a.at) < requestsOpenTTL {
-		open := a.open
-		a.mu.Unlock()
-		return open
-	}
-	gen := a.gen
-	a.mu.Unlock()
-	open := false
-	a.hooks.Each(ctx, "requests.open", nil, nil, func(id string, raw json.RawMessage) {
-		var ans addonkit.RequestsOpenAnswer
-		if err := json.Unmarshal(raw, &ans); err != nil {
-			a.log().Warn("addon hook: bad answer", "addon", id, "hook", "requests.open", "err", err)
-			return
-		}
-		open = open || ans.Open
-	})
-	a.mu.Lock()
-	if a.gen == gen && ctx.Err() == nil {
-		a.known, a.open, a.at = true, open, a.clock()
-	}
-	a.mu.Unlock()
-	return open
-}
-
-// StatusChanged drops the cached Open answer (Supervisor.OnStatus: an
-// addon was installed, started, stopped, removed or crashed).
-func (a *AddonRequests) StatusChanged(string, addons.Status) {
-	a.mu.Lock()
-	a.gen++
-	a.known = false
-	a.mu.Unlock()
 }
 
 // errRequestAddonDown: an addon that names requests did not answer.

@@ -1910,17 +1910,18 @@ profile.
 
 | Hook | Body → answer | When |
 | --- | --- | --- |
-| `requests.open` | `{}` → `{"open": bool}` (`RequestsOpenAnswer`) | «Попросить» and «Запросы» are offered (`/api/me`, the kids' notification topics, every request) |
+| `requests.open` | `{}` → `{"open": bool}` (`RequestsOpenAnswer`) | no longer asked (see below) |
 | `requests.title` | `{"kind", "extId"}` (`RequestTitleQuery`) → `{"title", "subtitle", "year", "poster", "explicit"}` (`RequestTitleAnswer`) | a kid asks for an album, book, audiobook or comic with a catalog id |
 | `requests.search` | `{"kind", "q"}` (`RequestSearchQuery`) → `{"candidates": [RequestCandidate]}` | a kid searches that kind for something to ask for (`GET /api/requests/search`) |
 
-All three are called for the household, **without** `X-Antresol-User`.
+The hooks that are asked are called for the household, **without** `X-Antresol-User`.
 
-- **`requests.open`** (2 s): kids' requests are open while any running
-  addon that declares the hook answers `{"open": true}`; with none they are
-  closed (no «Попросить», no «Запросы», every request 403). The answer is
-  kept for 60 s; any addon's status change (installed, started, stopped,
-  removed, crashed) asks again at once.
+- **`requests.open`**: no longer asked. Kids' requests are the server's own
+  feature and need no addon: they are open wherever the server has a TMDB
+  key, unless the administrator turned «Запросы детей» off (the switch at
+  the top of «Запросы»). The hook stays in the list so that an addon that
+  declares it still installs; its answer is ignored. Before this change the
+  requests were closed unless an addon answered `{"open": true}`.
 - **`requests.title`** (10 s): the addons that declare it are asked in id
   order; the first 200 names the request. Its `title` (required) and
   `subtitle` (the artist or author) replace what the app sent, and the

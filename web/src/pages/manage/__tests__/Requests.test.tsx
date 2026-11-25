@@ -22,11 +22,17 @@ const req = (o: Partial<KidRequest>): KidRequest => ({
   rating: '12+', status: 'pending', reason: '', libraryItemId: null, createdAt: new Date().toISOString(), user: asker, ...o,
 })
 
-function stub(list: KidRequest[]) {
+/** switchOn: the server's «Запросы детей» (null: an older server that has none). */
+function stub(list: KidRequest[], switchOn: boolean | null = true) {
   const approved = new Set<number>()
+  let kidRequests: boolean | null = switchOn
   const f = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url.endsWith('/api/login')) return json(admin)
+    if (url.endsWith('/api/settings')) {
+      if (init?.method === 'PUT') kidRequests = (JSON.parse(String(init.body)) as { kidRequests: boolean }).kidRequests
+      return json(kidRequests === null ? {} : { kidRequests })
+    }
     if (url.endsWith('/api/requests') && init?.method !== 'POST') return json(list.map((r) => (approved.has(r.id) ? { ...r, status: 'approved' } : r)))
     const a = /\/api\/requests\/(\d+)\/approve$/.exec(url)
     if (a) {
@@ -72,6 +78,28 @@ describe('«Запросы» (admin)', () => {
     await userEvent.type(within(sheet).getByLabelText('Причина (необязательно)'), 'Сначала уроки')
     await userEvent.click(within(sheet).getByRole('button', { name: 'Отказать' }))
     await waitFor(() => expect(posted(f, '/api/requests/1/decline')).toEqual([{ reason: 'Сначала уроки' }]))
+  })
+
+  it('«Дети могут просить» is the server switch: shown as saved, turned off and on again', async () => {
+    const f = stub([req({ id: 1 })])
+    await show()
+    const toggle = await screen.findByRole('switch', { name: 'Дети могут просить' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(toggle)
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Дети могут просить' })).toHaveAttribute('aria-checked', 'false'))
+    await userEvent.click(screen.getByRole('switch', { name: 'Дети могут просить' }))
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Дети могут просить' })).toHaveAttribute('aria-checked', 'true'))
+    const puts = f.mock.calls.filter(([u, i]) => String(u).endsWith('/api/settings') && i?.method === 'PUT').map(([, i]) => JSON.parse(String(i!.body)) as unknown)
+    expect(puts).toEqual([{ kidRequests: false }, { kidRequests: true }])
+    // the list stays: answers to what was asked before are still the admin's
+    expect(screen.getByRole('button', { name: 'Одобрить «Дюна»' })).toBeInTheDocument()
+  })
+
+  it('an older server without the setting shows no switch', async () => {
+    stub([req({ id: 1 })], null)
+    await show()
+    expect(await screen.findByRole('button', { name: 'Одобрить «Дюна»' })).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
 
   it("approve opens the addon's sheet; without one approves at once", async () => {

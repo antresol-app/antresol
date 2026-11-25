@@ -1,13 +1,15 @@
-// «Управление → Запросы» (admin): what kid profiles asked for («Попросить»),
-// the waiting ones first. «Одобрить» opens the sheet of the first addon
+// «Управление → Запросы» (admin): the switch «Дети могут просить» (the server
+// setting «Запросы детей», on by default, no addon needed), then what kid
+// profiles asked for («Попросить»), the waiting ones first. «Одобрить» opens the sheet of the first addon
 // request action that wants the request (requestActions: a release picker,
 // whose download approves the request on the server); with none it
 // approves at once, and a sheet that throws leaves the request waiting
-// with an error shown. The kid sees
-// «Уже в медиатеке» once the library has the title. «Отказать» takes an
+// with an error shown. Without one
+// the answer is the parent's promise: the title is added to the library by any
+// means, and the kid sees «Уже в медиатеке» once the library has it. «Отказать» takes an
 // optional reason the kid sees. Updates live (request.changed, library.updated).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { approveRequest, declineRequest, getRequests, useEvents, errorText } from '../../api/client'
+import { approveRequest, declineRequest, getRequests, getSettings, setKidRequests, useEvents, errorText } from '../../api/client'
 import type { KidRequest } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../components/Icon'
@@ -21,7 +23,9 @@ import type { Contribution } from '../../addons/registry'
 import { useT } from '../../i18n'
 import { RequestCard } from '../RequestCard'
 import s from '../Search.module.css'
+import { GroupedSection, ListRow } from '../../ui/List'
 import { Spinner } from '../../ui/Spinner'
+import { Toggle } from '../../ui/Toggle'
 import m from './Manage.module.css'
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; list: KidRequest[] }
@@ -38,6 +42,47 @@ function actionFor(actions: Action[], r: KidRequest): Action | undefined {
       return false
     }
   })
+}
+
+/** «Дети могут просить»: the server's «Запросы детей» (an older server has none: the row is left out). */
+function RequestsSwitch() {
+  const t = useT()
+  const [on, setOn] = useState<boolean | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    const ac = new AbortController()
+    getSettings(ac.signal).then(
+      (v) => setOn(v.kidRequests ?? null),
+      () => undefined, // the list below says what failed
+    )
+    return () => ac.abort()
+  }, [])
+  if (on === null) return null
+  const change = (next: boolean) => {
+    setOn(next)
+    setError('')
+    setKidRequests(next).then(
+      (v) => setOn(v.kidRequests ?? next),
+      (e: unknown) => {
+        setOn(!next)
+        setError(errorText(e, t('settings.saveFailed')))
+      },
+    )
+  }
+  return (
+    <>
+      {error && (
+        <div className={m.problem} role="alert">
+          <Icon name="info" size={18} /> {error}
+        </div>
+      )}
+      <GroupedSection>
+        <ListRow label={t('requests.switch')} hint={t('requests.switch.hint')}>
+          <Toggle label={t('requests.switch')} checked={on} onChange={change} />
+        </ListRow>
+      </GroupedSection>
+    </>
+  )
 }
 
 export function Requests() {
@@ -105,6 +150,7 @@ export function Requests() {
           <p className={m.subtitle}>{t('requests.lead')}</p>
         </div>
       </header>
+      <RequestsSwitch />
       {state.status === 'loading' && (
         <div className={m.spinnerRow} role="status">
           <Spinner track className={m.spinner} /> {t('downloads.loading')}
