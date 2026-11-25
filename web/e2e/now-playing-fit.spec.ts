@@ -6,23 +6,32 @@
 // the test also makes them taller than it (a longer font, «Playing on …») and
 // takes the room away altogether: the cover gives the height up, and when even
 // its minimum does not fit the body scrolls to the last row.
+// The sizes are the owner's laptop window (1280×610 CSS px of page), the
+// common laptop and desktop windows (1440×700, 1366×768, the 2560×1440
+// display at 1x), a phone and a phone on its side. A track, an audiobook,
+// lyrics and the queue open: all of them fit each one.
 // Set NP_SHOTS=<dir> to keep a screenshot of each size.
 import path from 'node:path'
 import type { Browser, Locator, Page } from '@playwright/test'
+import { COMICS_AUDIO } from './comics-audio-media'
 import { MUSIC } from './music-media'
 import { expect, scanLibrary, setupAdmin, test } from './vault'
 
-test.use({ library: 'music' })
+test.use({ library: 'all' })
 test.describe.configure({ timeout: 120_000 })
 
 const SIZES = [
   { width: 1280, height: 501, phone: false },
+  { width: 1280, height: 610, phone: false },
   { width: 1280, height: 640, phone: false },
   { width: 1280, height: 650, phone: false },
   { width: 1280, height: 720, phone: false },
   { width: 1366, height: 650, phone: false },
+  { width: 1366, height: 768, phone: false },
+  { width: 1440, height: 700, phone: false },
   { width: 1440, height: 900, phone: false },
   { width: 1920, height: 1080, phone: false },
+  { width: 2560, height: 1440, phone: false },
   { width: 390, height: 844, phone: true },
   { width: 390, height: 667, phone: true },
   { width: 844, height: 390, phone: true },
@@ -107,6 +116,35 @@ test('the full player fits the viewport at every size', async ({ browser, browse
     await expect(full.getByRole('button', { name: 'Текст', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await page.waitForTimeout(400)
     await shot('-lyrics')
+    await expectAllInside(full, v)
+    await full.getByRole('button', { name: 'Очередь', exact: true }).click()
+    await expect(full.getByRole('button', { name: 'Очередь', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await page.waitForTimeout(400)
+    await shot('-queue')
+    await expectAllInside(full, v)
+    await page.context().close()
+  }
+})
+
+test('an audiobook in the full player fits the viewport at every size', async ({ browser, browserName, baseURL, page: first }) => {
+  test.skip(browserName !== 'chromium', 'layout only; one engine is enough')
+  await setupAdmin(first.request)
+  await scanLibrary(first.request, (s) => s.audiobooks >= 1)
+  const cookies = await first.context().cookies()
+  const books = (await (await first.request.get('/api/books?kind=audiobook')).json()) as { items: { id: number; title: string }[] }
+  const book = books.items.find((b) => b.title === COMICS_AUDIO.audiobook)!.id
+
+  for (const v of SIZES) {
+    const page = await sizedPage(browser, baseURL!, v)
+    await page.context().addCookies(cookies)
+    await page.goto(`/books/audiobook/${book}`)
+    await page.getByRole('button', { name: /^(Слушать|Продолжить)/ }).first().click()
+    await page.getByRole('complementary', { name: 'Сейчас играет' }).getByRole('button', { name: /Открыть плеер/ }).click()
+    const full = page.getByRole('dialog', { name: 'Сейчас играет' })
+    await expect(full).toBeVisible()
+    await expect(full.getByRole('button', { name: 'Таймер сна' })).toBeVisible()
+    await page.waitForTimeout(500)
+    if (process.env.NP_SHOTS) await page.screenshot({ path: path.join(process.env.NP_SHOTS, `${v.width}x${v.height}-audiobook.png`) })
     await expectAllInside(full, v)
     await page.context().close()
   }

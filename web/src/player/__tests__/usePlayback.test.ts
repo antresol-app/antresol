@@ -159,3 +159,71 @@ describe('usePlayback: a stream', () => {
     expect(hlsMade.length).toBe(0)
   })
 })
+
+describe('usePlayback: parts whose length item info does not know', () => {
+  // two parts of 14 s each; `known` is what the item info says of them (0: the probe has not reached the file)
+  function mount(known: [number, number], startSec: number) {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    const start = vi.fn(async (file: MediaFile) => ({
+      mode: 'direct', url: `/media/${file.id}`, startSec: 0, durationMs: 14_000, audioIndex: 1, audio: [], subtitles: [],
+    }))
+    const video = document.createElement('video')
+    const parts = [10, 11].map((id, i) => ({ id, name: `Фильм cd${i + 1}`, size: 0, durationMs: known[i], audio: [], subs: [] }) as MediaFile)
+    const hook = renderHook(() =>
+      usePlayback({
+        videoRef: { current: video },
+        parts,
+        startSec,
+        caps: { videoCodecs: ['h264'], audioCodecs: ['aac'], containers: ['mp4'] } as never,
+        onFinished: () => {},
+        start: start as never,
+      }),
+    )
+    return { ...hook, start, video }
+  }
+  /** What each /api/play asked: the file and where in it. */
+  const asked = (start: ReturnType<typeof mount>['start']) => start.mock.calls.map((c) => [c[0].id, (c as unknown as [unknown, { startSec: number }])[1].startSec])
+
+  it('a start that lies in part 2 is found from the lengths the answers give, not from zeros', async () => {
+    const { result, start, video } = mount([0, 0], 25)
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/media/11'))
+    // part 1 was asked first (its length is what tells where 25 s is), then part 2 at 25 - 14
+    expect(asked(start)).toEqual([[10, 0], [11, 11]])
+    expect(result.current.part).toBe(1)
+    expect(result.current.total).toBe(28)
+    expect(result.current.durRef.current).toEqual([14, 14])
+  })
+
+  it('a start at the beginning stays in part 1 (all zeros do not mean the last part)', async () => {
+    const { result, start, video } = mount([0, 0], 0)
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/media/10'))
+    expect(asked(start)).toEqual([[10, 0]])
+    expect(result.current.part).toBe(0)
+  })
+
+  it('a start inside part 1 stays there once its answer gives the length', async () => {
+    const { result, start, video } = mount([0, 0], 5)
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/media/10'))
+    await waitFor(() => expect(asked(start)).toEqual([[10, 0], [10, 5]]))
+    expect(result.current.part).toBe(0)
+    expect(result.current.durRef.current).toEqual([14, 0])
+  })
+
+  it('lengths item info knows are used as they are: one answer, no extra ask', async () => {
+    const { result, start, video } = mount([14_000, 14_000], 25)
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/media/11'))
+    expect(asked(start)).toEqual([[11, 11]])
+    expect(result.current.part).toBe(1)
+  })
+
+  it('a length item info has wrong is corrected by the answer for that part', async () => {
+    // item info says 20 s for a 14 s part: 16 s is 2 s into part 2, not 16 s into part 1
+    const { result, start, video } = mount([20_000, 14_000], 16)
+    await waitFor(() => expect(video.getAttribute('src')).toBe('/media/11'))
+    expect(asked(start)).toEqual([[10, 16], [11, 2]])
+    expect(result.current.part).toBe(1)
+    expect(result.current.durRef.current).toEqual([14, 14])
+  })
+})

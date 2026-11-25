@@ -51,3 +51,21 @@
     min-height: var(--touch-target);
   }
 }
+/* a card: the box by the first row of the content (a 36 pt tile), the content
+   takes the rest; the surface and the padding are the caller's. Off, the card
+   is not dimmed whole (the caller dims what should go grey). After the rules
+   above, so it wins at the same weight. */
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.card .box {
+  margin-top: var(--s-2);
+}
+.card .text {
+  flex: 1;
+}
+.card[data-disabled] {
+  opacity: 1;
+}

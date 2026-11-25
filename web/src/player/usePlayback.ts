@@ -275,7 +275,11 @@ export function usePlayback({
   }, [])
 
   const fail = useRef<(reason: FailReason, token: number) => void>(() => {})
-  const load = useRef<(partIdx: number, localStart: number, opts?: { audioIndex?: number }) => Promise<void>>(async () => {})
+  /**
+   * `at`: the position on the whole timeline this load is for (the first start, a seek), placed by the
+   * part lengths known so far; an answer that corrects them places it again.
+   */
+  const load = useRef<(partIdx: number, localStart: number, opts?: { audioIndex?: number; at?: number }) => Promise<void>>(async () => {})
 
   /** Asks the server about the HLS session (heartbeat); a gone session is restarted when it matters. */
   const heartbeat = useCallback(async (token: number): Promise<HlsHealth | undefined> => {
@@ -380,7 +384,11 @@ export function usePlayback({
     [checkWait, heartbeat, slowSource, playNow, videoRef],
   )
 
-  load.current = async (partIdx: number, localStart: number, opts: { audioIndex?: number } = {}) => {
+  load.current = async (wantPart: number, wantStart: number, opts: { audioIndex?: number; at?: number } = {}) => {
+    // A part before the wanted one with no length (the server's probe has not reached it) makes the place
+    // a guess: the first such part is asked first, and its answer's length places the position again.
+    const blank = opts.at === undefined ? -1 : durRef.current.findIndex((d, i) => i < wantPart && !(d > 0))
+    const [partIdx, localStart] = blank >= 0 ? [blank, 0] : [wantPart, wantStart]
     const file = parts[partIdx]
     if (!file || stopped.current) return
     const token = session.current.token + 1
@@ -460,9 +468,17 @@ export function usePlayback({
     const offset = r.mode === 'direct' || r.mode === 'stream' ? 0 : r.startSec
     session.current = { ...session.current, mode: r.mode, offset, sid }
     setMode(r.mode)
-    if (r.durationMs && r.durationMs > 0) {
-      const d = r.durationMs / 1000
-      setDurations((ds) => (Math.abs((ds[partIdx] ?? 0) - d) > 0.5 ? ds.map((x, i) => (i === partIdx ? d : x)) : ds))
+    // The answer knows this file's length; item info may not (or know another one).
+    const d = (r.durationMs ?? 0) / 1000
+    if (d > 0 && Math.abs((durRef.current[partIdx] ?? 0) - d) > 0.5) {
+      const lengths = durRef.current.map((x, i) => (i === partIdx ? d : x))
+      durRef.current = lengths // at once: a load right below reads them before the next render
+      startsRef.current = partStarts(lengths.map((x) => ({ durationMs: x * 1000 })))
+      setDurations(lengths)
+      if (opts.at !== undefined) {
+        const loc = locate(lengths.map((x) => ({ durationMs: x * 1000 })), opts.at)
+        if (loc.part !== partIdx || Math.abs(loc.offset - localStart) > 0.5) return void load.current(loc.part, loc.offset, opts)
+      }
     }
     setAudio(r.audio ?? [])
     audioListRef.current = r.audio ?? []
@@ -528,7 +544,7 @@ export function usePlayback({
       durRef.current.map((d) => ({ durationMs: d * 1000 })),
       startSec,
     )
-    void load.current(loc.part, loc.offset)
+    void load.current(loc.part, loc.offset, { at: startSec })
     // A reload or closed tab never unmounts React: free the server session
     // now, or it counts against the profile's limit until it idles out. The
     // player stays intact in case the page comes back from the bfcache (the
@@ -546,7 +562,7 @@ export function usePlayback({
     // Starts once per mounted item; the parent remounts the player (key) for another one.
   }, [])
 
-  const reload = useCallback((partIdx: number, at: number, opts?: { audioIndex?: number }) => load.current(partIdx, at, opts), [])
+  const reload = useCallback((partIdx: number, at: number, opts?: { audioIndex?: number; at?: number }) => load.current(partIdx, at, opts), [])
 
   /**
    * AirPlay: the video went to a receiver (true) or came back. Going there
@@ -578,7 +594,7 @@ export function usePlayback({
       )
       setAbs(t)
       // Still waiting for the server or for the first frame: move the start instead.
-      if (loc.part === s.part && s.mode === '') return void reload(s.part, loc.offset)
+      if (loc.part === s.part && s.mode === '') return void reload(s.part, loc.offset, { at: t })
       if (loc.part === s.part && (s.mode === 'direct' || s.mode === 'stream') && pendingSeek.current !== null) {
         pendingSeek.current = loc.offset
         return
@@ -586,7 +602,7 @@ export function usePlayback({
       const end = v && v.seekable.length ? v.seekable.end(v.seekable.length - 1) : 0
       const plan = planSeek({ part: s.part, mode: s.mode, offset: s.offset, seekableEnd: end }, loc.part, loc.offset)
       if (plan.kind === 'local' && v) v.currentTime = plan.time
-      else if (plan.kind === 'reload') void reload(plan.part, plan.at)
+      else if (plan.kind === 'reload') void reload(plan.part, plan.at, { at: t })
     },
     [reload, setAbs, videoRef],
   )

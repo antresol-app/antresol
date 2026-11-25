@@ -26,7 +26,6 @@
     "web/src/pages/files/Sheet.tsx": {"button":2},
     "web/src/pages/files/StorageBar.tsx": {"button":1},
     "web/src/pages/files/TrashView.tsx": {"button":1},
-    "web/src/pages/manage/Migrate.tsx": {"input":1},
     "web/src/pages/manage/import/DeviceSignIn.tsx": {"button":1},
     "web/src/pages/manage/import/FileImport.tsx": {"input":1},
     "web/src/pages/manage/import/ServiceTiles.tsx": {"input":1},

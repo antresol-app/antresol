@@ -30,6 +30,7 @@ import type {
   MigrateUser,
 } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { Checkbox } from '../../ui/Checkbox'
 import { Icon, type IconName } from '../../components/Icon'
 import { AddonBoundary, resolveAddonPath, useAddonLabel, useAddonSlot } from '../../addons/slots'
 import type { Contribution } from '../../addons/registry'
@@ -293,36 +294,36 @@ function SourceCard({
   /** An addon's SourceSetup for this card. */
   setup?: ReactNode
 }) {
-  const id = `migrate-src-${s.id}`
   const t = useT()
   return (
     <li className={`${styles.source} ${s.found ? '' : styles.missing} ${checked ? styles.sourceOn : ''}`} data-testid="migrate-source">
-      <label htmlFor={id} className={styles.sourceLabel}>
-        <input
-          id={id}
-          type="checkbox"
-          className={styles.checkbox}
-          checked={checked}
-          disabled={disabled || !s.found}
-          onChange={(e) => onToggle(e.target.checked)}
-        />
-        <span className={styles.sourceIcon} aria-hidden>
-          <Icon name={meta?.icon ?? 'plug'} size={18} strokeWidth={2} />
-        </span>
-        <span className={styles.sourceText}>
-          <span className={styles.sourceName}>{s.name}</span>
-          {meta?.what && <span className={styles.sourceWhat}>{textOf(t, meta.what)}</span>}
-          <span className={s.found ? styles.sourceFound : styles.sourceDetail}>
-            {s.found ? t(s.connect?.connected ? 'migrate.foundApi' : 'migrate.found', { detail: s.detail }) : s.detail}
-          </span>
-          {[s.error, ...problems].filter(Boolean).map((p) => (
-            <span key={p} className={styles.sourceError}>
-              {p}
+      <Checkbox
+        card
+        className={styles.sourcePick}
+        checked={checked}
+        disabled={disabled || !s.found}
+        onChange={onToggle}
+        label={
+          <span className={styles.sourceBody}>
+            <span className={styles.sourceIcon} aria-hidden>
+              <Icon name={meta?.icon ?? 'plug'} size={18} strokeWidth={2} />
             </span>
-          ))}
-          {meta?.note && s.found && <span className={styles.sourceNote}>{textOf(t, meta.note)}</span>}
-        </span>
-      </label>
+            <span className={styles.sourceText}>
+              <span className={styles.sourceName}>{s.name}</span>
+              {meta?.what && <span className={styles.sourceWhat}>{textOf(t, meta.what)}</span>}
+              <span className={s.found ? styles.sourceFound : styles.sourceDetail}>
+                {s.found ? t(s.connect?.connected ? 'migrate.foundApi' : 'migrate.found', { detail: s.detail }) : s.detail}
+              </span>
+              {[s.error, ...problems].filter(Boolean).map((p) => (
+                <span key={p} className={styles.sourceError}>
+                  {p}
+                </span>
+              ))}
+              {meta?.note && s.found && <span className={styles.sourceNote}>{textOf(t, meta.note)}</span>}
+            </span>
+          </span>
+        }
+      />
       {setup && <div className={styles.sourceSetup}>{setup}</div>}
     </li>
   )

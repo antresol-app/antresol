@@ -763,13 +763,35 @@ export function Gallery() {
         </GroupedSection>
       </Section>
 
-      <Section title="Checkbox" note="A choice that changes what an action will do. A description under the label; indeterminate for a group's box over its rows; no label for a box in a table row (aria-label names it).">
+      <Section title="Checkbox" note="A choice that changes what an action will do. A description under the label; indeterminate for a group's box over its rows; no label for a box in a table row (aria-label names it); card: the whole card is the choice (its surface and padding are the caller's).">
         <div className={styles.fields}>
           <Checkbox label="Удалить навсегда, минуя корзину" tone="destructive" checked={checks.a} onChange={(a) => setChecks({ ...checks, a })} />
           <Checkbox label="Сохранить список" description="Список останется в профиле и после выхода." checked={checks.b} onChange={(b) => setChecks({ ...checks, b })} />
           <Checkbox label="Все файлы" indeterminate={checks.b !== checks.c} checked={checks.b && checks.c} onChange={(on) => setChecks({ ...checks, b: on, c: on })} />
           <Checkbox aria-label="Выбрать строку" checked={checks.c} onChange={(c) => setChecks({ ...checks, c })} />
           <Checkbox label="Недоступно" checked disabled onChange={() => {}} />
+        </div>
+        <div className={styles.cards}>
+          {(['a', 'b'] as const).map((k) => (
+            <Checkbox
+              key={k}
+              card
+              className={styles.checkCard}
+              checked={checks[k]}
+              onChange={(on) => setChecks({ ...checks, [k]: on })}
+              label={
+                <span className={styles.checkCardBody}>
+                  <span className={styles.leading} aria-hidden>
+                    <Icon name="plug" size={18} strokeWidth={2} />
+                  </span>
+                  <span className={styles.checkCardText}>
+                    <span className={styles.checkCardName}>{k === 'a' ? 'Старый сервис' : 'Другой сервис'}</span>
+                    <span>Найдена база: 12 профилей</span>
+                  </span>
+                </span>
+              }
+            />
+          ))}
         </div>
       </Section>
 

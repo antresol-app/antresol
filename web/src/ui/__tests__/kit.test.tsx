@@ -18,7 +18,7 @@ import { Spinner } from '../Spinner'
 import { TextArea, TextField } from '../TextField'
 import { ToggleChips } from '../ToggleChips'
 import * as sdkUi from '../../addons/sdkUi'
-import { css } from './cssRule'
+import { css, rule } from './cssRule'
 
 describe('Spinner', () => {
   it('is decoration without a label and a named image with one', () => {
@@ -139,6 +139,21 @@ describe('Checkbox', () => {
   it('describes itself with the line under the label', () => {
     render(<Checkbox label="Сохранить" description="Останется в профиле" checked={false} onChange={() => {}} />)
     expect(screen.getByRole('checkbox', { name: 'Сохранить' })).toHaveAccessibleDescription('Останется в профиле')
+  })
+
+  it('as a card, the whole card is the box’s label and its target; an off card is not dimmed whole', async () => {
+    const onChange = vi.fn()
+    const { rerender } = render(
+      <Checkbox card className="surface" label={<span><span>Старый сервис</span><span>Найдена база</span></span>} checked={false} onChange={onChange} />,
+    )
+    const box = screen.getByRole('checkbox', { name: /Старый сервис.*Найдена база/ })
+    await userEvent.setup().click(screen.getByText('Найдена база'))
+    expect(onChange).toHaveBeenCalledWith(true)
+    rerender(<Checkbox card className="surface" label="Старый сервис" checked={false} disabled onChange={onChange} />)
+    expect(box.closest('label')).toHaveAttribute('data-disabled')
+    // the kit's .45 is for a plain row; a card dims its own parts (a rule after the plain one, at the same weight)
+    expect(rule('ui/Checkbox.module.css', '.card[data-disabled]')).toMatch(/opacity:\s*1\b/)
+    expect(css('ui/Checkbox.module.css').indexOf('.card[data-disabled]')).toBeGreaterThan(css('ui/Checkbox.module.css').indexOf('.checkbox[data-disabled]'))
   })
 })
 

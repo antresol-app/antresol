@@ -143,6 +143,28 @@
   background: var(--fill-2);
   color: var(--label-2);
 }
+/* Checkbox card: a surface of the caller's, its content a tile and two lines */
+.checkCard {
+  padding: var(--s-3h);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-group);
+  background: var(--glass-fill);
+}
+.checkCardBody {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.checkCardText {
+  display: flex;
+  flex-direction: column;
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+.checkCardName {
+  font: var(--t-headline);
+  color: var(--label);
+}
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

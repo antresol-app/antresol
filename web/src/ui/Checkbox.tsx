@@ -8,6 +8,11 @@
 //                  rows): the dash; a press makes it checked, the caller decides
 //   no label       a box in a table's row: `aria-label` names it, and the row it
 //                  sits in is the visible label
+//   card           the whole card is the choice (a service to move from): the
+//                  label is the card's content (a tile and lines), the box sits
+//                  by its first row, and the card's surface and padding are the
+//                  caller's (`className`). A card that is off dims its own
+//                  parts, so the reason stays readable.
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import styles from './Checkbox.module.css'
 
@@ -19,12 +24,14 @@ interface Common {
   description?: ReactNode
   /** destructive: the label turns red while it is checked (it makes the action irreversible). */
   tone?: 'default' | 'destructive'
+  /** A card: the label is the whole card's content (see above). */
+  card?: boolean
   className?: string
 }
 
 export type CheckboxProps = Common & ({ label: ReactNode; 'aria-label'?: string } | { label?: undefined; 'aria-label': string })
 
-export function Checkbox({ label, checked, onChange, disabled, indeterminate, description, tone = 'default', className, 'aria-label': ariaLabel }: CheckboxProps) {
+export function Checkbox({ label, checked, onChange, disabled, indeterminate, description, tone = 'default', card, className, 'aria-label': ariaLabel }: CheckboxProps) {
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
   // the browser clears `indeterminate` on every press, so it is set again after every render
@@ -32,7 +39,7 @@ export function Checkbox({ label, checked, onChange, disabled, indeterminate, de
     if (input.current) input.current.indeterminate = Boolean(indeterminate)
   })
   return (
-    <label htmlFor={id} className={[styles.checkbox, tone === 'destructive' ? styles.destructive : '', className].filter(Boolean).join(' ')} data-disabled={disabled || undefined}>
+    <label htmlFor={id} className={[styles.checkbox, tone === 'destructive' ? styles.destructive : '', card ? styles.card : '', className].filter(Boolean).join(' ')} data-disabled={disabled || undefined}>
       <input
         ref={input}
         id={id}

@@ -46,18 +46,19 @@
   cursor: pointer;
   min-height: var(--control-h-md);
 }
-.missing .sourceLabel {
-  cursor: default;
+/* a service's card: the kit's Checkbox as a card (the whole card is the choice), its content a tile and the lines */
+.sourcePick {
+  padding: var(--s-3h);
 }
-.checkbox {
-  width: 20px;
-  height: 20px;
-  margin: var(--s-2) 0 0;
-  accent-color: var(--accent);
-  cursor: inherit;
+.sourceBody {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  min-width: 0;
 }
 .sourceIcon {
   display: grid;
+  flex: none;
   place-items: center;
   width: 36px;
   height: 36px;
@@ -67,6 +68,7 @@
 }
 .sourceText {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--s-0);
   min-width: 0;
