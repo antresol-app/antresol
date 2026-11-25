@@ -369,7 +369,6 @@ export default {
   'comp.screen.bonusGiven': 'Bonus today: +{time}',
   'comp.screen.loadFailed': 'Couldn’t load screen time.',
   'comp.screen.saveFailed': 'Couldn’t save. Try again.',
-  'comp.screen.badMinutes': 'From 0 to 1440 minutes',
   'comp.screen.passwordless': 'Your child can switch to profiles without a password: {names}. Set passwords for them so the limits work.',
   'comp.screen.dayStart': 'The day starts at',
   'comp.screen.dayStartHint': 'Time and the bonus reset then. Hours may run past midnight (say, 20:00–02:00 on Friday), not past the day start.',

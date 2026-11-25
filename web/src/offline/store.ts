@@ -26,8 +26,10 @@ import { acceptedCodecs } from '../player/audio/caps'
 import { session } from '../state/session'
 import { getLanguage, t as tr } from '../i18n'
 import { sendPendingAnnotations } from './annotations'
+import { readFormat } from '../reader/bookFile'
 import { notifySW } from './register'
 import { LOCK_PATH, OFFLINE_CACHE } from './saved'
+import { warmPdfReader } from './warm'
 
 export type OfflineKind = 'album' | 'book' | 'audiobook' | 'comic'
 export type OfflineTarget = { kind: OfflineKind; id: number }
@@ -38,6 +40,12 @@ export interface OfflineVolume {
   poster: string
 }
 
+/** A comic volume's file and how many of its pages are saved. */
+export interface SavedPages {
+  fileId: number
+  count: number
+}
+
 export interface OfflineEntry extends OfflineTarget {
   title: string
   subtitle: string
@@ -46,8 +54,10 @@ export interface OfflineEntry extends OfflineTarget {
   savedAt: string
   /** Bytes of the saved files (as the server sent them). */
   bytes: number
-  /** Every cached URL of the item (removal deletes these). */
+  /** Every cached URL of the item but a comic's pages (removal deletes these and the pages, see `pages`). */
   urls: string[]
+  /** A comic's saved volumes: the page URLs are worked out from these, not listed (a series is thousands of pages). */
+  pages?: SavedPages[]
   /** A comic series: its saved volumes. */
   volumes?: OfflineVolume[]
 }
@@ -84,14 +94,21 @@ function readIndex(): Index {
   }
 }
 
-function writeIndex(ix: Index) {
+/** False when the index could not be kept (private mode, full storage: the pages work as without offline). */
+function writeIndex(ix: Index): boolean {
+  let kept = true
   try {
     localStorage.setItem(INDEX_KEY, JSON.stringify(ix))
   } catch {
-    /* private mode, full storage: the pages work as without offline */
+    kept = false
   }
   emit()
+  return kept
 }
+
+const pageUrls = (p: SavedPages) => Array.from({ length: p.count }, (_, n) => comicPageUrl(p.fileId, n))
+/** Every cached URL of a saved item. */
+const urlsOf = (e: OfflineEntry) => (e.pages ? [...e.urls, ...e.pages.flatMap(pageUrls)] : e.urls)
 
 const keyOf = (t: OfflineTarget) => `${t.kind}:${t.id}`
 const same = (a: OfflineTarget) => (b: OfflineTarget) => a.kind === b.kind && a.id === b.id
@@ -157,6 +174,10 @@ interface Plan {
   plain: string[]
   /** Media paths and the URL each is fetched from (`playable()` for tracks and audiobook files, the book file as is). */
   media: { path: string; fetch: string }[]
+  /** A comic's pages (their URLs are in `plain`; the index keeps only the counts). */
+  pages?: SavedPages[]
+  /** What the item needs to open offline besides its files (a PDF's reader). */
+  warm?: () => Promise<void>
 }
 
 /**
@@ -196,7 +217,12 @@ async function planOf(t: OfflineTarget, cache: Cache, stored: string[], signal?:
   const entry = { kind: t.kind, id: t.id, title: b.card.title, subtitle: b.authors.join(', '), poster: b.card.poster ?? '' }
   if (t.kind === 'book') {
     if (!b.readFileId) throw new OfflineError(tr('offline.noBookFile'))
-    return { entry, plain: [url, ...cover(b.card.poster)], media: [{ path: fileUrl(b.readFileId), fetch: fileUrl(b.readFileId) }] }
+    return {
+      entry,
+      plain: [url, ...cover(b.card.poster)],
+      media: [{ path: fileUrl(b.readFileId), fetch: fileUrl(b.readFileId) }],
+      ...(readFormat(b) === 'PDF' ? { warm: warmPdfReader } : {}),
+    }
   }
   if (t.kind === 'audiobook') {
     return {
@@ -207,18 +233,22 @@ async function planOf(t: OfflineTarget, cache: Cache, stored: string[], signal?:
   }
   // a comic series: every volume, its details (the reader opens /read/:id) and pages
   const plain = [url, ...cover(b.card.poster)]
+  const saved: SavedPages[] = []
   for (const v of b.volumes) {
     const vurl = `/api/books/${v.id}`
     await detail(vurl, () => getBook(v.id, signal))
     const purl = `/api/comics/${v.fileId}/pages`
     const pages = await detail(purl, () => getComicPages(v.fileId, signal))
     plain.push(vurl, purl, ...cover(v.poster))
-    for (let n = 0; n < pages.count; n++) plain.push(comicPageUrl(v.fileId, n))
+    const volume = { fileId: v.fileId, count: pages.count }
+    plain.push(...pageUrls(volume))
+    saved.push(volume)
   }
   return {
     entry: { ...entry, volumes: b.volumes.map((v) => ({ id: v.id, title: v.subtitle || v.title, poster: v.poster ?? '' })) },
     plain: [...new Set(plain)],
     media: [],
+    pages: saved,
   }
 }
 
@@ -238,6 +268,7 @@ export async function saveOffline(t: OfflineTarget, onProgress?: (done: number, 
   let bytes = 0
   try {
     const plan = await planOf(t, cache, stored, signal)
+    await plan.warm?.()
     const total = plan.plain.length + plan.media.length
     let done = 0
     const step = () => onProgress?.(++done, total)
@@ -263,13 +294,16 @@ export async function saveOffline(t: OfflineTarget, onProgress?: (done: number, 
     }
     if (first) void navigator.storage?.persist?.().catch(() => false)
     const now = readIndex()
-    const entry: OfflineEntry = { ...plan.entry, urls: stored, bytes, savedAt: new Date().toISOString() }
-    writeIndex({
+    const paged = new Set(plan.pages?.flatMap(pageUrls))
+    const entry: OfflineEntry = { ...plan.entry, urls: stored.filter((u) => !paged.has(u)), ...(plan.pages ? { pages: plan.pages } : {}), bytes, savedAt: new Date().toISOString() }
+    const kept = writeIndex({
       ...now,
       owner: user?.id ?? now.owner,
       locked: false,
       entries: [...now.entries.filter((e) => !same(t)(e)), entry],
     })
+    // files with no index entry would stay for good and the page would say «not saved»: the full storage is the error
+    if (!kept) throw new OfflineError(noSpace())
     notifySW()
   } catch (e) {
     // nothing half-saved stays behind (except files other saved items use)
@@ -306,7 +340,7 @@ async function putCounted(cache: Cache, key: string, res: Response): Promise<num
 }
 
 async function deleteUrls(cache: Cache, urls: string[]) {
-  const keep = new Set(readIndex().entries.flatMap((e) => e.urls))
+  const keep = new Set(readIndex().entries.flatMap(urlsOf))
   await Promise.all(urls.filter((u) => !keep.has(u)).map((u) => cache.delete(u).catch(() => false)))
 }
 
@@ -316,7 +350,7 @@ export async function removeOffline(t: OfflineTarget): Promise<void> {
   const entry = ix.entries.find(same(t))
   if (!entry) return
   writeIndex({ ...ix, entries: ix.entries.filter((e) => !same(t)(e)) })
-  if (typeof caches !== 'undefined') await deleteUrls(await caches.open(OFFLINE_CACHE), entry.urls)
+  if (typeof caches !== 'undefined') await deleteUrls(await caches.open(OFFLINE_CACHE), urlsOf(entry))
   notifySW()
 }
 

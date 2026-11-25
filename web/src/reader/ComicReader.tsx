@@ -11,8 +11,10 @@ import { useNavigate } from 'react-router'
 import { ApiError, comicPageUrl, getComicPages, errorText } from '../api/client'
 import type { BookDetail } from '../api/types'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
+import { Slider } from '../ui/Slider'
 import { useIsCompact } from '../state/useMediaQuery'
 import { nextPageKey, tapZone, type ComicDir } from './comicNav'
 import { GONE_TEXT, GONE_TITLE } from './comicText'
@@ -535,7 +537,7 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
         aria-busy={status.status === 'loading' || undefined}
       >
         {status.status === 'loading' ? (
-          <span className={styles.spinner} aria-label={t('reader.comic.opening')} />
+          <Spinner className={styles.spinner} label={t('reader.comic.opening')} />
         ) : (
           <div className={styles.overlay}>
             <Icon name="book" size={44} strokeWidth={1.4} />
@@ -666,20 +668,20 @@ export function ComicReader({ book, onExit }: ComicReaderProps) {
 
       <footer className={`${styles.bar} ${styles.bottom} glass-bar`} {...{ [CHROME_ATTR]: '' }} {...focusProps}>
         <span className={styles.sliderBox}>
-          <input
-            type="range"
+          <Slider
+            label={t('reader.comic.page')}
+            valueText={label}
             className={styles.slider}
             min={1}
             max={count}
             step={1}
             value={page + 1}
+            thumb="always"
             dir={dir}
-            aria-label={t('reader.comic.page')}
-            aria-valuetext={label}
-            onChange={(e) => {
+            onChange={(v) => {
               hold(false)
               family.ret.clear()
-              slider(Number(e.target.value))
+              slider(v)
             }}
             onPointerDown={() => chrome.poke()}
           />

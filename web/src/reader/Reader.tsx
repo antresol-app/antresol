@@ -7,8 +7,9 @@ import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getBook, getFile } from '../api/client'
 import type { BookDetail } from '../api/types'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
-import { bookFile } from './bookFile'
+import { bookFile, readFormat } from './bookFile'
 import styles from './Reader.module.css'
 import { useT } from '../i18n'
 
@@ -19,11 +20,6 @@ type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; book: BookDetail; file: File | null }
-
-/** The reading file's format (EPUB, FB2, PDF…). */
-export function readFormat(b: BookDetail): string {
-  return (b.files.find((f) => f.id === b.readFileId)?.format ?? '').toUpperCase()
-}
 
 export function Reader() {
   const t = useT()
@@ -74,7 +70,7 @@ export function Reader() {
   if (state.status === 'loading') {
     return (
       <div className={`${styles.reader} ${styles.blank}`} aria-busy="true" aria-label={t('reader.openingBook')}>
-        <span className={styles.spinner} />
+        <Spinner className={styles.spinner} />
       </div>
     )
   }
@@ -119,7 +115,7 @@ export function Reader() {
     <Suspense
       fallback={
         <div className={`${styles.reader} ${styles.blank}`} aria-busy="true" aria-label={t('reader.openingBook')}>
-          <span className={styles.spinner} />
+          <Spinner className={styles.spinner} />
         </div>
       }
     >

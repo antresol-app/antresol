@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -27,12 +28,7 @@ var _ channels.Fetcher = (*ChannelFetcher)(nil)
 // errNoFetchAddon: no addon answers channels.fetch now.
 var errNoFetchAddon = errors.New("addons: no addon answers channels.fetch now")
 
-func (x *ChannelFetcher) log() *slog.Logger {
-	if x.Log != nil {
-		return x.Log
-	}
-	return slog.Default()
-}
+func (x *ChannelFetcher) log() *slog.Logger { return cmp.Or(x.Log, slog.Default()) }
 
 func (x *ChannelFetcher) provider(ctx context.Context) (Installed, bool) {
 	if x == nil || x.H == nil || x.H.T == nil {

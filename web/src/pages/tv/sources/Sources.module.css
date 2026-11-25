@@ -156,10 +156,6 @@
   font: var(--t-footnote);
   color: var(--label-2);
 }
-.empty {
-  composes: empty from '../../Browse.module.css';
-  margin-top: var(--s-12);
-}
 
 .table {
   border-radius: var(--r-group);

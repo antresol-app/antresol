@@ -3,7 +3,7 @@
 // (round). Lifts slightly on hover and keyboard focus. A finished title
 // (`watched`) has its picture dimmed and the eye in the middle, and no
 // progress bar (web/DESIGN.md, «A watched title»).
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Link } from 'react-router'
 import { imageSrcSet, imageUrl } from '../api/client'
 import type { Card as CardData, FollowWhy } from '../api/types'
@@ -121,7 +121,9 @@ const CARD_SIZES: Record<CardVariant, string> = {
   wide: '(max-width: 699px) 80vw, (max-width: 1099px) 34vw, 26vw',
 }
 
-export function Card({ card, variant = 'poster', priority = false }: CardProps) {
+// memo: a grid that gets its next page (or a pending title) keeps the objects
+// of the cards it already had, so only the new ones render
+export const Card = memo(function Card({ card, variant = 'poster', priority = false }: CardProps) {
   const t = useT()
   const art = variant === 'wide' ? card.backdrop || card.poster : card.poster || card.backdrop
   const src = imageUrl(art, 480)
@@ -222,4 +224,4 @@ export function Card({ card, variant = 'poster', priority = false }: CardProps) 
       {body}
     </Link>
   )
-}
+})

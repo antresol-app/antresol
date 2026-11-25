@@ -1,0 +1,27 @@
+/* ui/EmptyState: the look the library's pages had written by hand, in one place */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: 14vh;
+  text-align: center;
+  color: var(--label-2);
+}
+.inset {
+  padding: 0 var(--gutter);
+}
+.icon {
+  display: flex;
+  margin-bottom: var(--s-1h);
+  color: var(--label-3);
+}
+.title {
+  font: var(--t-title-2);
+  color: var(--label);
+}
+.hint {
+  max-width: 42ch;
+  margin: 0 0 var(--s-2);
+  text-wrap: balance;
+}

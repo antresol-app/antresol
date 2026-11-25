@@ -20,6 +20,7 @@ import { IconButton } from './IconButton'
 import { takesText, touchPrimary, useKeyboardInset } from './keyboard'
 import { menuTrigger, recentMenuTrigger } from './Menu'
 import { useScrollLock } from './scrollLock'
+import { Spinner } from './Spinner'
 import styles from './Sheet.module.css'
 
 /**
@@ -294,7 +295,7 @@ export function Sheet({ title, message, icon, actions = [], onCancel, children, 
               onClick={a.kind === 'cancel' ? () => dismiss(a.run) : a.run}
             >
               {busy && (a.kind === 'primary' || a.kind === 'destructive') ? (
-                <span className={styles.spinner} aria-label={t('comp.sheet.wait')} />
+                <Spinner className={styles.spinner} label={t('comp.sheet.wait')} />
               ) : (
                 <span className={styles.label}>{a.label}</span>
               )}

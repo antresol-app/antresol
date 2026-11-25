@@ -42,20 +42,15 @@ type AppLoginOutcome struct {
 // wipe the strikes of someone guessing the profile's web password. proto
 // prefixes the log lines, which carry the profile id and the client key only.
 func AppLogin(ctx context.Context, users *Store, network *Network, th *Throttle, r *http.Request, proto, name string, check func(app string) bool) (AppLoginOutcome, error) {
-	trusted := network.IsTrusted(r)
-	client := network.ClientKey(r)
-	where := "remote"
-	if trusted {
-		where = "home"
-	}
-	keys := []string{"ip:" + client}
 	u, err := users.ByName(ctx, name)
 	found := err == nil
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return AppLoginOutcome{}, err
 	}
+	keys, trusted := LoginKeys(network, r, u.ID) // u.ID 0: no such profile
+	client := network.ClientKey(r)
 	if found {
-		keys = append(keys, fmt.Sprintf("user:%d:%s", u.ID, where), appThrottleKey(u.ID))
+		keys = append(keys, appThrottleKey(u.ID))
 	}
 	// Wait and Fail are not one atomic step: parallel guesses all pass Wait
 	// before the first Fail. With 82-bit app passwords that buys nothing.
@@ -99,3 +94,22 @@ func AppLogin(ctx context.Context, users *Store, network *Network, th *Throttle,
 }
 
 func appThrottleKey(id int64) string { return fmt.Sprintf("app:%d", id) }
+
+// LoginKeys: the throttle keys of a password check of profile userID from
+// r, and whether r is from the home network. The client's key and the
+// profile's, which is split by home and remote so a stranger guessing from
+// the internet cannot lock the family out at home; the web login and
+// AppLogin both go by it. userID 0 (a name that is no profile): the
+// client's key only.
+func LoginKeys(n *Network, r *http.Request, userID int64) (keys []string, trusted bool) {
+	trusted = n.IsTrusted(r)
+	keys = []string{"ip:" + n.ClientKey(r)}
+	if userID != 0 {
+		where := "remote"
+		if trusted {
+			where = "home"
+		}
+		keys = append(keys, fmt.Sprintf("user:%d:%s", userID, where))
+	}
+	return keys, trusted
+}

@@ -4,13 +4,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 44px;
+  gap: var(--s-1h);
+  min-width: var(--control-h-md);
   height: 40px;
-  padding: 0 12px;
+  padding: 0 var(--s-3);
   border: 0;
   border-radius: var(--r-pill);
-  font: 600 15px / 1 var(--font-text);
+  font: var(--t-control-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;

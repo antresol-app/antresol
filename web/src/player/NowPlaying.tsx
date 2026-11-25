@@ -6,7 +6,7 @@
 // Esc, or a swipe down on a phone. An audiobook shows its chapter instead
 // of the artist, «−15 с» / «+30 с» around «Играть» with chapter jumps
 // outside them, and the speed and the sleep timer at the bottom.
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import { usePresence } from '../ui/presence'
@@ -18,7 +18,7 @@ import { useSession } from '../state/session'
 import { useIsCompact, useReducedMotion } from '../state/useMediaQuery'
 import { bookPositionMs, chapterAt, seekAbsolute } from './audio/audiobook'
 import { audio, BOOK_BACK_SEC, BOOK_FORWARD_SEC, engineMode, type QueueItem, type RepeatMode } from './audio/engine'
-import { useAudio } from './audio/useAudio'
+import { useAudio, useAudioItem } from './audio/useAudio'
 import { AudiobookBookmarks } from './AudiobookBookmarks'
 import { LyricsView } from './LyricsView'
 import { QueueList } from './QueueList'
@@ -30,6 +30,7 @@ import { SleepMenu } from './SleepMenu'
 import { SpeedMenu } from './SpeedMenu'
 import { useAudioOutputs, type OutputButton } from './audioOutputs'
 import { SheetContainer } from '../ui/Sheet'
+import { Slider } from '../ui/Slider'
 import styles from './NowPlaying.module.css'
 import { useT, type Key } from '../i18n'
 
@@ -81,8 +82,8 @@ const DISMISS_DRAG = 120
 const DISMISS_FLICK = 0.7
 
 export function NowPlaying({ open, onClose }: NowPlayingProps) {
-  const s = useAudio()
-  const it = s.queue[s.index]
+  // only the track: the player itself (below) follows the position, this shell must not tick with it
+  const it = useAudioItem()
   // The queue ended (stop, last track removed): nothing to show.
   useEffect(() => {
     if (open && !it) onClose()
@@ -425,16 +426,7 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
           {volume && !swap && (
             <label className={styles.volume}>
               <Icon name="speakerMute" size={16} />
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={s.volume}
-                aria-label={t('player.volume')}
-                style={{ '--fill': `${Math.round(s.volume * 100)}%` } as CSSProperties}
-                onChange={(e) => audio.setVolume(Number(e.target.value))}
-              />
+              <Slider label={t('player.volume')} value={s.volume} onChange={(v) => audio.setVolume(v)} min={0} max={1} step={0.01} thumb="always" className={styles.range} />
               <Icon name="speaker" size={18} />
             </label>
           )}

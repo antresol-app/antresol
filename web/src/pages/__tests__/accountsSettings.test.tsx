@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, RouterProvider, Routes, createMemoryRouter, useLocation } from 'react-router'
 import type { AccountsState, User } from '../../api/types'
 import { routes } from '../../app/routes'
-import { Notice } from '../../components/Notice'
+import { ToastHost } from '../../components/ToastHost'
 import { resetAccounts } from '../../state/accounts'
 import { session } from '../../state/session'
 import { setViewport } from '../../test/setup'
@@ -52,7 +52,7 @@ async function openAccounts(user: User, accounts: AccountsState | null, at = '/s
   await session.login(user.id)
   return render(
     <MemoryRouter initialEntries={[at]}>
-      <Notice />
+      <ToastHost />
       <Routes>
         <Route path="/settings/accounts" element={<AccountsSettings />} />
         <Route path="/settings" element={<ProfileSettings />} />

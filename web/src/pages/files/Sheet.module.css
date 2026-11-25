@@ -83,5 +83,5 @@
 }
 .pickerTarget strong {
   color: var(--label);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }

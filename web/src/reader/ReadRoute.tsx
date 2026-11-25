@@ -7,6 +7,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getBook } from '../api/client'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import { GONE_TEXT, GONE_TITLE } from './comicText'
 import type { BookDetail } from '../api/types'
@@ -25,7 +26,7 @@ function Blank() {
   const t = useT()
   return (
     <div className={`${styles.reader} ${styles.blank}`} aria-busy="true" aria-label={t('reader.openingBook')}>
-      <span className={styles.spinner} />
+      <Spinner className={styles.spinner} />
     </div>
   )
 }

@@ -138,15 +138,8 @@ func (r *Repo) upsertComicVolume(ctx context.Context, v ComicInput) (volID, seri
 			if err := fillEmpty(ctx, tx, volID, "", v.Year, v.Summary, "", 0, "", ""); err != nil {
 				return err
 			}
-			if v.Cover != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`,
-					v.Cover, volID, scanCover.String); err != nil {
-					return err
-				}
-			} else if scanCover.String != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, volID, scanCover.String); err != nil {
-					return err
-				}
+			if err := setScanPoster(ctx, tx, volID, v.Cover, scanCover.String); err != nil {
+				return err
 			}
 		}
 		meta := map[string]any{
@@ -271,15 +264,8 @@ func (r *Repo) finishComicSeries(ctx context.Context, seriesID int64, name, sig 
 			title, sortTitle(title), rating, now(), seriesID); err != nil {
 			return err
 		}
-		if p := first.item.Poster; p != "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`,
-				p, seriesID, scanCover.String); err != nil {
-				return err
-			}
-		} else if scanCover.String != "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, seriesID, scanCover.String); err != nil {
-				return err
-			}
+		if err := setScanPoster(ctx, tx, seriesID, first.item.Poster, scanCover.String); err != nil {
+			return err
 		}
 		if err := fillEmpty(ctx, tx, seriesID, "", first.item.Year, first.item.Overview, "", 0, "", ""); err != nil {
 			return err

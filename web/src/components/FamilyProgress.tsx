@@ -6,7 +6,7 @@
 // progress (the server copies it: POST /api/progress/{id}/adopt), never
 // theirs. Nothing is shown when nobody else has progress (or for a kid:
 // the server lists nobody).
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { adoptProgress, getFamily } from '../api/client'
 import type { BookChapter, FamilyMember } from '../api/types'
 import { chapterIndexAt } from '../player/audio/audiobook'
@@ -14,7 +14,9 @@ import { clock, humanMinutes } from '../player/timeline'
 import { ago } from '../state/format'
 import { t as tr, useT } from '../i18n'
 import { Avatar } from './Avatar'
+import { useIsCompact } from '../state/useMediaQuery'
 import { Button } from '../ui/Button'
+import { Menu, type TriggerProps } from '../ui/Menu'
 import { Icon } from './Icon'
 import styles from './FamilyProgress.module.css'
 
@@ -163,42 +165,12 @@ const FACES = 4
 export function FamilyProgress({ members, kind, chapters, onOpen }: FamilyProgressProps) {
   const t = useT()
   const id = useId()
+  const compact = useIsCompact()
+  // a phone's fold opens in place (an accordion); a wide window's is a Menu
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<number | null>(null)
   const [error, setError] = useState('')
-  const root = useRef<HTMLElement>(null)
-  const fold = useRef<HTMLButtonElement>(null)
-  const panel = useRef<HTMLDivElement>(null)
-  const [up, setUp] = useState(false)
-
-  // over the page (wide screens): upwards when there is no room below
-  useLayoutEffect(() => {
-    if (!open || !panel.current || !root.current) return setUp(false)
-    if (getComputedStyle(panel.current).position !== 'absolute') return setUp(false)
-    const below = window.innerHeight - root.current.getBoundingClientRect().bottom
-    setUp(below < panel.current.offsetHeight + 16 && root.current.getBoundingClientRect().top > panel.current.offsetHeight + 16)
-  }, [open, members.length])
-
-  // like a menu: a click elsewhere or Escape folds it
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      // the panel goes away: focus inside it (or already lost) returns to the fold
-      const at = document.activeElement
-      if (!at || at === document.body || root.current?.contains(at)) fold.current?.focus()
-      setOpen(false)
-    }
-    document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
+  const foldRef = useRef<HTMLButtonElement>(null)
 
   if (members.length === 0) return null
 
@@ -214,58 +186,92 @@ export function FamilyProgress({ members, kind, chapters, onOpen }: FamilyProgre
       .finally(() => setBusy(null))
   }
 
+  const fold = (p: Partial<TriggerProps>, expanded: boolean) => (
+    <button type="button" className={styles.fold} {...p}>
+      <span className={styles.faces} aria-hidden>
+        {members.slice(0, FACES).map((m) => (
+          <RingAvatar key={m.userId} m={{ ...m, ring: ringOf(m) }} size={28} />
+        ))}
+        {members.length > FACES && <span className={styles.extra}>+{members.length - FACES}</span>}
+      </span>
+      <span className={styles.foldText}>
+        <span className={styles.label}>{t('comp.family.title')}</span>
+        <span className={styles.summary}>
+          {summary}
+          {more > 0 && <span className={styles.more}>{t('comp.family.andMore', { count: more })}</span>}
+        </span>
+      </span>
+      <Icon name="chevronDown" size={16} strokeWidth={2.4} className={[styles.chevron, expanded ? styles.up : ''].join(' ')} />
+    </button>
+  )
+
+  // in the Menu the rows are its items: the jump button is a menuitem (the list around it is only layout);
+  // with nothing to continue (everyone finished) the panel takes the focus itself, so Escape still folds it
+  const actionable = members.some((m) => jumpLabel(kind, m) !== '')
+  const panel = (inMenu: boolean) => (
+    <div className={styles.body} tabIndex={inMenu && !actionable ? -1 : undefined} ref={inMenu && !actionable ? (el) => el?.focus({ preventScroll: true }) : undefined}>
+      <ul className={styles.list} role={inMenu ? 'none' : undefined}>
+        {members.map((m) => {
+          const label = jumpLabel(kind, m)
+          return (
+            <li key={m.userId} className={styles.row} role={inMenu ? 'none' : undefined}>
+              <RingAvatar m={{ ...m, ring: ringOf(m) }} size={36} />
+              <span className={styles.who}>
+                <span className={styles.name}>{m.ownerName ? `${m.name} · ${m.ownerName}` : m.name}</span>
+                <span className={styles.place}>
+                  {placeOf(kind, m, chapters)}
+                  <span className={styles.when}> · {ago(m.updatedAt)}</span>
+                </span>
+              </span>
+              {label && (
+                <Button
+                  size="small"
+                  variant="secondary"
+                  icon={kind === 'book' || kind === 'comic' ? 'book' : 'play'}
+                  loading={busy === m.userId}
+                  disabled={busy !== null && busy !== m.userId}
+                  {...(inMenu ? { role: 'menuitem', tabIndex: -1 } : {})}
+                  aria-label={t('comp.family.jumpAria', { action: label, name: m.name })}
+                  onClick={() => jump(m)}
+                >
+                  {label}
+                </Button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <p className={styles.note}>{error ? <span role="alert">{error}</span> : t('comp.family.note')}</p>
+    </div>
+  )
+
   return (
-    <section ref={root} className={styles.family} aria-label={t('comp.family.title')}>
-      <button ref={fold} type="button" className={styles.fold} aria-expanded={open} aria-controls={`${id}-list`} onClick={() => setOpen((v) => !v)}>
-        <span className={styles.faces} aria-hidden>
-          {members.slice(0, FACES).map((m) => (
-            <RingAvatar key={m.userId} m={{ ...m, ring: ringOf(m) }} size={28} />
-          ))}
-          {members.length > FACES && <span className={styles.extra}>+{members.length - FACES}</span>}
-        </span>
-        <span className={styles.foldText}>
-          <span className={styles.label}>{t('comp.family.title')}</span>
-          <span className={styles.summary}>
-            {summary}
-            {more > 0 && <span className={styles.more}>{t('comp.family.andMore', { count: more })}</span>}
-          </span>
-        </span>
-        <Icon name="chevronDown" size={16} strokeWidth={2.4} className={[styles.chevron, open ? styles.up : ''].join(' ')} />
-      </button>
-      {open && (
-        <div ref={panel} id={`${id}-list`} className={[styles.panel, up ? styles.upward : '', 'glass-strong'].join(' ')} data-family-panel>
-          <ul className={styles.list}>
-            {members.map((m) => {
-              const label = jumpLabel(kind, m)
-              return (
-                <li key={m.userId} className={styles.row}>
-                  <RingAvatar m={{ ...m, ring: ringOf(m) }} size={36} />
-                  <span className={styles.who}>
-                    <span className={styles.name}>{m.ownerName ? `${m.name} · ${m.ownerName}` : m.name}</span>
-                    <span className={styles.place}>
-                      {placeOf(kind, m, chapters)}
-                      <span className={styles.when}> · {ago(m.updatedAt)}</span>
-                    </span>
-                  </span>
-                  {label && (
-                    <Button
-                      size="small"
-                      variant="secondary"
-                      icon={kind === 'book' || kind === 'comic' ? 'book' : 'play'}
-                      loading={busy === m.userId}
-                      disabled={busy !== null && busy !== m.userId}
-                      aria-label={t('comp.family.jumpAria', { action: label, name: m.name })}
-                      onClick={() => jump(m)}
-                    >
-                      {label}
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          <p className={styles.note}>{error ? <span role="alert">{error}</span> : t('comp.family.note')}</p>
-        </div>
+    <section
+      className={styles.family}
+      aria-label={t('comp.family.title')}
+      // the in-place list folds with Escape (a keyboard on a tablet), as the Menu does
+      onKeyDown={compact && open ? (e) => e.key === 'Escape' && (setOpen(false), foldRef.current?.focus()) : undefined}
+    >
+      {compact ? (
+        <>
+          {fold({ ref: foldRef, 'aria-expanded': open, 'aria-controls': `${id}-list`, onClick: () => setOpen((v) => !v) }, open)}
+          {open && (
+            <div id={`${id}-list`} className={[styles.panel, 'glass-strong'].join(' ')} data-family-panel>
+              {panel(false)}
+            </div>
+          )}
+        </>
+      ) : (
+        <Menu
+          label={t('comp.family.title')}
+          placement="bottom-start"
+          pickList={false}
+          focusItem={actionable}
+          className={styles.menu}
+          trigger={(tp) => fold(tp, tp['aria-expanded'])}
+        >
+          {() => panel(true)}
+        </Menu>
       )}
     </section>
   )

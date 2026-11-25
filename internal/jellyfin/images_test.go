@@ -15,7 +15,7 @@ func TestImagesPrimaryAndTag(t *testing.T) {
 	}
 	path := "/Items/" + ItemID(e.interstellar) + "/Images/Primary?tag=" + tag
 	w := e.get(e.anyaTok, path)
-	if w.Code != 200 || w.Header().Get("Content-Type") != "image/jpeg" || w.Header().Get("Cache-Control") != "public, max-age=31536000" {
+	if w.Code != 200 || w.Header().Get("Content-Type") != "image/jpeg" || w.Header().Get("Cache-Control") != "private, max-age=31536000" {
 		t.Fatalf("GET %d %v", w.Code, w.Header())
 	}
 	full := w.Body.Len()
@@ -23,15 +23,16 @@ func TestImagesPrimaryAndTag(t *testing.T) {
 	if h.Code != 200 || h.Body.Len() != 0 {
 		t.Fatalf("HEAD %d %d", h.Code, h.Body.Len())
 	}
-	// resized: maxWidth (Swiftfin), fillHeight (Infuse)
+	// resized: maxWidth (Swiftfin), fillHeight (Infuse); a copy is as wide as
+	// the next step of imgcache.Widths over what the box gives (few copies)
 	w = e.get(e.anyaTok, path+"&maxWidth=200&quality=90")
 	c, _, err := image.DecodeConfig(w.Body)
-	if w.Code != 200 || err != nil || c.Width != 200 || c.Height != 300 {
+	if w.Code != 200 || err != nil || c.Width != 240 || c.Height != 360 {
 		t.Fatalf("maxWidth %d %v %+v", w.Code, err, c)
 	}
 	w = e.get(e.anyaTok, "/items/"+ItemID(e.interstellar)+"/images/primary/0?fillHeight=150&fillWidth=100")
 	c, _, err = image.DecodeConfig(w.Body)
-	if w.Code != 200 || err != nil || c.Height != 150 {
+	if w.Code != 200 || err != nil || c.Width != 160 || c.Height != 240 {
 		t.Fatalf("fill %d %v %+v (orig %d)", w.Code, err, c, full)
 	}
 	for _, p := range []string{
@@ -60,8 +61,9 @@ func TestImagesPrimaryAndTag(t *testing.T) {
 func TestImagesWithoutToken(t *testing.T) {
 	e := newLibEnv(t)
 	base := "/Items/" + ItemID(e.interstellar) + "/Images/Primary"
-	if w := e.do("GET", base+"?tag="+imageTag(e.posterRef)+"&maxWidth=300", nil, nil); w.Code != 200 {
-		t.Fatalf("with tag: %d", w.Code)
+	// no token: the tag is the proof, so a shared cache may keep it
+	if w := e.do("GET", base+"?tag="+imageTag(e.posterRef)+"&maxWidth=300", nil, nil); w.Code != 200 || w.Header().Get("Cache-Control") != "public, max-age=31536000" {
+		t.Fatalf("with tag: %d %v", w.Code, w.Header())
 	}
 	for _, q := range []string{"", "?tag=0000000000000000", "?Tag=" + imageTag(e.seriesPoster)} {
 		if w := e.do("GET", base+q, nil, nil); w.Code != 404 {

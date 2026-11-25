@@ -25,7 +25,7 @@ export function MyRequests() {
 
   return (
     <div className={m.page}>
-      <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+      <div className={m.requests}>
         <header className={m.header}>
           <h1 className={m.title}>{t('requests.mine')}</h1>
         </header>

@@ -38,7 +38,7 @@
 .name {
   display: block;
   font: var(--t-callout);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

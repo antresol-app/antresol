@@ -117,7 +117,7 @@ func TestPicksOrderedMixedKinds(t *testing.T) {
 	}}})
 	b := f.picksBuilder()
 	b.Horizon = 10 * time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	got := itemsOf(f.entries(c.ID))
@@ -137,7 +137,7 @@ func TestPicksOrderedMixedKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	got = itemsOf(f.entries(c.ID))
@@ -162,7 +162,7 @@ func TestPicksShuffleUnits(t *testing.T) {
 	}}})
 	b := f.picksBuilder()
 	b.Horizon = 72 * time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -187,7 +187,7 @@ func TestPicksShuffleUnits(t *testing.T) {
 	c2 := f2.create(Channel{Name: "Sh", Rules: c.Rules})
 	b2 := f2.picksBuilder()
 	b2.Horizon = 72 * time.Hour
-	if err := b2.Build(ctx, c2); err != nil {
+	if _, err := b2.Build(ctx, c2); err != nil {
 		t.Fatal(err)
 	}
 	if fmt.Sprint(itemsOf(f2.entries(c2.ID))) != fmt.Sprint(itemsOf(es)) {
@@ -207,7 +207,7 @@ func TestPicksNoTitleOnTwoChannels(t *testing.T) {
 	}}})
 	b := f.picksBuilder()
 	for _, c := range []Channel{marathon, mix} {
-		if err := b.Build(ctx, c); err != nil {
+		if _, err := b.Build(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -291,6 +291,27 @@ func TestSearchOptions(t *testing.T) {
 	}
 	if hits, _ := cat.Search(ctx, "e2", ""); len(hits) != 2 { // episodes by their own title
 		t.Fatalf("e2 %+v", hits)
+	}
+}
+
+// A search reads what it finds, not the library: titles and episodes it
+// does not find may be unreadable without it noticing.
+func TestSearchReadsOnlyWhatItFinds(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	l := newPicksLib(f)
+	for _, id := range append([]int64{l.series}, l.movies...) {
+		f.exec(`INSERT INTO item_titles (item_id, title, norm) SELECT id, title, lower(title) FROM items WHERE id=?`, id)
+	}
+	other := f.movie("Other", 90, itemOpt{})
+	f.exec(`INSERT INTO item_titles (item_id, title, norm) VALUES (?, 'Other', 'other')`, other)
+	f.exec(`UPDATE items SET year='n/a' WHERE id=? OR kind='episode'`, other)
+	hits, err := Catalog{DB: f.db}.Search(ctx, "x", "")
+	if err != nil {
+		t.Fatalf("a search stumbled on what it did not find: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Kind != "movie" {
+		t.Fatalf("hits %+v", hits)
 	}
 }
 

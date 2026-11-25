@@ -20,18 +20,18 @@
 .warn {
   color: var(--warning);
 }
+/* the bar of the disk's use (UsageBar); a caller's class sets its size */
 .bar {
   display: flex;
-  gap: var(--s-0);
-  height: 22px;
-  padding: 0;
-  border-radius: var(--r-sm);
+  gap: var(--usage-gap, var(--s-0));
+  height: var(--usage-h, 22px);
+  border-radius: var(--usage-radius, var(--r-sm));
   overflow: hidden;
-  background: var(--fill-3);
+  background: var(--usage-bg, var(--fill-3));
 }
 .seg {
   display: block;
-  min-width: 3px;
+  min-width: var(--usage-seg-min, 3px);
   height: 100%;
   transition: filter var(--d-fast) var(--ease-out);
 }

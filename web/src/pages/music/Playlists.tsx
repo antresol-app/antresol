@@ -5,7 +5,10 @@ import { Link, useNavigate } from 'react-router'
 import { createPlaylist, getPlaylists, errorText } from '../../api/client'
 import type { Playlist } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
+import { Skeleton } from '../../ui/Skeleton'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
 import { PlaylistCover } from './PlaylistCover'
@@ -75,27 +78,16 @@ export function Playlists() {
         <ul className={styles.grid} aria-hidden>
           {Array.from({ length: 6 }, (_, i) => (
             <li key={i}>
-              <div className={styles.skeleton} />
+              <Skeleton className={styles.skeleton} />
             </li>
           ))}
         </ul>
       )}
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('music.playlists.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={load}>
-            {t('music.retry')}
-          </Button>
-        </div>
+        <LoadFailed title={t('music.playlists.loadFailed')} message={state.message} retry={t('music.retry')} onRetry={load} />
       )}
       {state.status === 'ready' && state.items.length === 0 && (
-        <div className={styles.empty}>
-          <Icon name="list" size={48} strokeWidth={1.4} />
-          <h2>{t('music.playlists.empty')}</h2>
-          <p>{t('music.playlists.emptyHint')}</p>
-        </div>
+        <EmptyState icon={<Icon name="list" size={48} strokeWidth={1.4} />} title={t('music.playlists.empty')} hint={t('music.playlists.emptyHint')} />
       )}
       {state.status === 'ready' && state.items.length > 0 && (
         <ul className={styles.grid} aria-label={t('common.playlists')}>

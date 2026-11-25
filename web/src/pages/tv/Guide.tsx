@@ -12,7 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useNavigate } from 'react-router'
 import { errorText } from '../../api/client'
 import { getChannelEPG, type ChannelEPG, type ChannelProgram } from '../../api/channels'
-import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { useT } from '../../i18n'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { Button } from '../../ui/Button'
@@ -194,13 +194,7 @@ export function Guide({ filter, favorites, onFavorite, playerTo, logos, favFirst
 
   if (error && !data) {
     return (
-      <div className={styles.empty} role="alert">
-        <Icon name="warning" size={40} strokeWidth={1.4} />
-        <p>{error}</p>
-        <Button variant="secondary" onClick={() => loadMore(origin, true)}>
-          {t('common.retry')}
-        </Button>
-      </div>
+      <LoadFailed title={t('common.loadFailed')} message={error} retry={t('common.retry')} onRetry={() => loadMore(origin, true)} />
     )
   }
 

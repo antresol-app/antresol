@@ -10,6 +10,7 @@ import { InfoContent } from './InfoPanel'
 import { Thumb } from './Thumb'
 import { useDir } from './useDir'
 import { itemId, type ContainerProps } from './views'
+import { Spinner } from '../../ui/Spinner'
 import styles from './ColumnView.module.css'
 import { useT } from '../../i18n'
 
@@ -61,7 +62,11 @@ function Column({
         if (e.target === e.currentTarget) p.onMenu(e, null)
       }}
     >
-      {entries === undefined && <div className={styles.loading} aria-label={t('common.loading')} />}
+      {entries === undefined && (
+        <div className={styles.loading} aria-label={t('common.loading')}>
+          <Spinner className={styles.ring} />
+        </div>
+      )}
       {entries?.length === 0 && <div className={styles.empty}>{t('files.col.empty')}</div>}
       {entries?.map((e) => {
         const sel = isActive ? Boolean(selection?.selected.has(e.path)) : e.path === highlight

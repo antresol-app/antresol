@@ -6,10 +6,13 @@ import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getBooksHome, useEvents, errorText } from '../../api/client'
 import type { BooksHome as BooksHomeData } from '../../api/types'
-import { Button, ButtonLink } from '../../ui/Button'
+import { ButtonLink } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
+import { Skeleton } from '../../ui/Skeleton'
 import { RescanLink } from '../../components/RescanLink'
 import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { BookDropZone, BookUploadButton, BookUploadStatus, useBookUpload } from './BookUpload'
 import { Shelf } from '../../components/Shelf'
@@ -125,10 +128,10 @@ export function BooksHome() {
         <div className={styles.skeleton} aria-busy="true" aria-label={t('common.loading')}>
           {[0, 1].map((r) => (
             <div key={r}>
-              <div className={styles.skeletonTitle} />
+              <Skeleton tone="soft" className={styles.skeletonTitle} />
               <div className={styles.skeletonRow}>
                 {Array.from({ length: 7 }, (_, i) => (
-                  <div key={i} className={styles.skeletonCard} />
+                  <Skeleton key={i} className={styles.skeletonCard} />
                 ))}
               </div>
             </div>
@@ -137,32 +140,26 @@ export function BooksHome() {
       )}
 
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('books.homeLoadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <LoadFailed inset title={t('books.homeLoadFailed')} message={state.message} retry={t('common.retry')} onRetry={() => load()} />
       )}
 
-      {state.status === 'ready' && shelves.length === 0 && scope === 'mine' && <MineEmpty className={styles.empty} />}
+      {state.status === 'ready' && shelves.length === 0 && scope === 'mine' && <MineEmpty inset />}
 
       {state.status === 'ready' && shelves.length === 0 && scope !== 'mine' && (
-        <div className={styles.empty}>
-          <Icon name="book" size={48} strokeWidth={1.4} />
-          <h2>{t('books.empty.title')}</h2>
-          {user?.isKid ? (
-            <p>{t('books.empty.kid')}</p>
-          ) : (
-            <>
-              <p>{t('books.empty.hint')}</p>
-              <RescanLink variant="secondary" />
-              <EmptyStateActions scope="book" variant="secondary" />
-            </>
-          )}
-        </div>
+        <EmptyState
+          inset
+          icon={<Icon name="book" size={48} strokeWidth={1.4} />}
+          title={t('books.empty.title')}
+          hint={user?.isKid ? t('books.empty.kid') : t('books.empty.hint')}
+          actions={
+            !user?.isKid && (
+              <>
+                <RescanLink variant="secondary" />
+                <EmptyStateActions scope="book" variant="secondary" />
+              </>
+            )
+          }
+        />
       )}
 
       {shelves.length > 0 && (

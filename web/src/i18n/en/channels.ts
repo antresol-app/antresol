@@ -24,6 +24,11 @@ export default {
   "tv.noFavorites": "No favorites yet",
   "tv.noFavoritesHint":
     "Star a channel and it shows up here. Channel numbers stay the same.",
+  "tv.country.SU": "USSR",
+  "tv.country.XC": "Czechoslovakia",
+  "tv.country.YU": "Yugoslavia",
+  "tv.country.DD": "East Germany",
+  "tv.country.XG": "West Germany",
   "tv.until": "until {time}",
   "tv.left": { one: "{count} min left", other: "{count} min left" },
   "tv.untilLeft": "until {time}, {left} min left",

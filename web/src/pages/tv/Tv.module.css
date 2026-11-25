@@ -36,9 +36,6 @@
   min-width: 0;
   max-width: 100%;
 }
-.empty {
-  composes: empty from '../Browse.module.css';
-}
 /* a big list's second level: «Категории» back, the category's name */
 .level {
   display: flex;

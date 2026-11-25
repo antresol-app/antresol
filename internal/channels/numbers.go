@@ -52,9 +52,19 @@ type numRow struct {
 // per channel id instead of its current number (a channel a manual number
 // pushed out keeps the place it had).
 func RenumberTx(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map[int64]int64) error {
-	q, err := tx.QueryContext(ctx, `SELECT id, number, kind, user_id IS NOT NULL, enabled, number_manual FROM channels`)
+	rows, err := loadNumRows(ctx, tx, manual, place)
 	if err != nil {
 		return err
+	}
+	assignNumbers(rows)
+	return writeNumbers(ctx, tx, rows)
+}
+
+// loadNumRows reads every channel with what decides its number.
+func loadNumRows(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map[int64]int64) ([]*numRow, error) {
+	q, err := tx.QueryContext(ctx, `SELECT id, number, kind, user_id IS NOT NULL, enabled, number_manual FROM channels`)
+	if err != nil {
+		return nil, err
 	}
 	var rows []*numRow
 	byID := map[int64]*numRow{}
@@ -62,7 +72,7 @@ func RenumberTx(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map
 		r := &numRow{}
 		if err := q.Scan(&r.id, &r.number, &r.kind, &r.personal, &r.enabled, &r.storedManual); err != nil {
 			q.Close()
-			return err
+			return nil, err
 		}
 		r.place = r.number
 		if p, ok := place[r.id]; ok {
@@ -78,7 +88,7 @@ func RenumberTx(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map
 	}
 	q.Close()
 	if err := q.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	// an external channel's place: its first entry by source position, then
 	// playlist position (present entries before gone ones)
@@ -86,25 +96,26 @@ func RenumberTx(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map
 		JOIN iptv_sources s ON s.id = m.source_id WHERE m.channel_id IS NOT NULL
 		ORDER BY m.present DESC, s.position, s.id, m.position`)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer e.Close()
 	for e.Next() {
 		var ch, sp, sid, mp int64
 		var present bool
 		if err := e.Scan(&ch, &sp, &sid, &mp, &present); err != nil {
-			e.Close()
-			return err
+			return nil, err
 		}
 		if r := byID[ch]; r != nil && !r.hasEntry {
 			r.src, r.srcID, r.pos, r.hasEntry = sp, sid, mp, true
 		}
 	}
-	e.Close()
-	if err := e.Err(); err != nil {
-		return err
-	}
+	return rows, e.Err()
+}
 
-	// the admin's numbers first: the first channel (by id) to ask for one gets it
+// assignNumbers sets every row's final number: the admin's first (the
+// first channel by id to ask for a number gets it), the others 1…N round
+// them in the order of the list above.
+func assignNumbers(rows []*numRow) {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].id < rows[j].id })
 	taken := map[int64]bool{}
 	for _, r := range rows {
@@ -163,8 +174,11 @@ func RenumberTx(ctx context.Context, tx *sql.Tx, manual map[int64]int, place map
 		r.final = next
 		taken[next] = true
 	}
+}
 
-	// numbers are UNIQUE: the changed rows step aside first (-id is free)
+// writeNumbers stores the numbers that changed. Numbers are UNIQUE: the
+// changed rows step aside first (-id is free).
+func writeNumbers(ctx context.Context, tx *sql.Tx, rows []*numRow) error {
 	var changed []*numRow
 	for _, r := range rows {
 		if r.final != r.number || r.finalManual != r.storedManual {

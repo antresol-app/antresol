@@ -305,10 +305,7 @@ func (f *Franchises) withAgent(ctx context.Context, l *LLM, titles []libTitle, g
 				out = append(out, cl.kept(p, havePrev, rec.Error))
 				continue
 			}
-			msg := err.Error()
-			if r := []rune(msg); len(r) > 200 {
-				msg = string(r[:200]) + "…"
-			}
+			msg := clipRunes(err.Error(), 200, "…")
 			rec = franchiseAsk{Model: modelID(l), Failures: rec.Failures + 1, Error: msg}
 			rec.RetryAt = now + int64(franchiseBackoff(rec.Failures)/time.Second)
 			next[key] = rec

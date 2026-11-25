@@ -2,7 +2,6 @@ package addons
 
 import (
 	"context"
-	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -27,12 +26,7 @@ var diskSegmentID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 // checked by the report (files.Usage).
 func (h *Hooks) DiskUsage(ctx context.Context) []files.ExtraSegment {
 	var out []files.ExtraSegment
-	h.Each(ctx, "disk.usage", nil, nil, func(id string, raw json.RawMessage) {
-		var u addonkit.DiskUsage
-		if err := json.Unmarshal(raw, &u); err != nil {
-			h.log().Warn("addon hook: left out", "addon", id, "hook", "disk.usage", "err", err)
-			return
-		}
+	eachAnswer(h, ctx, "disk.usage", nil, nil, func(id string, u addonkit.DiskUsage) {
 		seen, n := map[string]bool{}, 0
 		for _, s := range u.Segments {
 			ru, en := diskLabel(s.Label.RU), diskLabel(s.Label.EN)

@@ -23,6 +23,10 @@ var shrinkSteps = []shrinkStep{{1600, 80}, {1400, 70}, {1200, 60}, {1000, 50}}
 const (
 	shrinkMinPicture = 64 << 10 // smaller pictures do not decide a book's size
 	shrinkMaxPixels  = 100e6    // a header claiming more is not decoded
+	// shrinkMaxPicture: a picture entry declared larger is left as it is
+	// (not read): the book's own header names the size, and the zip reader
+	// stops a body that outgrows it.
+	shrinkMaxPicture = 64 << 20
 )
 
 // ShrinkEPUB returns the EPUB at most target bytes long if recompressing its
@@ -83,7 +87,7 @@ func shrinkPicture(f *zip.File, step shrinkStep) ([]byte, bool) {
 	if !isPNG && ext != ".jpg" && ext != ".jpeg" {
 		return nil, false
 	}
-	if f.UncompressedSize64 < shrinkMinPicture {
+	if f.UncompressedSize64 < shrinkMinPicture || f.UncompressedSize64 > shrinkMaxPicture {
 		return nil, false
 	}
 	rc, err := f.Open()

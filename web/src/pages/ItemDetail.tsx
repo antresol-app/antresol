@@ -499,7 +499,7 @@ function DetailSkeleton() {
         <div className={styles.copy}>
           <div className={styles.skeletonTitle} />
           <div className={styles.skeletonLine} />
-          <div className={styles.skeletonLine} style={{ width: '60%' }} />
+          <div className={`${styles.skeletonLine} ${styles.w60}`} />
         </div>
       </div>
     </div>

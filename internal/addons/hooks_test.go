@@ -101,6 +101,7 @@ func calls(t *testing.T, tg *hookTarget, id string) []hookCallRec {
 
 type hookCallRec struct {
 	Name, Header, Type, User string
+	Signed                   bool // the addon's addonkit.UserFrom took User
 	Body                     json.RawMessage
 }
 
@@ -135,6 +136,9 @@ func TestCall_OK(t *testing.T) {
 	var gotU addonkit.User
 	if err := json.Unmarshal([]byte(c.User), &gotU); err != nil || !reflect.DeepEqual(gotU, *u) {
 		t.Fatalf("user header %q → %+v (%v)", c.User, gotU, err)
+	}
+	if !c.Signed {
+		t.Fatal("the addon does not take the user header: its signature does not verify with the key the addon was started with")
 	}
 
 	// no user → no header; nil out discards the answer

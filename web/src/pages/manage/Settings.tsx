@@ -31,6 +31,7 @@ import { StorageSection } from './StorageSettings'
 import { TelegramSection } from './TelegramSettings'
 import { TranscodingSection } from './TranscodingSettings'
 import { VocleanSection } from './VocleanSettings'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 import styles from './Settings.module.css'
 
@@ -141,12 +142,12 @@ export function Settings() {
       <section>
         <h2 className={m.title}>{t('settings.serverTitle')}</h2>
         {error ? (
-          <div className={m.problem} role="alert" style={{ marginTop: 16 }}>
+          <div className={`${m.problem} ${m.problemTop}`} role="alert">
             {error}
           </div>
         ) : (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('settings.loading')}
+            <Spinner track className={m.spinner} /> {t('settings.loading')}
           </div>
         )}
       </section>

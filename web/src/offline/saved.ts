@@ -11,11 +11,14 @@ export const MEDIA_PATH = /^\/api\/(?:tracks\/\d+\/stream|audio\/\d+|stream\/\d+
 /** A saved file for this URL (the query is ignored), or undefined. */
 export async function findSaved(req: RequestInfo | URL): Promise<Response | undefined> {
   const cache = await caches.open(OFFLINE_CACHE)
-  return (await cache.match(req, { ignoreSearch: true })) ?? undefined
+  return (await cache.match(req, { ignoreSearch: true, ignoreVary: true })) ?? undefined
 }
 
 /** The service worker re-reads the saved list on this message. */
 export const CHANGED_MESSAGE = 'vault:offline-changed'
+
+/** The app asks the service worker to keep the PDF reader's files while a PDF is saved (sent at every start). */
+export const KEEP_PDF_MESSAGE = 'vault:keep-pdf-reader'
 
 /** Everything saved was deleted (another profile): the service worker forgets the list at once. */
 export const WIPED_MESSAGE = 'vault:offline-wiped'

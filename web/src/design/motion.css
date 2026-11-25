@@ -33,3 +33,21 @@
 .enter-pop {
   animation: enter-pop var(--d-base) var(--ease-out) backwards;
 }
+
+/* A busy ring turns (ui/Spinner takes this class). One keyframes for the whole
+   app: a module that wrote its own `@keyframes spin` is a copy
+   (design/__tests__/tokensOnly.test.ts). Reduce motion slows the ring and
+   never stops it, so a wait still shows. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 2.4s;
+  }
+}

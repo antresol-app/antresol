@@ -9,6 +9,7 @@ import { formatDate, formatShortDate, formatSize, kindLabel, objects } from './m
 import { Glyph } from './glyphs'
 import { Thumb } from './Thumb'
 import { Badge } from '../../ui/Badge'
+import { Spinner } from '../../ui/Spinner'
 import { itemId, type ViewProps } from './views'
 import styles from './ListView.module.css'
 import { useT, type Key } from '../../i18n'
@@ -97,7 +98,7 @@ const DesktopRow = memo(function DesktopRow({
       onDoubleClick={() => h.onOpen(e)}
       onContextMenu={(ev) => h.onMenu(ev, e)}
     >
-      <div role="gridcell" className={`${styles.cell} ${styles.colName}`} style={{ paddingLeft: 8 + row.level * 18 }}>
+      <div role="gridcell" className={`${styles.cell} ${styles.colName}`} style={{ ['--level' as string]: row.level }}>
         <span className={styles.disclosureBox}>
           {e.isDir && (
             <span
@@ -117,7 +118,7 @@ const DesktopRow = memo(function DesktopRow({
         <span className={styles.name}>{e.name}</span>
         <HoldBadge entry={e} />
         {showWhere && where(e.path) && <span className={styles.where}>{where(e.path)}</span>}
-        {row.loading && <span className={styles.spinner} aria-label={t('common.loading')} />}
+        {row.loading && <Spinner className={styles.spinner} label={t('common.loading')} />}
       </div>
       <div role="gridcell" className={`${styles.cell} ${styles.colDate} ${styles.dim}`}>
         {formatDate(e.mtime)}
@@ -228,7 +229,7 @@ export function ListView(p: ListViewProps) {
               <button type="button" tabIndex={-1} className={`${styles.hbutton} ${on ? styles.hon : ''}`} onClick={() => onSort(c.key)}>
                 <span>{t(c.label)}</span>
                 <span className={styles.arrow} aria-hidden>
-                  {on && <Glyph name="chevronDown" size={11} strokeWidth={2.4} style={{ transform: order === 'asc' ? 'rotate(180deg)' : undefined }} />}
+                  {on && <Glyph name="chevronDown" size={11} strokeWidth={2.4} className={order === 'asc' ? styles.flip : undefined} />}
                 </span>
               </button>
             </div>

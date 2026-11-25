@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,18 +24,26 @@ func clip(s string, n int) string {
 	return s
 }
 
+// deviceBody is the device an app names when it pairs or signs in.
+type deviceBody struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Model   string `json:"model"`
+	Version string `json:"version"`
+}
+
+// info is the device as auth keeps it (the names clipped).
+func (d deviceBody) info() auth.DeviceInfo {
+	return auth.DeviceInfo{ID: d.ID, Name: clip(d.Name, 100), Model: clip(d.Model, 64), Version: clip(d.Version, 64)}
+}
+
 // deviceToken signs the native app in: the same password checks as the web
 // login, but the answer carries a device token instead of a cookie.
 func (a *authAPI) deviceToken(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		UserID   int64  `json:"userId"`
-		Password string `json:"password"`
-		Device   struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Model   string `json:"model"`
-			Version string `json:"version"`
-		} `json:"device"`
+		UserID   int64      `json:"userId"`
+		Password string     `json:"password"`
+		Device   deviceBody `json:"device"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -49,9 +56,7 @@ func (a *authAPI) deviceToken(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tok, err := a.sessions.CreateDevice(r.Context(), u.ID, auth.DeviceInfo{
-		ID: in.Device.ID, Name: clip(in.Device.Name, 100), Model: clip(in.Device.Model, 64), Version: clip(in.Device.Version, 64),
-	})
+	tok, err := a.sessions.CreateDevice(r.Context(), u.ID, in.Device.info())
 	if err != nil {
 		log.Printf("auth: device token for profile %d: %v", u.ID, err)
 		writeErr(w, r, http.StatusInternalServerError, "Что-то пошло не так")
@@ -135,22 +140,18 @@ func mountDevices(r chi.Router, sessions *auth.Sessions, keys *auth.MediaKeys) {
 		})
 		// an admin signs out any profile's device
 		r.Delete("/api/admin/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
-			id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-			if err == nil {
+			err := auth.ErrNotFound
+			if id, ok := pathID(r, "id"); ok {
 				err = sessions.RevokeAnyDevice(r.Context(), id)
-			} else {
-				err = auth.ErrNotFound
 			}
 			deviceRevoked(w, r, err)
 		})
 	})
 	r.Delete("/api/me/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err == nil {
+		err := auth.ErrNotFound
+		if id, ok := pathID(r, "id"); ok {
 			// the caller's own device, an admin's too (any profile's: /api/admin/devices)
 			err = sessions.RevokeDevice(r.Context(), userOf(r).ID, id)
-		} else {
-			err = auth.ErrNotFound
 		}
 		deviceRevoked(w, r, err)
 	})

@@ -14,6 +14,7 @@ import { Icon } from '../../components/Icon'
 import { useSession } from '../../state/session'
 import { AddonBoundary, useAddonSlot } from '../../addons/slots'
 import { getLanguage, t, useT } from '../../i18n'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 import styles from './Stats.module.css'
 
@@ -57,7 +58,7 @@ export function Stats() {
       )}
       {!data && !error && (
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t('stats.loading')}
+          <Spinner track className={m.spinner} /> {t('stats.loading')}
         </div>
       )}
       {data && (

@@ -54,11 +54,39 @@ export function segmentsOf(categories: { id: string; bytes: number; label?: stri
     })
 }
 
+export interface UsageBarProps {
+  segments: DiskSegment[]
+  total: number
+  /** The bar's name for assistive tech. */
+  label: string
+  /** Sets the bar's size: `--usage-h`, `--usage-gap`, `--usage-radius`, `--usage-bg`, `--usage-seg-min`. */
+  className?: string
+  /** A segment was picked (with it a segment has a pointer and a tooltip). */
+  onPick?: (s: DiskSegment) => void
+}
+
+/** The bar of the disk's use: a segment per category, as wide as its share of `total`. */
+export function UsageBar({ segments, total, label, className, onPick }: UsageBarProps) {
+  const pct = (n: number) => `${total > 0 ? Math.max(0, (n / total) * 100) : 0}%`
+  return (
+    <span className={[styles.bar, className].filter(Boolean).join(' ')} role="img" aria-label={label}>
+      {segments.map((s) => (
+        <span
+          key={s.id}
+          className={`${styles.seg} ${onPick ? styles.pickable : ''}`}
+          style={{ width: pct(s.bytes), background: s.color }}
+          title={onPick ? `${s.label} · ${formatSize(s.bytes)}` : undefined}
+          onClick={onPick ? () => onPick(s) : undefined}
+        />
+      ))}
+    </span>
+  )
+}
+
 export function DiskMeter({ total, free, segments, title, onPick, pickHint }: DiskMeterProps) {
   const t = useT()
   title ??= t('comp.disk.title')
   const used = Math.max(0, total - free)
-  const pct = (n: number) => `${total > 0 ? Math.max(0, (n / total) * 100) : 0}%`
   const level = total > 0 ? used / total : 0
   return (
     <section className={styles.meter} aria-label={title}>
@@ -69,17 +97,7 @@ export function DiskMeter({ total, free, segments, title, onPick, pickHint }: Di
           {t('comp.disk.freeOf', { free: formatSize(free), total: formatSize(total) })}
         </span>
       </div>
-      <div className={styles.bar} role="img" aria-label={t('comp.disk.usedOf', { used: formatSize(used), total: formatSize(total) })}>
-        {segments.map((s) => (
-          <span
-            key={s.id}
-            className={`${styles.seg} ${onPick ? styles.pickable : ''}`}
-            style={{ width: pct(s.bytes), background: s.color }}
-            title={onPick ? `${s.label} · ${formatSize(s.bytes)}` : undefined}
-            onClick={onPick ? () => onPick(s) : undefined}
-          />
-        ))}
-      </div>
+      <UsageBar segments={segments} total={total} label={t('comp.disk.usedOf', { used: formatSize(used), total: formatSize(total) })} onPick={onPick} />
       <ul className={styles.legend}>
         {segments.map((s) => {
           const inner = (

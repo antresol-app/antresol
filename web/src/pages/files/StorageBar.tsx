@@ -3,20 +3,11 @@
 import { useEffect, useState } from 'react'
 import { getUsage } from '../../api/files'
 import type { FileUsage } from '../../api/types'
+import { segmentsOf, UsageBar } from '../../components/DiskMeter'
 import { Menu } from '../../ui/Menu'
 import { formatSize } from './model'
 import styles from './StorageBar.module.css'
-import { useT, type Key } from '../../i18n'
-
-export const CATEGORIES: Record<string, { label: Key; color: string }> = {
-  movies: { label: 'common.movies', color: 'var(--blue)' },
-  series: { label: 'common.series', color: 'var(--purple)' },
-  music: { label: 'common.music', color: 'var(--pink)' },
-  books: { label: 'common.books', color: 'var(--orange)' },
-  downloads: { label: 'files.storage.downloads', color: 'var(--green)' },
-  'stream-cache': { label: 'files.storage.streamCache', color: 'var(--teal)' },
-  other: { label: 'files.storage.other', color: 'var(--gray)' },
-}
+import { useT } from '../../i18n'
 
 let cached: { at: number; usage: FileUsage } | null = null
 /** For tests. */
@@ -57,16 +48,9 @@ export function StorageBar({ refresh = 0, large }: { refresh?: number; large?: b
       </div>
     )
   }
-  const pct = (n: number) => `${Math.max(0, (n / u.total) * 100)}%`
-  const parts = u.categories.filter((c) => c.bytes > 0)
+  const parts = segmentsOf(u.categories)
   const full = u.used / u.total
-  const bar = (
-    <span className={styles.bar} role="img" aria-label={t('files.storage.usedOf', { used: formatSize(u.used), total: formatSize(u.total) })}>
-      {parts.map((c) => (
-        <span key={c.id} className={styles.seg} style={{ width: pct(c.bytes), background: CATEGORIES[c.id]?.color ?? 'var(--gray)' }} />
-      ))}
-    </span>
-  )
+  const bar = <UsageBar className={styles.bar} segments={parts} total={u.total} label={t('files.storage.usedOf', { used: formatSize(u.used), total: formatSize(u.total) })} />
   const free = (
     <span className={`${styles.free} ${full >= 0.85 ? styles.warn : ''}`}>
       {full >= 0.95 ? `${t('files.storage.almostFull')} · ` : ''}
@@ -75,11 +59,11 @@ export function StorageBar({ refresh = 0, large }: { refresh?: number; large?: b
   )
   const legend = (
     <ul className={styles.legend}>
-      {parts.map((c) => (
-        <li key={c.id}>
-          <span className={styles.dot} style={{ background: CATEGORIES[c.id]?.color ?? 'var(--gray)' }} />
-          <span className={styles.lname}>{CATEGORIES[c.id] ? t(CATEGORIES[c.id]!.label) : c.id}</span>
-          <span className={styles.lsize}>{formatSize(c.bytes)}</span>
+      {parts.map((s) => (
+        <li key={s.id}>
+          <span className={styles.dot} style={{ background: s.color }} />
+          <span className={styles.lname}>{s.label}</span>
+          <span className={styles.lsize}>{formatSize(s.bytes)}</span>
         </li>
       ))}
       <li>

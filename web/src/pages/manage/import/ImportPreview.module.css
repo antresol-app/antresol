@@ -28,15 +28,7 @@
   font: var(--t-footnote);
   color: var(--warning);
 }
-.checkbox {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  accent-color: var(--accent);
-}
-.unreadable label,
-.unreadable .checkbox {
+.unreadable .name {
   opacity: 0.55;
 }
 .actions {

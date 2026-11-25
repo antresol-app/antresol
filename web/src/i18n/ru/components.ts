@@ -370,7 +370,6 @@ export default {
   'comp.screen.bonusGiven': 'Бонус сегодня: +{time}',
   'comp.screen.loadFailed': 'Не удалось загрузить экранное время.',
   'comp.screen.saveFailed': 'Не удалось сохранить. Попробуйте ещё раз.',
-  'comp.screen.badMinutes': 'От 0 до 1440 минут',
   'comp.screen.passwordless': 'Ребёнок может переключиться на профили без пароля: {names}. Задайте им пароль, чтобы лимиты работали.',
   'comp.screen.dayStart': 'День начинается в',
   'comp.screen.dayStartHint': 'Тогда обнуляются время и бонус. Часы могут идти за полночь (например, 20:00–02:00 в пятницу), но не за начало дня.',

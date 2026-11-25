@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { FamilyMember } from '../../api/types'
+import { setViewport } from '../../test/setup'
 import { FamilyProgress, jumpLabel, placeOf, ringOf } from '../FamilyProgress'
 
 const member = (over: Partial<FamilyMember>): FamilyMember => ({
@@ -21,7 +22,10 @@ const member = (over: Partial<FamilyMember>): FamilyMember => ({
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
 
 describe('FamilyProgress', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    setViewport(1440)
+  })
 
   it('is not there when nobody else has progress', () => {
     const { container } = render(<FamilyProgress members={[]} kind="movie" onOpen={() => {}} />)
@@ -46,10 +50,17 @@ describe('FamilyProgress', () => {
     expect(screen.getByText('Далее: С1 Э2')).toBeInTheDocument()
     expect(screen.getByText('Всё просмотрено')).toBeInTheDocument()
     expect(screen.getAllByText(/2 ч назад/, { selector: 'span' })).toHaveLength(3)
-    expect(screen.getByRole('button', { name: /С1 Э2 с 17:00 — с места профиля «Мама»/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Смотреть С1 Э2 — с места профиля «Петя»/ })).toBeInTheDocument()
+    // a wide window's fold is a menu: the jump buttons are its items
+    expect(screen.getByRole('menu', { name: 'Семья' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /С1 Э2 с 17:00 — с места профиля «Мама»/ })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Смотреть С1 Э2 — с места профиля «Петя»/ })).toBeInTheDocument()
     // finished: nothing to continue
-    expect(screen.queryByRole('button', { name: /Бабушка/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /Бабушка/ })).toBeNull()
+    // Escape folds it and the focus is back on the fold
+    await userEvent.keyboard('{Escape}')
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(fold).toHaveFocus()
   })
 
   it('says where a reader or listener is', () => {
@@ -79,7 +90,7 @@ describe('FamilyProgress', () => {
     const m = member({ userId: 7, itemId: 42, positionMs: 2_000_000, durationMs: 6_000_000, fraction: 0.33 })
     render(<FamilyProgress members={[m]} kind="movie" onOpen={onOpen} />)
     await userEvent.click(screen.getByRole('button', { name: /Семья/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Смотреть с 33:20/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /Смотреть с 33:20/ }))
     await waitFor(() => expect(onOpen).toHaveBeenCalledWith(m))
     // only this profile's progress is written: the server copies theirs
     expect(calls).toEqual([['/api/progress/42/adopt', 'POST', { userId: 7 }]])
@@ -92,9 +103,38 @@ describe('FamilyProgress', () => {
     const m = member({ itemId: 12, season: 1, episode: 3, next: true })
     render(<FamilyProgress members={[m]} kind="series" onOpen={onOpen} />)
     await userEvent.click(screen.getByRole('button', { name: /Семья/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Смотреть С1 Э3/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /Смотреть С1 Э3/ }))
     await waitFor(() => expect(onOpen).toHaveBeenCalled())
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('still folds with Escape when there is nothing to continue', async () => {
+    render(<FamilyProgress members={[member({ finished: true })]} kind="movie" onOpen={() => {}} />)
+    const fold = screen.getByRole('button', { name: /Семья/ })
+    await userEvent.click(fold)
+    expect(screen.getByRole('menu', { name: 'Семья' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem')).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(fold).toHaveFocus()
+  })
+
+  it('opens in place on a phone, where a menu would be a sheet', async () => {
+    setViewport(390)
+    const m = member({ positionMs: 60_000, durationMs: 600_000 })
+    render(<FamilyProgress members={[m]} kind="episode" onOpen={() => {}} />)
+    const fold = screen.getByRole('button', { name: /Семья/ })
+    await userEvent.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('button', { name: /Смотреть с 1:00/ })).toBeInTheDocument()
+    await userEvent.click(fold)
+    expect(screen.queryByRole('button', { name: /Смотреть с 1:00/ })).toBeNull()
+    // a keyboard on a tablet: Escape folds it and the focus is on the fold
+    await userEvent.click(fold)
+    await userEvent.keyboard('{Escape}')
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(fold).toHaveFocus()
   })
 
   it('does not open anything when the server refuses', async () => {
@@ -102,7 +142,7 @@ describe('FamilyProgress', () => {
     const onOpen = vi.fn()
     render(<FamilyProgress members={[member({ positionMs: 60_000, durationMs: 600_000 })]} kind="episode" onOpen={onOpen} />)
     await userEvent.click(screen.getByRole('button', { name: /Семья/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Смотреть с 1:00/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /Смотреть с 1:00/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Не получилось')
     expect(onOpen).not.toHaveBeenCalled()
   })

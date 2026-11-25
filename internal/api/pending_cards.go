@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -70,11 +71,7 @@ func libraryPending(w http.ResponseWriter, r *http.Request, hooks *addons.Hooks,
 	hooks.Each(r.Context(), "library.pending", who, addonkit.PendingQuery{Scope: scope}, func(id string, raw json.RawMessage) {
 		var ans addonkit.PendingAnswer
 		if err := json.Unmarshal(raw, &ans); err != nil {
-			lg := hooks.Log
-			if lg == nil {
-				lg = slog.Default()
-			}
-			lg.Warn("addon hook: bad answer", "addon", id, "hook", "library.pending", "err", err)
+			cmp.Or(hooks.Log, slog.Default()).Warn("addon hook: bad answer", "addon", id, "hook", "library.pending", "err", err)
 			return // that addon is left out
 		}
 		for _, pc := range ans.Cards {

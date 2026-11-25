@@ -26,11 +26,13 @@ import { useNavigate, useNavigationType, useSearchParams } from 'react-router'
 import { APP_NAME } from '../../brand'
 import { channelsOpened } from '../../api/iptv'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { useT } from '../../i18n'
 import { useSession } from '../../state/session'
 import { loadTvPlace, saveTvPlace } from '../../state/tvPlace'
 import { useIsCompact, useMediaQuery } from '../../state/useMediaQuery'
-import { Button, ButtonLink } from '../../ui/Button'
+import { ButtonLink } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { IconButton } from '../../ui/IconButton'
 import { Menu, MenuItem } from '../../ui/Menu'
 import { SegmentedControl } from '../../ui/SegmentedControl'
@@ -289,34 +291,24 @@ export function Tv() {
         )}
         <div className={rail ? styles.railMain : styles.noRail}>
           {state.status === 'error' && (
-            <div className={styles.empty} role="alert">
-              <Icon name="warning" size={40} strokeWidth={1.4} />
-              <p>{state.message}</p>
-              <Button variant="secondary" onClick={() => load()}>
-                {t('common.retry')}
-              </Button>
-            </div>
+            <LoadFailed title={t('common.loadFailed')} message={state.message} retry={t('common.retry')} onRetry={() => load()} />
           )}
           {data && channels.length === 0 && (
-            <div className={styles.empty}>
-              <Icon name="broadcast" size={48} strokeWidth={1.4} />
-              <h2>{t('tv.empty')}</h2>
-              {data.canCreate && (
-                <>
-                  <p>{data.canManage ? t('tv.emptyAdmin') : t('tv.emptyOthers')}</p>
+            <EmptyState
+              icon={<Icon name="broadcast" size={48} strokeWidth={1.4} />}
+              title={t('tv.empty')}
+              hint={data.canCreate ? (data.canManage ? t('tv.emptyAdmin') : t('tv.emptyOthers')) : undefined}
+              actions={
+                data.canCreate && (
                   <ButtonLink to={`${managePath}?new=1`} icon="plus">
                     {t('tv.newChannel')}
                   </ButtonLink>
-                </>
-              )}
-            </div>
+                )
+              }
+            />
           )}
           {data && !level1 && channels.length > 0 && shown.length === 0 && filter.kind === 'fav' && (
-            <div className={styles.empty}>
-              <Icon name="star" size={44} strokeWidth={1.4} />
-              <h2>{t('tv.noFavorites')}</h2>
-              <p>{t('tv.noFavoritesHint')}</p>
-            </div>
+            <EmptyState icon={<Icon name="star" size={44} strokeWidth={1.4} />} title={t('tv.noFavorites')} hint={t('tv.noFavoritesHint')} />
           )}
 
           {view === 'list' && !level1 && shown.length > 0 && (

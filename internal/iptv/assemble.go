@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/channels"
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // What a viewer sees of the external channels (spec clarification 1):
@@ -323,10 +324,9 @@ func (s *Service) GuideIcons(ctx context.Context, keys []EPGKey) (map[EPGKey]str
 	for id := range want {
 		ids = append(ids, id)
 	}
-	for start := 0; start < len(ids); start += 500 {
-		part := ids[start:min(start+500, len(ids))]
+	for part := range slices.Chunk(ids, 500) {
 		rows, err := s.Store.DB.QueryContext(ctx, `SELECT epg_url_id, xml_id, icon FROM iptv_xml_channels
-			WHERE icon<>'' AND xml_id IN (?`+strings.Repeat(",?", len(part)-1)+`)`, part...)
+			WHERE icon<>'' AND xml_id IN `+db.In(len(part)), part...)
 		if err != nil {
 			return nil, err
 		}
@@ -546,15 +546,10 @@ func (s *Service) Programmes(ctx context.Context, chans map[int64][]EPGKey, from
 		all = append(all, id)
 	}
 	found := map[EPGKey][]Programme{}
-	for start := 0; start < len(all); start += 500 {
-		part := all[start:min(start+500, len(all))]
-		args := []any{}
-		for _, id := range part {
-			args = append(args, id)
-		}
-		args = append(args, from.UnixMilli(), to.UnixMilli())
+	for part := range slices.Chunk(all, 500) {
+		args := append(db.Args(part), from.UnixMilli(), to.UnixMilli())
 		rows, err := s.Store.DB.QueryContext(ctx, `SELECT epg_url_id, xml_channel, start_ms, end_ms, title, sub_title, descr, category, icon
-			FROM iptv_programmes WHERE xml_channel IN (?`+strings.Repeat(",?", len(part)-1)+`) AND end_ms > ? AND start_ms < ? ORDER BY start_ms`, args...)
+			FROM iptv_programmes WHERE xml_channel IN `+db.In(len(part))+` AND end_ms > ? AND start_ms < ? ORDER BY start_ms`, args...)
 		if err != nil {
 			return nil, err
 		}

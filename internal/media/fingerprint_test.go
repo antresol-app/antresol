@@ -6,8 +6,33 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
+
+// The analysis ffmpeg is a background reader: one thread, lowest priority.
+func TestAnalysisRunsAtLowPriority(t *testing.T) {
+	var seen []*exec.Cmd
+	capture := func(cmd *exec.Cmd) error { seen = append(seen, cmd); return nil }
+	if _, err := Fingerprint(context.Background(), "ffmpeg", "/media/a.mkv", 1, 0, 10, capture); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BlackRuns(context.Background(), "ffmpeg", "/media/a.mkv", 0, 10, 1, true, capture); err != nil {
+		t.Fatal(err)
+	}
+	_, hasNice := exec.LookPath("nice")
+	for _, cmd := range seen {
+		if i := slices.Index(cmd.Args, "-threads"); i < 0 || cmd.Args[i+1] != "1" {
+			t.Errorf("not one thread: %q", cmd.Args)
+		}
+		if hasNice == nil && !slices.Contains(cmd.Args, "19") {
+			t.Errorf("not niced: %q", cmd.Args)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("%d commands", len(seen))
+	}
+}
 
 func TestParseRawFingerprint(t *testing.T) {
 	got := parseRawFingerprint([]byte{1, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 9})

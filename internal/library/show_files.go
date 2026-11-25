@@ -3,7 +3,8 @@ package library
 import (
 	"context"
 	"fmt"
-	"strings"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // showEpisodes selects the ids of the present episodes of a series or a
@@ -19,20 +20,7 @@ const showEpisodes = `SELECT e.id FROM items e WHERE e.parent_id=?1 AND +e.kind=
 // ShowFiles returns the present files of every present episode of a series
 // or a season in one query (the stream facts of a show: its badges).
 func (r *Repo) ShowFiles(ctx context.Context, id int64) ([]File, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files WHERE missing_since IS NULL AND item_id IN (`+showEpisodes+`) ORDER BY path`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return r.queryFiles(ctx, `SELECT `+fileCols+` FROM files WHERE missing_since IS NULL AND item_id IN (`+showEpisodes+`) ORDER BY path`, id)
 }
 
 // ShowFilesKey is a cheap fingerprint of ShowFiles: it changes when an
@@ -57,12 +45,12 @@ func (r *Repo) ShowFilesKeys(ctx context.Context, ids []int64) (map[int64]string
 		args[i] = id
 		out[id] = "0/0/0"
 	}
-	in := "?" + strings.Repeat(",?", len(ids)-1)
+	in := db.In(len(ids))
 	// showEpisodes for many shows: each branch keeps its show's id
 	rows, err := r.db.QueryContext(ctx, `SELECT k.show, COUNT(*), SUM(f.id), SUM(f.probe_rev) FROM (
-	    SELECT e.parent_id AS show, e.id AS ep FROM items e WHERE e.parent_id IN (`+in+`) AND +e.kind='episode' AND e.missing_since IS NULL
+	    SELECT e.parent_id AS show, e.id AS ep FROM items e WHERE e.parent_id IN `+in+` AND +e.kind='episode' AND e.missing_since IS NULL
 	    UNION ALL
-	    SELECT s.parent_id, e.id FROM items s CROSS JOIN items e ON e.parent_id=s.id WHERE s.parent_id IN (`+in+`) AND +s.kind='season'
+	    SELECT s.parent_id, e.id FROM items s CROSS JOIN items e ON e.parent_id=s.id WHERE s.parent_id IN `+in+` AND +s.kind='season'
 	      AND s.missing_since IS NULL AND +e.kind='episode' AND e.missing_since IS NULL
 	  ) k JOIN files f ON f.item_id=k.ep AND f.missing_since IS NULL GROUP BY k.show`, append(args, args...)...)
 	if err != nil {

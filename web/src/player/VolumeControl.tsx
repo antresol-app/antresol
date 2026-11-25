@@ -6,9 +6,10 @@
 // transport in the middle and the rest at the right, and other big web players keep it in
 // its left cluster. Shared by the film and the live channel player
 // (VideoPlayer.tsx, pages/tv/LivePlayer.tsx).
-import type { CSSProperties } from 'react'
 import { Icon } from '../components/Icon'
+import { IconButton } from '../ui/IconButton'
 import { useT } from '../i18n'
+import { Slider } from '../ui/Slider'
 import styles from './VolumeControl.module.css'
 
 export interface VolumeControlProps {
@@ -32,25 +33,28 @@ export function VolumeControl({ volume, muted, onVolume, onToggleMute, muteLabel
   const label = silent ? unmuteLabel : muteLabel
   return (
     <div className={styles.volume}>
-      <button type="button" className={styles.mute} onClick={onToggleMute} aria-label={label} title={title ?? `${label} (M)`}>
-        <Icon name={silent ? 'speakerMute' : 'speaker'} size={24} />
-      </button>
-      <input
-        type="range"
+      <IconButton
+        icon={<Icon name={silent ? 'speakerMute' : 'speaker'} size={24} />}
+        label={label}
+        tooltip={title ?? `${label} (M)`}
+        variant="plain"
+        className={styles.mute}
+        onClick={onToggleMute}
+      />
+      <Slider
+        label={t('player.volume')}
+        value={shown}
+        onChange={onVolume}
         min={0}
         max={1}
         step={0.05}
-        value={shown}
-        onChange={(e) => onVolume(Number(e.target.value))}
+        valueText={`${Math.round(shown * 100)}%`}
         // a press with the pointer leaves the slider at once: the arrow keys
         // go on seeking and changing the volume by the player's own steps
         // (a range input would keep them for itself); the keyboard's Tab
         // still lands on it and the arrows then move it
         onPointerUp={(e) => e.currentTarget.blur()}
-        aria-label={t('player.volume')}
-        aria-valuetext={`${Math.round(shown * 100)}%`}
         className={styles.range}
-        style={{ '--v': shown } as CSSProperties}
       />
     </div>
   )

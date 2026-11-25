@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -48,68 +47,18 @@ func formatRank(path string) int {
 	return 2
 }
 
-type bookFile struct {
-	path        string
-	size, mtime int64
-}
-
 // walkBooks lists the book files under root, skipping hidden entries and
 // NAS/macOS junk folders. An error means the walk is incomplete: the
 // caller must not prune.
-func walkBooks(ctx context.Context, root string) ([]bookFile, error) {
-	st, err := os.Stat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", root)
-	}
-	var out []bookFile
-	var firstErr error
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			low := strings.ToLower(name)
-			if p != root && (strings.HasPrefix(name, ".") || skipDirs[low] || low == "__macosx") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(name, ".") || !bookExts[bookExt(name)] {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-		out = append(out, bookFile{p, info.Size(), info.ModTime().Unix()})
-		return nil
-	})
-	if err == nil {
-		err = firstErr
-	}
-	return out, err
+func walkBooks(ctx context.Context, root string) ([]walkedFile, error) {
+	return walkFiles(ctx, root, func(low string) bool { return skipDirs[low] || low == "__macosx" },
+		func(name string) bool { return bookExts[bookExt(name)] })
 }
 
 // bookGroup is one book: the formats in one folder with the same parsed title.
 type bookGroup struct {
 	dir   string
-	files []bookFile
+	files []walkedFile
 }
 
 // scanBooks indexes the ebooks root: one book per folder and parsed title,
@@ -132,9 +81,7 @@ func (s *Scanner) scanBooksIn(ctx context.Context, dir string, st *ScanStats) er
 	groups := map[string]*bookGroup{}
 	var order []string
 	perDir := map[string]int{}
-	seen := map[string]bool{}
 	for _, f := range files {
-		seen[f.path] = true
 		key := bookMatchKey(f.path)
 		g := groups[key]
 		if g == nil {
@@ -146,7 +93,7 @@ func (s *Scanner) scanBooksIn(ctx context.Context, dir string, st *ScanStats) er
 		g.files = append(g.files, f)
 	}
 	sort.Strings(order)
-	stored, err := s.Repo.bookFilesUnder(ctx, root)
+	stored, err := s.Repo.storedFilesUnder(ctx, root, "('book')", itemSigSQL)
 	if err != nil {
 		return err
 	}
@@ -169,7 +116,7 @@ func (s *Scanner) scanBooksIn(ctx context.Context, dir string, st *ScanStats) er
 	if walkErr != nil {
 		return walkErr // incomplete walk: no pruning
 	}
-	return s.finish(ctx, root, seen, st)
+	return s.finish(ctx, root, seenPaths(files), st)
 }
 
 // fillBookMeta copies into dst the fields that are still empty there.
@@ -248,7 +195,7 @@ func listDirArt(dir string) dirArt {
 // bookSig is a signature of everything a book's scan reads: its files
 // (name, size, mtime), the folder's pictures and whether the folder holds
 // only this book. "" when the folder's pictures could not be listed.
-func bookSig(files []bookFile, art dirArt, onlyBook bool) string {
+func bookSig(files []walkedFile, art dirArt, onlyBook bool) string {
 	if art.sig == "" {
 		return ""
 	}
@@ -260,26 +207,8 @@ func bookSig(files []bookFile, art dirArt, onlyBook bool) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// unchangedBook reports whether every file of the group is a visible files
-// row of one visible book with the same size and mtime, written by a scan
-// that saw the same signature: the book then keeps its rows untouched.
-func unchangedBook(files []bookFile, sig string, stored map[string]storedBookFile) bool {
-	if sig == "" {
-		return false
-	}
-	var item int64
-	for _, f := range files {
-		sf, ok := stored[f.path]
-		if !ok || sf.size != f.size || sf.mtime != f.mtime || sf.sig != sig || (item != 0 && sf.itemID != item) {
-			return false
-		}
-		item = sf.itemID
-	}
-	return item != 0
-}
-
 func (s *Scanner) scanBook(ctx context.Context, root string, g *bookGroup, onlyBook bool, di dirIndex, art dirArt,
-	stored map[string]storedBookFile, st *ScanStats) error {
+	stored map[string]storedFile, st *ScanStats) error {
 	sort.SliceStable(g.files, func(i, j int) bool {
 		ri, rj := formatRank(g.files[i].path), formatRank(g.files[j].path)
 		if ri != rj {
@@ -310,11 +239,12 @@ func (s *Scanner) scanBook(ctx context.Context, root string, g *bookGroup, onlyB
 	}
 	// an unchanged book (files, pictures, folder) is not read again
 	sig := bookSig(g.files, art, onlyBook)
-	if unchangedBook(g.files, sig, stored) {
+	if unchangedFiles(g.files, sig, stored) {
 		st.Books++
 		st.Files += len(g.files)
 		return nil
 	}
+	st.Changed++
 	var m bookmeta.Meta
 	nameAuthor, nameTitle := "", ""
 	inputs := make([]FileInput, len(g.files))

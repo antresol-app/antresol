@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/mailer"
 	"github.com/antresol-app/antresol/internal/telegram"
@@ -511,8 +512,8 @@ func (s *Service) dropOff(ctx context.Context, uid int64, p Prefs) error {
 		return err
 	}
 	if len(off) > 0 {
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND (sent_at IS NULL OR tg_sent_at IS NULL) AND topic IN (?`+
-			strings.Repeat(",?", len(off)-1)+`)`, append([]any{uid}, off...)...); err != nil {
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE user_id=? AND (sent_at IS NULL OR tg_sent_at IS NULL) AND topic IN `+
+			db.In(len(off)), append([]any{uid}, off...)...); err != nil {
 			return err
 		}
 	}

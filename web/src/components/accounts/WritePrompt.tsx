@@ -3,7 +3,7 @@
 // sign-in in this tab, «Нет» declines for good (it stays in the profile's
 // settings).
 import { useState } from 'react'
-import { setShikimoriWrite } from '../../api/client'
+import { safeHttpUrl, setShikimoriWrite } from '../../api/client'
 import { useT } from '../../i18n'
 import { setAccountsState, loadAccounts } from '../../state/accounts'
 import { closeWritePrompt, useWritePromptOpen } from '../../state/writePrompt'
@@ -22,7 +22,7 @@ export function WritePrompt() {
     try {
       const r = await setShikimoriWrite(enable)
       if (enable) {
-        const url = r && 'authorizeUrl' in r ? r.authorizeUrl : undefined
+        const url = safeHttpUrl(r && 'authorizeUrl' in r ? r.authorizeUrl : undefined)
         if (url) window.location.assign(url)
         return
       }

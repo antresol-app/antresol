@@ -23,8 +23,7 @@ func comicScanner(t *testing.T) (*Scanner, string) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return &Scanner{Repo: newRepo(t), Comics: root, ArtDir: filepath.Join(base, "images"),
-		ComicsCache: filepath.Join(base, "comics-cache")}, root
+	return &Scanner{Repo: newRepo(t), Comics: root, ArtDir: filepath.Join(base, "images")}, root
 }
 
 // writeCBZ writes a CBZ with n JPEG pages (and a ComicInfo.xml if given).
@@ -125,15 +124,11 @@ func TestParseComicNumber(t *testing.T) {
 		{"Akira 1988", 0, 0, "Akira 1988", "Akira 1988"},
 		{"Akira v1 1988", 1, 0, "Akira", "Том 1"},
 	} {
-		vol, ch := parseComicNumber(c.in)
-		if vol != c.vol || ch != c.ch {
-			t.Errorf("parseComicNumber(%q) = %v, %v; want %v, %v", c.in, vol, ch, c.vol, c.ch)
-		}
 		series, v2, c2 := parseComicFile(c.in)
 		if series != c.series || v2 != c.vol || c2 != c.ch {
 			t.Errorf("parseComicFile(%q) = %q, %v, %v; want %q", c.in, series, v2, c2, c.series)
 		}
-		if got := comicVolumeTitle(vol, ch, c.in); got != c.wantName {
+		if got := comicVolumeTitle(v2, c2, c.in); got != c.wantName {
 			t.Errorf("title(%q) = %q, want %q", c.in, got, c.wantName)
 		}
 	}
@@ -345,9 +340,6 @@ func TestScanComicsFixtures(t *testing.T) {
 	vols, _ := s.Repo.comicVolumes(context.Background(), b.ID)
 	if len(vols) != 2 || metaOf(t, vols[0].item)["pages"] != 3.0 || metaOf(t, vols[1].item)["pages"] != 3.0 || vols[1].item.Poster == "" {
 		t.Fatalf("%+v", vols)
-	}
-	if es, _ := os.ReadDir(s.ComicsCache); len(es) != 0 {
-		t.Fatal("the scanner must not unpack archives")
 	}
 }
 

@@ -98,25 +98,17 @@
   background: linear-gradient(160deg, var(--bg-elevated), var(--bg-raised));
 }
 .spinner {
+  --spinner-size: 32px;
+  --spinner-width: 3px;
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 3px solid var(--spinner-track-art);
-  border-top-color: var(--white);
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  color: var(--white);
 }
 .name {
   margin-top: var(--s-2);
   font: var(--t-subhead);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   color: var(--label);
   overflow: hidden;
   text-overflow: ellipsis;

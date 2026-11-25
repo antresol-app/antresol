@@ -1,6 +1,5 @@
 /* «Закладки» of an audiobook. */
-.jump,
-.icon {
+.jump {
   border: 0;
   background: transparent;
   color: inherit;
@@ -16,8 +15,8 @@
 .field {
   display: block;
   width: 100%;
-  height: 44px;
-  padding: 0 14px;
+  height: var(--control-h-md);
+  padding: 0 var(--s-3h);
   border: 0;
   border-radius: var(--r-control);
   background: var(--fill-2);
@@ -54,20 +53,17 @@
   gap: var(--s-3);
   flex: 1;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-h-md);
   padding: var(--s-3);
   border-radius: var(--r-card-sm);
   text-align: left;
 }
 .jump:hover,
-.jump:focus-visible,
-.icon:hover,
-.icon:focus-visible {
+.jump:focus-visible {
   background: var(--fill-3);
   outline: none;
 }
-.jump:focus-visible,
-.icon:focus-visible {
+.jump:focus-visible {
   box-shadow: inset 0 0 0 2px var(--focus-ring);
 }
 .time {
@@ -88,15 +84,6 @@
 .note {
   font: var(--t-callout);
   white-space: pre-wrap;
-}
-.icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-card-sm);
-  color: var(--label-2);
 }
 
 .failed {

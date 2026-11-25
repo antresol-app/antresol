@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 )
@@ -14,6 +16,10 @@ type TMDB interface {
 	Season(ctx context.Context, tvID, n int) (tmdb.SeasonDetails, error)
 	Movie(ctx context.Context, id int) (tmdb.Details, error)
 }
+
+// seasonsAtOnce: how many of a series' seasons are asked at a time (the TMDB
+// client serves four requests at once anyway).
+const seasonsAtOnce = 4
 
 // airingGap: a series whose last aired episode is this recent counts as
 // airing even when TMDB lists no later one yet.
@@ -58,17 +64,30 @@ func (s *tmdbSkeleton) EpisodesInfo(ctx context.Context, t Title) ([]Episode, st
 	if err != nil {
 		return nil, "", TitleInfo{}, err
 	}
-	var eps []Episode
+	// every season's list is its own request: asked together, a long series
+	// is not one round trip per season
+	var nums []int
 	for _, sc := range d.Seasons {
-		if sc.Number <= 0 {
-			continue
+		if sc.Number > 0 {
+			nums = append(nums, sc.Number)
 		}
-		sd, err := s.c.Season(ctx, int(t.TMDBID), sc.Number)
-		if err != nil {
-			return nil, "", TitleInfo{}, err
-		}
+	}
+	seasons := make([]tmdb.SeasonDetails, len(nums))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(seasonsAtOnce)
+	for i, n := range nums {
+		g.Go(func() (err error) {
+			seasons[i], err = s.c.Season(gctx, int(t.TMDBID), n)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, "", TitleInfo{}, err
+	}
+	var eps []Episode
+	for i, sd := range seasons {
 		for _, e := range sd.Episodes {
-			eps = append(eps, Episode{TitleID: t.ID, Season: sc.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate, Still: e.Still})
+			eps = append(eps, Episode{TitleID: t.ID, Season: nums[i], Number: e.Number, Name: e.Name, AirDate: e.AirDate, Still: e.Still})
 		}
 	}
 	return eps, seriesStatus(eps, now), infoOf(d), nil

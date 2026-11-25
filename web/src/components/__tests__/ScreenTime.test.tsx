@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ScreenReport, ScreenStatus } from '../../api/types'
 import { session } from '../../state/session'
@@ -151,6 +151,28 @@ describe('ScreenTimeSheet', () => {
       weekend: null,
       dayStart: '04:00',
     })
+  })
+
+  it('takes no minutes beyond a day and no time field left empty', async () => {
+    const user = userEvent.setup()
+    render(<ScreenTimeSheet userId={3} name="Вася" onClose={() => {}} />)
+    const [video] = await screen.findAllByLabelText('Минут в день')
+    // 5000 is not a day's minutes: nothing is taken, and the saved 60 is back on leaving the field
+    await user.clear(video!)
+    await user.paste('5000')
+    expect(video).toHaveValue('5000')
+    act(() => video!.blur())
+    expect(video).toHaveValue('60')
+    // the weekday window: a new start is kept, an emptied field is not
+    const weekday = screen.getByRole('group', { name: 'Будни: можно с — до' })
+    const from = within(weekday).getByLabelText('С')
+    fireEvent.change(from, { target: { value: '09:30' } })
+    expect(from).toHaveValue('09:30')
+    fireEvent.change(from, { target: { value: '' } })
+    expect(from).toHaveValue('09:30')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')).toBeDefined())
+    expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ videoMin: 60, weekday: { from: '09:30', to: '20:30' } })
   })
 })
 

@@ -26,6 +26,7 @@ import { GroupedSection, ListRow } from "../../ui/List";
 import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
 import { GpuHint, gpuProbeFailed } from "../../components/storage/GpuHint";
+import { Spinner } from "../../ui/Spinner";
 import m from "./Manage.module.css";
 
 /** The one-line reason of a failed test encode («О сервере», «Сейчас»). */
@@ -123,7 +124,7 @@ export function TranscodingSection({ title }: { title?: string } = {}) {
             </span>
           ) : (
             <span className={m.spinnerRow} role="status">
-              <span className={m.spinner} aria-hidden />
+              <Spinner track className={m.spinner} />
             </span>
           )}
         </ListRow>

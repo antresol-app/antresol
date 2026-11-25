@@ -191,15 +191,6 @@ func (h *lib) myPlaybackPrefs(w http.ResponseWriter, r *http.Request) {
 	h.playbackPrefsOut(w, r, userOf(r).ID)
 }
 
-// kidLocked answers 403 for a kid changing its own defaults.
-func kidLocked(w http.ResponseWriter, r *http.Request) bool {
-	if userOf(r).IsKid {
-		writeErr(w, r, http.StatusForbidden, "Это может изменить только администратор")
-		return true
-	}
-	return false
-}
-
 func (h *lib) putMyPlaybackPrefs(w http.ResponseWriter, r *http.Request) {
 	if kidLocked(w, r) {
 		return
@@ -251,9 +242,8 @@ func (h *lib) clearPlaybackPrefs(w http.ResponseWriter, r *http.Request, uid int
 // userPlaybackPrefs runs next for the profile named by {id} (admin routes).
 func (h *lib) userPlaybackPrefs(next func(http.ResponseWriter, *http.Request, int64)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err != nil {
-			writeErr(w, r, http.StatusBadRequest, "Неверный id")
+		id, ok := idParam(w, r, "id")
+		if !ok {
 			return
 		}
 		if h.Users == nil {

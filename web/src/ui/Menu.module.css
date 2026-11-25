@@ -180,5 +180,5 @@
 /* a phone's context menu ends with «Отменить», centred and bold (iOS) */
 .cancel {
   justify-content: center;
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }

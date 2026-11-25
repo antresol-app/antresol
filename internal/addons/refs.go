@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/antresol-app/antresol/addonkit"
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // RefStore keeps the addons' file references and holds in the core
@@ -207,14 +208,8 @@ func (s *RefStore) Unbind(ctx context.Context, addonID, ref string) error {
 // RefsOf returns the references of those files that have one.
 func (s *RefStore) RefsOf(ctx context.Context, fileIDs []int64) (map[int64]AddonRef, error) {
 	out := map[int64]AddonRef{}
-	for start := 0; start < len(fileIDs); start += 500 {
-		part := fileIDs[start:min(start+500, len(fileIDs))]
-		args := make([]any, len(part))
-		for i, id := range part {
-			args[i] = id
-		}
-		rows, err := s.DB.QueryContext(ctx, `SELECT file_id, addon_id, ref FROM addon_file_refs WHERE file_id IN (?`+
-			strings.Repeat(",?", len(part)-1)+`)`, args...)
+	for part := range slices.Chunk(fileIDs, 500) {
+		rows, err := s.DB.QueryContext(ctx, `SELECT file_id, addon_id, ref FROM addon_file_refs WHERE file_id IN `+db.In(len(part)), db.Args(part)...)
 		if err != nil {
 			return nil, err
 		}

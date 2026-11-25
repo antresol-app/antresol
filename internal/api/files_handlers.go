@@ -30,7 +30,7 @@ type filesAPI struct{ svc *files.Service }
 func mountFiles(r chi.Router, svc *files.Service) {
 	h := &filesAPI{svc: svc}
 	r.Group(func(r chi.Router) {
-		r.Use(noKids)
+		r.Use(noRated)
 		r.Get("/api/files/roots", h.roots)
 		r.Get("/api/files/list", h.list)
 		r.Get("/api/files/stat", h.stat)
@@ -50,10 +50,12 @@ func mountFiles(r chi.Router, svc *files.Service) {
 	})
 }
 
-// noKids: the file browser is not available to kid profiles. Runs after auth.Require.
-func noKids(next http.Handler) http.Handler {
+// noRated: the file browser is not available to a profile with a rating
+// limit (a kid's, or an adult's own maxRating): it would read around the
+// library's rating rule. Runs after auth.Require.
+func noRated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if userOf(r).IsKid {
+		if userOf(r).RatingLimit() != "" {
 			writeErr(w, r, http.StatusForbidden, "Недостаточно прав")
 			return
 		}

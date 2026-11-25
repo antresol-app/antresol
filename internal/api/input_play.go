@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -281,23 +280,21 @@ func (p *inputPlay) play(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ext := ia.ext
-	ai := body.audioIndex()
-	e, external := extAudio{}, false
-	if ai >= externalAudioBase {
-		e, external = pickExtAudio(ext, ai-externalAudioBase, body.AudioSrc)
+	pick := askedAudio(ext, body.AudioIndex, body.AudioSrc)
+	switch {
+	case pick.gone:
 		// the track asked for is still probing: the client asks again; one
 		// whose probe failed plays the default track
 		_, srcPending := ia.pending[body.AudioSrc]
-		if !external && (srcPending || (body.AudioSrc == "" && len(ia.pending) > 0)) {
+		if srcPending || (body.AudioSrc == "" && len(ia.pending) > 0) {
 			writeJSON(w, http.StatusAccepted, map[string]any{"pending": true})
 			return
 		}
-		ai = -1
-	} else if body.AudioIndex == nil {
+	case !pick.named:
 		k, probingSince := p.preferredExternal(r.Context(), uid, pr, ext, ia.pending, func() string { return p.seriesVoice(r.Context(), uid, in) })
 		switch {
 		case k >= 0:
-			e, external = ext[k], true
+			pick.pos = k
 		case !probingSince.IsZero() && p.clock().Sub(probingSince) < inputTrackPreferWait:
 			// the profile's language is only among tracks still probing:
 			// wait for them a while rather than start in another language
@@ -305,23 +302,14 @@ func (p *inputPlay) play(w http.ResponseWriter, r *http.Request) {
 			return
 		case len(pr.Audio) == 0 && len(ext) > 0:
 			// a video without audio of its own: a voice-over, not silence
-			e, external = ext[0], true
+			pick.pos = 0
 		}
 	}
-	var d media.Decision
-	audioIndex := -1
-	if external {
-		d = media.DecideExternalAudio(pr, caps, e.media(), 0)
-		d.AudioInputByteSeek = ia.seeks[e.path]
-		audioIndex = externalAudioBase + slices.IndexFunc(ext, func(x extAudio) bool { return x.path == e.path })
-	} else {
-		d = media.Decide(pr, caps, ai)
-		audioIndex = d.AudioIndex
+	d, audioIndex := decideAudio(pr, caps, ext, pick, 0)
+	if pick.pos >= 0 {
+		d.AudioInputByteSeek = ia.seeks[ext[pick.pos].path]
 	}
-	out := map[string]any{
-		"mode": d.Mode, "reason": d.Reason, "startSec": max(body.StartSec, 0), "durationMs": pr.DurationMs,
-		"audioIndex": audioIndex, "audio": withExternalAudio(audioTracks(pr), ext), "subtitles": p.subTracks(in), "quality": q,
-	}
+	out := playAnswer(body, pr, d, audioIndex, ext, p.subTracks(in), q)
 	if d.Mode == "direct" {
 		p.dropReplaced(r, body)
 		out["url"] = "/api/play/input/" + in.ID + "/direct"

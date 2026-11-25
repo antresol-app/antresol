@@ -1,21 +1,5 @@
 .trigger {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--label);
-  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
-}
-.trigger:hover,
-.trigger[aria-expanded='true'] {
-  background: rgba(255, 255, 255, 0.14);
-}
-.trigger:active {
-  transform: scale(0.94);
+  composes: tool from './VideoPlayer.module.css';
 }
 .menu {
   min-width: 280px;
@@ -23,7 +7,7 @@
 .two {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: var(--s-1);
   width: min(560px, calc(100vw - 32px));
   max-width: none;
 }
@@ -32,7 +16,7 @@
 }
 .two .group + .group {
   border-left: 1px solid var(--separator);
-  padding-left: 4px;
+  padding-left: var(--s-1);
 }
 @media (max-width: 599px) {
   .menu {
@@ -46,13 +30,13 @@
     border-left: 0;
     padding-left: 0;
     border-top: 1px solid var(--separator);
-    padding-top: 4px;
+    padding-top: var(--s-1);
   }
 }
 /* «Субтитры раньше / позже»: the value, then «Раньше» and «Позже» side by side */
 .offsetValue {
   margin: 0;
-  padding: 0 12px 4px;
+  padding: 0 var(--s-3) var(--s-1);
   font: var(--t-footnote);
   font-variant-numeric: tabular-nums;
   color: var(--label-2);

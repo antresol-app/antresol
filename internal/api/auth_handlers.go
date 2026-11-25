@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -71,8 +70,7 @@ func (a *authAPI) patchMe(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if (in.HideProgress != nil || in.KindleEmail != nil) && u.IsKid {
-		writeErr(w, r, http.StatusForbidden, "Это может изменить только администратор")
+	if (in.HideProgress != nil || in.KindleEmail != nil) && kidLocked(w, r) {
 		return
 	}
 	if in.KindleEmail != nil {
@@ -120,10 +118,36 @@ func writeErr(w http.ResponseWriter, r *http.Request, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": i18n.Localize(r.Context(), msg)})
 }
 
+// bodyWait is how long a small JSON body may take to arrive (a variable for
+// the tests): a client that sends the headers and then drips the body
+// would hold a goroutine and a connection for ever. Only the read is timed,
+// so what the handler streams back is not cut short.
+var bodyWait = 30 * time.Second
+
+// bodyDeadline starts bodyWait for the request's body.
+func bodyDeadline(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(bodyWait))
+}
+
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	bodyDeadline(w)
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+		return false
+	}
+	return true
+}
+
+// adminPasswordOK answers 400 and reports false when password, for a profile
+// that is or becomes an administrator's, is too short or too common.
+// An empty one is left to the store (an admin needs a password).
+func adminPasswordOK(w http.ResponseWriter, r *http.Request, admin bool, password string) bool {
+	if !admin || password == "" {
+		return true
+	}
+	if err := auth.CheckAdminPassword(password); err != nil {
+		storeErr(w, r, err)
 		return false
 	}
 	return true
@@ -141,7 +165,9 @@ func storeErr(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, auth.ErrPasswordTooLong):
 		writeErr(w, r, http.StatusBadRequest, "Пароль слишком длинный (не более 72 байт)")
 	case errors.Is(err, auth.ErrAdminPassShort):
-		writeErr(w, r, http.StatusBadRequest, "Пароль администратора — не короче 6 символов")
+		writeErr(w, r, http.StatusBadRequest, "Пароль администратора — не короче 10 символов")
+	case errors.Is(err, auth.ErrAdminPassCommon):
+		writeErr(w, r, http.StatusBadRequest, "Слишком простой пароль администратора")
 	case errors.Is(err, auth.ErrPasswordShort):
 		writeErr(w, r, http.StatusBadRequest, "Пароль — не короче 4 символов")
 	case errors.Is(err, auth.ErrInvalid):
@@ -166,7 +192,7 @@ func (a *authAPI) startSession(w http.ResponseWriter, r *http.Request, u auth.Us
 			log.Printf("auth: revoke the replaced session: %v", err)
 		}
 	}
-	auth.SetCookie(w, r, tok)
+	auth.SetCookie(w, r, a.net, tok)
 	writeJSON(w, http.StatusOK, a.meOf(r, u))
 }
 
@@ -201,13 +227,8 @@ func (a *authAPI) login(w http.ResponseWriter, r *http.Request) {
 // home/remote so a stranger guessing from the internet cannot lock the
 // family out at home. On false the response has been written.
 func (a *authAPI) checkLogin(w http.ResponseWriter, r *http.Request, userID int64, password string) (auth.User, bool) {
-	trusted := a.net.IsTrusted(r)
+	keys, trusted := auth.LoginKeys(a.net, r, userID)
 	client := a.net.ClientKey(r)
-	where := "remote"
-	if trusted {
-		where = "home"
-	}
-	keys := []string{"ip:" + client, fmt.Sprintf("user:%d:%s", userID, where)}
 	if wait := a.throttle.Wait(keys...); wait > 0 {
 		tooMany(w, r, wait)
 		return auth.User{}, false
@@ -272,6 +293,9 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 		if !decode(w, r, &in) {
 			return
 		}
+		if !adminPasswordOK(w, r, true, in.Password) {
+			return
+		}
 		u, err := users.CreateFirstAdmin(r.Context(), in.Name, in.Password)
 		if errors.Is(err, auth.ErrSetupDone) {
 			writeErr(w, r, http.StatusForbidden, "Сервер уже настроен")
@@ -314,7 +338,7 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 				return
 			}
 		}
-		auth.ClearCookie(w, r)
+		auth.ClearCookie(w, r, network)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -325,7 +349,7 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			// every start of the web app renews the browser's cookie: a
 			// session used within its TTL never expires in the browser either
 			if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" && c.Value == auth.TokenFrom(r.Context()) {
-				auth.SetCookie(w, r, c.Value)
+				auth.SetCookie(w, r, network, c.Value)
 			}
 			writeJSON(w, 200, a.meOf(r, u))
 		})
@@ -386,6 +410,9 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 				if !decode(w, r, &in) {
 					return
 				}
+				if !adminPasswordOK(w, r, in.IsAdmin, in.Password) {
+					return
+				}
 				u, err := users.CreateUser(r.Context(), auth.NewUser(in))
 				if err != nil {
 					storeErr(w, r, err)
@@ -394,9 +421,8 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 				writeJSON(w, http.StatusCreated, u)
 			})
 			r.Patch("/api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-				id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-				if err != nil {
-					writeErr(w, r, http.StatusBadRequest, "Неверный id")
+				id, ok := idParam(w, r, "id")
+				if !ok {
 					return
 				}
 				var in struct {
@@ -417,6 +443,26 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 					*in.KindleEmail = strings.TrimSpace(*in.KindleEmail)
 					if *in.KindleEmail != "" && !validKindleEmail(*in.KindleEmail) {
 						writeErr(w, r, http.StatusBadRequest, "Адрес Kindle заканчивается на @kindle.com")
+						return
+					}
+				}
+				if in.Password != nil || (in.IsAdmin != nil && *in.IsAdmin) {
+					cur, err := users.Get(r.Context(), id)
+					if err != nil {
+						storeErr(w, r, err)
+						return
+					}
+					admin := cur.IsAdmin
+					if in.IsAdmin != nil {
+						admin = *in.IsAdmin
+					}
+					// a profile that becomes an administrator takes a new password: its
+					// old one may be as short as a non-admin's, and only the hash is kept
+					if admin && !cur.IsAdmin && (in.Password == nil || *in.Password == "") {
+						storeErr(w, r, auth.ErrAdminPassShort)
+						return
+					}
+					if in.Password != nil && !adminPasswordOK(w, r, admin, *in.Password) {
 						return
 					}
 				}
@@ -445,9 +491,8 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			// profile's app password (it may have been made from a session
 			// that is no longer theirs).
 			r.Delete("/api/users/{id}/app-password", func(w http.ResponseWriter, r *http.Request) {
-				id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-				if err != nil {
-					writeErr(w, r, http.StatusBadRequest, "Неверный id")
+				id, ok := idParam(w, r, "id")
+				if !ok {
 					return
 				}
 				if err := users.ResetAppPasswords(r.Context(), id); err != nil {
@@ -460,9 +505,8 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			r.Post("/api/users/{id}/photo", a.uploadPhoto)
 			r.Delete("/api/users/{id}/photo", a.deletePhoto)
 			r.Delete("/api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-				id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-				if err != nil {
-					writeErr(w, r, http.StatusBadRequest, "Неверный id")
+				id, ok := idParam(w, r, "id")
+				if !ok {
 					return
 				}
 				if err := users.Delete(r.Context(), id); err != nil {

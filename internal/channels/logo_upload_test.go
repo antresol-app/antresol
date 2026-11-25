@@ -91,7 +91,7 @@ func TestSaveLogoVersionAndIPTV(t *testing.T) {
 		t.Fatalf("version %d after %d", again.LogoVersion, got.LogoVersion)
 	}
 	var m bytes.Buffer
-	WriteM3U(&m, "https://h/iptv/t", []Channel{again})
+	WriteM3UWith(&m, "https://h/iptv/t", []Channel{again}, nil)
 	q := LogoQuery(again)
 	if !strings.Contains(m.String(), `tvg-logo="https://h/iptv/t/logo/`+itoa(again.ID)+`.png`+q+`"`) || q == "" {
 		t.Fatalf("m3u %s", m.String())

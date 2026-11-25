@@ -183,7 +183,7 @@ export default {
   'profiles.adminHint': 'Загрузки, источники, файлы и настройки.',
   'profiles.newPassword': 'Новый пароль',
   'profiles.tooShort': 'Не короче {n} символов',
-  'profiles.adminPassword': 'У администратора пароль обязателен — не короче 6 символов.',
+  'profiles.adminPassword': 'У администратора пароль обязателен — не короче 10 символов.',
   'profiles.passwordDropped': 'Пароль будет убран.',
   'profiles.keepEmpty': 'Оставьте пустым, чтобы не менять.',
   'profiles.optional': 'Можно не задавать.',

@@ -12,7 +12,7 @@ import (
 func TestWriteM3U(t *testing.T) {
 	var b bytes.Buffer
 	chans := []Channel{{ID: 3, Number: 12, Name: `Кино "90-х", хиты`, Category: "Кино по десятилетиям"}, {ID: 4, Number: 300, Name: "Мой"}}
-	if err := WriteM3U(&b, "https://tv.example/iptv/tok", chans); err != nil {
+	if err := WriteM3UWith(&b, "https://tv.example/iptv/tok", chans, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := `#EXTM3U url-tvg="https://tv.example/iptv/tok/epg.xml" x-tvg-url="https://tv.example/iptv/tok/epg.xml"

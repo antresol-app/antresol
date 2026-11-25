@@ -175,8 +175,12 @@ func init() {
 // maxOffset bounds a page offset (a search loads offset+size rows).
 const maxOffset = 100000
 
-// maxForm bounds a POST form (a playlist of 5000 songIds fits).
+// maxForm bounds a POST form (a playlist of 5000 songIds fits); formWait is
+// how long it may take to arrive.
 const maxForm = 1 << 20
+
+// formWait: a variable for the tests.
+var formWait = 30 * time.Second
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the request language (idempotent under cmd/vault's i18n.Middleware)
@@ -184,7 +188,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/rest/")
 	name = strings.ToLower(strings.TrimSuffix(name, ".view"))
 	c := &call{s: s, w: w, r: r, ctx: r.Context(), albums: map[int64]*library.Item{}, artistNames: map[int64]string{}}
-	if r.Body != nil {
+	if r.Body != nil && r.Body != http.NoBody {
+		// a form read before anyone is signed in: a client that drips it must not hold the connection
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(formWait))
 		r.Body = http.MaxBytesReader(w, r.Body, maxForm)
 	}
 	if err := r.ParseForm(); err != nil {

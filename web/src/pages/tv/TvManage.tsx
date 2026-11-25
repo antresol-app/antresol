@@ -10,11 +10,13 @@ import { APP_NAME } from '../../brand'
 import { errorText } from '../../api/client'
 import { deleteChannel, generateChannels, getChannels, restoreChannel, updateChannel, type Channel, type ChannelRules, type RemovedChannel } from '../../api/channels'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { t as tr, useT } from '../../i18n'
 import { useSession } from '../../state/session'
 import { useLoad } from '../../state/useLoad'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { IconButton } from '../../ui/IconButton'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
@@ -189,19 +191,10 @@ export function TvManage() {
           </GroupedSection>
         )}
         {state.status === 'error' && (
-          <div className={styles.empty} role="alert">
-            <p>{state.message}</p>
-            <Button variant="secondary" onClick={() => load()}>
-              {t('common.retry')}
-            </Button>
-          </div>
+          <LoadFailed title={t('common.loadFailed')} message={state.message} retry={t('common.retry')} onRetry={() => load()} />
         )}
         {data && data.channels.length === 0 && (
-          <div className={styles.empty}>
-            <Icon name="broadcast" size={48} strokeWidth={1.4} />
-            <h2>{t('tv.empty')}</h2>
-            <p>{me.isAdmin ? t('tv.emptyAdmin') : t('tv.emptyOthers')}</p>
-          </div>
+          <EmptyState icon={<Icon name="broadcast" size={48} strokeWidth={1.4} />} title={t('tv.empty')} hint={me.isAdmin ? t('tv.emptyAdmin') : t('tv.emptyOthers')} />
         )}
         {data && data.channels.length > 0 && (
             <GroupedSection title={t('tv.channels')}>

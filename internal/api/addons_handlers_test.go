@@ -483,7 +483,7 @@ func TestAddonWebStyle(t *testing.T) {
 		t.Fatalf("web: %d %s", w.Code, w.Body)
 	}
 	w = e.do("GET", "/addons/hello/ui/index.css?v=1.0.0", "", e.admin)
-	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") || w.Header().Get("Cache-Control") != "no-cache" {
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/css") || w.Header().Get("Cache-Control") != addonVersionedCache {
 		t.Fatalf("css: %d %q %q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"))
 	}
 	if w := e.do("GET", "/addons/hello/ui/index.css", "", e.kid); w.Code != 403 {
@@ -555,6 +555,24 @@ func TestAddonProxyHeaders(t *testing.T) {
 	}
 	if u.ID != 1 || u.Name != "Папа" || !u.IsAdmin || u.IsKid || u.Lang != "ru" {
 		t.Fatalf("user = %+v (%s)", u, users[0])
+	}
+	// the header is signed for the process on the socket the request went to
+	// (and a header the browser sent does not pass as one)
+	sigs := got.Headers.Values("X-Antresol-User-Sig")
+	if len(sigs) != 1 {
+		t.Fatalf("X-Antresol-User-Sig = %v", sigs)
+	}
+	t.Setenv(addonkit.UserKeyEnv, addons.UserKey(e.echo.sock))
+	t.Setenv(addonkit.AcceptUnsignedEnv, "off")
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set(addonkit.UserHeader, users[0])
+	r.Header.Set(addonkit.UserSigHeader, sigs[0])
+	if who, ok := addonkit.UserFrom(r); !ok || who.ID != 1 || !who.IsAdmin {
+		t.Fatalf("the addon cannot verify the signature: %+v %v", who, ok)
+	}
+	t.Setenv(addonkit.UserKeyEnv, addons.UserKey(e.echo.sock+"2"))
+	if _, ok := addonkit.UserFrom(r); ok {
+		t.Fatal("another process's key verifies the signature")
 	}
 	if w.Header().Get("Set-Cookie") != "" {
 		t.Error("addon set a cookie")
@@ -711,15 +729,32 @@ func TestAddonCoreAPI(t *testing.T) {
 	}
 }
 
+// addonVersionedCache: what a bundle asked for by its version's URL is sent with.
+const addonVersionedCache = "private, max-age=31536000, immutable"
+
 func TestAddonStatic(t *testing.T) {
 	e := newAddonEnv(t)
 	w := e.do("GET", "/addons/hello/ui/index.js", "", e.admin)
 	if w.Code != 200 || w.Body.String() != "export default 1\n" || w.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatalf("bundle: %d %v %s", w.Code, w.Header(), w.Body)
 	}
-	// the entry the web list gives (?v=<version>) is the same file
-	if w := e.do("GET", "/addons/hello/ui/index.js?v=1.0.0", "", e.admin); w.Code != 200 || w.Body.String() != "export default 1\n" {
-		t.Fatalf("bundle with ?v: %d %s", w.Code, w.Body)
+	// the entry the web list gives (?v=<version>) is the same file, kept for
+	// good; another version's URL is checked as a bare one is
+	if w := e.do("GET", "/addons/hello/ui/index.js?v=1.0.0", "", e.admin); w.Code != 200 || w.Body.String() != "export default 1\n" ||
+		w.Header().Get("Cache-Control") != addonVersionedCache {
+		t.Fatalf("bundle with ?v: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if w := e.do("GET", "/addons/hello/ui/index.js?v=0.9.0", "", e.admin); w.Code != 200 || w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("bundle with another ?v: %d %v", w.Code, w.Header())
+	}
+	// a local build under development keeps its version while its code changes
+	e.fake.mu.Lock()
+	local := e.fake.installed["hello"]
+	local.Source = addons.LocalPrefix + "hello"
+	e.fake.installed["hello"] = local
+	e.fake.mu.Unlock()
+	if w := e.do("GET", "/addons/hello/ui/index.js?v=1.0.0", "", e.admin); w.Code != 200 || w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("local bundle with ?v: %d %v", w.Code, w.Header())
 	}
 	if w := e.do("GET", "/addons/hello/ui/index.js", "", e.kid); w.Code != 403 {
 		t.Fatalf("kid: %d", w.Code)
@@ -1121,7 +1156,7 @@ func TestAddonProxyHeaders_MaxRating(t *testing.T) {
 // meets the proxy's refusal.
 func TestAddonMediaKey(t *testing.T) {
 	e := newAddonEnv(t, func(d *Deps) { withMediaKeys(d, nil) })
-	key := e.mediaKey(e.deviceLogin(1, "secret", "phone-0001"))
+	key := e.mediaKey(e.deviceLogin(1, adminPass, "phone-0001"))
 	w := e.do("GET", "/api/addons/hello/x/media/echo?a=1&"+mk(key), "", nil)
 	if w.Code != 200 {
 		t.Fatalf("keyed media: %d %s", w.Code, w.Body)

@@ -25,6 +25,7 @@ import { Toggle } from '../../ui/Toggle'
 import { session, useSession } from '../../state/session'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { t, useT } from '../../i18n'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 import styles from './Profiles.module.css'
 
@@ -92,7 +93,7 @@ export function Profiles() {
       )}
       {!list && !error && (
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t('downloads.loading')}
+          <Spinner track className={m.spinner} /> {t('downloads.loading')}
         </div>
       )}
       {list && (
@@ -218,8 +219,10 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
   const [error, setError] = useState('')
   const [appReset, setAppReset] = useState('')
   const hasPassword = (user?.hasPassword ?? false) && !dropPassword
-  const needsPassword = admin && !hasPassword && !password
-  const tooShort = password !== '' && [...password].length < (admin ? 6 : 4)
+  // an administrator needs a password of 10 or more; a profile that becomes one sets a new one
+  const needsPassword = admin && !password && (!hasPassword || !user?.isAdmin)
+  const minPassword = admin ? 10 : 4
+  const tooShort = password !== '' && [...password].length < minPassword
 
   const save = async () => {
     setBusy(true)
@@ -318,7 +321,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
             if (e.target.value) setDropPassword(false)
           }}
           autoComplete="new-password"
-          error={tooShort ? t('profiles.tooShort', { n: admin ? 6 : 4 }) : undefined}
+          error={tooShort ? t('profiles.tooShort', { n: minPassword }) : undefined}
           hint={
             admin
               ? t('profiles.adminPassword')

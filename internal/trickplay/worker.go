@@ -369,7 +369,6 @@ func (w *Worker) Pass(ctx context.Context) error {
 	if err := os.MkdirAll(w.Dir, 0o755); err != nil {
 		return err
 	}
-	w.sweepTmp()
 	w.scanUsage()
 	tried := map[int64]bool{}
 	full := false // the background stopped at the budget
@@ -618,14 +617,22 @@ func dirBytes(dir string) int64 {
 }
 
 // scanUsage reads what the previews on disk take (once a pass; file and
-// fit keep it current).
+// fit keep it current) and deletes the half-made previews a stop left
+// behind. A preview is never changed once made, so the sizes known from
+// the last pass are kept: only a new directory is measured, and the rest
+// cost one stat (for when it was last viewed).
 func (w *Worker) scanUsage() {
+	prev := w.usage
 	w.usage = map[string]used{}
 	ents, err := os.ReadDir(w.Dir)
 	if err != nil {
 		return
 	}
 	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			os.RemoveAll(filepath.Join(w.Dir, e.Name()))
+			continue
+		}
 		if !e.IsDir() || strings.Contains(e.Name(), ".") {
 			continue
 		}
@@ -634,7 +641,11 @@ func (w *Worker) scanUsage() {
 		if err != nil {
 			continue
 		}
-		w.usage[e.Name()] = used{bytes: dirBytes(d), viewed: st.ModTime()}
+		u, ok := prev[e.Name()]
+		if !ok {
+			u.bytes = dirBytes(d)
+		}
+		w.usage[e.Name()] = used{bytes: u.bytes, viewed: st.ModTime()}
 	}
 }
 
@@ -681,19 +692,6 @@ func (w *Worker) clear() {
 	}
 	w.usage = map[string]used{}
 	w.log().Info("trickplay: previews turned off, deleted")
-}
-
-// sweepTmp deletes the half-made previews a stop left behind.
-func (w *Worker) sweepTmp() {
-	ents, err := os.ReadDir(w.Dir)
-	if err != nil {
-		return
-	}
-	for _, e := range ents {
-		if strings.HasSuffix(e.Name(), ".tmp") {
-			os.RemoveAll(filepath.Join(w.Dir, e.Name()))
-		}
-	}
 }
 
 // prune deletes the previews (and failure notes) of files no longer in

@@ -31,8 +31,8 @@
   font-size: calc(var(--logo-h) * 0.46);
   line-height: 1;
   letter-spacing: 0.01em;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  color: var(--label-over-art);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); /* ds-allow: art, the initials' own shade */
   white-space: nowrap;
   user-select: none;
 }
@@ -41,7 +41,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.12); /* ds-allow: art, a shade over a bright gradient */
   pointer-events: none;
 }
 .tile {
@@ -49,7 +49,7 @@
   isolation: isolate;
 }
 .tile::before {
-  z-index: -1;
+  z-index: var(--z-behind);
 }
 .tone1 {
   background: var(--grad-1);

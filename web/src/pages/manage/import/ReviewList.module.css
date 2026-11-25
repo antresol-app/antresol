@@ -29,7 +29,8 @@
 }
 .reason {
   margin-top: var(--s-1);
-  font: 600 13px / 1.35 var(--font-text);
+  font: var(--t-footnote-em);
+  line-height: 1.35;
   color: var(--warning);
 }
 .actions {

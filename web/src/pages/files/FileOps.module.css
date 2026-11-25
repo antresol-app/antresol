@@ -1,0 +1,6 @@
+/* a failed operation, under the sheet's message */
+.error {
+  margin-top: var(--s-2h);
+  color: var(--destructive-text);
+  font: var(--t-footnote);
+}

@@ -27,7 +27,7 @@
   border-radius: max(var(--r-xs), 4%);
   box-shadow:
     0 0 0 0.5px rgba(255, 255, 255, 0.16),
-    0 1px 3px rgba(0, 0, 0, 0.45);
+    0 1px 3px rgba(0, 0, 0, 0.45); /* ds-allow: art, a picture's own edge */
 }
 /* Folder with a poster: the poster stands upright, a small folder sits on its corner. */
 .poster img {

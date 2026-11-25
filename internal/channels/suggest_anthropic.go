@@ -91,10 +91,7 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string, schem
 			if json.Unmarshal([]byte(detail), &body) == nil && body.Error.Message != "" {
 				detail = body.Error.Message // the provider's own words, not its JSON
 			}
-			if r := []rune(detail); len(r) > 200 {
-				detail = string(r[:200]) + "…"
-			}
-			return "", fmt.Errorf("llm: %d %s", apiErr.StatusCode, detail)
+			return "", fmt.Errorf("llm: %d %s", apiErr.StatusCode, clipRunes(detail, 200, "…"))
 		}
 		return "", fmt.Errorf("llm: %w", err)
 	}

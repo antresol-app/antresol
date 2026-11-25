@@ -27,3 +27,25 @@ func TestTrustedNetsAndProxies(t *testing.T) {
 		t.Fatalf("defaults should be empty: %v %v", c.TrustedNets, c.TrustedProxies)
 	}
 }
+
+func TestTrustedHosts(t *testing.T) {
+	t.Setenv("VAULT_HWACCEL", "")
+	t.Setenv("VAULT_TRUSTED_HOSTS", " Media.Example.org., *.lan.example ,,")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.TrustedHosts) != 2 || c.TrustedHosts[0] != "media.example.org" || c.TrustedHosts[1] != "*.lan.example" {
+		t.Fatalf("hosts %v", c.TrustedHosts)
+	}
+	for _, bad := range []string{"https://media.example.org", "media.example.org:8420", "media.example.org/x", "a b"} {
+		t.Setenv("VAULT_TRUSTED_HOSTS", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	t.Setenv("VAULT_TRUSTED_HOSTS", "")
+	if c, _ = Load(); len(c.TrustedHosts) != 0 {
+		t.Fatalf("default %v", c.TrustedHosts)
+	}
+}

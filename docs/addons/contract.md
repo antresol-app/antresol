@@ -180,7 +180,7 @@ it is not installed), and the app shows it as locked.
 | `access` | optional: `admins` (default) or `adults` - who may open the addon's UI and proxy (see [Who gets an addon](#who-gets-an-addon)); anything else is refused |
 | `hooks` | optional list of hooks the addon answers: `files.plan`, `files.pause`, `files.resume`, `files.stop`, `files.detach`, `files.attach`, `play.progress`, `library.pending`, `disk.usage`, `requests.open`, `requests.title`, `requests.search`, `tracking.titles`, `tracking.watched`, `notify.interest`, `voiceover.origLang`, `trailers.fetch`, `import.services`, `import.stop`, `import.resolve`, `import.search`, `migrate.leftovers`, `library.afterScan`, `home.continue`, `channels.ready`, `channels.candidates`, `channels.resolve`, `channels.release`, `channels.fetch`, `helpers.status`, and `tracking.scan:<kind>` (kind `^[a-z][a-z0-9-]{0,19}$`); unknown or repeated ones are refused, so is a list with some of the four `channels.*` hooks but not all («Нужны все хуки channels.*»), and so is a `kind` that is `library` or another installed addon's (install and update alike, see [Tracking scanners](#tracking-scanners-trackingscankind)) |
 | `notify` | optional list of `{ "topic", "title": { "ru", "en" }, "audience" }`; `topic` is `^[a-z][a-z0-9-]{0,29}$` and unique, `audience` is `admins` or `adults` |
-| `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health", "title"? }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
+| `helpers` | optional list of [helper services](#helper-services-helpers) the addon needs beside the server: `{ "name", "image", "port", "health", "title"?, "limits"? }`, at most 4, names unique; anything wrong in it is refused («Неверный манифест расширения: неверная служба») |
 | `author`, `homepage` | free text, shown before install |
 
 Unknown fields, and anything after the JSON object, are refused. A platform asset name is a bare file name (no
@@ -208,6 +208,7 @@ project's internal network. The manifest declares it:
 | `port` | the port it listens on inside the network, 1-65535 |
 | `health` | the path asked to tell it is up (`/` is fine): `/` then letters, digits and `._~/-`, no `..`, no query; any answer below 400 counts, a redirect is not followed |
 | `title` | optional `{ "ru", "en" }`: the service's name for people on «Здоровье» (`Unlocker`), at most 60 characters each, no control characters; without it the page shows `name`. A server older than this key refuses a manifest that has it |
+| `limits` | optional `{ "memory"?, "cpus"? }`: what the container may use, written into the compose block (`mem_limit`, `cpus`). `memory` is a whole number of `m` or `g` (`512m`, `1g`), 64m to 64g, default `1536m`; `cpus` is 0.1 to 32, default none (no CPU cap). The block always carries `pids_limit: 4096` (a browser's threads count), `cap_drop: [ALL]` and `no-new-privileges`. The defaults are no tighter than what helpers ran with before limits existed; size a limit down only after measuring the service, because a cap that is too low restarts it. A server older than this key refuses a manifest that has it |
 
 Unknown keys are refused, as anywhere in the manifest. The field is an
 addition to contract 1: an addon without it works as before, and a server
@@ -240,9 +241,13 @@ port: only the server and the other services of the project reach it.
 ## The process
 
 The server starts `bin/addon` with no arguments, in the data directory, in a
-process group of its own, with the server's environment minus every
-`VAULT_*` and `ANTRESOL_*` variable except the addon's own `ANTRESOL_<ID>_*`
-(below), plus:
+process group of its own, with the addon's own `ANTRESOL_<ID>_*` variables
+(below) and the few of the server's that a process needs (`PATH`, `HOME`,
+`USER`, `LOGNAME`, `TMPDIR`, `LD_LIBRARY_PATH`, `TZ`, `ZONEINFO`, `LANG`,
+`LANGUAGE`, `LC_*`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`,
+`HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY` and their lower-case forms,
+`GOMAXPROCS`, `GOMEMLIMIT`, `GOGC`, `GODEBUG`, `LIBVA_DRIVER_NAME`): no other
+variable of the server's, passwords and keys of its `.env` among them. Plus:
 
 | Variable | Value |
 | --- | --- |
@@ -251,6 +256,8 @@ process group of its own, with the server's environment minus every
 | `ANTRESOL_ADDON_SOCKET` | the Unix socket to serve HTTP on |
 | `ANTRESOL_CORE_URL` | where the server listens, for the core API: `http://127.0.0.1:<port>` when `VAULT_LISTEN` binds every address (or names no host), else the host it binds |
 | `ANTRESOL_ADDON_TOKEN` | the addon's token for the core API: **a fresh one on every start**; the previous one stops working |
+| `ANTRESOL_ADDON_USER_KEY` | the key the server signs `X-Antresol-User` with for this process (64 hex characters, a new one on every start); `addonkit.UserFrom` checks it, so an addon that parses the header itself must check `X-Antresol-User-Sig` the same way (see [Who asks](#the-proxy-the-app--the-addon)) |
+| `ANTRESOL_ADDON_ACCEPT_UNSIGNED` | `off`, or `on` when the admin set `VAULT_ADDONS_ACCEPT_UNSIGNED=on`: whether a header without a signature is still taken. With a key set it is refused unless this is `on` |
 | `ANTRESOL_CONTRACT` | `1` |
 | `ANTRESOL_LOCALE` | the server's default language, `ru` or `en` |
 
@@ -265,6 +272,8 @@ ANTRESOL_ADDON_DATA_DIR
 ANTRESOL_ADDON_SOCKET
 ANTRESOL_CORE_URL
 ANTRESOL_ADDON_TOKEN
+ANTRESOL_ADDON_USER_KEY
+ANTRESOL_ADDON_ACCEPT_UNSIGNED
 ANTRESOL_CONTRACT
 ANTRESOL_LOCALE
 ```
@@ -312,6 +321,21 @@ streams the answer back.
   `uid` is the stable profile key (32 lower-case hex digits): `id` may be
   reused after a profile is deleted, a `uid` never is and never changes.
   Key per-profile rows by `uid`.
+  The header is **signed**: `X-Antresol-User-Sig` is `<unix seconds>.<hex>`,
+  the hex being HMAC-SHA256 of the text `<seconds>.<the header's value>`
+  (the header exactly as received) under the key `ANTRESOL_ADDON_USER_KEY`.
+  The key is the variable's text as it is, its 64 ASCII characters; it is
+  **not** hex-decoded. A signature more than 5 minutes from now is stale.
+  Without it another process that can open the addon's socket (another
+  addon, running as the same user) could write the header and act as an
+  admin. `addonkit.UserFrom` does the check: a wrong, stale or missing
+  signature is refused (a missing one is taken only when the admin set
+  `VAULT_ADDONS_ACCEPT_UNSIGNED=on`, an escape hatch for requests made by
+  hand). Without `ANTRESOL_ADDON_USER_KEY` (a server before signing) the
+  header is taken as it is. This stops a process that *writes* the header;
+  processes of the same OS user can still read each other's environment
+  (`/proc/<pid>/environ`), and so the key, as they can the addon's token:
+  same user, same trust, until addons run as users of their own.
   A profile with a rating limit also carries `"maxRating"`, one of
   `0+`, `6+`, `12+`, `16+`, `18+` (a kid without one of its own: `12+`);
   absent or `null` means no limit. It is the limit the server's own rating
@@ -2222,6 +2246,11 @@ The SDK (`@antresol/addon-sdk`):
   **best effort** (see Versioning); `Icon` and its names.
   `ui.Badges({ items, className?, inline? })` draws badges as a list, or
   with `inline` as spans (inside a button or a label).
+  Newer parts: `ui.Spinner`, `ui.EmptyState`, `ui.Skeleton`, `ui.Slider`,
+  `ui.ListSelectRow`, `ui.TextArea`, `ui.Chips` (`multiple` for toggles) and
+  `ui.RankedList`. A server older than the one that added a part does not
+  have it (the name is `undefined`), so an addon uses one once the servers
+  it targets have it. `ui.Chips` is not the root `Chips` below.
 - `ui.Player`: the core's full-window video player, behind `React.lazy`:
   its code (and hls.js) loads on its first render, never with the app or
   with the addon's bundle, so render it inside a `Suspense` (a

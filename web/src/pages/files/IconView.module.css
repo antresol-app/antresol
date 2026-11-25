@@ -46,7 +46,8 @@
   overflow: hidden;
   padding: 1px 5px;
   border-radius: var(--r-xs);
-  font: 500 12px / 15px var(--font-text);
+  font: var(--t-caption);
+  line-height: 15px;
   letter-spacing: 0;
   text-align: center;
   overflow-wrap: anywhere;

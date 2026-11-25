@@ -59,7 +59,7 @@ func TestAddonHelpersHealth(t *testing.T) {
 	}
 
 	// at its own address any HTTP answer is up (the service's root may say 404)
-	probeHelper = func(context.Context, string, addons.Helper) error { return statusErr(404) }
+	probeHelper = func(context.Context, string, addons.Helper) error { return &addonkit.HelperStatusError{Code: 404} }
 	w = e.do("GET", "/api/addons/helpers", "", e.admin)
 	out = nil
 	if json.Unmarshal(w.Body.Bytes(), &out) != nil || !out[0].OK {
@@ -100,7 +100,7 @@ func TestAddonHelpersHealthTold(t *testing.T) {
 func TestAddonHelpersHealthAuth(t *testing.T) {
 	old := probeHelper
 	t.Cleanup(func() { probeHelper = old })
-	probeHelper = func(context.Context, string, addons.Helper) error { return statusErr(401) }
+	probeHelper = func(context.Context, string, addons.Helper) error { return &addonkit.HelperStatusError{Code: 401} }
 	t.Setenv("ANTRESOL_LIB_CACHE_SVC_URL", "http://10.0.0.9:8191/")
 	e := newAddonEnv(t)
 	w := e.do("GET", "/api/addons/helpers", "", e.admin)

@@ -1,6 +1,7 @@
 // A responsive grid of poster cards for the Фильмы / Сериалы sections.
 import type { Card as CardData } from '../api/types'
 import { Card, cardKey, type CardVariant } from './Card'
+import { Skeleton } from '../ui/Skeleton'
 import styles from './PosterGrid.module.css'
 
 export interface PosterGridProps {
@@ -27,7 +28,7 @@ export function PosterGridSkeleton({ count = 21, variant = 'poster' }: { count?:
     <ul className={`${styles.grid} ${variant === 'square' ? styles.squareGrid : ''}`} aria-hidden>
       {Array.from({ length: count }, (_, i) => (
         <li key={i} className={styles.cell}>
-          <div className={styles.skeleton} />
+          <Skeleton className={styles.skeleton} />
         </li>
       ))}
     </ul>

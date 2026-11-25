@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,12 +62,7 @@ type holdIndex struct {
 	byKey  map[string]*addonkit.Hold // "<addon id>\x00<key>"
 }
 
-func (h *Holds) log() *slog.Logger {
-	if h.Log != nil {
-		return h.Log
-	}
-	return slog.Default()
-}
+func (h *Holds) log() *slog.Logger { return cmp.Or(h.Log, slog.Default()) }
 
 // Load replaces the index with the saved sets of the installed addons.
 // A saved hold no longer valid (its root left the file browser, an entry

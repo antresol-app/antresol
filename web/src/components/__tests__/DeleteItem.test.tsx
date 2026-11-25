@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { DeleteItem } from '../DeleteItem'
-import { Notice } from '../Notice'
+import { ToastHost } from '../ToastHost'
 import { clearNotice } from '../../state/notice'
 import type { DeletePlan } from '../../api/types'
 
@@ -52,7 +52,7 @@ describe('DeleteItem', () => {
     render(
       <>
         <DeleteItem itemId={10} title="Сёгун" onDeleted={onDeleted} />
-        <Notice />
+        <ToastHost />
       </>,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
@@ -97,7 +97,7 @@ describe('DeleteItem', () => {
     render(
       <>
         <DeleteItem itemId={5} title="Брат" onDeleted={onDeleted} />
-        <Notice />
+        <ToastHost />
       </>,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
@@ -126,7 +126,7 @@ describe('DeleteItem', () => {
     render(
       <>
         <DeleteItem itemId={5} title="Брат" onDeleted={() => {}} />
-        <Notice />
+        <ToastHost />
       </>,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))

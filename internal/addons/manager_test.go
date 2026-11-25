@@ -299,6 +299,37 @@ func TestManager_Remove(t *testing.T) {
 	}
 }
 
+// A remove that fails half way leaves the row, so that it can be run again
+// and finish: the files are not orphaned behind an addon that is gone.
+func TestManager_RemoveRetriesAFailedStep(t *testing.T) {
+	m, dev := newManager(t)
+	ctx := context.Background()
+	writeLocal(t, dev, "hello", "1.0.0", "ok", true)
+	if _, err := m.Install(ctx, "local:hello", ""); err != nil {
+		t.Fatal(err)
+	}
+	good := &RefStore{DB: m.Store.DB}
+	bad := openTestDB(t)
+	bad.Close()
+	m.Refs = &RefStore{DB: bad}
+	if err := m.Remove(ctx, "hello", false); err == nil {
+		t.Fatal("a failed step must be an error")
+	}
+	if _, err := m.Store.Get(ctx, "hello"); err != nil {
+		t.Fatalf("row after the failure: %v", err)
+	}
+	m.Refs = good
+	if err := m.Remove(ctx, "hello", false); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if _, err := m.Store.Get(ctx, "hello"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("row after the retry: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(m.Sup.Dir, "hello", "1.0.0")); !os.IsNotExist(err) {
+		t.Fatalf("version dir: %v", err)
+	}
+}
+
 func TestManager_LocalSourceChecks(t *testing.T) {
 	m, dev := newManager(t)
 	ctx := context.Background()

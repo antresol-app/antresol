@@ -408,6 +408,40 @@ func factsCurrent(data string) bool {
 	return json.Unmarshal([]byte(data), &v) == nil && v.V >= wikidata.FactsVersion
 }
 
+// wikidataKind is the kind wikidata_facts keys a library title of kind by.
+func wikidataKind(kind string) string {
+	if kind == library.KindSeries {
+		return "tv"
+	}
+	return "movie"
+}
+
+// cachedFact is a row of wikidata_facts.
+type cachedFact struct {
+	data string
+	at   int64
+}
+
+// cachedFacts reads the facts cache of wikidata kind wk, by TMDB id: one
+// query for a pass, not one per title.
+func (s *Store) cachedFacts(ctx context.Context, wk string) (map[int]cachedFact, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT tmdb_id, data, fetched_at FROM wikidata_facts WHERE kind=?`, wk)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]cachedFact{}
+	for rows.Next() {
+		var id int
+		var x cachedFact
+		if err := rows.Scan(&id, &x.data, &x.at); err != nil {
+			return nil, err
+		}
+		out[id] = x
+	}
+	return out, rows.Err()
+}
+
 // facts are Wikidata's facts of the titles by item id, cached in
 // wikidata_facts; Wikidata off or failing: what the cache has, expired or not.
 func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wikidata.TitleFacts, string) {
@@ -420,9 +454,10 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wi
 	fresh := f.Store.now().Add(-franchiseWikiTTL).Unix()
 	failed := false
 	for _, kind := range []string{library.KindMovie, library.KindSeries} {
-		wk := "movie"
-		if kind == library.KindSeries {
-			wk = "tv"
+		wk := wikidataKind(kind)
+		cache, err := f.Store.cachedFacts(ctx, wk)
+		if err != nil {
+			log.Printf("channels: franchises: cached facts: %v", err)
 		}
 		byTMDB := map[int]int64{}
 		stale := map[int]string{} // expired rows: what Wikidata being down falls back to
@@ -432,18 +467,16 @@ func (f *Franchises) facts(ctx context.Context, titles []libTitle) (map[int64]wi
 				continue
 			}
 			byTMDB[t.TMDB] = t.ID
-			var data string
-			var at int64
-			err := f.Store.DB.QueryRowContext(ctx, `SELECT data, fetched_at FROM wikidata_facts WHERE kind=? AND tmdb_id=?`, wk, t.TMDB).Scan(&data, &at)
-			if err == nil && (at >= fresh && factsCurrent(data) || failed) {
+			row, cached := cache[t.TMDB]
+			if cached && (row.at >= fresh && factsCurrent(row.data) || failed) {
 				var x wikidata.TitleFacts
-				if data != "" && json.Unmarshal([]byte(data), &x) == nil {
+				if row.data != "" && json.Unmarshal([]byte(row.data), &x) == nil {
 					out[t.ID] = x
 				}
 				continue
 			}
-			if err == nil {
-				stale[t.TMDB] = data
+			if cached {
+				stale[t.TMDB] = row.data
 			}
 			missing = append(missing, t.TMDB)
 		}
@@ -512,20 +545,21 @@ func (f *Franchises) Evidence(ctx context.Context) (FranchiseEvidence, error) {
 		return ev, err
 	}
 	ev.Titles = len(titles)
-	for _, t := range titles {
-		wk := "movie"
-		if t.Kind == library.KindSeries {
-			wk = "tv"
+	cache := map[string]map[int]cachedFact{}
+	for _, wk := range []string{wikidataKind(library.KindMovie), wikidataKind(library.KindSeries)} {
+		if cache[wk], err = f.Store.cachedFacts(ctx, wk); err != nil {
+			return ev, err
 		}
-		var data string
-		err := f.Store.DB.QueryRowContext(ctx, `SELECT data FROM wikidata_facts WHERE kind=? AND tmdb_id=?`, wk, t.TMDB).Scan(&data)
-		if err != nil {
+	}
+	for _, t := range titles {
+		row, ok := cache[wikidataKind(t.Kind)][t.TMDB]
+		if !ok {
 			ev.Untied[t.ID] = true
 			continue
 		}
 		ev.Read++
 		var x wikidata.TitleFacts
-		if data != "" && json.Unmarshal([]byte(data), &x) == nil && len(x.Anchors) > 0 {
+		if row.data != "" && json.Unmarshal([]byte(row.data), &x) == nil && len(x.Anchors) > 0 {
 			ev.Tied++
 		} else {
 			ev.Untied[t.ID] = true

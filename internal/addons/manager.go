@@ -33,8 +33,9 @@ type Manager struct {
 	// Dev is a directory of local addons (VAULT_ADDONS_DEV): source
 	// "local:<name>" installs the LocalRelease in Dev/<name>. "": none.
 	Dev string
-	// OnRemove (optional) runs after an addon's row is deleted, for what
-	// the core keeps of it elsewhere (its notification topics and letters).
+	// OnRemove (optional) runs when an addon is removed (again on a retry
+	// of a remove that failed), for what the core keeps of it elsewhere
+	// (its notification topics and letters).
 	OnRemove func(ctx context.Context, id string)
 
 	mu    sync.Mutex
@@ -478,18 +479,20 @@ func (m *Manager) Remove(ctx context.Context, id string, deleteData bool) error 
 	return m.removeLocked(ctx, id, deleteData)
 }
 
+// removeLocked ends with the row: every step before it can run again, so a
+// remove that failed half way is retried while the row is still there.
 func (m *Manager) removeLocked(ctx context.Context, id string, deleteData bool) error {
 	if _, err := m.Store.Get(ctx, id); err != nil {
 		return err
 	}
 	m.Sup.Stop(id)
-	if err := m.Store.Delete(ctx, id); err != nil {
-		return err
-	}
 	if err := m.dropState(ctx, id, deleteData); err != nil {
 		return err
 	}
-	return m.removeFiles(id, deleteData)
+	if err := m.removeFiles(id, deleteData); err != nil {
+		return err
+	}
+	return m.Store.Delete(ctx, id)
 }
 
 // dropState forgets what the core keeps of a removed addon: its
@@ -595,13 +598,6 @@ type UpdateCheck struct {
 	// Err: the check failed, or (NeedsCore) what the newer release needs;
 	// a user message.
 	Err error
-}
-
-// UpdateAvailable returns the version of the source's latest release when
-// it is newer than the installed one.
-func (m *Manager) UpdateAvailable(ctx context.Context, id string) (string, bool) {
-	c := m.CheckUpdate(ctx, id, false)
-	return c.Version, c.Version != ""
 }
 
 // CheckUpdate checks the source of an installed addon for a newer release.

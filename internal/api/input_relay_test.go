@@ -262,9 +262,16 @@ func TestInputRelay_Range(t *testing.T) {
 	if strings.Contains(got.header.Get("X-Antresol-User"), "Маша") {
 		t.Error("X-Antresol-User is not ASCII")
 	}
+	t.Setenv(addonkit.UserKeyEnv, addons.UserKey(e.sock))
+	t.Setenv(addonkit.AcceptUnsignedEnv, "off")
+	signed := httptest.NewRequest("GET", "/", nil)
+	signed.Header = got.header
+	if _, ok := addonkit.UserFrom(signed); !ok {
+		t.Error("the addon cannot verify the signature of X-Antresol-User")
+	}
 	for k := range got.header {
 		switch k {
-		case "Range", "X-Antresol-Input", "X-Antresol-User", "User-Agent":
+		case "Range", "X-Antresol-Input", "X-Antresol-User", "X-Antresol-User-Sig", "User-Agent":
 		case "Connection": // close: a new connection every time
 			if v := got.header.Get(k); v != "close" {
 				t.Errorf("Connection %q", v)
@@ -399,6 +406,7 @@ func TestInputRelay_HeaderWhitelist(t *testing.T) {
 			switch k {
 			case "Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "Etag",
 				"X-Content-Type-Options", "Content-Security-Policy":
+			case "Referrer-Policy", "Permissions-Policy": // the core's own (securityHeaders)
 			case "Vary": // the core's own (i18n)
 				if v := h.Get(k); v != "Accept-Language" {
 					t.Errorf("%s: Vary %q", name, v)

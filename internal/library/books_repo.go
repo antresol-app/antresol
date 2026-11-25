@@ -36,6 +36,68 @@ func bookMatchKey(path string) string {
 	return filepath.Dir(path) + "|" + release.Normalize(title)
 }
 
+// upsertScannedItem creates or refreshes the item of a scanned book or
+// audiobook and returns its id: found by match_key (key), else by one of its
+// files (paths). The scanner owns the title and the match_key; year and
+// overview are only filled when empty, and the poster is replaced only if the
+// scanner set it (setScanPoster).
+func upsertScannedItem(ctx context.Context, tx *sql.Tx, kind, key, title string, paths []string, year int, overview, cover string) (int64, error) {
+	var id int64
+	var prev sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT id, json_extract(meta_json,'$.scan_cover') FROM items WHERE kind=? AND match_key=? ORDER BY id LIMIT 1`,
+		kind, key).Scan(&id, &prev)
+	for i := 0; errors.Is(err, sql.ErrNoRows) && i < len(paths); i++ {
+		err = tx.QueryRowContext(ctx, `SELECT i.id, json_extract(i.meta_json,'$.scan_cover') FROM files f JOIN items i ON i.id=f.item_id
+		  WHERE f.path=? AND i.kind=?`, paths[i], kind).Scan(&id, &prev)
+	}
+	ts := now()
+	if errors.Is(err, sql.ErrNoRows) {
+		res, err := tx.ExecContext(ctx, `INSERT INTO items(kind,title,sort_title,year,overview,poster,match_key,added_at,updated_at)
+		  VALUES(?,?,?,?,?,?,?,?,?)`, kind, title, sortTitle(title), year, overview, nullStr(cover), key, ts, ts)
+		if err != nil {
+			return 0, err
+		}
+		return res.LastInsertId()
+	}
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE items SET title=?1, sort_title=?2, match_key=?3, updated_at=?4
+	  WHERE id=?5 AND (title IS NOT ?1 OR sort_title IS NOT ?2 OR match_key IS NOT ?3)`,
+		title, sortTitle(title), key, ts, id); err != nil {
+		return 0, err
+	}
+	if err := fillEmpty(ctx, tx, id, "", year, overview, "", 0, "", ""); err != nil {
+		return 0, err
+	}
+	return id, setScanPoster(ctx, tx, id, cover, prev.String)
+}
+
+// setScanPoster applies the scanner's poster rule to item id: cover (its
+// scan_cover now) replaces the poster when there is none or when the poster
+// is prev (the scan_cover stored before this scan), never an enricher's; with
+// no cover left, the poster the scanner set (prev) is cleared.
+func setScanPoster(ctx context.Context, x execer, id int64, cover, prev string) error {
+	var err error
+	if cover != "" {
+		_, err = x.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`, cover, id, prev)
+	} else if prev != "" {
+		_, err = x.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, id, prev)
+	}
+	return err
+}
+
+// trimmedNames is names without the blank ones, each trimmed (nil: none).
+func trimmedNames(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // UpsertBook creates or refreshes a book with its files, in one
 // transaction. The book is found by match_key, else by one of its files.
 // The scanner owns the title and its meta_json keys (authors, series,
@@ -52,57 +114,12 @@ func (r *Repo) UpsertBook(ctx context.Context, b BookInput) (int64, error) {
 	key := bookMatchKey(b.Files[0].Path)
 	var id int64
 	err := r.inTx(ctx, func(tx *sql.Tx) error {
-		var scanCover sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT id, json_extract(meta_json,'$.scan_cover') FROM items WHERE kind='book' AND match_key=? ORDER BY id LIMIT 1`,
-			key).Scan(&id, &scanCover)
-		if errors.Is(err, sql.ErrNoRows) {
-			for _, f := range b.Files {
-				err = tx.QueryRowContext(ctx, `SELECT i.id, json_extract(i.meta_json,'$.scan_cover') FROM files f JOIN items i ON i.id=f.item_id
-				  WHERE f.path=? AND i.kind='book'`, f.Path).Scan(&id, &scanCover)
-				if !errors.Is(err, sql.ErrNoRows) {
-					break
-				}
-			}
-		}
-		ts := now()
-		if errors.Is(err, sql.ErrNoRows) {
-			res, err := tx.ExecContext(ctx, `INSERT INTO items(kind,title,sort_title,year,overview,poster,match_key,added_at,updated_at)
-			  VALUES('book',?,?,?,?,?,?,?,?)`, title, sortTitle(title), b.Year, b.Description, nullStr(b.Cover), key, ts, ts)
-			if err != nil {
-				return err
-			}
-			if id, err = res.LastInsertId(); err != nil {
-				return err
-			}
-		} else if err != nil {
+		var err error
+		id, err = upsertScannedItem(ctx, tx, "book", key, title, filePaths(b.Files), b.Year, b.Description, b.Cover)
+		if err != nil {
 			return err
-		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET title=?1, sort_title=?2, match_key=?3, updated_at=?4
-			  WHERE id=?5 AND (title IS NOT ?1 OR sort_title IS NOT ?2 OR match_key IS NOT ?3)`,
-				title, sortTitle(title), key, ts, id); err != nil {
-				return err
-			}
-			if err := fillEmpty(ctx, tx, id, "", b.Year, b.Description, "", 0, "", ""); err != nil {
-				return err
-			}
-			if b.Cover != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`,
-					b.Cover, id, scanCover.String); err != nil {
-					return err
-				}
-			} else if scanCover.String != "" {
-				// the cover the scanner set is gone (X.jpg deleted)
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, id, scanCover.String); err != nil {
-					return err
-				}
-			}
 		}
-		var authors []string
-		for _, a := range b.Authors {
-			if a = strings.TrimSpace(a); a != "" {
-				authors = append(authors, a)
-			}
-		}
+		authors := trimmedNames(b.Authors)
 		// keys the scanner no longer finds are removed (nil), others' kept
 		meta := map[string]any{"authors": nil, "series_index": nil}
 		if len(authors) > 0 {
@@ -135,28 +152,37 @@ func (r *Repo) UpsertBook(ctx context.Context, b BookInput) (int64, error) {
 	return id, err
 }
 
-// storedBookFile is a visible files row of a visible book.
-type storedBookFile struct {
+// storedFile is a visible files row of a visible item, with the signature
+// of what its scanner read: the item's meta_json.scan_sig, or the file's own
+// files.scan_sig.
+type storedFile struct {
 	size, mtime, itemID int64
-	sig                 string // the book's meta_json.scan_sig
+	sig                 string
 }
 
-// bookFilesUnder returns the book files stored under root by path, for the
-// scanner's unchanged-book check.
-func (r *Repo) bookFilesUnder(ctx context.Context, root string) (map[string]storedBookFile, error) {
-	prefix := filepath.Clean(root) + string(filepath.Separator)
-	rows, err := r.db.QueryContext(ctx, `SELECT f.path, f.size, f.mtime, f.item_id, COALESCE(json_extract(i.meta_json,'$.scan_sig'),'')
+// The signature a scanner keeps: on the item (books) or on the file (video:
+// several files can be one item, each read on its own).
+const (
+	itemSigSQL = `COALESCE(json_extract(i.meta_json,'$.scan_sig'),'')`
+	fileSigSQL = `f.scan_sig`
+)
+
+// storedFilesUnder returns the files of the items of kinds (an SQL list of
+// constants, e.g. "('book')") stored under root by path, with the signature
+// sigSQL selects (itemSigSQL, fileSigSQL), for the scanners' unchanged checks.
+func (r *Repo) storedFilesUnder(ctx context.Context, root, kinds, sigSQL string) (map[string]storedFile, error) {
+	lo, hi := pathRange(root)
+	rows, err := r.db.QueryContext(ctx, `SELECT f.path, f.size, f.mtime, f.item_id, `+sigSQL+`
 	  FROM files f JOIN items i ON i.id=f.item_id
-	  WHERE i.kind='book' AND f.missing_since IS NULL AND i.missing_since IS NULL AND substr(f.path,1,?)=?`,
-		utf8.RuneCountInString(prefix), prefix)
+	  WHERE i.kind IN `+kinds+` AND f.missing_since IS NULL AND i.missing_since IS NULL AND f.path >= ? AND f.path < ?`, lo, hi)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]storedBookFile{}
+	out := map[string]storedFile{}
 	for rows.Next() {
 		var p string
-		var f storedBookFile
+		var f storedFile
 		if err := rows.Scan(&p, &f.size, &f.mtime, &f.itemID, &f.sig); err != nil {
 			return nil, err
 		}
@@ -226,50 +252,10 @@ func (r *Repo) UpsertAudiobook(ctx context.Context, a AudiobookInput) (int64, er
 	key := audiobookMatchKey(a)
 	var id int64
 	err := r.inTx(ctx, func(tx *sql.Tx) error {
-		var scanCover sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT id, json_extract(meta_json,'$.scan_cover') FROM items WHERE kind='audiobook' AND match_key=? ORDER BY id LIMIT 1`,
-			key).Scan(&id, &scanCover)
-		if errors.Is(err, sql.ErrNoRows) {
-			for _, f := range a.Files {
-				err = tx.QueryRowContext(ctx, `SELECT i.id, json_extract(i.meta_json,'$.scan_cover') FROM files f JOIN items i ON i.id=f.item_id
-				  WHERE f.path=? AND i.kind='audiobook'`, f.Path).Scan(&id, &scanCover)
-				if !errors.Is(err, sql.ErrNoRows) {
-					break
-				}
-			}
-		}
-		ts := now()
-		if errors.Is(err, sql.ErrNoRows) {
-			res, err := tx.ExecContext(ctx, `INSERT INTO items(kind,title,sort_title,year,overview,poster,match_key,added_at,updated_at)
-			  VALUES('audiobook',?,?,?,?,?,?,?,?)`, title, sortTitle(title), a.Year, a.Description, nullStr(a.Cover), key, ts, ts)
-			if err != nil {
-				return err
-			}
-			if id, err = res.LastInsertId(); err != nil {
-				return err
-			}
-		} else if err != nil {
+		var err error
+		id, err = upsertScannedItem(ctx, tx, "audiobook", key, title, filePaths(a.Files), a.Year, a.Description, a.Cover)
+		if err != nil {
 			return err
-		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET title=?1, sort_title=?2, match_key=?3, updated_at=?4
-			  WHERE id=?5 AND (title IS NOT ?1 OR sort_title IS NOT ?2 OR match_key IS NOT ?3)`,
-				title, sortTitle(title), key, ts, id); err != nil {
-				return err
-			}
-			if err := fillEmpty(ctx, tx, id, "", a.Year, a.Description, "", 0, "", ""); err != nil {
-				return err
-			}
-			if a.Cover != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`,
-					a.Cover, id, scanCover.String); err != nil {
-					return err
-				}
-			} else if scanCover.String != "" {
-				// the cover the scanner set is gone
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, id, scanCover.String); err != nil {
-					return err
-				}
-			}
 		}
 		ids := make([]int64, len(a.Files))
 		for i, f := range a.Files {
@@ -279,12 +265,7 @@ func (r *Repo) UpsertAudiobook(ctx context.Context, a AudiobookInput) (int64, er
 			}
 			ids[i] = fid
 		}
-		var authors []string
-		for _, s := range a.Authors {
-			if s = strings.TrimSpace(s); s != "" {
-				authors = append(authors, s)
-			}
-		}
+		authors := trimmedNames(a.Authors)
 		// keys the scanner no longer finds are removed (nil), others' kept
 		meta := map[string]any{"authors": nil, "narrator": nil, "series": nil, "series_index": nil, "files_order": ids}
 		if len(authors) > 0 {

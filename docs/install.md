@@ -53,7 +53,10 @@ docker compose up -d
 ```
 
 Open `http://antresol.local:8420` or `http://<computer's IP>:8420` in a browser and choose the
-administrator's name and password.
+administrator's name and password. Do this at one of these addresses, not through a reverse
+proxy's name: the first setup is accepted only from the home network, and a name that is not an
+IP address, a home name (`*.local`, `*.lan`, a single word) or the server's saved
+[public address](public-address.html) does not count as home.
 
 ![First run: creating the administrator](images/guide/en/welcome.png)
 

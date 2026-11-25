@@ -10,10 +10,12 @@ import { errorText, getUsers } from '../../../api/client'
 import { confirmDrop, createSource, getDevices, getSets, getSources, putTvSettings, refreshSource, rejectDrop, type ChannelSet, type Device, type Source } from '../../../api/iptv'
 import type { User } from '../../../api/types'
 import { Icon } from '../../../components/Icon'
+import { LoadFailed } from '../../../components/LoadFailed'
 import { locale, useT, type TFunction } from '../../../i18n'
 import { ago } from '../../../state/format'
 import { Badge } from '../../../ui/Badge'
 import { Button, ButtonLink } from '../../../ui/Button'
+import { EmptyState } from '../../../ui/EmptyState'
 import { useChannelsFrame } from '../manageBase'
 import { GroupedSection, ListRow } from '../../../ui/List'
 import { Notice } from '../../../ui/Notice'
@@ -132,19 +134,10 @@ export function SourcesPage() {
         </header>
 
         {error && (
-          <div className={styles.empty} role="alert">
-            <p>{error}</p>
-            <Button variant="secondary" onClick={load}>
-              {t('common.retry')}
-            </Button>
-          </div>
+          <LoadFailed title={t('common.loadFailed')} message={error} retry={t('common.retry')} onRetry={load} />
         )}
         {sources && sources.length === 0 && (
-          <div className={styles.empty}>
-            <Icon name="broadcast" size={44} strokeWidth={1.4} />
-            <h2>{t('iptv.emptyTitle')}</h2>
-            <p>{t('iptv.emptyHint')}</p>
-          </div>
+          <EmptyState icon={<Icon name="broadcast" size={44} strokeWidth={1.4} />} title={t('iptv.emptyTitle')} hint={t('iptv.emptyHint')} />
         )}
         {sources && sources.length > 0 && (
           <GroupedSection title={t('iptv.sources')}>

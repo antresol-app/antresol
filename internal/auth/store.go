@@ -29,6 +29,7 @@ var (
 	ErrPasswordTooLong = fmt.Errorf("%w: password too long", ErrInvalid)
 	ErrPasswordShort   = fmt.Errorf("%w: password too short", ErrInvalid)
 	ErrAdminPassShort  = fmt.Errorf("%w: admin password too short", ErrInvalid)
+	ErrAdminPassCommon = fmt.Errorf("%w: admin password is a common one", ErrInvalid)
 	errAdminNoPass     = fmt.Errorf("%w: admin must have a password", ErrInvalid)
 	errKidAdmin        = fmt.Errorf("%w: kid profile cannot be admin", ErrInvalid)
 )
@@ -178,6 +179,34 @@ func validate(name string, admin, kid, hasPass bool) error {
 	}
 	if admin && !hasPass {
 		return errAdminNoPass
+	}
+	return nil
+}
+
+// AdminPasswordMin is the length an administrator's password needs when it
+// is chosen through the API. The store itself refuses only passwords under
+// minAdminPassLen, so existing accounts and internal callers are unaffected.
+const AdminPasswordMin = 10
+
+// commonPasswords: passwords of AdminPasswordMin or more characters that
+// every guessing list starts with (lower case).
+var commonPasswords = map[string]bool{
+	"1234567890": true, "0123456789": true, "9876543210": true, "12345678910": true, "123456789a": true,
+	"1q2w3e4r5t": true, "1qaz2wsx3edc": true, "qwertyuiop": true, "asdfghjkl;": true, "qwertyuiopasdf": true,
+	"password12": true, "password123": true, "password1234": true, "passw0rd123": true, "iloveyou123": true,
+	"administrator": true, "adminadmin": true, "admin12345": true, "welcome123": true, "changeme123": true,
+	"qwerty1234": true, "qwerty12345": true, "1234qwerty": true, "zxcvbnm123": true,
+}
+
+// CheckAdminPassword is what an administrator's new password must pass:
+// ErrAdminPassShort under AdminPasswordMin characters, ErrAdminPassCommon
+// for a password on the guessing lists.
+func CheckAdminPassword(p string) error {
+	if len([]rune(p)) < AdminPasswordMin {
+		return ErrAdminPassShort
+	}
+	if commonPasswords[strings.ToLower(p)] {
+		return ErrAdminPassCommon
 	}
 	return nil
 }

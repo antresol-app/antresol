@@ -3,6 +3,8 @@ package library
 import (
 	"context"
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -181,6 +183,59 @@ func TestRepackFailureLeavesTheFile(t *testing.T) {
 	}
 	if got := liveFilePaths(t, s.Repo.db); got[firstKey(got)] != src {
 		t.Fatalf("db %v", got)
+	}
+}
+
+// ffmpeg and ffprobe read the .ts through the file protocol and the
+// transport-stream demuxer only: a .ts that is really a playlist opens
+// nothing it names (the repack writes what ffmpeg reads into the library).
+func TestRepackReadsOnlyTheFileProtocol(t *testing.T) {
+	s, r, src := repackFixture(t)
+	ctx := context.Background()
+	hit := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hit = true }))
+	defer srv.Close()
+	playlist := "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n" + srv.URL + "/seg.ts\n#EXT-X-ENDLIST\n"
+	if err := os.WriteFile(src, []byte(playlist), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	r.Command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		lines = append(lines, filepath.Base(name)+" "+strings.Join(args, " "))
+		return exec.CommandContext(ctx, name, args...)
+	}
+	if err := r.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if hit {
+		t.Fatal("ffmpeg followed the playlist's address")
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "-protocol_whitelist file -format_whitelist mpegts -i file:"+src+" ") {
+		t.Fatalf("ffmpeg ran as %q", lines)
+	}
+	if b, err := os.ReadFile(src); err != nil || string(b) != playlist {
+		t.Fatalf("source changed: %q %v", b, err)
+	}
+	if got := liveFilePaths(t, s.Repo.db); got[firstKey(got)] != src {
+		t.Fatalf("db %v", got)
+	}
+}
+
+// The repack's check reads the copy and the original the same way.
+func TestRepackProbesThroughTheFileProtocol(t *testing.T) {
+	_, r, src := repackFixture(t)
+	var probes []string
+	r.Command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if filepath.Base(name) == "ffprobe" {
+			probes = append(probes, strings.Join(args, " "))
+		}
+		return exec.CommandContext(ctx, name, args...)
+	}
+	if err := r.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(probes) != 2 || !strings.Contains(probes[0], "-protocol_whitelist file ") || !strings.HasSuffix(probes[0], " file:"+src) {
+		t.Fatalf("probes %q", probes)
 	}
 }
 

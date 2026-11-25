@@ -164,7 +164,7 @@ export function ProfilePicker() {
                             <Icon name="lock" size={compact ? 17 : 21} strokeWidth={2.3} />
                           </span>
                         )}
-                        {busyId === p.id && <span className={styles.avatarBusy} aria-hidden />}
+                        {busyId === p.id && <span className={`spin ${styles.avatarBusy}`} aria-hidden />}
                       </span>
                       <span className={styles.profileName}>
                         {p.name}

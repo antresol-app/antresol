@@ -3,9 +3,11 @@ package channels
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"sort"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/segments"
 )
 
@@ -179,8 +181,8 @@ func (b *Builder) Recut(ctx context.Context, c Channel, files []int64) (bool, er
 	// most changes are of titles this channel does not air soon: no pool
 	// to build for them
 	var found bool
-	for part := range chunks(files, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(files, 500) {
+		in, args := db.InList(part)
 		var one int
 		err := b.Store.DB.QueryRowContext(ctx, `SELECT 1 FROM channel_playout WHERE channel_id=? AND end_ms > ? AND extra_id IS NULL AND file_id IN `+in+` LIMIT 1`,
 			append([]any{c.ID, ms(b.Store.now())}, args...)...).Scan(&one)
@@ -196,14 +198,13 @@ func (b *Builder) Recut(ctx context.Context, c Channel, files []int64) (bool, er
 		return false, nil
 	}
 	cut := false
-	err := b.buildWith(ctx, c, func(tx *sql.Tx, now time.Time) error {
+	_, err := b.buildWith(ctx, c, func(tx *sql.Tx, now time.Time) error {
 		seq, err := recutFrom(ctx, tx, c.ID, changed, now)
 		if err != nil || seq == 0 {
 			return err
 		}
 		cut = true
-		_, err = tx.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, c.ID, seq)
-		return err
+		return cutFrom(ctx, tx, c.ID, seq)
 	})
 	return cut && err == nil, err
 }

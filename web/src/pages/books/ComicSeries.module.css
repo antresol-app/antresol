@@ -28,9 +28,7 @@
 .cover {
   flex: none;
   width: clamp(190px, 19vw, 260px);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.35),
-    0 14px 34px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-cover);
 }
 .cover::after,
 .art::after {
@@ -79,7 +77,8 @@
 }
 .eyebrow {
   margin-bottom: var(--s-1h);
-  font: 600 13px / 1.3 var(--font-text);
+  font: var(--t-footnote-em);
+  line-height: 1.3;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--label-2);
@@ -156,9 +155,7 @@
 }
 .volume .art {
   margin-bottom: var(--s-2);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.3),
-    0 8px 22px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-cover-sm);
   transition: transform var(--d-base) var(--ease-out);
 }
 @media (hover: hover) {
@@ -176,7 +173,7 @@
   --art-dim: var(--watched-dim-lift);
 }
 .vname {
-  font: 600 15px / 1.3 var(--font-text);
+  font: var(--t-group);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -192,7 +189,7 @@
   left: 8px;
   right: 8px;
   bottom: 8px;
-  z-index: 1;
+  z-index: var(--z-raised);
   height: 4px;
   border-radius: var(--r-xs);
   background: var(--scrim-art-strong);

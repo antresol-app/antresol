@@ -50,7 +50,7 @@ func mk(key string) string { return "mk=" + url.QueryEscape(key) }
 func TestMediaKeyOnlyMediaRoutes(t *testing.T) {
 	e := newKeyEnv(t)
 	item, f := e.movie("Брат", "16+", "0123456789abcdefghij")
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	key := e.mediaKey(tok)
 
 	w := e.do("GET", "/api/stream/"+itoa(f)+"?"+mk(key), "", nil, "Range", "bytes=0-9")
@@ -125,7 +125,7 @@ func TestMediaKeyWebSession(t *testing.T) {
 		t.Fatalf("anon %d", w.Code)
 	}
 	// «Устройства» on the phone ends the browser's session, and its key with it
-	phone := e.deviceLogin(1, "secret", "phone-0001")
+	phone := e.deviceLogin(1, adminPass, "phone-0001")
 	key2 := e.mediaKey(phone)
 	var webID int64
 	if err := e.db.QueryRow(`SELECT rowid FROM sessions WHERE token=?`, auth.TokenHash(e.admin.Value)).Scan(&webID); err != nil {
@@ -191,7 +191,7 @@ func TestMediaKeyVisibility(t *testing.T) {
 func TestMediaKeyDeviceRevoked(t *testing.T) {
 	e := newKeyEnv(t)
 	_, f := e.movie("Брат", "16+", "0123456789")
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	key := e.mediaKey(tok)
 	if w := e.do("POST", "/api/logout", "", nil, bearer(tok)...); w.Code != 204 {
 		t.Fatalf("logout %d", w.Code)
@@ -227,7 +227,7 @@ func TestHLSPlaylistKeyed(t *testing.T) {
 	})
 	_, f := e.movie("Брат", "16+", "x")
 	e.probeJSON(f, hevcProbe)
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	if w := e.do("POST", "/api/play/"+itoa(f), `{"caps":{"videoCodecs":["h264"]}}`, nil, bearer(tok)...); w.Code != 200 {
 		t.Fatalf("play %d %s", w.Code, w.Body)
 	}
@@ -280,7 +280,7 @@ func TestHLSKeyedTranscodeIsComplete(t *testing.T) {
 	})
 	_, f := e.movie("Брат", "16+", "x")
 	e.probeJSON(f, hevcProbe)
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	w := e.do("POST", "/api/play/"+itoa(f), `{"caps":{"videoCodecs":["h264"]}}`, nil, bearer(tok)...)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"hlsComplete":true`) {
 		t.Fatalf("play %d %s", w.Code, w.Body)
@@ -347,7 +347,7 @@ func TestRewritePlaylistKeepsComments(t *testing.T) {
 func TestMediaKeyStreamVideoAndAudioOnly(t *testing.T) {
 	e := newKeyEnv(t)
 	_, movie := e.movie("Брат", "16+", "0123456789")
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	key := e.mediaKey(tok)
 	file := func(kind, name string) int64 {
 		res, err := e.db.Exec(`INSERT INTO items(kind,title) VALUES(?,?)`, kind, name)

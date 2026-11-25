@@ -7,9 +7,11 @@ import { Navigate, useParams, useSearchParams } from 'react-router'
 import { getBooks } from '../../api/client'
 import type { BookKind, BookSort, Card } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { RescanLink } from '../../components/RescanLink'
 import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { PosterGrid, PosterGridSkeleton } from '../../components/PosterGrid'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { SegmentedControl, type Segment } from '../../ui/SegmentedControl'
@@ -87,32 +89,25 @@ function Grid({ kind }: { kind: BookKind }) {
       )}
 
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('common.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <LoadFailed title={t('common.loadFailed')} message={state.message} retry={t('common.retry')} onRetry={() => load()} />
       )}
 
-      {state.status === 'ready' && items.length === 0 && scope === 'mine' && <MineEmpty className={styles.empty} />}
+      {state.status === 'ready' && items.length === 0 && scope === 'mine' && <MineEmpty />}
 
       {state.status === 'ready' && items.length === 0 && scope !== 'mine' && (
-        <div className={styles.empty}>
-          <Icon name="book" size={48} strokeWidth={1.4} />
-          <h2>{t('books.empty.title')}</h2>
-          {user?.isKid ? (
-            <p>{t('books.empty.kid')}</p>
-          ) : (
-            <>
-              <p>{t('books.empty.hint')}</p>
-              <RescanLink variant="secondary" />
-              <EmptyStateActions scope={kind} variant="secondary" />
-            </>
-          )}
-        </div>
+        <EmptyState
+          icon={<Icon name="book" size={48} strokeWidth={1.4} />}
+          title={t('books.empty.title')}
+          hint={user?.isKid ? t('books.empty.kid') : t('books.empty.hint')}
+          actions={
+            !user?.isKid && (
+              <>
+                <RescanLink variant="secondary" />
+                <EmptyStateActions scope={kind} variant="secondary" />
+              </>
+            )
+          }
+        />
       )}
 
       {state.status === 'ready' && items.length > 0 && (

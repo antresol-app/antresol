@@ -13,15 +13,29 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/mailer"
 )
 
-// Run sends the digests that are due, every minute, until ctx ends.
+// pruneEvery: how often Run deletes what is past keepSent, keepPending and
+// keepSeen. The deletes lock the database for writing even when no row
+// matches, so they stay out of the minute loop.
+const pruneEvery = time.Hour
+
+// Run sends the digests that are due, every minute, until ctx ends, and
+// prunes the old events when it starts and every pruneEvery after.
 func (s *Service) Run(ctx context.Context) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
+	var prunedAt time.Time
 	for {
+		if now := s.now(); now.Sub(prunedAt) >= pruneEvery {
+			prunedAt = now
+			if err := s.prune(ctx, now); err != nil && ctx.Err() == nil {
+				s.log().Warn("notify: prune", "err", err)
+			}
+		}
 		if err := s.Flush(ctx); err != nil && ctx.Err() == nil {
 			s.log().Warn("notify: digests", "err", err)
 		}
@@ -33,6 +47,19 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
+// prune deletes the events kept long enough: sent ones after keepSent,
+// unsent ones after keepPending (they never could go), and what a profile
+// was told about after keepSeen.
+func (s *Service) prune(ctx context.Context, now time.Time) error {
+	if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE (sent_at IS NOT NULL AND tg_sent_at IS NOT NULL AND max(sent_at, tg_sent_at) < ?)
+		OR ((sent_at IS NULL OR tg_sent_at IS NULL) AND created_at < ?)`,
+		now.Add(-keepSent).Unix(), now.Add(-keepPending).Unix()); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM notify_seen WHERE at < ?`, now.Add(-keepSeen).Unix())
+	return err
+}
+
 // quiet reports whether t is in the quiet hours.
 func (s *Service) quiet(t time.Time) bool {
 	h := t.In(s.loc()).Hour()
@@ -42,19 +69,10 @@ func (s *Service) quiet(t time.Time) bool {
 // Flush sends every profile's digest that is due, by mail and by Telegram:
 // the channel's address confirmed (or the chat linked), not in the
 // profile's quiet hours, an hour since the last one, and its newest event
-// Settle old (or its oldest an hour). Sent events are kept a while (keys),
-// then pruned with events that never could go. A failing channel never
-// holds back the other.
+// Settle old (or its oldest an hour). Sent events are kept a while (keys;
+// Run prunes them). A failing channel never holds back the other.
 func (s *Service) Flush(ctx context.Context) error {
 	now := s.now()
-	if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_events WHERE (sent_at IS NOT NULL AND tg_sent_at IS NOT NULL AND max(sent_at, tg_sent_at) < ?)
-		OR ((sent_at IS NULL OR tg_sent_at IS NULL) AND created_at < ?)`,
-		now.Add(-keepSent).Unix(), now.Add(-keepPending).Unix()); err != nil {
-		return err
-	}
-	if _, err := s.DB.ExecContext(ctx, `DELETE FROM notify_seen WHERE at < ?`, now.Add(-keepSeen).Unix()); err != nil {
-		return err
-	}
 	mailErr := s.flushMail(ctx, now)
 	return errors.Join(mailErr, s.flushTelegram(ctx, now))
 }
@@ -188,20 +206,18 @@ type batch struct {
 	name           string       // the profile's name
 }
 
-func (b *batch) in() string { return `(?` + strings.Repeat(",?", len(b.ids)-1) + `)` }
-
 func (s *Service) markSending(ctx context.Context, ch channel, b *batch, now time.Time) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sending+`=? WHERE id IN `+b.in(), append([]any{now.Unix()}, b.ids...)...)
+	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sending+`=? WHERE id IN `+db.In(len(b.ids)), append([]any{now.Unix()}, b.ids...)...)
 	return err
 }
 
 func (s *Service) unmarkSending(ctx context.Context, ch channel, b *batch) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sending+`=NULL WHERE id IN `+b.in(), b.ids...)
+	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sending+`=NULL WHERE id IN `+db.In(len(b.ids)), b.ids...)
 	return err
 }
 
 func (s *Service) markSent(ctx context.Context, ch channel, b *batch, now time.Time) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sent+`=? WHERE id IN `+b.in(), append([]any{now.Unix()}, b.ids...)...)
+	_, err := s.DB.ExecContext(ctx, `UPDATE notify_events SET `+ch.sent+`=? WHERE id IN `+db.In(len(b.ids)), append([]any{now.Unix()}, b.ids...)...)
 	return err
 }
 
@@ -233,7 +249,7 @@ func (s *Service) takeBatch(ctx context.Context, ch channel, uid int64, p Prefs,
 	}
 	addonOK := ""
 	if len(decl) > 0 {
-		addonOK = ` OR topic IN (?` + strings.Repeat(",?", len(decl)-1) + `)`
+		addonOK = ` OR topic IN ` + db.In(len(decl))
 	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, topic, item_id, group_id, data_json, created_at FROM notify_events
 		WHERE user_id=? AND `+ch.sent+` IS NULL AND (substr(topic, 1, ?)<>?`+addonOK+`) ORDER BY created_at, id LIMIT 500`, args...)

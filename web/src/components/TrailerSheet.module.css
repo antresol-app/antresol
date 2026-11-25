@@ -37,20 +37,5 @@
   color: var(--label-2);
 }
 .spinner {
-  width: var(--icon-lg);
-  height: var(--icon-lg);
-  border: 2px solid var(--spinner-track-art);
-  border-top-color: var(--label-over-art);
-  border-radius: 50%;
-  animation: trailer-spin 0.8s linear infinite;
-}
-@keyframes trailer-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
+  color: var(--label-over-art);
 }

@@ -29,8 +29,21 @@
 .destructive .box {
   accent-color: var(--red);
 }
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 .label {
   min-width: 0;
+}
+.description {
+  font: var(--t-footnote);
+  color: var(--label-2);
+}
+/* with a second line the box stays beside the label's first */
+.checkbox:has(.description) {
+  align-items: flex-start;
 }
 /* a finger's 44 pt (HIG): the row grows, a desktop keeps the control height */
 @media (pointer: coarse), (max-width: 699px) {

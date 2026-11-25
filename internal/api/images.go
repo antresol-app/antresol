@@ -6,13 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/sync/singleflight"
 
 	"github.com/antresol-app/antresol/internal/imgcache"
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
@@ -87,37 +86,21 @@ func imageHeaders(w http.ResponseWriter, long bool) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 }
 
-// imageWidths are the widths ?w= may ask for: the web app's srcset steps
-// (a card's poster at 1×, 2× and 3×, a backdrop across a phone or a
-// window). Anything else is the original, so no URL can fill the disk
-// with copies.
-var imageWidths = map[int]bool{160: true, 240: true, 320: true, 480: true, 640: true, 960: true, 1280: true, 1920: true}
-
-// resizeSlots bounds the decodes at once: a cold page asks for thirty
-// images together, and a 2 MB JPEG takes ~100 ms of a core to shrink.
-var resizeSlots = make(chan struct{}, max(2, runtime.NumCPU()/2))
-
-// resizing: one shrink per image and width, however many ask together.
-var resizing singleflight.Group
-
 // sized is the copy of the image at p no wider than ?w= (kept in
-// cacheDir/resized), or p itself: no or an unknown width, an image
+// cacheDir/resized), or p itself: no width or one that is not a step of
+// imgcache.Widths (so no URL can fill the disk with copies), an image
 // already that small, a format it does not shrink, a failure.
 func sized(r *http.Request, p, cacheDir string) string {
 	wantW, err := strconv.Atoi(r.URL.Query().Get("w"))
-	if err != nil || !imageWidths[wantW] || cacheDir == "" {
+	if err != nil || !slices.Contains(imgcache.Widths, wantW) || cacheDir == "" {
 		return p
 	}
-	out, err, _ := resizing.Do(p+"|"+strconv.Itoa(wantW), func() (any, error) {
-		resizeSlots <- struct{}{}
-		defer func() { <-resizeSlots }()
-		return imgcache.Resized(cacheDir, p, wantW, 0)
-	})
+	out, err := imgcache.Resized(cacheDir, p, wantW, 0)
 	if err != nil {
 		log.Printf("api: shrink %s to %d: %v", filepath.Base(p), wantW, err)
 		return p
 	}
-	return out.(string)
+	return out
 }
 
 // serveImage serves the image at p, shrunk to ?w= (copies kept in

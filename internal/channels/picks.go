@@ -5,12 +5,14 @@ import (
 	"errors"
 	"hash/fnv"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/release"
 )
@@ -383,46 +385,63 @@ func (c Catalog) Search(ctx context.Context, q, maxRating string) ([]SearchHit, 
 	if norm == "" {
 		return out, nil
 	}
-	rows, err := c.DB.QueryContext(ctx, `SELECT i.id, MAX(t.norm=?) + MAX(t.norm LIKE ?) FROM items i JOIN item_titles t ON t.item_id=i.id
-	  WHERE i.kind IN ('movie','series') AND i.missing_since IS NULL AND t.norm LIKE ? GROUP BY i.id`, norm, norm+"%", "%"+norm+"%")
+	titles, series, err := c.searchTitles(ctx, norm, maxRating)
 	if err != nil {
 		return nil, err
 	}
+	eps, err := c.searchEpisodes(ctx, norm, maxRating, series)
+	if err != nil {
+		return nil, err
+	}
+	return append(append(out, titles...), eps...), nil
+}
+
+// searchTitles are the playable movies and series with a title that holds
+// norm, best match first (at most SearchLimit); series are the ids of all
+// such series, not only the ones listed.
+func (c Catalog) searchTitles(ctx context.Context, norm, maxRating string) ([]SearchHit, []int64, error) {
+	rows, err := c.DB.QueryContext(ctx, `SELECT i.id, MAX(t.norm=?) + MAX(t.norm LIKE ?) FROM items i JOIN item_titles t ON t.item_id=i.id
+	  WHERE i.kind IN ('movie','series') AND i.missing_since IS NULL AND t.norm LIKE ? GROUP BY i.id ORDER BY i.id`, norm, norm+"%", "%"+norm+"%")
+	if err != nil {
+		return nil, nil, err
+	}
 	score := map[int64]int{}
+	var ids []int64
 	for rows.Next() {
 		var id int64
 		var s int
 		if err := rows.Scan(&id, &s); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		score[id] = s
+		ids = append(ids, id)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	units, err := c.Units(ctx)
+	units, err := c.unitsOf(ctx, ids) // the matches only, not the library
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var found []Unit
-	series := map[int64]bool{}
 	for _, u := range units {
-		if _, hit := score[u.ID]; hit && library.RatingAllowed(maxRating, library.Item{Kind: u.Kind, Rating: u.Rating}) {
+		if library.RatingAllowed(maxRating, library.Item{Kind: u.Kind, Rating: u.Rating}) {
 			found = append(found, u)
 		}
 	}
 	progs, err := c.Progs(ctx, found)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var titles []Unit
+	var series []int64
 	for _, u := range found {
 		if len(progs[u.ID]) > 0 {
 			titles = append(titles, u)
 			if u.Kind == library.KindSeries {
-				series[u.ID] = true
+				series = append(series, u.ID)
 			}
 		}
 	}
@@ -432,53 +451,38 @@ func (c Catalog) Search(ctx context.Context, q, maxRating string) ([]SearchHit, 
 		}
 		return naturalCompare(titles[i].Sort, titles[j].Sort) < 0
 	})
+	out := []SearchHit{}
 	for _, u := range titles[:min(len(titles), SearchLimit)] {
 		out = append(out, SearchHit{Kind: u.Kind, ID: u.ID, Title: u.Title, Year: u.Year, Pick: Pick{Kind: PickTitle, ID: u.ID}})
 	}
-	// episodes: their own title, or their series' title
-	erows, err := c.DB.QueryContext(ctx, `SELECT e.id, e.title, COALESCE(e.season_no, se.season_no, 0), COALESCE(e.episode_no,0), e.year,
-	    s.id, s.title, s.sort_title, `+library.RatingOf("s")+`, s.year
-	  FROM items e JOIN items se ON se.id=e.parent_id AND se.kind='season' JOIN items s ON s.id=se.parent_id AND s.kind='series'
-	  WHERE e.kind='episode' AND e.missing_since IS NULL AND s.missing_since IS NULL
-	    AND EXISTS (SELECT 1 FROM files f WHERE f.item_id=e.id AND f.missing_since IS NULL AND f.duration_ms > 0)`)
+	return out, series, nil
+}
+
+// searchEpisodes are the playable episodes of series (found by title) and
+// the ones whose own title holds norm, in their series' order (at most
+// SearchLimit).
+func (c Catalog) searchEpisodes(ctx context.Context, norm, maxRating string, series []int64) ([]SearchHit, error) {
+	// episodes have no item_titles: their own titles are normalised here,
+	// from the narrow rows, and only the ones that hold norm are read whole
+	own, err := c.episodesNamed(ctx, norm)
 	if err != nil {
 		return nil, err
 	}
-	defer erows.Close()
-	type ep struct {
-		hit        SearchHit
-		sort       string
-		season, no int
-	}
-	var eps []ep
-	for erows.Next() {
-		var x ep
-		var title, sTitle, sSort, sRating string
-		var year, sYear int
-		var sID int64
-		if err := erows.Scan(&x.hit.ID, &title, &x.season, &x.no, &year, &sID, &sTitle, &sSort, &sRating, &sYear); err != nil {
-			return nil, err
-		}
-		if !library.RatingAllowed(maxRating, library.Item{Kind: library.KindSeries, Rating: sRating}) {
-			continue
-		}
-		if !series[sID] && !strings.Contains(release.Normalize(title), norm) {
-			continue
-		}
-		if year == 0 {
-			year = sYear
-		}
-		label := EpisodeLabel(Info{Season: x.season, Number: x.no})
-		sub := sTitle
-		if label != "" {
-			sub += " · " + label
-		}
-		x.hit = SearchHit{Kind: "episode", ID: x.hit.ID, Title: title, Subtitle: sub, Year: year, Pick: Pick{Kind: PickItem, ID: x.hit.ID}}
-		x.sort = sSort
-		eps = append(eps, x)
-	}
-	if err := erows.Err(); err != nil {
+	bySeries, err := c.episodeHits(ctx, "s.id", series, maxRating)
+	if err != nil {
 		return nil, err
+	}
+	byTitle, err := c.episodeHits(ctx, "e.id", own, maxRating)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[int64]bool{}
+	var eps []episodeHit
+	for _, e := range append(bySeries, byTitle...) {
+		if !seen[e.hit.ID] {
+			seen[e.hit.ID] = true
+			eps = append(eps, e)
+		}
 	}
 	sort.SliceStable(eps, func(i, j int) bool {
 		a, b := eps[i], eps[j]
@@ -493,8 +497,81 @@ func (c Catalog) Search(ctx context.Context, q, maxRating string) ([]SearchHit, 
 		}
 		return a.hit.ID < b.hit.ID
 	})
+	out := []SearchHit{}
 	for _, e := range eps[:min(len(eps), SearchLimit)] {
 		out = append(out, e.hit)
+	}
+	return out, nil
+}
+
+// episodesNamed are the ids of the episodes whose own title holds norm.
+func (c Catalog) episodesNamed(ctx context.Context, norm string) ([]int64, error) {
+	rows, err := c.DB.QueryContext(ctx, `SELECT id, title FROM items WHERE kind='episode' AND missing_since IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			return nil, err
+		}
+		if strings.Contains(release.Normalize(title), norm) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
+
+type episodeHit struct {
+	hit        SearchHit
+	sort       string // its series' sort title
+	season, no int
+}
+
+// episodeHits are the playable episodes (within maxRating) whose col (s.id:
+// the series', e.id: their own) is one of ids.
+func (c Catalog) episodeHits(ctx context.Context, col string, ids []int64, maxRating string) ([]episodeHit, error) {
+	var out []episodeHit
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
+		rows, err := c.DB.QueryContext(ctx, `SELECT e.id, e.title, COALESCE(e.season_no, se.season_no, 0), COALESCE(e.episode_no,0), e.year,
+		    s.title, s.sort_title, `+library.RatingOf("s")+`, s.year
+		  FROM items e JOIN items se ON se.id=e.parent_id AND se.kind='season' JOIN items s ON s.id=se.parent_id AND s.kind='series'
+		  WHERE e.kind='episode' AND e.missing_since IS NULL AND s.missing_since IS NULL AND `+col+` IN `+in+`
+		    AND EXISTS (SELECT 1 FROM files f WHERE f.item_id=e.id AND f.missing_since IS NULL AND f.duration_ms > 0)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var x episodeHit
+			var id int64
+			var title, sTitle, sRating string
+			var year, sYear int
+			if err := rows.Scan(&id, &title, &x.season, &x.no, &year, &sTitle, &x.sort, &sRating, &sYear); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if !library.RatingAllowed(maxRating, library.Item{Kind: library.KindSeries, Rating: sRating}) {
+				continue
+			}
+			if year == 0 {
+				year = sYear
+			}
+			sub := sTitle
+			if label := EpisodeLabel(Info{Season: x.season, Number: x.no}); label != "" {
+				sub += " · " + label
+			}
+			x.hit = SearchHit{Kind: "episode", ID: id, Title: title, Subtitle: sub, Year: year, Pick: Pick{Kind: PickItem, ID: id}}
+			out = append(out, x)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

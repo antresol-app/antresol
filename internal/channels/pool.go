@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 )
@@ -83,8 +85,32 @@ type Catalog struct {
 
 // Units returns every movie and series in the library (not missing), by id.
 func (c Catalog) Units(ctx context.Context) ([]Unit, error) {
+	return c.unitsWhere(ctx, "")
+}
+
+// unitsOf returns those of the movies and series ids that are in the
+// library (not missing), by id.
+func (c Catalog) unitsOf(ctx context.Context, ids []int64) ([]Unit, error) {
+	var out []Unit
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
+		us, err := c.unitsWhere(ctx, "id IN "+in, args...)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, us...)
+	}
+	return out, nil
+}
+
+// unitsWhere reads the movies and series (not missing) that also meet cond
+// (SQL on items; "": all), by id.
+func (c Catalog) unitsWhere(ctx context.Context, cond string, args ...any) ([]Unit, error) {
+	if cond != "" {
+		cond = " AND " + cond
+	}
 	rows, err := c.DB.QueryContext(ctx, `SELECT id, kind, title, sort_title, year, `+library.RatingOf("items")+`, meta_json, COALESCE(poster, ''), unlisted FROM items
-	  WHERE kind IN ('movie','series') AND missing_since IS NULL ORDER BY id`)
+	  WHERE kind IN ('movie','series') AND missing_since IS NULL`+cond+` ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +189,8 @@ func (c Catalog) Progs(ctx context.Context, units []Unit) (map[int64][]Prog, err
 		}
 		return rows.Err()
 	}
-	for part := range chunks(movies, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(movies, 500) {
+		in, args := db.InList(part)
 		rows, err := c.DB.QueryContext(ctx, `SELECT f.item_id, f.item_id, f.id, f.duration_ms FROM files f
 		  WHERE f.item_id IN `+in+` AND f.missing_since IS NULL AND f.duration_ms > 0 ORDER BY f.item_id, f.path`, args...)
 		if err != nil {
@@ -174,8 +200,8 @@ func (c Catalog) Progs(ctx context.Context, units []Unit) (map[int64][]Prog, err
 			return nil, err
 		}
 	}
-	for part := range chunks(series, 200) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(series, 200) {
+		in, args := db.InList(part)
 		rows, err := c.DB.QueryContext(ctx, `SELECT s.id, e.id, f.id, f.duration_ms FROM items s
 		  JOIN items se ON se.parent_id=s.id AND se.kind='season'
 		  JOIN items e ON e.parent_id=se.id AND e.kind='episode' AND e.missing_since IS NULL
@@ -190,26 +216,6 @@ func (c Catalog) Progs(ctx context.Context, units []Unit) (map[int64][]Prog, err
 		}
 	}
 	return out, nil
-}
-
-func chunks(ids []int64, n int) func(func([]int64) bool) {
-	return func(yield func([]int64) bool) {
-		for len(ids) > 0 {
-			k := min(n, len(ids))
-			if !yield(ids[:k]) {
-				return
-			}
-			ids = ids[k:]
-		}
-	}
-}
-
-func inArgs(ids []int64) (string, []any) {
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	return "(?" + strings.Repeat(",?", len(ids)-1) + ")", args
 }
 
 // Match filters units by rules (everything but the library owner, which

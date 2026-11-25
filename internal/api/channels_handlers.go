@@ -241,8 +241,8 @@ func (a *channelsAPI) display(ctx context.Context, c channels.Channel) (string, 
 
 // programs merges a channel's entries into programmes (the parts of a
 // movie are one) with their descriptions, for u (a kid gets no programme
-// an addon gave: kidHides).
-func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.Entry) ([]programJSON, error) {
+// an addon gave: kidHides); at most limit of them (0: all).
+func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.Entry, limit int) ([]programJSON, error) {
 	ids := make([]int64, len(es))
 	for i, e := range es {
 		ids[i] = e.ItemID
@@ -252,7 +252,7 @@ func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.E
 		return nil, err
 	}
 	var out []programJSON
-	for i := 0; i < len(es); i++ {
+	for i := 0; i < len(es) && (limit <= 0 || len(out) < limit); i++ {
 		e := es[i]
 		end := e.End
 		for i+1 < len(es) && channels.SameProgramme(e, es[i], es[i+1]) {
@@ -285,15 +285,20 @@ func (a *channelsAPI) programs(ctx context.Context, u auth.User, es []channels.E
 	return out, nil
 }
 
+// withNameLanguage is ctx with the renditions' NAMEs as profile u's master
+// playlist has them (its interface language; withTracks, live).
+func (a *channelsAPI) withNameLanguage(ctx context.Context, u auth.User) context.Context {
+	return channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
+}
+
 // withTracks fills the renditions of channel ch's programme on air at now
 // and the next one (the first two from now on), labelled in the viewer's
 // language: those of the run's track set (or the set it would have now)
 // the programme really has. Their NAMEs are the profile's master
-// playlist's (live: both in the profile's interface language).
-func (a *channelsAPI) withTracks(ctx context.Context, u auth.User, ch int64, ps []programJSON, now time.Time) {
+// playlist's (live: both in the profile's interface language): ctx comes
+// from withNameLanguage, made once for all the channels of a request.
+func (a *channelsAPI) withTracks(ctx context.Context, ch int64, ps []programJSON, now time.Time) {
 	lang := i18n.FromContext(ctx)
-	// the NAMEs as this profile's master playlist has them (its interface language)
-	ctx = channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
 	n := 0
 	for i := range ps {
 		p := &ps[i]
@@ -335,20 +340,7 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 	v := viewerOf(u)
 	manage := r.URL.Query().Get("manage") == "1"
 	brief := r.URL.Query().Get("brief") == "1"
-	var cs []channels.Channel
-	var err error
-	if manage {
-		var all []channels.Channel
-		all, err = a.svc.Store.All(ctx)
-		for _, c := range all {
-			// external channels have their own editor (/api/tv/…)
-			if !c.External() && channels.CanEdit(c, v) && (c.UserID == 0 || c.UserID == u.ID) {
-				cs = append(cs, c)
-			}
-		}
-	} else {
-		cs, err = a.svc.Store.Visible(ctx, v)
-	}
+	cs, err := a.listed(ctx, u, v, manage)
 	if err != nil {
 		internalErr(w, r, "channels", err)
 		return
@@ -369,85 +361,22 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	if !manage && !brief {
+		ctx = a.withNameLanguage(ctx, u) // once for every channel's tracks
+	}
 	out := make([]channelJSON, 0, len(cs))
-	var lastChannel any // null unless the last channel is still in the list
 	for _, c := range cs {
-		if c.ID == last && !manage {
-			lastChannel = c.ID
-		}
 		j := a.toJSON(ctx, c, v, favs)
-		if !manage {
-			es, err := a.svc.Store.Range(ctx, c.ID, now, now.Add(4*time.Hour))
-			if err != nil {
-				internalErr(w, r, "channels", err)
-				return
-			}
-			ps, err := a.programs(ctx, u, es)
-			if err != nil {
-				internalErr(w, r, "channels", err)
-				return
-			}
-			if brief {
-				ps = briefPrograms(ps)
-			} else {
-				a.withTracks(ctx, u, c.ID, ps, now)
-			}
-			if u.IsKid && len(ps) > 0 && ps[0].Start.After(now) {
-				// what is on air was left out for the kid: only what is next
-				j.Next = &ps[0]
-			} else {
-				if len(ps) > 0 {
-					j.Now = &ps[0]
-				}
-				if len(ps) > 1 {
-					j.Next = &ps[1]
-				}
-			}
-			j.Categories = ownCats(c, j.Category)
-		} else {
+		if manage {
 			j = a.withPicks(ctx, j, c)
+		} else if err := a.onAir(ctx, u, c, &j, brief, now); err != nil {
+			internalErr(w, r, "channels", err)
+			return
 		}
 		out = append(out, j)
 	}
-	var cats []categoryJSON
-	if !manage {
-		names, pos := a.sourceNames(ctx)
-		xs := sortedExt(a.extFor(r, u, ""))
-		progs := a.extProgrammes(ctx, xs, now, now.Add(4*time.Hour))
-		for _, x := range xs {
-			if x.ChannelID == last {
-				lastChannel = x.ChannelID
-			}
-			j := a.extJSON(r, x, favs)
-			j.Categories = extCats(x, len(names))
-			if ps := progs[x.ChannelID]; len(ps) > 0 {
-				if brief {
-					ps = briefPrograms(ps[:min(2, len(ps))])
-				}
-				j.Now = &ps[0]
-				if len(ps) > 1 {
-					j.Next = &ps[1]
-				}
-			}
-			out = append(out, j)
-		}
-		sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
-		if prefs.FavoritesFirst {
-			channels.FavoritesFirst(out, favs, func(c channelJSON) int64 { return c.ID })
-		}
-		lists := make([][]string, len(out))
-		for i, j := range out {
-			lists[i] = j.Categories
-		}
-		cats = a.categoriesOf(r, lists, names, pos)
-		for i := range out {
-			out[i].Categories = lists[i]
-		}
-	}
-	resp := map[string]any{"channels": out, "lastChannel": lastChannel, "canManage": u.IsAdmin, "canCreate": !u.IsKid, "favoritesFirst": prefs.FavoritesFirst}
-	if cats != nil {
-		resp["categories"] = cats
-	}
+	resp := map[string]any{"canManage": u.IsAdmin, "canCreate": !u.IsKid, "favoritesFirst": prefs.FavoritesFirst}
+	var lastChannel any // null unless the last channel is still in the list
 	if manage {
 		removed, err := a.removedJSON(ctx, v)
 		if err != nil {
@@ -455,13 +384,117 @@ func (a *channelsAPI) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp["removed"] = removed
+	} else {
+		var cats []categoryJSON
+		out, cats = a.withExternal(r, u, out, favs, prefs.FavoritesFirst, brief, now)
+		for _, j := range out {
+			if j.ID == last {
+				lastChannel = j.ID
+			}
+		}
+		if cats != nil {
+			resp["categories"] = cats
+		}
 	}
+	resp["channels"], resp["lastChannel"] = out, lastChannel
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (a *channelsAPI) channelParam(w http.ResponseWriter, r *http.Request) (channels.Channel, bool) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+// listed are the channels the list shows: the ones u sees, or (manage) the
+// ones it may edit.
+func (a *channelsAPI) listed(ctx context.Context, u auth.User, v channels.Viewer, manage bool) ([]channels.Channel, error) {
+	if !manage {
+		return a.svc.Store.Visible(ctx, v)
+	}
+	all, err := a.svc.Store.All(ctx)
+	var cs []channels.Channel
+	for _, c := range all {
+		// external channels have their own editor (/api/tv/…)
+		if !c.External() && channels.CanEdit(c, v) && (c.UserID == 0 || c.UserID == u.ID) {
+			cs = append(cs, c)
+		}
+	}
+	return cs, err
+}
+
+// onAir sets what is on now and next of channel c in j (brief: without
+// descriptions and tracks) and its categories. ctx comes from
+// withNameLanguage unless brief.
+func (a *channelsAPI) onAir(ctx context.Context, u auth.User, c channels.Channel, j *channelJSON, brief bool, now time.Time) error {
+	es, err := a.svc.Store.Range(ctx, c.ID, now, now.Add(4*time.Hour))
 	if err != nil {
+		return err
+	}
+	ps, err := a.programs(ctx, u, es, 2) // only now and next are shown
+	if err != nil {
+		return err
+	}
+	if brief {
+		ps = briefPrograms(ps)
+	} else {
+		a.withTracks(ctx, c.ID, ps, now)
+	}
+	if u.IsKid && len(ps) > 0 && ps[0].Start.After(now) {
+		// what is on air was left out for the kid: only what is next
+		j.Next = &ps[0]
+	} else {
+		if len(ps) > 0 {
+			j.Now = &ps[0]
+		}
+		if len(ps) > 1 {
+			j.Next = &ps[1]
+		}
+	}
+	j.Categories = ownCats(c, j.Category)
+	return nil
+}
+
+// withExternal adds the external channels u sees to the list out, in number
+// order (the starred ones first when favoritesFirst), and returns the
+// categories of all of them.
+func (a *channelsAPI) withExternal(r *http.Request, u auth.User, out []channelJSON, favs map[int64]bool, favoritesFirst, brief bool, now time.Time) ([]channelJSON, []categoryJSON) {
+	ctx := r.Context()
+	names, pos := a.sourceNames(ctx)
+	xs := sortedExt(a.extFor(r, u, ""))
+	progs := a.extProgrammes(ctx, xs, now, now.Add(4*time.Hour))
+	for _, x := range xs {
+		j := a.extJSON(r, x, favs)
+		j.Categories = extCats(x, len(names))
+		if ps := progs[x.ChannelID]; len(ps) > 0 {
+			if brief {
+				ps = briefPrograms(ps[:min(2, len(ps))])
+			}
+			j.Now = &ps[0]
+			if len(ps) > 1 {
+				j.Next = &ps[1]
+			}
+		}
+		out = append(out, j)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	if favoritesFirst {
+		channels.FavoritesFirst(out, favs, func(c channelJSON) int64 { return c.ID })
+	}
+	lists := make([][]string, len(out))
+	for i, j := range out {
+		lists[i] = j.Categories
+	}
+	cats := a.categoriesOf(r, lists, names, pos)
+	for i := range out {
+		out[i].Categories = lists[i]
+	}
+	return out, cats
+}
+
+// urlID is the positive id the path's {name} holds.
+func urlID(r *http.Request, name string) (int64, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, name), 10, 64)
+	return id, err == nil && id > 0
+}
+
+func (a *channelsAPI) channelParam(w http.ResponseWriter, r *http.Request) (channels.Channel, bool) {
+	id, ok := urlID(r, "id")
+	if !ok {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return channels.Channel{}, false
 	}
@@ -512,12 +545,13 @@ func (a *channelsAPI) guide(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "guide", err)
 		return
 	}
-	ps, err := a.programs(r.Context(), u, es)
+	ctx := a.withNameLanguage(r.Context(), u)
+	ps, err := a.programs(ctx, u, es, 0)
 	if err != nil {
 		internalErr(w, r, "guide", err)
 		return
 	}
-	a.withTracks(r.Context(), u, c.ID, ps, now)
+	a.withTracks(ctx, c.ID, ps, now)
 	if ps == nil {
 		ps = []programJSON{}
 	}
@@ -708,7 +742,7 @@ func (a *channelsAPI) update(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userOf(r)
 	if !channels.CanEdit(c, viewerOf(u)) {
-		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		writeErr(w, r, http.StatusForbidden, msgChannelAdminOnly)
 		return
 	}
 	if c.External() {
@@ -779,7 +813,7 @@ func (a *channelsAPI) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !channels.CanEdit(c, viewerOf(userOf(r))) {
-		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		writeErr(w, r, http.StatusForbidden, msgChannelAdminOnly)
 		return
 	}
 	if c.External() {
@@ -834,8 +868,8 @@ func (a *channelsAPI) removedJSON(ctx context.Context, v channels.Viewer) ([]rem
 // made again; it is made now when the library has enough for it ({restored}).
 func (a *channelsAPI) restore(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
+	id, ok := urlID(r, "id")
+	if !ok {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}
@@ -849,7 +883,7 @@ func (a *channelsAPI) restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !channels.CanRestore(rm, viewerOf(userOf(r))) {
-		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		writeErr(w, r, http.StatusForbidden, msgChannelAdminOnly)
 		return
 	}
 	if err := a.svc.Store.Restore(ctx, id); err != nil && !errors.Is(err, channels.ErrNotFound) {
@@ -950,7 +984,8 @@ func (a *channelsAPI) webLive(w http.ResponseWriter, r *http.Request) {
 	a.live(w, r, userOf(r))
 }
 
-// live serves a channel's playlist (index.m3u8) or a segment to u.
+// live serves a channel's playlist (index.m3u8), subtitle cues or a
+// segment to u.
 func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) {
 	if a.svc.Live == nil {
 		writeErr(w, r, http.StatusServiceUnavailable, "Трансляция каналов недоступна")
@@ -981,9 +1016,32 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 	// its playlists carries the quality it resolved to
 	variant, quality := a.liveQuality(r)
 	ctx = channels.WithVariant(ctx, variant)
+	switch {
+	case strings.HasSuffix(name, ".m3u8"):
+		a.servePlaylist(ctx, w, r, u, c, name, quality)
+	case strings.HasSuffix(name, ".vtt"):
+		b, err := a.svc.Live.VTT(ctx, c.ID, name)
+		if err != nil {
+			noSegment(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Write(b)
+	default:
+		a.serveSegment(ctx, w, r, u, c, name)
+	}
+}
+
+func noSegment(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
+}
+
+// servePlaylist answers a playlist of channel c's run (live).
+func (a *channelsAPI) servePlaylist(ctx context.Context, w http.ResponseWriter, r *http.Request, u auth.User, c channels.Channel, name string, quality qualityInfo) {
 	if name == "index.m3u8" {
 		// the renditions named in the profile's interface language (as its guide names them)
-		ctx = channels.WithNameLanguage(ctx, a.guideLanguage(ctx, u.ID))
+		ctx = a.withNameLanguage(ctx, u)
 		// and DEFAULT where the profile's «Мои языки» would pick (a film's defaults)
 		if a.cards != nil {
 			if p, err := a.cards.prefsFor(ctx, u.ID); err == nil {
@@ -992,70 +1050,59 @@ func (a *channelsAPI) live(w http.ResponseWriter, r *http.Request, u auth.User) 
 				log.Printf("channels: playback prefs of profile %d: %v", u.ID, err)
 			}
 		}
+		if ref := a.screen.Allow(ctx, u, screentime.Video); ref != nil {
+			w.Header().Set("X-Vault-Error", "screen-time")
+			writeErr(w, r, http.StatusForbidden, ref.Message)
+			return
+		}
+		a.screen.Opened(ctx, u, screentime.Video, liveScreenKey(c), 0)
 	}
-	sig := screentime.Signal{Category: screentime.Video, Key: "channel:" + strconv.FormatInt(c.ID, 10)}
-	if strings.HasSuffix(name, ".m3u8") {
-		if name == "index.m3u8" {
-			if ref := a.screen.Allow(ctx, u, screentime.Video); ref != nil {
-				w.Header().Set("X-Vault-Error", "screen-time")
-				writeErr(w, r, http.StatusForbidden, ref.Message)
-				return
-			}
-			a.screen.Opened(ctx, u, screentime.Video, sig.Key, 0)
-		}
-		b, err := a.svc.Live.Playlist(ctx, c.ID, name)
-		if errors.Is(err, channels.ErrNoSegment) {
-			writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
-			return
-		}
-		if err != nil {
-			a.liveErr(w, r, err)
-			return
-		}
-		if quality.Applied != qualityOriginal {
-			b = withSegmentQuery(b, "q="+quality.Applied)
-		}
-		if key, keyed := auth.ViaMediaKey(ctx); keyed {
-			// AVPlayer fetches the renditions and segments without the
-			// app's headers: each one carries the key
-			b = withSegmentQuery(b, "mk="+url.QueryEscape(key))
-		}
-		w.Header().Set("X-Antresol-Quality", quality.Applied)
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache, no-store")
-		w.Write(b)
+	b, err := a.svc.Live.Playlist(ctx, c.ID, name)
+	if errors.Is(err, channels.ErrNoSegment) {
+		noSegment(w, r)
 		return
 	}
-	if strings.HasSuffix(name, ".vtt") {
-		b, err := a.svc.Live.VTT(ctx, c.ID, name)
-		if err != nil {
-			writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
-			return
-		}
-		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
-		w.Header().Set("Cache-Control", "private, max-age=3600")
-		w.Write(b)
+	if err != nil {
+		a.liveErr(w, r, err)
 		return
 	}
+	if quality.Applied != qualityOriginal {
+		b = withSegmentQuery(b, "q="+quality.Applied)
+	}
+	if key, keyed := auth.ViaMediaKey(ctx); keyed {
+		// AVPlayer fetches the renditions and segments without the
+		// app's headers: each one carries the key
+		b = withSegmentQuery(b, "mk="+url.QueryEscape(key))
+	}
+	w.Header().Set("X-Antresol-Quality", quality.Applied)
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Write(b)
+}
+
+// liveScreenKey is the screen time key of channel c's stream.
+func liveScreenKey(c channels.Channel) string { return "channel:" + strconv.FormatInt(c.ID, 10) }
+
+// serveSegment answers a segment of channel c's run (live).
+func (a *channelsAPI) serveSegment(ctx context.Context, w http.ResponseWriter, r *http.Request, u auth.User, c channels.Channel, name string) {
 	p, dur, err := a.svc.Live.Segment(ctx, c.ID, name)
 	if err != nil {
-		writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
+		noSegment(w, r)
 		return
 	}
 	if strings.HasPrefix(name, "seg") {
 		// screen time counts the picture (each audio rendition would count it again)
-		sig.Media = time.Duration(dur * float64(time.Second))
-		a.screen.Signal(ctx, u, sig)
+		a.screen.Signal(ctx, u, screentime.Signal{Category: screentime.Video, Key: liveScreenKey(c), Media: time.Duration(dur * float64(time.Second))})
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
+		noSegment(w, r)
 		return
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		writeErr(w, r, http.StatusNotFound, "Фрагмент не найден")
+		noSegment(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "video/mp2t")
@@ -1273,18 +1320,19 @@ func (a *channelsAPI) epgGrid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]channelEPGJSON, 0, len(cs))
+	tctx := a.withNameLanguage(ctx, u) // once for every channel's tracks
 	for _, c := range cs {
 		es, err := a.svc.Store.Range(ctx, c.ID, from, to)
 		if err != nil {
 			internalErr(w, r, "epg", err)
 			return
 		}
-		ps, err := a.programs(ctx, u, es)
+		ps, err := a.programs(ctx, u, es, 0)
 		if err != nil {
 			internalErr(w, r, "epg", err)
 			return
 		}
-		a.withTracks(ctx, u, c.ID, ps, now)
+		a.withTracks(tctx, c.ID, ps, now)
 		if ps == nil {
 			ps = []programJSON{}
 		}
@@ -1450,8 +1498,8 @@ func (a *channelsAPI) iptvArt(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseInt(chi.URLParam(r, "item"), 10, 64)
-	if err != nil {
+	id, ok := urlID(r, "item")
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}

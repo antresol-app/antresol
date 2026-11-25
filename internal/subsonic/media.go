@@ -279,7 +279,7 @@ func (c *call) artistCover(id int64) (*library.Item, error) {
 }
 
 // getCoverArt serves a cover: the original, or with size=N a copy that
-// fits in N×N (imgcache.Resized).
+// fits in N×N, as wide as the next step of imgcache.Widths (imgcache.Thumb).
 func (c *call) getCoverArt() *response {
 	v := c.p.Get("id")
 	if v == "" {
@@ -297,7 +297,7 @@ func (c *call) getCoverArt() *response {
 		return c.fail(codeNotFound, "Обложка не найдена")
 	}
 	if n, err := strconv.Atoi(c.p.Get("size")); err == nil && n > 0 {
-		if path, err = imgcache.Resized(c.s.ImageDir, path, n, n); err != nil {
+		if path, err = imgcache.Thumb(c.s.ImageDir, path, n, n); err != nil {
 			return c.fail(codeNotFound, "Обложка не найдена")
 		}
 	}

@@ -4,6 +4,7 @@
 // (useAnnotations).
 import { useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
+import { IconButton } from '../ui/IconButton'
 import { Sheet } from '../ui/Sheet'
 import { useAnnotations } from '../reader/useAnnotations'
 import type { Annotation } from '../api/types'
@@ -91,9 +92,7 @@ function BookmarksSheet({ bookId, onClose }: { bookId: number; onClose: () => vo
                     )}
                   </span>
                 </button>
-                <button type="button" className={styles.icon} aria-label={t('reader.annotations.deleteOne', { name: time })} onClick={() => notes.remove(a)}>
-                  <Icon name="trash" size={18} />
-                </button>
+                <IconButton icon={<Icon name="trash" size={18} />} label={t('reader.annotations.deleteOne', { name: time })} variant="plain" onClick={() => notes.remove(a)} />
               </li>
             )
           })}

@@ -52,7 +52,7 @@ func TestDeleteGeneratedIsRemembered(t *testing.T) {
 	}
 	before := len(by)
 	// its schedule, a favourite, a last-channel mark
-	if err := f.builder().Build(ctx, com); err != nil {
+	if _, err := f.builder().Build(ctx, com); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.entries(com.ID)) == 0 {

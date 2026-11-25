@@ -91,7 +91,7 @@ func (p *inputPlay) externalAudio(ctx context.Context, in addons.Input, duration
 			if out.pending == nil {
 				out.pending = map[string]pendingTrack{}
 			}
-			since, ok := p.trackStarts.at(inputPartKey(in, n))
+			since, ok := p.trackStarts.get(inputPartKey(in, n))
 			if !ok { // its job has not begun yet
 				since = p.clock()
 			}
@@ -184,7 +184,7 @@ func (p *inputPlay) trackSlot(ctx context.Context, id string) error {
 
 // failedRecently: key was put in f within inputTrackFailMemory (by p's clock).
 func (p *inputPlay) failedRecently(f *keyTimes, key string) bool {
-	t, ok := f.at(key)
+	t, ok := f.get(key)
 	return ok && p.clock().Sub(t) < inputTrackFailMemory
 }
 

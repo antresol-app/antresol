@@ -6,8 +6,8 @@
 // included) and holder (a well-behaved file holder set up through the core
 // API from ANTRESOL_FAKE_HOLDER, see holderScript; it also answers the
 // proxy's GET /api/whoami and the admin-only GET /api/admin/ping) and
-// player (serves GET /media/x from the file FAKE_MEDIA, and registers it
-// as an input of the profile FAKE_USER on its first GET /input).
+// player (serves GET /media/x from the file of its variable MEDIA, and registers it
+// as an input of the profile USER on its first GET /input).
 package main
 
 import (
@@ -123,10 +123,11 @@ func main() {
 // hookCall is one recorded hook request (or, in player mode, one media read).
 type hookCall struct {
 	Name   string          `json:"name"`
-	Header string          `json:"header"`          // X-Antresol-Hook
-	Type   string          `json:"type"`            // Content-Type
-	User   string          `json:"user"`            // X-Antresol-User
-	Input  string          `json:"input,omitempty"` // X-Antresol-Input
+	Header string          `json:"header"`           // X-Antresol-Hook
+	Type   string          `json:"type"`             // Content-Type
+	User   string          `json:"user"`             // X-Antresol-User
+	Signed bool            `json:"signed,omitempty"` // addonkit.UserFrom took it (the server's signature, with the key in this process's environment)
+	Input  string          `json:"input,omitempty"`  // X-Antresol-Input
 	Body   json.RawMessage `json:"body"`
 }
 
@@ -145,9 +146,10 @@ func (rc *recorder) wrap(next http.Handler) http.Handler {
 		if !json.Valid(b) {
 			b, _ = json.Marshal(string(b)) // kept as a JSON string
 		}
+		_, signed := addonkit.UserFrom(r)
 		rc.mu.Lock()
 		rc.calls = append(rc.calls, hookCall{Name: r.PathValue("name"), Header: r.Header.Get("X-Antresol-Hook"),
-			Type: r.Header.Get("Content-Type"), User: r.Header.Get(addonkit.UserHeader), Body: b})
+			Type: r.Header.Get("Content-Type"), User: r.Header.Get(addonkit.UserHeader), Signed: signed, Body: b})
 		rc.mu.Unlock()
 		next.ServeHTTP(w, r)
 	})
@@ -381,16 +383,17 @@ func serveHolder(mux *http.ServeMux, rec *recorder, env addonkit.Env, ready *add
 	}()
 }
 
-// servePlayer is the player mode: GET /media/x serves FAKE_MEDIA (with
-// Range), each read recorded at /calls; the first GET /input registers it
-// as an input of FAKE_USER through the core API, retrying a 503 (the core
+// servePlayer is the player mode: GET /media/x serves the file of the addon's
+// own variable MEDIA (ANTRESOL_<ID>_MEDIA; with Range), each read recorded
+// at /calls; the first GET /input registers it as an input of the profile
+// USER through the core API, retrying a 503 (the core
 // may not yet see this process as running) every 200 ms for up to 10 s,
 // and later calls answer the same id.
 func servePlayer(mux *http.ServeMux, rec *recorder, env addonkit.Env) {
-	media := os.Getenv("FAKE_MEDIA")
-	user, err := strconv.ParseInt(os.Getenv("FAKE_USER"), 10, 64)
+	media := env.Var("MEDIA")
+	user, err := strconv.ParseInt(env.Var("USER"), 10, 64)
 	if media == "" || err != nil {
-		fmt.Fprintln(os.Stderr, "fake: player needs FAKE_MEDIA and FAKE_USER")
+		fmt.Fprintln(os.Stderr, "fake: player needs its MEDIA and USER variables")
 		os.Exit(2)
 	}
 	mux.HandleFunc("GET /media/x", func(w http.ResponseWriter, r *http.Request) {

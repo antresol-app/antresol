@@ -251,3 +251,45 @@
   color: var(--label-3);
   text-align: right;
 }
+
+/* Spinner, EmptyState, Skeleton, Slider */
+.spinnerCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 96px;
+  color: var(--label);
+}
+.spinnerArt {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--scrim-art-strong);
+  color: var(--label-over-art);
+}
+.spinnerAccent {
+  display: inline-flex;
+  color: var(--accent);
+}
+.emptyStage {
+  padding-bottom: var(--s-8);
+  border: 1px dashed var(--separator);
+  border-radius: var(--r-group);
+}
+/* the stage is a box in the page, not a page: no 14vh above the state */
+.emptyStage > div {
+  margin-top: var(--s-8);
+}
+.skeletonPoster {
+  width: 120px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+}
+.skeletonTitle {
+  width: 220px;
+  height: 22px;
+}
+.sliders {
+  display: flex;
+  flex-direction: column;
+  max-width: 320px;
+}

@@ -40,7 +40,7 @@ func bearer(tok string) []string { return []string{"Authorization", "Bearer " + 
 func TestRequireAcceptsBearer(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	if w := e.do("GET", "/api/me", "", nil, bearer(tok)...); w.Code != 200 || !strings.Contains(w.Body.String(), `"id":1`) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
@@ -52,7 +52,7 @@ func TestRequireAcceptsBearer(t *testing.T) {
 func TestRequireCookieCarriesNativeToken(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	if w := e.do("GET", "/api/me", "", &http.Cookie{Name: auth.CookieName, Value: tok}); w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
@@ -107,7 +107,7 @@ func TestTokenLoginSharesThrottle(t *testing.T) {
 			t.Fatalf("attempt %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil)
+	w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass"}`, nil)
 	if w.Code != 429 || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("%d %q", w.Code, w.Header().Get("Retry-After"))
 	}
@@ -127,7 +127,7 @@ func TestTokenLoginRemotePasswordlessRefused(t *testing.T) {
 func TestTokenLoginNoCookie(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	w := e.do("POST", "/api/auth/token", tokenBody(1, "secret", "phone-0001"), nil)
+	w := e.do("POST", "/api/auth/token", tokenBody(1, adminPass, "phone-0001"), nil)
 	if w.Code != 200 || w.Header().Get("Set-Cookie") != "" {
 		t.Fatalf("%d %v", w.Code, w.Header())
 	}
@@ -147,12 +147,12 @@ func TestTokenRequiresDevice(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
 	for _, id := range []string{"", "short", "has space!", strings.Repeat("a", 65), "абвгдежзи"} {
-		w := e.do("POST", "/api/auth/token", tokenBody(1, "secret", id), nil)
+		w := e.do("POST", "/api/auth/token", tokenBody(1, adminPass, id), nil)
 		if w.Code != 400 || !strings.Contains(w.Body.String(), "Не указано устройство") {
 			t.Fatalf("%q: %d %s", id, w.Code, w.Body)
 		}
 	}
-	if w := e.do("POST", "/api/auth/token", `{"userId":1,"password":"secret"}`, nil); w.Code != 400 {
+	if w := e.do("POST", "/api/auth/token", `{"userId":1,"password":"secret-pass"}`, nil); w.Code != 400 {
 		t.Fatalf("no device: %d", w.Code)
 	}
 }
@@ -160,7 +160,7 @@ func TestTokenRequiresDevice(t *testing.T) {
 func TestTokenTrimsDeviceFields(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	b, _ := json.Marshal(map[string]any{"userId": 1, "password": "secret",
+	b, _ := json.Marshal(map[string]any{"userId": 1, "password": adminPass,
 		"device": map[string]string{"id": "phone-0001", "name": "  " + strings.Repeat("я", 150) + "  ", "model": strings.Repeat("m", 100), "version": strings.Repeat("v", 100)}})
 	w := e.do("POST", "/api/auth/token", string(b), nil)
 	if w.Code != 200 {
@@ -186,8 +186,8 @@ func TestPasswordChangeRevokesDevices(t *testing.T) {
 		t.Fatalf("device survived: %d", w.Code)
 	}
 	// an admin changing their own password from the app keeps that device
-	atok := e.deviceLogin(1, "secret", "mac-000001")
-	if w := e.do("PATCH", "/api/users/1", `{"password":"newsecret"}`, nil, bearer(atok)...); w.Code != 200 {
+	atok := e.deviceLogin(1, adminPass, "mac-000001")
+	if w := e.do("PATCH", "/api/users/1", `{"password":"newsecret-pass"}`, nil, bearer(atok)...); w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if w := e.do("GET", "/api/me", "", nil, bearer(atok)...); w.Code != 200 {
@@ -198,7 +198,7 @@ func TestPasswordChangeRevokesDevices(t *testing.T) {
 func TestAppPasswordResetKeepsDevices(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	if w := e.do("POST", "/api/me/app-password", `{}`, nil, bearer(tok)...); w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
@@ -258,8 +258,8 @@ func TestDevicesListAndRevoke(t *testing.T) {
 	e := newEnv(t)
 	admin := e.setup()
 	u := e.addUser(`{"name":"Дед","password":"ded1"}`, admin)
-	phone := e.deviceLogin(1, "secret", "phone-0001")
-	mac := e.deviceLogin(1, "secret", "mac-000001")
+	phone := e.deviceLogin(1, adminPass, "phone-0001")
+	mac := e.deviceLogin(1, adminPass, "mac-000001")
 	other := e.deviceLogin(u.ID, "ded1", "ipad-00001")
 
 	// the admin's own «Устройства» are the admin's own devices only
@@ -355,7 +355,7 @@ func TestDevicesListAndRevoke(t *testing.T) {
 func TestLogoutRevokesBearer(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	tok := e.deviceLogin(1, "secret", "phone-0001")
+	tok := e.deviceLogin(1, adminPass, "phone-0001")
 	if w := e.do("POST", "/api/logout", "", nil, bearer(tok)...); w.Code != 204 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}

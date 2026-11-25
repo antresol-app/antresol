@@ -12,6 +12,8 @@
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button — or, with `to`,
 // a link to an address of the app (a list's level: Back returns to it).
+// ListSelectRow: a row that chooses (a source, a device, a playlist to add
+// to): the link row's button with the choice's check at the trailing edge.
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Icon } from '../components/Icon'
@@ -111,6 +113,39 @@ export function ListLinkRow({ label, hint, value, icon, tint, leading, onOpen, t
           {inner}
         </button>
       )}
+    </li>
+  )
+}
+
+export interface ListSelectRowProps {
+  label: ReactNode
+  /** One short line under the label. */
+  hint?: ReactNode
+  /** A picture, an icon or a badge before the text. */
+  leading?: ReactNode
+  /** The chosen one of the rows beside it: the check shows and the row reads as pressed.
+   * Leave it out for a row that only acts («Другой источник…»), which has no check. */
+  selected?: boolean
+  disabled?: boolean
+  onSelect: () => void
+  className?: string
+}
+
+export function ListSelectRow({ label, hint, leading, selected, disabled, onSelect, className }: ListSelectRowProps) {
+  return (
+    <li className={[styles.row, styles.link, className].filter(Boolean).join(' ')}>
+      <button type="button" className={styles.linkButton} aria-pressed={selected} disabled={disabled} onClick={onSelect}>
+        {leading}
+        <span className={styles.text}>
+          <span className={styles.label}>{label}</span>
+          {hint && <span className={styles.hint}>{hint}</span>}
+        </span>
+        {selected !== undefined && (
+          <span className={styles.check} aria-hidden>
+            {selected && <Icon name="check" size={16} strokeWidth={2.4} />}
+          </span>
+        )}
+      </button>
     </li>
   )
 }

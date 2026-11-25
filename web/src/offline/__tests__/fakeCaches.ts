@@ -26,9 +26,14 @@ export class FakeCache {
   async put(r: RequestInfo | URL, res: Response) {
     this.entries.set(pathOf(r).full, res)
   }
-  async match(r: RequestInfo | URL, o?: { ignoreSearch?: boolean }) {
+  async match(r: RequestInfo | URL, o?: { ignoreSearch?: boolean; ignoreVary?: boolean }) {
     const p = pathOf(r)
     const hit = this.entries.get(p.full) ?? (o?.ignoreSearch ? [...this.entries].find(([k]) => k.split('?')[0] === p.bare)?.[1] : undefined)
+    // Vary: the copy was put under a bare path (no request headers), so a request that carries a header the response varies on does not match
+    if (hit && !o?.ignoreVary && r instanceof Request) {
+      const vary = (hit.headers.get('Vary') ?? '').split(',').map((h) => h.trim())
+      if (vary.some((h) => h === '*' || (h !== '' && r.headers.has(h)))) return undefined
+    }
     return hit?.clone()
   }
   async delete(r: RequestInfo | URL) {

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ type guideTranslator struct {
 	mu    sync.Mutex
 	cache map[string]tmdb.Translation
 	gets  []string // "kind/id/tag/seasons"
+	peeks atomic.Int32
 }
 
 func (f *guideTranslator) Language() string { return "ru-RU" }
@@ -47,6 +49,7 @@ func (f *guideTranslator) key(kind string, id int, tag string) string {
 }
 
 func (f *guideTranslator) Peek(_ context.Context, kind string, id int, tag string) (tmdb.Translation, bool) {
+	f.peeks.Add(1)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	t, ok := f.cache[f.key(kind, id, tag)]
@@ -182,6 +185,28 @@ func TestChannelGuideInTheViewersLanguage(t *testing.T) {
 	}
 	if body := guideTitles(t, e, "/api/channels", "en"); !strings.Contains(body, `"title":"The Wolf of Wall Street"`) || !strings.Contains(body, `"overview":"A broker"`) {
 		t.Fatalf("en list: %s", body)
+	}
+}
+
+// The list shows what is on now and next: no more programmes of a channel's
+// four hours are described (and looked up in TMDB's cache) than those two.
+func TestChannelListDescribesOnlyNowAndNext(t *testing.T) {
+	f := &guideTranslator{}
+	e, svc, _, ch := guideEnv(t, f)
+	warmGuide(t, svc, f, 4)
+	var n int
+	e.db.QueryRow(`SELECT count(*) FROM channel_playout WHERE channel_id=? AND start_ms < ?`, ch[0], time.Now().Add(4*time.Hour).UnixMilli()).Scan(&n)
+	if n < 3 {
+		t.Fatalf("setup: %d programmes in the four hours, want more than two", n)
+	}
+	f.peeks.Store(0)
+	for _, path := range []string{"/api/channels", "/api/channels?brief=1"} {
+		if body := guideTitles(t, e, path, "ru"); !strings.Contains(body, `"title":"Волк с Уолл-стрит"`) {
+			t.Fatalf("%s: %s", path, body)
+		}
+		if got := f.peeks.Swap(0); got != 4 { // two programmes of each of the two channels
+			t.Fatalf("%s looked %d programmes up, want 4", path, got)
+		}
 	}
 }
 

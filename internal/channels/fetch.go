@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"slices"
 	"strconv"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -80,9 +82,7 @@ func normalizeFetch(r *Rules) error {
 		if t.Kind == library.KindMovie {
 			t.Season = 0
 		}
-		if len([]rune(t.Title)) > 200 {
-			t.Title = string([]rune(t.Title)[:200])
-		}
+		t.Title = clipRunes(t.Title, 200, "")
 		dup := false
 		for _, o := range out {
 			if o.Kind == t.Kind && o.TMDBID == t.TMDBID && o.Season == t.Season {
@@ -278,11 +278,14 @@ func scanFetch(r rowScanner) (fetchRow, error) {
 	return x, err
 }
 
-type querier interface {
-	QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error)
+// unqueueFetch takes all of channel ch's fetch rows out of its order
+// (pos -1: not a title of the channel now).
+func unqueueFetch(ctx context.Context, q dbtx, ch int64) error {
+	_, err := q.ExecContext(ctx, `UPDATE channel_fetch SET pos=-1 WHERE channel_id=?`, ch)
+	return err
 }
 
-func fetchRows(ctx context.Context, q querier, where string, args ...any) ([]fetchRow, error) {
+func fetchRows(ctx context.Context, q dbtx, where string, args ...any) ([]fetchRow, error) {
 	rows, err := q.QueryContext(ctx, `SELECT `+fetchCols+` FROM channel_fetch WHERE `+where, args...)
 	if err != nil {
 		return nil, err
@@ -310,7 +313,7 @@ type libProg struct {
 
 // onDisk finds rows' programmes in the library: by key, the item whose
 // files are probed (a file still being probed is not on disk yet).
-func onDisk(ctx context.Context, db *sql.DB, rows []fetchRow) (map[string]libProg, error) {
+func onDisk(ctx context.Context, conn *sql.DB, rows []fetchRow) (map[string]libProg, error) {
 	out := map[string]libProg{}
 	var movies, series []int64
 	seen := map[string]bool{}
@@ -327,9 +330,9 @@ func onDisk(ctx context.Context, db *sql.DB, rows []fetchRow) (map[string]libPro
 		}
 	}
 	scan := func(q string, ids []int64, key func(tmdb int64, s, e int) string) error {
-		for part := range chunks(ids, 400) {
-			in, args := inArgs(part)
-			rs, err := db.QueryContext(ctx, fmt.Sprintf(q, in), args...)
+		for part := range slices.Chunk(ids, 400) {
+			in, args := db.InList(part)
+			rs, err := conn.QueryContext(ctx, fmt.Sprintf(q, in), args...)
 			if err != nil {
 				return err
 			}

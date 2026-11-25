@@ -6,7 +6,6 @@ import (
 
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
-	"github.com/antresol-app/antresol/internal/screentime"
 )
 
 // Player is the web player's machinery for another API of the same server
@@ -15,9 +14,6 @@ import (
 // one extraction or one session limit serves every client. The caller has
 // checked that the request's profile (auth.WithUser) may see the file.
 type Player struct{ h *lib }
-
-// ErrNoTranscoder: the server has no HLS manager (StartHLS).
-var ErrNoTranscoder = errNoTranscoder
 
 // NewRouterWithPlayer is NewRouter and the Player over its library
 // handlers (nil when the library is not mounted).
@@ -45,7 +41,8 @@ func (p *Player) Caps(r *http.Request, c media.ClientCaps) media.ClientCaps {
 // rule that a new session of the profile on the same file ends the old one
 // (an orphan of a reloaded page) does not apply: the caller replaces by
 // device, so two TVs of one profile do not stop each other. Errors:
-// ErrNoTranscoder, media.ErrUserLimit, media.ErrBusy, media.ErrNoSpace.
+// media.ErrUserLimit, media.ErrBusy, media.ErrNoSpace, or an error when the
+// server has no HLS manager.
 func (p *Player) StartHLS(r *http.Request, f library.File, d media.Decision, durationMs int64, replace string) (string, error) {
 	// FileID 0: no same-file replacement in media.HLSManager.Start
 	sid, _, err := p.h.startSession(r, 0, f.ItemID, f.Path, d, 0, replace, durationMs)
@@ -113,18 +110,6 @@ func (p *Player) ServeFile(w http.ResponseWriter, r *http.Request, f library.Fil
 		return
 	}
 	serveFile(w, r, f, false, p.h.screenWrap(r, it))
-}
-
-// ScreenTime is nil when the request's profile may watch now, else why
-// not (screentime.Service.Allow for video).
-func (p *Player) ScreenTime(r *http.Request) *screentime.Refusal {
-	return p.h.ScreenTime.Allow(r.Context(), userOf(r), screentime.Video)
-}
-
-// ScreenOpened marks the title of f opened for playback (its player's
-// reports count from now on).
-func (p *Player) ScreenOpened(r *http.Request, f library.File) {
-	p.h.screenOpened(r, library.Item{ID: f.ItemID, Kind: library.KindMovie})
 }
 
 // ServeSubtitle answers with the WebVTT of subtitle stream idx of f (the

@@ -2,9 +2,9 @@
 .trigger {
   display: grid;
   place-items: center;
-  height: 44px;
-  min-width: 44px;
-  padding: 0 4px;
+  height: var(--control-h-md);
+  min-width: var(--control-h-md);
+  padding: 0 var(--s-1);
   border: 0;
   background: transparent;
   color: var(--label);
@@ -14,9 +14,8 @@
   height: 28px;
   padding: 0 11px;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 14px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: var(--r-group);
+  font: var(--t-footnote-em);
   line-height: 26px;
   white-space: nowrap;
   transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);

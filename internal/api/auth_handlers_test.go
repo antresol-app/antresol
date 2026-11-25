@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -67,8 +68,12 @@ func session(w *httptest.ResponseRecorder) *http.Cookie {
 	return nil
 }
 
+// adminPass is the first administrator's password in the tests (an
+// administrator chooses one of 10 characters or more through the API).
+const adminPass = "secret-pass"
+
 func (e *env) setup() *http.Cookie {
-	w := e.do("POST", "/api/setup", `{"name":"Папа","password":"secret"}`, nil)
+	w := e.do("POST", "/api/setup", `{"name":"Папа","password":"`+adminPass+`"}`, nil)
 	if w.Code != 200 && w.Code != 201 {
 		e.t.Fatalf("setup %d %s", w.Code, w.Body)
 	}
@@ -83,7 +88,7 @@ func TestSetupOnlyOnce(t *testing.T) {
 		t.Fatal("needsSetup should be true")
 	}
 	e.setup()
-	if w := e.do("POST", "/api/setup", `{"name":"Хакер","password":"secret"}`, nil); w.Code != 403 {
+	if w := e.do("POST", "/api/setup", `{"name":"Хакер","password":"secret-pass"}`, nil); w.Code != 403 {
 		t.Fatalf("second setup: %d", w.Code)
 	}
 }
@@ -97,7 +102,7 @@ func TestLoginWrongPassword401(t *testing.T) {
 	if w := e.do("POST", "/api/login", `{"userId":1}`, nil); w.Code != 401 {
 		t.Fatalf("admin without password: %d", w.Code)
 	}
-	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil); w.Code != 200 || session(w) == nil {
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass"}`, nil); w.Code != 200 || session(w) == nil {
 		t.Fatalf("%d", w.Code)
 	}
 }
@@ -159,14 +164,46 @@ func TestAdminMustHavePassword(t *testing.T) {
 	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true}`, admin); w.Code != 400 {
 		t.Fatalf("%d", w.Code)
 	}
-	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcd"}`, admin); w.Code != 400 || !strings.Contains(w.Body.String(), "не короче 6") {
+	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcd"}`, admin); w.Code != 400 || !strings.Contains(w.Body.String(), "не короче 10") {
 		t.Fatalf("short admin password: %d %s", w.Code, w.Body)
 	}
-	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcdef"}`, admin); w.Code != 201 {
+	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"1234567890"}`, admin); w.Code != 400 || !strings.Contains(w.Body.String(), "Слишком простой") {
+		t.Fatalf("common admin password: %d %s", w.Code, w.Body)
+	}
+	if w := e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcdef-ghijk"}`, admin); w.Code != 201 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if w := e.do("POST", "/api/users", `{"name":"Мама"}`, admin); w.Code != 409 {
 		t.Fatalf("dup: %d", w.Code)
+	}
+}
+
+// A profile that becomes an administrator takes a new password of 10
+// characters or more: the one it has may be as short as a non-admin's.
+func TestPromotionNeedsANewPassword(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	mom := e.addUser(`{"name":"Мама","password":"abcd"}`, admin)
+	patch := func(body string) *httptest.ResponseRecorder {
+		return e.do("PATCH", "/api/users/"+itoa(mom.ID), body, admin)
+	}
+	for _, body := range []string{`{"isAdmin":true}`, `{"isAdmin":true,"password":""}`, `{"isAdmin":true,"password":"abcdefghi"}`, `{"isAdmin":true,"password":"1234567890"}`} {
+		if w := patch(body); w.Code != 400 {
+			t.Errorf("%s: %d %s", body, w.Code, w.Body)
+		}
+	}
+	if u, err := e.store.Get(context.Background(), mom.ID); err != nil || u.IsAdmin {
+		t.Fatalf("promoted by a refused patch: %+v %v", u, err)
+	}
+	if w := patch(`{"isAdmin":true,"password":"abcdef-ghijk"}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"isAdmin":true`) {
+		t.Fatalf("promotion with a new password: %d %s", w.Code, w.Body)
+	}
+	// an administrator is edited without a new password
+	if w := patch(`{"name":"Мама Л."}`); w.Code != 200 {
+		t.Fatalf("rename of an administrator: %d %s", w.Code, w.Body)
+	}
+	if w := patch(`{"isAdmin":true}`); w.Code != 200 {
+		t.Fatalf("an administrator stays one: %d %s", w.Code, w.Body)
 	}
 }
 
@@ -176,8 +213,16 @@ func TestSessionCookieFlags(t *testing.T) {
 	if !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge != 400*24*3600 || c.Secure || c.Path != "/" {
 		t.Fatalf("%+v", c)
 	}
-	w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil, "X-Forwarded-Proto", "https")
-	if c := session(w); c == nil || !c.Secure {
+	login := func() *http.Cookie {
+		return session(e.do("POST", "/api/login", `{"userId":1,"password":"`+adminPass+`"}`, nil, "X-Forwarded-Proto", "https"))
+	}
+	// the header of a client that is no proxy of ours says nothing
+	if c := login(); c == nil || c.Secure {
+		t.Fatalf("a stranger's X-Forwarded-Proto made the cookie Secure: %+v", c)
+	}
+	e.h = NewRouter(Deps{Users: e.store, Sessions: auth.NewSessions(e.db),
+		Network: &auth.Network{Proxies: []netip.Prefix{netip.MustParsePrefix("192.168.1.20/32")}}})
+	if c := login(); c == nil || !c.Secure {
 		t.Fatalf("expected Secure behind https proxy: %+v", c)
 	}
 	_ = context.Background
@@ -360,7 +405,7 @@ func TestPasswordChangeClearsAppPassword(t *testing.T) {
 	}
 	// the admin's own new password ends the admin's app password as well
 	app, _ := e.store.SetAppPassword(ctx, 1)
-	if w := e.do("PATCH", "/api/users/1", `{"password":"secret2"}`, admin); w.Code != 200 {
+	if w := e.do("PATCH", "/api/users/1", `{"password":"secret2-pass"}`, admin); w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if code := subsonicPing(t, e.store, "Папа", app); code != 40 {

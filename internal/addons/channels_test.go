@@ -164,25 +164,16 @@ type fakeLibrary struct {
 	err   error
 }
 
-func (f *fakeLibrary) ItemIDsByTMDB(_ context.Context, kind string, ids []int64) (map[int64]int64, error) {
+func (f *fakeLibrary) ItemsByTMDB(_ context.Context, byKind map[string][]int64) (map[string]map[int64]library.Item, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	out := map[int64]int64{}
-	for _, id := range ids {
-		if it, ok := f.items[kind][id]; ok {
-			out[id] = it.ID
-		}
-	}
-	return out, nil
-}
-
-func (f *fakeLibrary) ItemsByID(_ context.Context, ids []int64) (map[int64]library.Item, error) {
-	out := map[int64]library.Item{}
-	for _, m := range f.items {
-		for _, it := range m {
-			if slices.Contains(ids, it.ID) {
-				out[it.ID] = it
+	out := map[string]map[int64]library.Item{}
+	for kind, ids := range byKind {
+		out[kind] = map[int64]library.Item{}
+		for _, id := range ids {
+			if it, ok := f.items[kind][id]; ok {
+				out[kind][id] = it
 			}
 		}
 	}

@@ -61,9 +61,12 @@ type env struct {
 	anyaApp, guestApp  string
 }
 
+// openDB opens a test database (a test that counts queries swaps it).
+var openDB = db.Open
+
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	d, err := db.Open(filepath.Join(t.TempDir(), "v.db"))
+	d, err := openDB(filepath.Join(t.TempDir(), "v.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

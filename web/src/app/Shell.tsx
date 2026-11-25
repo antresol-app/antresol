@@ -8,7 +8,7 @@ import { MiniPlayer } from '../player/MiniPlayer'
 import { AudioScreenStop } from '../player/AudioScreenStop'
 import { NowPlaying } from '../player/NowPlaying'
 import { WritePrompt } from '../components/accounts/WritePrompt'
-import { Notice } from '../components/Notice'
+import { ToastHost } from '../components/ToastHost'
 import { UpdateBanner } from '../components/UpdateBanner'
 import { useAudioSelect } from '../player/audio/useAudio'
 import { useSession } from '../state/session'
@@ -76,7 +76,7 @@ export function Shell() {
       </main>
       <MiniPlayer onExpand={openFull} />
       <NowPlaying open={full} onClose={closeFull} />
-      <Notice />
+      <ToastHost />
       {/* the SDK's useWatchWays: its ways' availability and sheets */}
       <AddonWaysOutlet />
       <WritePrompt />

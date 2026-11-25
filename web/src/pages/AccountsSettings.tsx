@@ -20,6 +20,7 @@ import { showNotice } from '../state/notice'
 import { useSession } from '../state/session'
 import { useIsCompact } from '../state/useMediaQuery'
 import { ManageFrame } from './manage/Manage'
+import { Spinner } from '../ui/Spinner'
 import m from './manage/Manage.module.css'
 import styles from './ProfileSettings.module.css'
 
@@ -88,7 +89,7 @@ export function AccountsSettings() {
         </header>
         {offered === undefined ? (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('common.loading')}
+            <Spinner track className={m.spinner} /> {t('common.loading')}
           </div>
         ) : offered === false ? (
           <div className={m.empty}>

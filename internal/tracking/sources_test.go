@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,13 +17,26 @@ type fakeTMDB struct {
 	tv, movie tmdb.Details
 	seasons   map[int]tmdb.SeasonDetails
 	err       error
-	asked     []int
+	delay     time.Duration // each season takes this long
+
+	mu       sync.Mutex
+	asked    []int
+	inFlight int
+	most     int // the most seasons asked at once
 }
 
 func (f *fakeTMDB) TV(context.Context, int) (tmdb.Details, error)    { return f.tv, f.err }
 func (f *fakeTMDB) Movie(context.Context, int) (tmdb.Details, error) { return f.movie, f.err }
 func (f *fakeTMDB) Season(_ context.Context, _ int, n int) (tmdb.SeasonDetails, error) {
+	f.mu.Lock()
 	f.asked = append(f.asked, n)
+	f.inFlight++
+	f.most = max(f.most, f.inFlight)
+	f.mu.Unlock()
+	time.Sleep(f.delay)
+	f.mu.Lock()
+	f.inFlight--
+	f.mu.Unlock()
 	s, ok := f.seasons[n]
 	if !ok {
 		return tmdb.SeasonDetails{}, errors.New("no season")
@@ -44,8 +59,38 @@ func TestTMDBSkeletonSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Episode{{5, 1, 1, "A", "2026-01-01", "/a.jpg"}, {5, 1, 2, "B", "2026-01-08", ""}, {5, 2, 1, "C", "2026-04-01", ""}}
+	slices.Sort(f.asked)
 	if !reflect.DeepEqual(eps, want) || status != "airing" || !reflect.DeepEqual(f.asked, []int{1, 2}) {
 		t.Fatalf("eps %+v status %q asked %v", eps, status, f.asked)
+	}
+}
+
+// TestTMDBSkeletonSeasonsAreAskedTogether: a long series is not read one
+// season after another (an untracked title's page waits for this), and the
+// episodes still come in season order.
+func TestTMDBSkeletonSeasonsAreAskedTogether(t *testing.T) {
+	f := &fakeTMDB{seasons: map[int]tmdb.SeasonDetails{}, delay: 20 * time.Millisecond}
+	var want []Episode
+	for n := 0; n <= 10; n++ {
+		f.tv.Seasons = append(f.tv.Seasons, tmdb.SeasonCount{Number: n, Episodes: 2})
+		f.seasons[n] = tmdb.SeasonDetails{Number: n, Episodes: []tmdb.Episode{{Number: 1, Name: "A"}, {Number: 2, Name: "B"}}}
+		if n > 0 {
+			want = append(want, Episode{TitleID: 5, Season: n, Number: 1, Name: "A"}, Episode{TitleID: 5, Season: n, Number: 2, Name: "B"})
+		}
+	}
+	eps, _, err := NewTMDBSkeleton(f).Episodes(context.Background(), Title{ID: 5, Kind: "series", TMDBID: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(eps, want) {
+		t.Fatalf("episodes %+v", eps)
+	}
+	if f.most < 2 || f.most > seasonsAtOnce {
+		t.Fatalf("%d seasons asked at once, want 2..%d", f.most, seasonsAtOnce)
+	}
+	delete(f.seasons, 7)
+	if _, _, err := NewTMDBSkeleton(f).Episodes(context.Background(), Title{ID: 5, Kind: "series", TMDBID: 9}); err == nil {
+		t.Fatal("a season that cannot be read left the list incomplete without an error")
 	}
 }
 

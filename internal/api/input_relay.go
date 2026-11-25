@@ -162,7 +162,7 @@ func (p *inputPlay) askPart(ctx context.Context, in addons.Input, target, method
 		out.Header[k] = v
 	}
 	out.Header.Set("X-Antresol-Input", in.ID)
-	out.Header.Set("X-Antresol-User", who)
+	addons.SetUser(out.Header, in.Socket, who)
 	return p.client.Do(out)
 }
 

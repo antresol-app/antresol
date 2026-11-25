@@ -35,6 +35,11 @@ const (
 // after the response, in the background. A var so a test can shorten it.
 var onDemandScanBudget = 5 * time.Minute
 
+// onDemandStaleWait is how long a title read before waits for its refresh
+// when the stored list is old: slower than that, the stored list is served and
+// the refresh goes on in the background. A var so a test can shorten it.
+var onDemandStaleWait = 500 * time.Millisecond
+
 // scanGrace is how long the request that started a background scan waits for
 // it, to answer after a scan that has nothing to wait for.
 const scanGrace = 100 * time.Millisecond
@@ -191,12 +196,12 @@ func titleJSON(t tracking.Title, it *library.Item) trackTitleOut {
 // they are not a series or movie and a positive id.
 func titleParams(w http.ResponseWriter, r *http.Request) (string, int64, bool) {
 	kind := chi.URLParam(r, "kind")
-	id, err := strconv.ParseInt(chi.URLParam(r, "tmdbId"), 10, 64)
 	if kind != "series" && kind != "movie" {
 		writeErr(w, r, http.StatusBadRequest, "Неизвестный раздел")
 		return "", 0, false
 	}
-	if err != nil || id <= 0 {
+	id, ok := pathID(r, "tmdbId")
+	if !ok {
 		writeErr(w, r, http.StatusBadRequest, "Неверный id")
 		return "", 0, false
 	}
@@ -211,7 +216,9 @@ func titleParams(w http.ResponseWriter, r *http.Request) (string, int64, bool) {
 // served at once, whatever the addons' scanners do. They run on in the
 // background (Pending.Finish, bounded by onDemandScanBudget), one per title.
 // Concurrent callers for one title share one refresh (h.refreshes); it runs
-// to its budget even when the request that started it goes away. A failed
+// to its budget even when the request that started it goes away. A title
+// that was read before (and not forced) is waited for only onDemandStaleWait:
+// slower than that its stored list is served and the refresh goes on. A failed
 // refresh is logged: the stored state is served.
 func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, poster string, force bool) (tracking.Title, error) {
 	st := h.Tracking.Store
@@ -247,8 +254,16 @@ func (h *lib) ensureFresh(ctx context.Context, kind string, tmdbID int64, name, 
 		h.finishInBackground(key, p)
 		return nil, nil
 	})
+	var late <-chan time.Time // nil: the first list of a title is waited for
+	if !force && !t.Refreshed.IsZero() {
+		timer := time.NewTimer(onDemandStaleWait)
+		defer timer.Stop()
+		late = timer.C
+	}
 	select {
 	case <-done:
+	case <-late:
+		return t, nil
 	case <-ctx.Done():
 		return t, ctx.Err()
 	}

@@ -89,6 +89,11 @@ func (t *AppTokens) Issue(ctx context.Context, userID int64, proto string, d Dev
 // ErrNotFound for an unknown, revoked or expired token. last_seen is
 // written at most once per lastSeenThrottle.
 func (t *AppTokens) Lookup(ctx context.Context, token string) (User, Device, error) {
+	return t.lookup(ctx, token, "")
+}
+
+// lookup is Lookup for a token of proto only ("": of any).
+func (t *AppTokens) lookup(ctx context.Context, token, proto string) (User, Device, error) {
 	if token == "" {
 		return User{}, Device{}, ErrNotFound
 	}
@@ -97,7 +102,7 @@ func (t *AppTokens) Lookup(ctx context.Context, token string) (User, Device, err
 	var d Device
 	err := t.db.QueryRowContext(ctx, `SELECT t.user_id, t.device_id, t.device, t.client, t.version, t.last_seen,
 		COALESCE(t.history_id, 0), COALESCE(h.managed_name, ''), COALESCE(h.uid, '')
-		FROM app_tokens t LEFT JOIN users h ON h.id = t.history_id WHERE t.token=?`, token).
+		FROM app_tokens t LEFT JOIN users h ON h.id = t.history_id WHERE t.token=? AND (?='' OR t.proto=?)`, token, proto, proto).
 		Scan(&uid, &d.ID, &d.Name, &d.Client, &d.Version, &seen, &d.History.ID, &d.History.Name, &d.History.UID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, Device{}, ErrNotFound
@@ -173,14 +178,9 @@ func (t *AppTokens) Current(ctx context.Context, userID int64, proto, deviceID s
 // LookupProto is Lookup for a token of proto only: a token of another
 // protocol is ErrNotFound.
 func (t *AppTokens) LookupProto(ctx context.Context, token, proto string) (User, error) {
-	var p string
-	err := t.db.QueryRowContext(ctx, `SELECT proto FROM app_tokens WHERE token=?`, token).Scan(&p)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && p != proto) {
+	if proto == "" {
 		return User{}, ErrNotFound
 	}
-	if err != nil {
-		return User{}, err
-	}
-	u, _, err := t.Lookup(ctx, token)
+	u, _, err := t.lookup(ctx, token, proto)
 	return u, err
 }

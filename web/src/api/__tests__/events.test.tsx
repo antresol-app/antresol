@@ -18,12 +18,36 @@ function Listener() {
   return null
 }
 
+function Typed({ types, onEvent }: { types?: string[]; onEvent: () => void }) {
+  useEvents(onEvent, types)
+  return null
+}
+
 describe('events', () => {
   it('no edition events', () => {
     vi.stubGlobal('EventSource', FakeSource)
     const { unmount } = render(<Listener />)
     expect(named).toEqual(['library.updated', 'request.changed', 'disk.warning', 'migrate.progress', 'import.progress', 'addons.changed'])
     unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it('an empty list of types hears nothing and opens no stream; no list hears every type', () => {
+    named.length = 0
+    const sources: FakeSource[] = []
+    class Source extends FakeSource {
+      constructor() {
+        super()
+        sources.push(this)
+      }
+    }
+    vi.stubGlobal('EventSource', Source)
+    const none = render(<Typed types={[]} onEvent={() => {}} />)
+    expect(sources).toHaveLength(0)
+    none.unmount()
+    const all = render(<Typed onEvent={() => {}} />)
+    expect(sources).toHaveLength(1)
+    all.unmount()
     vi.unstubAllGlobals()
   })
 })

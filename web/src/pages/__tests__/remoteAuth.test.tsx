@@ -93,7 +93,7 @@ describe('outside the home network', () => {
 })
 
 describe('Setup', () => {
-  it('asks for at least 6 characters', async () => {
+  it('asks for at least 10 characters', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({}))
     vi.stubGlobal('fetch', fetchMock)
     render(
@@ -102,9 +102,9 @@ describe('Setup', () => {
       </MemoryRouter>,
     )
     await userEvent.type(screen.getByLabelText('Ваше имя'), 'Папа')
-    await userEvent.type(screen.getByLabelText('Пароль'), '12345')
+    await userEvent.type(screen.getByLabelText('Пароль'), '123456789')
     await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }))
-    expect(await screen.findByText('Не короче 6 символов')).toBeInTheDocument()
+    expect(await screen.findByText('Не короче 10 символов')).toBeInTheDocument()
     // nothing is sent (the source offer, GET /api/about, is only read)
     expect(fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => !u.endsWith('/api/about'))).toEqual([])
   })

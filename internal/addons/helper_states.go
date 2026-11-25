@@ -2,7 +2,6 @@ package addons
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -27,12 +26,7 @@ var helperProblems = map[string]bool{addonkit.HelperProblemDNS: true, addonkit.H
 // passed on), and only when it is the helper's compose address.
 func (h *Hooks) HelperStates(ctx context.Context, declared func(id, name string) (Helper, bool)) map[string][]addonkit.HelperState {
 	out := map[string][]addonkit.HelperState{}
-	h.Each(ctx, "helpers.status", nil, nil, func(id string, raw json.RawMessage) {
-		var st addonkit.HelpersStatus
-		if err := json.Unmarshal(raw, &st); err != nil {
-			h.log().Warn("addon hook: left out", "addon", id, "hook", "helpers.status", "err", err)
-			return
-		}
+	eachAnswer(h, ctx, "helpers.status", nil, nil, func(id string, st addonkit.HelpersStatus) {
 		for _, s := range st.Helpers {
 			hp, ok := declared(id, s.Name)
 			if !ok || !helperSources[s.Source] {

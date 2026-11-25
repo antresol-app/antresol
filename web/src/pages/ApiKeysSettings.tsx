@@ -22,6 +22,7 @@ import { Select } from '../ui/Select'
 import { Sheet } from '../ui/Sheet'
 import { TextField } from '../ui/TextField'
 import { ManageFrame } from './manage/Manage'
+import { Spinner } from '../ui/Spinner'
 import m from './manage/Manage.module.css'
 import page from './ProfileSettings.module.css'
 import styles from './ApiKeysSettings.module.css'
@@ -144,7 +145,7 @@ export function ApiKeysSettings() {
 
         {state.status === 'loading' && (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('common.loading')}
+            <Spinner track className={m.spinner} /> {t('common.loading')}
           </div>
         )}
         {state.status === 'error' && (

@@ -2,6 +2,7 @@ package addons
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -224,12 +225,7 @@ func hookDeadline(ctx context.Context, name string, over map[string]time.Duratio
 	return d
 }
 
-func (h *Hooks) log() *slog.Logger {
-	if h.Log != nil {
-		return h.Log
-	}
-	return slog.Default()
-}
+func (h *Hooks) log() *slog.Logger { return cmp.Or(h.Log, slog.Default()) }
 
 // Call runs hook name of addon id with body in (nil: {}) and decodes a 200
 // answer into out (nil: discarded). 204 and 404 (not implemented, logged
@@ -273,6 +269,19 @@ func (h *Hooks) EachFor(ctx context.Context, name string, user *addonkit.User, a
 			each(r.id, r.raw)
 		}
 	}
+}
+
+// eachAnswer is Each with each answer decoded as a T; one that is not a T
+// is left out (logged).
+func eachAnswer[T any](h *Hooks, ctx context.Context, name string, user *addonkit.User, in any, each func(id string, a T)) {
+	h.Each(ctx, name, user, in, func(id string, raw json.RawMessage) {
+		var a T
+		if err := json.Unmarshal(raw, &a); err != nil {
+			h.log().Warn("addon hook: left out", "addon", id, "hook", name, "err", err)
+			return
+		}
+		each(id, a)
+	})
 }
 
 // hookResult is one addon's answer to a fanned-out hook: its 200 body (nil
@@ -458,7 +467,7 @@ func (h *Hooks) do(parent, ctx context.Context, id, name string, user *addonkit.
 	req.Header.Set("X-Antresol-Hook", name)
 	if user != nil {
 		u, _ := json.Marshal(user)
-		req.Header.Set("X-Antresol-User", ASCIIJSON(u))
+		SetUser(req.Header, sock, ASCIIJSON(u))
 	}
 	timedOut := func(err error) error {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

@@ -29,6 +29,7 @@ import { VolumeControl } from './VolumeControl'
 import { useVolume } from './useVolume'
 import { SubtitleSearchSheet, tracksNotRefreshed, type SubtitleLang } from './SubtitleSearchSheet'
 import { usePlayerTrackActions } from './trackActions'
+import { IconButton } from '../ui/IconButton'
 import { SheetContainer } from '../ui/Sheet'
 import { useSession } from '../state/session'
 import { useScreenGuard } from '../state/screenTime'
@@ -42,6 +43,7 @@ import { useProgress } from './useProgress'
 import styles from './VideoPlayer.module.css'
 import { audio } from './audio/engine'
 import { airplaySupported, type WirelessVideo } from './airplay'
+import { Spinner } from '../ui/Spinner'
 import { useT } from '../i18n'
 
 export interface UpNext {
@@ -635,9 +637,13 @@ export function VideoPlayer({
       )}
 
       <header className={styles.top}>
-        <button type="button" className={`${styles.round} glass`} onClick={() => void close()} aria-label={t('player.video.close')} title={t('player.video.closeHint')}>
-          <Icon name="close" size={22} strokeWidth={2.2} />
-        </button>
+        <IconButton
+          icon={<Icon name="close" size={22} strokeWidth={2.2} />}
+          label={t('player.video.close')}
+          tooltip={t('player.video.closeHint')}
+          material="glass"
+          onClick={() => void close()}
+        />
         <div className={styles.heading}>
           <h1 className={styles.title}>{title}</h1>
           {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
@@ -659,7 +665,9 @@ export function VideoPlayer({
           disabled={Boolean(p.error)}
         >
           {p.waiting && !p.needsTap && !p.error ? (
-            <span className={styles.spinner} role="status" aria-label={t('common.loading')} />
+            <span className={styles.waiting} role="status" aria-label={t('common.loading')}>
+              <Spinner track className={styles.spinner} />
+            </span>
           ) : (
             <Icon name={p.playing ? 'pause' : 'play'} size={44} />
           )}
@@ -752,33 +760,28 @@ export function VideoPlayer({
               onSubOffset={(ms) => moveOffset(clampSubtitleOffset(ms))}
             />
             {airplayAvailable && (
-              <button
-                type="button"
+              <IconButton
+                icon={<Icon name="airplay" size={24} />}
+                label="AirPlay"
+                variant="plain"
                 className={styles.tool}
                 onClick={showAirplayPicker}
-                aria-label="AirPlay"
                 aria-pressed={wireless}
-                title="AirPlay"
                 data-active={wireless || undefined}
-              >
-                <Icon name="airplay" size={24} />
-              </button>
+              />
             )}
             {pipSupported && (
-              <button type="button" className={styles.tool} onClick={togglePip} aria-label={t('player.video.pip')} title={t('player.video.pip')}>
-                <Icon name="pip" size={24} />
-              </button>
+              <IconButton icon={<Icon name="pip" size={24} />} label={t('player.video.pip')} variant="plain" className={styles.tool} onClick={togglePip} />
             )}
             {canFullscreen && (
-              <button
-                type="button"
+              <IconButton
+                icon={<Icon name={fullscreen ? 'collapse' : 'expand'} size={22} strokeWidth={2.1} />}
+                label={fullscreen ? t('player.video.exitFullScreen') : t('player.video.fullScreen')}
+                tooltip={t('player.video.fullScreenHint')}
+                variant="plain"
                 className={styles.tool}
                 onClick={toggleFullscreen}
-                aria-label={fullscreen ? t('player.video.exitFullScreen') : t('player.video.fullScreen')}
-                title={t('player.video.fullScreenHint')}
-              >
-                <Icon name={fullscreen ? 'collapse' : 'expand'} size={22} strokeWidth={2.1} />
-              </button>
+              />
             )}
           </div>
         </div>

@@ -2,11 +2,12 @@ package channels
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // The lead time and the disk budgets of channels with fetching.
@@ -41,22 +42,9 @@ const (
 
 func estimateBytes(runtimeMs int64) int64 { return runtimeMs / 1000 * estBytesPerSec }
 
-func (s *Store) setting(ctx context.Context, q interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, key string) (string, bool) {
-	var v string
-	err := q.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&v)
-	return v, err == nil
-}
-
-func (s *Store) setSetting(ctx context.Context, key, value string) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT (key) DO UPDATE SET value=excluded.value`, key, value)
-	return err
-}
-
 // FetchGlobalGB is the disk every channel's fetches together may take.
 func (s *Store) FetchGlobalGB(ctx context.Context) float64 {
-	if v, ok := s.setting(ctx, s.DB, settingFetchBudget); ok {
+	if v, ok, _ := db.GetSetting(ctx, s.DB, settingFetchBudget); ok {
 		if gb, err := strconv.ParseFloat(v, 64); err == nil && gb > 0 {
 			return gb
 		}
@@ -70,15 +58,14 @@ func (s *Store) SetFetchGlobalGB(ctx context.Context, gb float64) error {
 		return &Invalid{"Недопустимый объём диска для каналов"}
 	}
 	if gb == 0 {
-		_, err := s.DB.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingFetchBudget)
-		return err
+		return db.DeleteSetting(ctx, s.DB, settingFetchBudget)
 	}
-	return s.setSetting(ctx, settingFetchBudget, strconv.FormatFloat(gb, 'f', -1, 64))
+	return db.PutSetting(ctx, s.DB, settingFetchBudget, strconv.FormatFloat(gb, 'f', -1, 64))
 }
 
 // fetchSpeed is the download speed learnt so far (bytes a second).
 func (s *Store) fetchSpeed(ctx context.Context) float64 {
-	if v, ok := s.setting(ctx, s.DB, settingFetchSpeed); ok {
+	if v, ok, _ := db.GetSetting(ctx, s.DB, settingFetchSpeed); ok {
 		if x, err := strconv.ParseFloat(v, 64); err == nil && x > 0 {
 			return max(x, minFetchSpeed)
 		}
@@ -93,12 +80,12 @@ func (s *Store) sawFetchSpeed(ctx context.Context, rate float64) error {
 		return nil
 	}
 	old := defaultFetchSpeed
-	if v, ok := s.setting(ctx, s.DB, settingFetchSpeed); ok {
+	if v, ok, _ := db.GetSetting(ctx, s.DB, settingFetchSpeed); ok {
 		if x, err := strconv.ParseFloat(v, 64); err == nil && x > 0 {
 			old = x
 		}
 	}
-	return s.setSetting(ctx, settingFetchSpeed, strconv.FormatFloat(old*(1-fetchSpeedWeight)+rate*fetchSpeedWeight, 'f', 0, 64))
+	return db.PutSetting(ctx, s.DB, settingFetchSpeed, strconv.FormatFloat(old*(1-fetchSpeedWeight)+rate*fetchSpeedWeight, 'f', 0, 64))
 }
 
 // FetchUsage is what fetching takes: bytes on disk or on their way (or
@@ -129,7 +116,7 @@ type fetchPlan struct {
 const fetchCounts = `(state IN ('requested','ready') OR (state IN ('wanted','removed','failed')
   AND id IN (SELECT fetch_id FROM channel_playout WHERE fetch_id IS NOT NULL AND end_ms > ?)))`
 
-func fetchUsageRows(ctx context.Context, q querier, now time.Time) ([]fetchRow, error) {
+func fetchUsageRows(ctx context.Context, q dbtx, now time.Time) ([]fetchRow, error) {
 	return fetchRows(ctx, q, fetchCounts+` ORDER BY requested_ms, id`, ms(now))
 }
 

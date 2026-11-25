@@ -78,3 +78,36 @@ func TestRenumberOneList(t *testing.T) {
 		t.Fatalf("taken: %v", err)
 	}
 }
+
+// The numbering rule on its own, no database: the admin's numbers stay,
+// the seen channels are 1…N (own, personal, external by their entries'
+// order), the hidden ones follow.
+func TestAssignNumbers(t *testing.T) {
+	rows := []*numRow{
+		{id: 1, enabled: true, place: 30},
+		{id: 2, enabled: true, place: 10},
+		{id: 3, enabled: true, personal: true, place: 5},
+		{id: 4, enabled: true, kind: KindExternal, hasEntry: true, src: 1, srcID: 1, pos: 2, place: 4},
+		{id: 5, enabled: true, kind: KindExternal, hasEntry: true, src: 1, srcID: 1, pos: 1, place: 40},
+		{id: 6, enabled: false, place: 1},
+		{id: 7, enabled: true, manual: 2, place: 50},
+		{id: 8, enabled: true, manual: 2, place: 6}, // asks for a number a lower id holds
+	}
+	assignNumbers(rows)
+	got := map[int64]int64{}
+	for _, r := range rows {
+		got[r.id] = r.final
+	}
+	// 7 holds 2; then 2 (place 10), 1 (30), 8 (place 6 as automatic: before 2 and 1)
+	want := map[int64]int64{8: 1, 7: 2, 2: 3, 1: 4, 3: 5, 5: 6, 4: 7, 6: 8}
+	for id, n := range want {
+		if got[id] != n {
+			t.Fatalf("numbers %v, want %v", got, want)
+		}
+	}
+	for _, r := range rows {
+		if r.finalManual != (r.id == 7) {
+			t.Fatalf("channel %d manual: %v", r.id, r.finalManual)
+		}
+	}
+}

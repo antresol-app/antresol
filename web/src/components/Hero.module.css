@@ -38,10 +38,8 @@
 .scrim {
   position: absolute;
   inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0) 38%, rgba(0, 0, 0, 0.55) 72%, var(--bg) 100%),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.28) 38%, rgba(0, 0, 0, 0) 62%);
+  z-index: var(--z-behind);
+  background: var(--scrim-hero-bottom), var(--scrim-hero-side);
   pointer-events: none;
 }
 
@@ -58,7 +56,8 @@
 
 .eyebrow {
   margin-bottom: var(--s-3h);
-  font: 600 13px / 1.2 var(--font-text);
+  font: var(--t-footnote-em);
+  line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--label-on-glass);
@@ -116,7 +115,7 @@
   display: grid;
   place-items: center;
   width: 24px;
-  height: 44px;
+  height: var(--control-h-md);
   padding: 0;
   border: 0;
   background: transparent;
@@ -139,7 +138,7 @@
   background: var(--page-dot-hover);
 }
 .dotActive {
-  width: 44px;
+  width: var(--control-h-md);
 }
 .dotActive .pip {
   width: 28px;
@@ -183,15 +182,7 @@
     object-position: 50% 30%;
   }
   .scrim {
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.7) 0%,
-      rgba(0, 0, 0, 0.25) 14%,
-      rgba(0, 0, 0, 0.05) 30%,
-      rgba(0, 0, 0, 0.72) 50%,
-      rgba(0, 0, 0, 0.92) 66%,
-      var(--bg) 100%
-    );
+    background: var(--scrim-hero-phone);
   }
   .content {
     text-align: center;

@@ -86,7 +86,7 @@ func TestBuildSkipsEpisodeSegments(t *testing.T) {
 	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	b := f.builder()
 	b.Horizon = 40 * time.Minute
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -125,7 +125,7 @@ func TestBuildSkipOffOrMovieUntouched(t *testing.T) {
 	off := f.create(Channel{Name: "Off", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
 	movie := f.create(Channel{Name: "Film", Rules: Rules{Titles: []int64{m}, Order: OrderOrdered, SkipSegments: true}})
 	for _, c := range []Channel{off, movie} {
-		if err := b.Build(ctx, c); err != nil {
+		if _, err := b.Build(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 		for _, e := range f.entries(c.ID) {
@@ -154,7 +154,7 @@ func TestCutProgrammePlayoutOffset(t *testing.T) {
 	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	b := f.builder()
 	b.Horizon = 40 * time.Minute
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -228,6 +228,10 @@ func TestCutProgrammePlayoutOffset(t *testing.T) {
 // oneProg is a Source of one programme.
 type oneProg struct{ p Program }
 
+func (s oneProg) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
+	return programSet(ctx, s, ch, from)
+}
+
 func (s oneProg) Program(_ context.Context, ch int64, t time.Time) (Program, error) {
 	if !t.Before(s.p.End) {
 		return Program{}, ErrNothing
@@ -249,7 +253,7 @@ func TestBuildSkipsMultiFileEpisode(t *testing.T) {
 	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	b := f.builder()
 	b.Horizon = 40 * time.Minute
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -284,7 +288,7 @@ func TestRecutAfterSegmentsFound(t *testing.T) {
 	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	b := f.builder()
 	b.Horizon = 3 * time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	before := f.entries(c.ID)
@@ -335,7 +339,7 @@ func TestRecutAfterSegmentsFound(t *testing.T) {
 	}
 	// a channel without the rule keeps its schedule
 	off := f.create(Channel{Name: "Off", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
-	if err := b.Build(ctx, off); err != nil {
+	if _, err := b.Build(ctx, off); err != nil {
 		t.Fatal(err)
 	}
 	f.exec(`DELETE FROM file_segments WHERE file_id=?`, files[0])
@@ -352,7 +356,7 @@ func TestRecutKeepsTheNextProgrammeStartingSoon(t *testing.T) {
 	c := f.create(Channel{Name: "Sitcom", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	b := f.builder()
 	b.Horizon = 3 * time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	before := f.entries(c.ID)
@@ -381,7 +385,7 @@ func TestServiceRecutSegments(t *testing.T) {
 	on := f.create(Channel{Name: "On", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
 	off := f.create(Channel{Name: "Off", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
 	for _, c := range []Channel{on, off} {
-		if err := svc.Builder.Build(ctx, c); err != nil {
+		if _, err := svc.Builder.Build(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -411,7 +415,7 @@ func TestSegmentsChangedDebounced(t *testing.T) {
 	svc.Store.Now = f.st.Now
 	svc.Builder.Horizon = 3 * time.Hour
 	c := f.create(Channel{Name: "On", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered, SkipSegments: true}})
-	if err := svc.Builder.Build(ctx, c); err != nil {
+	if _, err := svc.Builder.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	svc.init()

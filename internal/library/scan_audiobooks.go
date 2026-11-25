@@ -35,7 +35,6 @@ var (
 	reIndexDot = regexp.MustCompile(`^(\d+(?:\.\d+)?)[.)]\s+(.+)$`)
 	// reIndexWord is "Том 2. Title" / "Книга 3: Title" / "#3. Title".
 	reIndexWord = regexp.MustCompile(`(?i)^(?:#|№|книга|кн\.?|том|vol\.?|volume|book)\s*(\d+(?:\.\d+)?)[.:]\s+(.+)$`)
-	reBookYear  = regexp.MustCompile(`^(?:19|20)\d\d$`)
 	// reReleaseInfo marks a bracket part that is not a narrator: bitrate,
 	// format and the like.
 	reReleaseInfo = regexp.MustCompile(`(?i)\d+\s*kbps|\bkbit|^(?:mp3|m4b|m4a|aac|flac|ogg|opus|vbr|cbr|lossless)$|\d+\s*(?:khz|hz|bit)\b`)
@@ -57,7 +56,7 @@ func parseAudiobookFolder(name string) (author, title, narrator string, year int
 			part = strings.TrimSpace(part)
 			switch {
 			case part == "":
-			case reBookYear.MatchString(part):
+			case reYearOnly.MatchString(part):
 				if year == 0 {
 					year, _ = strconv.Atoi(part)
 				}
@@ -93,62 +92,12 @@ func parseAudiobookFolder(name string) (author, title, narrator string, year int
 	return "", s, narrator, year, 0
 }
 
-type audiobookFile struct {
-	path        string
-	size, mtime int64
-}
-
 // walkAudiobooks lists the audio files under root. Hidden entries and
 // NAS/macOS junk folders are skipped. An error means the walk is
 // incomplete: the caller must not prune.
-func walkAudiobooks(ctx context.Context, root string) ([]audiobookFile, error) {
-	st, err := os.Stat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", root)
-	}
-	var out []audiobookFile
-	var firstErr error
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			low := strings.ToLower(name)
-			if p != root && (strings.HasPrefix(name, ".") || low == "__macosx" || low == "@eadir" || low == ".appledouble") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(name, ".") || !audioExt[strings.ToLower(filepath.Ext(name))] {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-		out = append(out, audiobookFile{p, info.Size(), info.ModTime().Unix()})
-		return nil
-	})
-	if err == nil {
-		err = firstErr
-	}
-	return out, err
+func walkAudiobooks(ctx context.Context, root string) ([]walkedFile, error) {
+	return walkFiles(ctx, root, func(low string) bool { return low == "__macosx" || low == "@eadir" },
+		func(name string) bool { return audioExt[strings.ToLower(filepath.Ext(name))] })
 }
 
 // audiobookGroup is one audiobook before its metadata is read: a book
@@ -156,7 +105,7 @@ func walkAudiobooks(ctx context.Context, root string) ([]audiobookFile, error) {
 type audiobookGroup struct {
 	dir   string // book folder; "" for a single-file book
 	depth int    // levels of the book folder (or the file's folder) below the root
-	files []audiobookFile
+	files []walkedFile
 }
 
 // fileStem is a file's base name without its extension.
@@ -182,7 +131,7 @@ func relDepth(root, dir string) int {
 // subfolders, or the folder is named "Автор - Название [...]" or after its
 // only file ("Название/Название.m4b"). Any other folder with audio
 // ("Мастер и Маргарита/Пролог.mp3, Эпилог.mp3") is one book.
-func oneBookFolder(dir string, files []audiobookFile) bool {
+func oneBookFolder(dir string, files []walkedFile) bool {
 	for _, f := range files {
 		if filepath.Dir(f.path) != dir {
 			return true // parts came from CD/Часть subfolders
@@ -215,7 +164,7 @@ func oneBookFolder(dir string, files []audiobookFile) bool {
 // book's parts in natural order. A file right in the root, and the files
 // of an author folder right under the root (see oneBookFolder), are books
 // of their own.
-func groupAudiobooks(root string, files []audiobookFile) []*audiobookGroup {
+func groupAudiobooks(root string, files []walkedFile) []*audiobookGroup {
 	bookDir := func(p string) string {
 		d := filepath.Dir(p)
 		for d != root && filepath.Dir(d) != root && rePartDir.MatchString(filepath.Base(d)) {
@@ -223,7 +172,7 @@ func groupAudiobooks(root string, files []audiobookFile) []*audiobookGroup {
 		}
 		return d
 	}
-	byDir := map[string][]audiobookFile{}
+	byDir := map[string][]walkedFile{}
 	var dirs []string
 	for _, f := range files {
 		d := bookDir(f.path)
@@ -237,7 +186,7 @@ func groupAudiobooks(root string, files []audiobookFile) []*audiobookGroup {
 		fs, depth := byDir[d], relDepth(root, d)
 		if depth == 0 || depth == 1 && !oneBookFolder(d, fs) {
 			for _, f := range fs {
-				out = append(out, &audiobookGroup{depth: depth, files: []audiobookFile{f}})
+				out = append(out, &audiobookGroup{depth: depth, files: []walkedFile{f}})
 			}
 			continue
 		}
@@ -369,10 +318,6 @@ func (s *Scanner) scanAudiobooksIn(ctx context.Context, dir string, st *ScanStat
 	if walkErr != nil && files == nil {
 		return walkErr
 	}
-	seen := map[string]bool{}
-	for _, f := range files {
-		seen[f.path] = true
-	}
 	di := dirIndex{}
 	for _, g := range groupAudiobooks(root, files) {
 		if err := ctx.Err(); err != nil {
@@ -385,7 +330,7 @@ func (s *Scanner) scanAudiobooksIn(ctx context.Context, dir string, st *ScanStat
 	if walkErr != nil {
 		return walkErr // incomplete walk: no pruning
 	}
-	return s.finish(ctx, root, seen, st)
+	return s.finish(ctx, root, seenPaths(files), st)
 }
 
 // audiobookSigVersion changes when the scanner reads books differently, so
@@ -431,22 +376,8 @@ func audiobookSig(g *audiobookGroup) string {
 		list = append(list, d)
 	}
 	sort.Strings(list)
-	for _, d := range list {
-		es, err := os.ReadDir(d)
-		if err != nil {
-			return ""
-		}
-		fmt.Fprintf(h, "D%s\x00", d)
-		for _, e := range es {
-			if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			info, err := e.Info()
-			if err != nil {
-				return ""
-			}
-			entry(e.Name(), info)
-		}
+	if !hashDirs(h, list, dirLister{}) {
+		return ""
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -498,23 +429,92 @@ func (s *Scanner) scanAudiobook(ctx context.Context, root string, g *audiobookGr
 	if err != nil {
 		return err
 	}
-	if have && sig != "" && stored.sig == sig && len(stored.files) == len(inputs) && (!probing || stored.probed == pkey) {
-		same := true
-		for _, f := range inputs {
-			if _, ok := stored.files[f.Path]; !ok {
-				same = false
-				break
+	if audiobookUnchanged(stored, have, sig, inputs, probing, pkey) { // no tag reads, no rewrite
+		st.Audiobooks++
+		st.Files += len(inputs)
+		return nil
+	}
+	st.Changed++
+
+	dir, name := g.dir, g.dir
+	if dir == "" {
+		dir = filepath.Dir(g.files[0].path)
+		name = strings.TrimSuffix(g.files[0].path, filepath.Ext(g.files[0].path))
+	}
+	cover := audiobookCover(di, g, dir, name)
+	tags := s.readAudiobookTags(g, &cover)
+	// sidecars belong to a book folder, not to an author folder
+	var sideNarrator, sideDesc string
+	if g.dir != "" {
+		sideNarrator = readSidecar(di, dir, "reader.txt")
+		sideDesc = readSidecar(di, dir, "desc.txt")
+	}
+	meta := deriveAudiobookMeta(root, g, dir, name, tags[0], sideNarrator, sideDesc)
+
+	// chapters: from the files (stored ones while the files are unchanged),
+	// else one per file; "probed" is set only after a probe without error
+	perFile := fileChapters(g.files, tags)
+	chapters, probed := perFile, ""
+	if probing {
+		var reuse []ChapterInput
+		ok := false
+		if have && stored.probed == pkey {
+			if reuse, ok, err = s.Repo.storedChapters(ctx, stored.id, filePaths(inputs)); err != nil {
+				return err
 			}
 		}
-		if same { // unchanged: no tag reads, no rewrite
-			st.Audiobooks++
-			st.Files += len(inputs)
-			return nil
+		if ok {
+			chapters, probed = reuse, pkey
+		} else if chs, err := s.embeddedChapters(ctx, inputs, perFile); err == nil {
+			chapters, probed = chs, pkey
 		}
 	}
 
+	if _, err := s.Repo.UpsertAudiobook(ctx, AudiobookInput{
+		Dir: g.dir, Files: inputs, Title: meta.title, Authors: meta.authors, Narrator: meta.narrator, Series: meta.series,
+		SeriesIndex: meta.seriesIndex, Year: meta.year, Description: meta.desc, Cover: cover, Chapters: chapters, sig: sig, probed: probed,
+	}); err != nil {
+		return fmt.Errorf("audiobook %s: %w", g.files[0].path, err)
+	}
+	st.Audiobooks++
+	st.Files += len(inputs)
+	return nil
+}
+
+// audiobookUnchanged reports whether the stored book was written from this
+// signature, these files and (when its chapters come from the files) this
+// chapter probe.
+func audiobookUnchanged(stored storedAudiobook, have bool, sig string, inputs []FileInput, probing bool, pkey string) bool {
+	if !have || sig == "" || stored.sig != sig || len(stored.files) != len(inputs) || (probing && stored.probed != pkey) {
+		return false
+	}
+	for _, f := range inputs {
+		if _, ok := stored.files[f.Path]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// audiobookCover is the book's cover file: cover|folder.* or the only image
+// of the book folder, or (a single-file book) the image named like the file;
+// "" when there is none, and the embedded picture is used (readAudiobookTags).
+func audiobookCover(di dirIndex, g *audiobookGroup, dir, name string) string {
+	if g.dir == "" {
+		return di.art(dir, filepath.Base(name))
+	}
+	if c := di.art(dir, "cover", "folder"); c != "" {
+		return c
+	}
+	return onlyImage(dir)
+}
+
+// readAudiobookTags reads the tags of every file of the book. With no cover
+// yet (*cover == "") the first file with an embedded picture gives it, saved
+// at once: the pictures are not kept, a book of a hundred parts does not hold
+// a hundred of them until it is done.
+func (s *Scanner) readAudiobookTags(g *audiobookGroup, cover *string) []bookTags {
 	tags := make([]bookTags, len(g.files))
-	tagged := make([]bool, len(g.files))
 	for i, f := range g.files {
 		t, err := readBookTags(f.path)
 		if err != nil {
@@ -523,16 +523,31 @@ func (s *Scanner) scanAudiobook(ctx context.Context, root string, g *audiobookGr
 			}
 			continue
 		}
-		tags[i], tagged[i] = t, true
+		if *cover == "" && t.picture != nil {
+			n, err := s.saveCover(t.picture)
+			if err != nil {
+				log.Printf("library: audiobook cover %s: %v", f.path, err)
+			}
+			*cover = n
+		}
+		t.picture = nil
+		tags[i] = t
 	}
-	first := tags[0]
+	return tags
+}
 
-	// names: the book folder (or the file's stem) and the folders above it
-	dir, name := g.dir, g.dir
-	if dir == "" {
-		dir = filepath.Dir(g.files[0].path)
-		name = strings.TrimSuffix(g.files[0].path, filepath.Ext(g.files[0].path))
-	}
+// audiobookMeta is what a book's names and first file's tags say about it.
+type audiobookMeta struct {
+	title, narrator, series, desc string
+	authors                       []string
+	seriesIndex                   float64
+	year                          int
+}
+
+// deriveAudiobookMeta reads a book's metadata from its tags (first: those of
+// its first file) and the names of its folders below root; sideNarrator and
+// sideDesc are the reader.txt and desc.txt of the book folder.
+func deriveAudiobookMeta(root string, g *audiobookGroup, dir, name string, first bookTags, sideNarrator, sideDesc string) audiobookMeta {
 	nAuthor, nTitle, nNarrator, nYear, nIndex := parseAudiobookFolder(filepath.Base(name))
 	var parts []string // the folders from the root down to the book folder
 	if rel, err := filepath.Rel(root, dir); err == nil && rel != "." {
@@ -575,12 +590,7 @@ func (s *Scanner) scanAudiobook(ctx context.Context, root string, g *audiobookGr
 	if author != "" {
 		authors = []string{author}
 	}
-	// sidecars belong to a book folder, not to an author folder
-	narrator, desc := "", ""
-	if g.dir != "" {
-		narrator = readSidecar(di, dir, "reader.txt")
-		desc = readSidecar(di, dir, "desc.txt")
-	}
+	narrator, desc := sideNarrator, sideDesc
 	composer := first.composer
 	if strings.EqualFold(composer, author) {
 		composer = "" // rippers often put the author there
@@ -597,60 +607,7 @@ func (s *Scanner) scanAudiobook(ctx context.Context, root string, g *audiobookGr
 	if c := first.comment; desc == "" && utf8.RuneCountInString(c) >= 20 && !reURLOnly.MatchString(c) {
 		desc = c // not "www.abook-club.ru" / "Rip by ..."
 	}
-
-	// cover: cover|folder.* or the only image of the book folder, else the
-	// embedded picture
-	cover := ""
-	if g.dir != "" {
-		cover = di.art(dir, "cover", "folder")
-		if cover == "" {
-			cover = onlyImage(dir)
-		}
-	} else {
-		cover = di.art(dir, filepath.Base(name))
-	}
-	if cover == "" {
-		for i := range tags {
-			if tagged[i] && tags[i].picture != nil {
-				n, err := s.saveCover(tags[i].picture)
-				if err != nil {
-					log.Printf("library: audiobook cover %s: %v", g.files[i].path, err)
-				}
-				if cover = n; cover != "" {
-					break
-				}
-			}
-		}
-	}
-
-	// chapters: from the files (stored ones while the files are unchanged),
-	// else one per file; "probed" is set only after a probe without error
-	perFile := fileChapters(g.files, tags)
-	chapters, probed := perFile, ""
-	if probing {
-		var reuse []ChapterInput
-		ok := false
-		if have && stored.probed == pkey {
-			if reuse, ok, err = s.Repo.storedChapters(ctx, stored.id, filePaths(inputs)); err != nil {
-				return err
-			}
-		}
-		if ok {
-			chapters, probed = reuse, pkey
-		} else if chs, err := s.embeddedChapters(ctx, inputs, perFile); err == nil {
-			chapters, probed = chs, pkey
-		}
-	}
-
-	if _, err := s.Repo.UpsertAudiobook(ctx, AudiobookInput{
-		Dir: g.dir, Files: inputs, Title: title, Authors: authors, Narrator: narrator, Series: series, SeriesIndex: nIndex,
-		Year: year, Description: desc, Cover: cover, Chapters: chapters, sig: sig, probed: probed,
-	}); err != nil {
-		return fmt.Errorf("audiobook %s: %w", g.files[0].path, err)
-	}
-	st.Audiobooks++
-	st.Files += len(inputs)
-	return nil
+	return audiobookMeta{title: title, authors: authors, narrator: narrator, series: series, seriesIndex: nIndex, year: year, desc: desc}
 }
 
 func filePaths(files []FileInput) []string {
@@ -691,7 +648,7 @@ func (s *Scanner) embeddedChapters(ctx context.Context, files []FileInput, perFi
 // titles differ, else the name ("01 - Пролог" → «Пролог»); a bare number
 // becomes «Глава N» (N from the name when the numbered files' numbers are
 // unique in the book, else the position).
-func fileChapters(files []audiobookFile, tags []bookTags) []ChapterInput {
+func fileChapters(files []walkedFile, tags []bookTags) []ChapterInput {
 	distinct := map[string]bool{}
 	for _, t := range tags {
 		if t.title != "" {

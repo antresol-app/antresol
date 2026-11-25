@@ -22,14 +22,20 @@ const silenceLUFS = -69.5
 // sample peak. ffmpeg runs at the lowest priority (media.LowPriority);
 // run starts and waits for it (nil: cmd.Run).
 func FFmpegLoudness(ctx context.Context, ffmpeg, path string, startMs int64, endMs *int64, run func(*exec.Cmd) error) (Result, error) {
-	args := []string{"-hide_banner", "-nostats", "-nostdin", "-loglevel", "info"}
+	// the file protocol only: a "track" that is really a playlist must not
+	// make ffmpeg open other files or addresses (media.InputArgs)
+	opts, in, err := media.InputArgs(path)
+	if err != nil {
+		return Result{}, err
+	}
+	args := append([]string{"-hide_banner", "-nostats", "-nostdin", "-loglevel", "info"}, opts...)
 	if startMs > 0 {
 		args = append(args, "-ss", msArg(startMs))
 	}
 	if endMs != nil && *endMs > startMs {
 		args = append(args, "-t", msArg(*endMs-startMs))
 	}
-	args = append(args, "-i", path, "-map", "0:a:0", "-vn", "-sn", "-dn",
+	args = append(args, "-i", in, "-map", "0:a:0", "-vn", "-sn", "-dn",
 		"-af", "ebur128=peak=sample:framelog=quiet", "-f", "null", "-")
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	var stderr bytes.Buffer

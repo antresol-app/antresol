@@ -1,0 +1,8 @@
+/* ui/Skeleton: a static block (no shimmer); size and shape are the caller's */
+.skeleton {
+  border-radius: var(--r-sm);
+  background: var(--fill-4);
+}
+.soft {
+  background: var(--fill-3);
+}

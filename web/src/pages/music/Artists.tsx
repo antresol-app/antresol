@@ -5,7 +5,9 @@ import { useEffect } from 'react'
 import { getArtists } from '../../api/client'
 import type { Card } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { PosterGrid, PosterGridSkeleton } from '../../components/PosterGrid'
 import { useLibraryScope } from '../../state/libraryScope'
@@ -37,22 +39,11 @@ export function Artists() {
       </header>
       {state.status === 'loading' && <PosterGridSkeleton variant="square" count={14} />}
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('music.artists.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('music.retry')}
-          </Button>
-        </div>
+        <LoadFailed title={t('music.artists.loadFailed')} message={state.message} retry={t('music.retry')} onRetry={() => load()} />
       )}
-      {state.status === 'ready' && state.items.length === 0 && scope === 'mine' && <MineEmpty className={styles.empty} />}
+      {state.status === 'ready' && state.items.length === 0 && scope === 'mine' && <MineEmpty />}
       {state.status === 'ready' && state.items.length === 0 && scope !== 'mine' && (
-        <div className={styles.empty}>
-          <Icon name="person" size={48} strokeWidth={1.4} />
-          <h2>{t('music.artists.empty')}</h2>
-          <p>{t('music.artists.emptyHint')}</p>
-        </div>
+        <EmptyState icon={<Icon name="person" size={48} strokeWidth={1.4} />} title={t('music.artists.empty')} hint={t('music.artists.emptyHint')} />
       )}
       {state.status === 'ready' && state.items.length > 0 && <PosterGrid cards={state.items} label={t('common.artists')} variant="square" />}
       {state.status === 'ready' && state.more &&

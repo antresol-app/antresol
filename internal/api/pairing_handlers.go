@@ -74,12 +74,7 @@ func mountPairing(r chi.Router, deps Deps, guard *auth.Guard, requestsOpen func(
 
 func (p *pairingAPI) start(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Device struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Model   string `json:"model"`
-			Version string `json:"version"`
-		} `json:"device"`
+		Device deviceBody `json:"device"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -88,8 +83,7 @@ func (p *pairingAPI) start(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "Не указано устройство")
 		return
 	}
-	d := auth.DeviceInfo{ID: in.Device.ID, Name: clip(in.Device.Name, 100), Model: clip(in.Device.Model, 64), Version: clip(in.Device.Version, 64)}
-	st, err := p.pairs.Start(r.Context(), d, p.net.ClientKey(r), !p.net.IsTrusted(r))
+	st, err := p.pairs.Start(r.Context(), in.Device.info(), p.net.ClientKey(r), !p.net.IsTrusted(r))
 	if errors.Is(err, auth.ErrPairingBusy) {
 		w.Header().Set("Retry-After", strconv.Itoa(int(pairBusyRetry/time.Second)))
 		writeErr(w, r, http.StatusTooManyRequests, msgPairBusy)

@@ -38,6 +38,7 @@ import { Sheet } from '../../ui/Sheet'
 import { locale, t, useT, type Key } from '../../i18n'
 import { MigrateConnectForm } from './MigrateConnect'
 import styles from './Migrate.module.css'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 
 /** The three media servers: the names, icons and texts this file knows. */
@@ -557,7 +558,7 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
           </div>
         ) : (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('migrate.searching')}
+            <Spinner track className={m.spinner} /> {t('migrate.searching')}
           </div>
         )}
       </section>
@@ -583,7 +584,7 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
 
       {!ready && (
         <div className={m.problem} role="status">
-          <span className={m.spinner} aria-hidden /> {status.libraryReady.reason || t('migrate.scanning')}
+          <Spinner track className={m.spinner} /> {status.libraryReady.reason || t('migrate.scanning')}
         </div>
       )}
       {problem && (
@@ -708,7 +709,7 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
       <div ref={reportRef}>
         {activeId && !active && (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('migrate.loadingReport')}
+            <Spinner track className={m.spinner} /> {t('migrate.loadingReport')}
           </div>
         )}
         {active && (
@@ -720,7 +721,7 @@ export function Migrate({ api: given, full }: MigrateProps = {}) {
                   {(active.sources ?? []).map((s) => nameOf(names, s)).join(', ')} · {dateText(active.startedAt)}
                 </p>
               </div>
-              {activeRunning && <span className={m.spinner} aria-label={t('migrate.running')} />}
+              {activeRunning && <Spinner track className={m.spinner} label={t('migrate.running')} />}
             </header>
             {activeRunning && <RunProgress report={active} names={names} note={ext?.progressNote} />}
             {interrupted && (

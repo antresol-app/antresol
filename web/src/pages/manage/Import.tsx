@@ -27,6 +27,7 @@ import { ReviewList } from './import/ReviewList'
 import { serviceName } from './import/serviceName'
 import { isActive, isOpen, useImportJob } from './import/useImportJob'
 import styles from './Import.module.css'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 import { LANGS, t as tr, translate, useT, type Key } from '../../i18n'
 import { AddonBoundary, useAddonSlot } from '../../addons/slots'
@@ -203,7 +204,7 @@ export function Import() {
   if (!loaded) {
     body = (
       <div className={m.spinnerRow} role="status">
-        <span className={m.spinner} aria-hidden /> {t('sources.loading')}
+        <Spinner track className={m.spinner} /> {t('sources.loading')}
       </div>
     )
   } else if (error && !services) {
@@ -219,7 +220,7 @@ export function Import() {
     // the services are an addon's: its way in may still be on its way
     body = (
       <div className={m.spinnerRow} role="status">
-        <span className={m.spinner} aria-hidden /> {t('sources.loading')}
+        <Spinner track className={m.spinner} /> {t('sources.loading')}
       </div>
     )
   } else if (!job) {
@@ -248,7 +249,7 @@ export function Import() {
     body = (
       <div className={styles.reading}>
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t('import.reading')}
+          <Spinner track className={m.spinner} /> {t('import.reading')}
         </div>
         {/* the read (a Takeout's videos being named can take minutes) stops with the job */}
         <Button size="small" variant="secondary" loading={busy === 'cancel'} disabled={busy !== ''} onClick={() => void cancel()}>

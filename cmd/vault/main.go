@@ -130,6 +130,7 @@ func run() error {
 		return err
 	}
 	defer database.Close()
+	secureDataDir(cfg.DataDir, "vault.db")
 
 	// the library folders picked in the first-run wizard or the settings win
 	// over VAULT_*_DIR; envFolders are what a reset goes back to
@@ -161,7 +162,7 @@ func run() error {
 			Ebooks: cfg.Abs(cfg.EbooksDir), Audiobooks: cfg.Abs(cfg.AudiobooksDir), Comics: cfg.Abs(cfg.ComicsDir),
 			More:   moreFolders(cfg),
 			Flags:  func() library.FolderFlags { return *folderFlags.Load() },
-			ArtDir: filepath.Join(cfg.DataDir, "images"), ComicsCache: filepath.Join(cfg.DataDir, "comics-cache"),
+			ArtDir: filepath.Join(cfg.DataDir, "images"),
 			Chapters: func(ctx context.Context, path string) ([]library.ChapterInput, error) {
 				chs, err := media.Chapters(ctx, cfg.FFprobe, path)
 				out := make([]library.ChapterInput, len(chs))
@@ -175,7 +176,7 @@ func run() error {
 			// same check).
 			StorageOffline: storageOffline(cfg)},
 		Probe: func(ctx context.Context, path string) (string, int64, error) {
-			p, err := media.Probe(ctx, cfg.FFprobe, path)
+			p, err := media.ProbeLowPriority(ctx, cfg.FFprobe, path)
 			if err != nil {
 				return "", 0, err
 			}
@@ -350,7 +351,7 @@ func run() error {
 
 	// One login throttle for the web, Subsonic and OPDS: guessing an app
 	// password also locks the web login from that address.
-	users, network, throttle := auth.NewStore(database), &auth.Network{Trusted: cfg.TrustedNets, Proxies: cfg.TrustedProxies}, auth.NewThrottle()
+	users, network, throttle := auth.NewStore(database), &auth.Network{Trusted: cfg.TrustedNets, Proxies: cfg.TrustedProxies, Hosts: &auth.HostPolicy{Extra: cfg.TrustedHosts, Public: publicAddr.Get}}, auth.NewThrottle()
 	musicStore := music.New(database)
 	// apps recognise this server by its id (GET /api/health)
 	serverID, err := api.LoadServerID(ctx, database)
@@ -480,8 +481,20 @@ func run() error {
 	// not on air yet is cut again
 	segWorker.Changed = chans.SegmentsChanged
 	// generated channels follow the library (new files need their
-	// durations), vanished files leave the schedules
-	jobs.AfterProbe = func(context.Context) { chans.Kick() }
+	// durations), vanished files leave the schedules; the workers that need
+	// a file's probe (its duration, its streams) look for new work now
+	jobs.AfterProbe = func(context.Context) {
+		chans.Kick()
+		segWorker.Kick() // new episodes and films
+		trickWorker.Kick()
+		loudWorker.Kick() // new tracks, tags read again
+		vocWorker.Kick()  // new films and episodes
+		if runFit {
+			fitWorker.Kick() // a video replaced: its voice-overs' fits are stale, fitted again now
+		}
+	}
+	// the probe pass waits while playback reads the media disk
+	jobs.Idle = func() bool { return !segWorker.Busy() }
 	// ongoing tracking: the marked titles' episode lists (TMDB) and where
 	// each episode can be got; new ones go to the profiles that marked them
 	trackStore := &tracking.Store{DB: database}
@@ -512,14 +525,11 @@ func run() error {
 		if err := notifier.Collect(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("notify: collect: %v", err)
 		}
+	}
+	// the workers that need no probe look for new work: only after a scan
+	// that found some (the rest are kicked by AfterProbe)
+	jobs.AfterChange = func(context.Context) {
 		lyricsAuto.Kick() // new tracks first
-		segWorker.Kick()  // new episodes and films
-		trickWorker.Kick()
-		loudWorker.Kick() // new tracks, tags read again
-		vocWorker.Kick()  // new films and episodes
-		if runFit {
-			fitWorker.Kick() // a video replaced: its voice-overs' fits are stale, fitted again now
-		}
 		if cfg.RepackTS {
 			repacker.Kick()
 		}
@@ -816,6 +826,7 @@ func run() error {
 		Addr:              cfg.Listen,
 		Handler:           trackPlayback(trackBrowsing(buildMux(webAPI, subsonicAPI, opdsCatalog, jellyfinServer), browsing), playback),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute, // the Jellyfin listener below takes it too
 	}
 	// Open /api/events streams (one per tab) end when shutdown starts;
 	// otherwise Shutdown waits for them until its timeout.
@@ -824,7 +835,7 @@ func run() error {
 	if cfg.JellyfinListen != "off" {
 		servers = append(servers, &http.Server{
 			Addr:              cfg.JellyfinListen,
-			Handler:           trackPlayback(jellyfinServer, playback),
+			Handler:           trackPlayback(gzipJellyfin(jellyfinServer), playback),
 			ReadHeaderTimeout: srv.ReadHeaderTimeout, // the same timeouts as the main listener
 			ReadTimeout:       srv.ReadTimeout,
 			WriteTimeout:      srv.WriteTimeout,
@@ -1370,6 +1381,8 @@ func newAddonManager(cfg config.Config, database *sql.DB) *addons.Manager {
 			Dir:     cfg.AddonsDir,
 			CoreURL: cfg.AddonsCoreURL(),
 			Locale:  i18n.Default,
+
+			AcceptUnsigned: cfg.AddonsAcceptUnsigned,
 		},
 	}
 	m.Sup.Mint = m.Mint

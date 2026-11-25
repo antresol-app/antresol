@@ -26,28 +26,6 @@
   color: var(--label-2);
   font: var(--t-subhead);
 }
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s-3);
-  margin-top: 14vh;
-  text-align: center;
-  color: var(--label-2);
-}
-.empty > svg {
-  color: var(--label-3);
-  margin-bottom: var(--s-1h);
-}
-.empty h2 {
-  font: var(--t-title-2);
-  color: var(--label);
-}
-.empty p {
-  max-width: 42ch;
-  margin-bottom: var(--s-2);
-  text-wrap: balance;
-}
 @media (max-width: 699px) {
   .page {
     padding-top: var(--page-top);

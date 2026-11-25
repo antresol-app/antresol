@@ -161,6 +161,35 @@ type cycle struct {
 	progs []Program
 }
 
+// programSet is the track set of what a test Source schedules from then
+// on (the job of Service.TrackSet in production).
+func programSet(ctx context.Context, src Source, id int64, from time.Time) TrackSet {
+	var progs []Tracks
+	t := from
+	for range 200 {
+		p, err := src.Program(ctx, id, t)
+		if err != nil || !p.End.After(t) {
+			break
+		}
+		if !p.Skip {
+			tr := Plan(p.Probe, nil, nil, PlanOptions{})
+			if p.Tracks != nil {
+				tr = *p.Tracks
+			}
+			progs = append(progs, tr)
+		}
+		t = p.End
+		if t.Sub(from) >= SetHorizon {
+			break
+		}
+	}
+	return BuildSet(progs, PlanOptions{})
+}
+
+func (c cycle) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
+	return programSet(ctx, c, ch, from)
+}
+
 func (c cycle) Program(_ context.Context, ch int64, t time.Time) (Program, error) {
 	var total time.Duration
 	for _, p := range c.progs {
@@ -776,6 +805,10 @@ func TestLiveSubtitlesDoNotHoldTheProgrammeOpen(t *testing.T) {
 
 // fixedSchedule is a Source of programmes played once, in order.
 type fixedSchedule []Program
+
+func (f fixedSchedule) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
+	return programSet(ctx, f, ch, from)
+}
 
 func (f fixedSchedule) Program(_ context.Context, ch int64, t time.Time) (Program, error) {
 	for _, p := range f {

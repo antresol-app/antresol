@@ -24,6 +24,11 @@ export default {
   "tv.noFavorites": "В избранном пока пусто",
   "tv.noFavoritesHint":
     "Отметьте канал звёздочкой — он появится здесь. Номера каналов не меняются.",
+  "tv.country.SU": "СССР",
+  "tv.country.XC": "Чехословакия",
+  "tv.country.YU": "Югославия",
+  "tv.country.DD": "ГДР",
+  "tv.country.XG": "ФРГ",
   "tv.until": "до {time}",
   "tv.left": {
     one: "осталась {count} мин",

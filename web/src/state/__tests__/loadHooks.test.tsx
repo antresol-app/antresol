@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../api/client', async (orig) => ({ ...(await orig<typeof import('../../api/client')>()), useEvents: () => undefined }))
 
-const { usePagedList } = await import('../usePagedList')
+const { usePagedList, RELOAD_PAGES } = await import('../usePagedList')
 const { useLoad } = await import('../useLoad')
 const { usePresence } = await import('../../ui/presence')
 
@@ -43,6 +43,98 @@ describe('usePagedList', () => {
     await act(async () => result.current.loadMore())
     expect(fetchPage).toHaveBeenLastCalledWith(2, 2, expect.any(AbortSignal))
     expect(result.current.state).toMatchObject({ items: ['a', 'b', 'c'], more: false })
+  })
+})
+
+describe('usePagedList quiet reload', () => {
+  const opts = { page: 2, failed: 'x', moreFailed: 'y' }
+  const readAll = async (result: { current: { loadMore: () => void } }) => {
+    await act(async () => result.current.loadMore())
+    await act(async () => result.current.loadMore())
+  }
+
+  it('keeps the list as far as it had been read, in the same order', async () => {
+    const data = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    const fetchPage = vi.fn(async (offset: number, limit: number) => ({ items: data.slice(offset, offset + limit), total: data.length }))
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], opts))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    await readAll(result) // a..f on screen, g still to come
+    fetchPage.mockClear()
+    data[0] = 'A'
+    act(() => result.current.load(true))
+    await waitFor(() => expect(result.current.state).toMatchObject({ items: ['A', 'b', 'c', 'd', 'e', 'f'], more: true }))
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([0, 2, 4])
+    await act(async () => result.current.loadMore())
+    expect(result.current.state).toMatchObject({ items: ['A', 'b', 'c', 'd', 'e', 'f', 'g'], more: false })
+  })
+
+  it('goes by pages when the server pages over entries the profile cannot see', async () => {
+    const fetchPage = vi.fn(async (offset: number) => ({ items: [`p${offset}`], total: 6 }))
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], { ...opts, step: 'page' }))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    await readAll(result)
+    fetchPage.mockClear()
+    act(() => result.current.load(true))
+    await waitFor(() => expect(result.current.state).toMatchObject({ items: ['p0', 'p2', 'p4'], more: false }))
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([0, 2, 4])
+  })
+
+  it('goes on over an empty page when the server pages over entries the profile cannot see', async () => {
+    const fetchPage = vi.fn(async (offset: number) => ({ items: offset === 2 ? [] : [`p${offset}`], total: 8 }))
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], { ...opts, step: 'page' }))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    await readAll(result) // pages at 0, 2 (empty) and 4
+    fetchPage.mockClear()
+    act(() => result.current.load(true))
+    await waitFor(() => expect(result.current.state).toMatchObject({ items: ['p0', 'p4'], more: true }))
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([0, 2, 4])
+  })
+
+  it('an empty first page does not end the reload either', async () => {
+    const fetchPage = vi.fn(async (offset: number) => ({ items: offset === 0 ? [] : [`p${offset}`], total: 8 }))
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], { ...opts, step: 'page' }))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    await readAll(result)
+    fetchPage.mockClear()
+    act(() => result.current.load(true))
+    await waitFor(() => expect(result.current.state).toMatchObject({ items: ['p2', 'p4'] }))
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([0, 2, 4])
+  })
+
+  it('a quiet reload reads back RELOAD_PAGES pages at most: a list read further is cut there and goes on from it', async () => {
+    const data = Array.from({ length: (RELOAD_PAGES + 2) * 2 }, (_, i) => `i${i}`)
+    const fetchPage = vi.fn(async (offset: number, limit: number) => ({ items: data.slice(offset, offset + limit), total: data.length }))
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], opts))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    for (let i = 0; i < RELOAD_PAGES + 1; i++) await act(async () => result.current.loadMore())
+    expect(result.current.state).toMatchObject({ more: false })
+    fetchPage.mockClear()
+    act(() => result.current.load(true))
+    await waitFor(() => expect(result.current.state).toMatchObject({ more: true }))
+    expect(fetchPage).toHaveBeenCalledTimes(RELOAD_PAGES)
+    expect(result.current.state).toMatchObject({ items: data.slice(0, RELOAD_PAGES * 2) })
+    await act(async () => result.current.loadMore())
+    expect(fetchPage).toHaveBeenLastCalledWith(RELOAD_PAGES * 2, 2, expect.any(AbortSignal))
+  })
+
+  it('leaves the list alone when a later page fails, and holds the sentinel off meanwhile', async () => {
+    const data = ['a', 'b', 'c', 'd']
+    let fail = false
+    const fetchPage = vi.fn(async (offset: number, limit: number) => {
+      if (fail && offset > 0) throw new Error('down')
+      return { items: data.slice(offset, offset + limit), total: data.length }
+    })
+    const { result } = renderHook(() => usePagedList<string>(fetchPage, [], opts))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    await act(async () => result.current.loadMore())
+    fail = true
+    fetchPage.mockClear()
+    act(() => result.current.load(true))
+    act(() => result.current.loadMore()) // the sentinel, while the reload is on its way
+    await waitFor(() => expect(fetchPage.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await act(async () => undefined)
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([0, 2])
+    expect(result.current.state).toMatchObject({ status: 'ready', items: ['a', 'b', 'c', 'd'] })
   })
 })
 

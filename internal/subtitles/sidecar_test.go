@@ -3,6 +3,7 @@ package subtitles
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -111,6 +112,35 @@ func TestFindExternalSubsFolderSharedBySeveralVideos(t *testing.T) {
 	got := FindExternal(filepath.Join(dir, "Show - S01E01.mkv"), "", 1)
 	if len(got) != 1 || got[0].Lang != "ru" || filepath.Base(got[0].Path) != "Show - S01E01.ru.srt" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// A Lister gives the answers of FindExternal and reads a folder once: the
+// second video's answer comes from the listing the first one made.
+func TestListerReadsAFolderOnce(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "Season 01")
+	var videos []string
+	for _, n := range []string{"Show - S01E01", "Show - S01E02"} {
+		touchFile(t, filepath.Join(dir, n+".mkv"), "v")
+		touchFile(t, filepath.Join(dir, n+".ru.srt"), "x")
+		touchFile(t, filepath.Join(dir, "Subs", n+".en.srt"), "x")
+		videos = append(videos, filepath.Join(dir, n+".mkv"))
+	}
+	var l Lister
+	first := l.FindExternal(videos[0], "", 1)
+	if want := FindExternal(videos[0], "", 1); !reflect.DeepEqual(first, want) || len(first) != 2 {
+		t.Fatalf("first: %+v want %+v", first, want)
+	}
+	want := FindExternal(videos[1], "", 2)
+	if err := os.RemoveAll(dir); err != nil { // anything it asks the disk for now is gone
+		t.Fatal(err)
+	}
+	if got := l.FindExternal(videos[1], "", 2); !reflect.DeepEqual(got, want) || len(got) != 2 {
+		t.Fatalf("second: %+v want %+v", got, want)
+	}
+	if got := FindExternal(videos[1], "", 2); len(got) != 0 {
+		t.Fatalf("the folder is gone: %+v", got)
 	}
 }
 

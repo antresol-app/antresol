@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -29,7 +28,6 @@ var (
 	reComicChapter  = regexp.MustCompile(`(?i)(?:^|[^\p{L}\p{N}])(?:chapter|chap|ch|c|глава|гл)\.?[\s_]*(\d+(?:[.,]\d+)?)`)
 	reComicHash     = regexp.MustCompile(`#\s*(\d+(?:[.,]\d+)?)`)
 	reComicBare     = regexp.MustCompile(`(?:^|[\s_.-])(\d+(?:[.,]\d+)?)\s*$`)
-	reComicYear     = regexp.MustCompile(`^(?:19|20)\d\d$`)
 )
 
 func comicNum(s string) float64 {
@@ -40,7 +38,7 @@ func comicNum(s string) float64 {
 // parseComicFile splits a volume file or folder name (without extension)
 // into the series name and the numbers: «Берсерк v01» → «Берсерк», 1, 0.
 // The series is what precedes the first number; groups in brackets
-// ([Viz], (2019)) are ignored. See parseComicNumber.
+// ([Viz], (2019)) are ignored.
 func parseComicFile(stem string) (series string, volume, chapter float64) {
 	s := reComicBrackets.ReplaceAllString(strings.ReplaceAll(stem, "_", " "), " ")
 	cut := len(s)
@@ -62,21 +60,13 @@ func parseComicFile(stem string) (series string, volume, chapter float64) {
 	}
 	if volume == 0 && chapter == 0 {
 		// a bare trailing number is the volume, unless it is a year («Akira 1988»)
-		if m := reComicBare.FindStringSubmatchIndex(s); m != nil && !reComicYear.MatchString(s[m[2]:m[3]]) {
+		if m := reComicBare.FindStringSubmatchIndex(s); m != nil && !reYearOnly.MatchString(s[m[2]:m[3]]) {
 			volume = comicNum(s[m[2]:m[3]])
 			at(m)
 		}
 	}
 	series = strings.Join(strings.Fields(strings.Trim(strings.TrimSpace(s[:cut]), " -–—_.,#:")), " ")
 	return series, volume, chapter
-}
-
-// parseComicNumber returns the volume and chapter numbers in a name: «v01»,
-// «Vol.01 Ch.001», «Том 3», «Глава 12», «ch.12.5», «#12», a bare trailing
-// number («Берсерк 05» = volume 5). 0 = no number.
-func parseComicNumber(name string) (volume, chapter float64) {
-	_, volume, chapter = parseComicFile(name)
-	return volume, chapter
 }
 
 func fmtComicNum(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
@@ -112,8 +102,10 @@ type comicFile struct {
 	folderVolume bool
 }
 
-func skipComicDir(name string) bool {
-	return strings.HasPrefix(name, ".") || strings.EqualFold(name, "__MACOSX") || strings.EqualFold(name, "@eaDir")
+// isComicArchive: a comic archive, but not the second and later parts of a
+// multi-part RAR.
+func isComicArchive(name string) bool {
+	return comics.IsArchive(name) && !reRarPart.MatchString(name)
 }
 
 // walkComics lists the volumes under root: comic archives (not the second
@@ -122,13 +114,6 @@ func skipComicDir(name string) bool {
 // (so a series folder with a cover.jpg is not one). Images right in the
 // root are not a volume.
 func walkComics(ctx context.Context, root string) ([]comicFile, error) {
-	st, err := os.Stat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", root)
-	}
 	type dirPages struct {
 		images      int
 		size, mtime int64
@@ -144,52 +129,22 @@ func walkComics(ctx context.Context, root string) ([]comicFile, error) {
 		return d
 	}
 	var out []comicFile
-	var firstErr error
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
+	err := walkTree(ctx, root, func(low string) bool { return low == "__macosx" || low == "@eadir" },
+		func(_ string, d fs.DirEntry) bool {
+			// symlinks, FIFOs and devices are never pages or volumes
+			return d.Type().IsRegular() && (isComicArchive(d.Name()) || comics.IsPage(d.Name()))
+		},
+		func(p string, info fs.FileInfo) {
+			dp := at(filepath.Dir(p))
+			if isComicArchive(info.Name()) {
+				dp.archives = true
+				out = append(out, comicFile{path: p, size: info.Size(), mtime: info.ModTime().Unix()})
+				return
 			}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			if p != root && skipComicDir(name) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		archive := comics.IsArchive(name) && !reRarPart.MatchString(name)
-		if strings.HasPrefix(name, ".") || !d.Type().IsRegular() || (!archive && !comics.IsPage(name)) {
-			return nil // symlinks, FIFOs and devices are never pages or volumes
-		}
-		info, err := d.Info()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-		dp := at(filepath.Dir(p))
-		if archive {
-			dp.archives = true
-			out = append(out, comicFile{path: p, size: info.Size(), mtime: info.ModTime().Unix()})
-			return nil
-		}
-		dp.images++
-		dp.size += info.Size()
-		dp.mtime = max(dp.mtime, info.ModTime().Unix())
-		return nil
-	})
-	if err == nil {
-		err = firstErr // incomplete walk: the caller must not prune
-	}
+			dp.images++
+			dp.size += info.Size()
+			dp.mtime = max(dp.mtime, info.ModTime().Unix())
+		})
 	imagesBelow := map[string]bool{}
 	for dir, d := range dirs {
 		if d.images == 0 {
@@ -325,6 +280,7 @@ func (s *Scanner) scanComicsIn(ctx context.Context, dir string, st *ScanStats) e
 			st.Files += len(g.vols)
 			continue
 		}
+		st.Changed++
 		seriesID := ss.id
 		for _, v := range g.vols {
 			if !unchangedComic(v, storedFiles, ss.id) {

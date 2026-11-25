@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"math/rand"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -151,6 +152,33 @@ func TestShrinkRefusesAPictureBomb(t *testing.T) {
 	got, _ := tUnzip(t, out)
 	if got["OEBPS/images/bomb.png"] != bomb {
 		t.Error("the bomb was decoded")
+	}
+}
+
+// An entry that declares a size past shrinkMaxPicture is not read at all,
+// whatever it holds: a book that deflates a gigabyte of "picture" into a
+// few kilobytes must not fill the server's memory.
+func TestShrinkSkipsAHugePictureEntry(t *testing.T) {
+	allocated := func(book []byte) (out []byte, bytes uint64) {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		out, _ = ShrinkEPUB(book, len(book)-1)
+		runtime.ReadMemStats(&after)
+		return out, after.TotalAlloc - before.TotalAlloc
+	}
+	plain := imageBook(t)
+	_, base := allocated(plain)
+	huge := strings.Repeat("\x00", shrinkMaxPicture+1<<20)
+	in := imageBook(t, tEntry{"OEBPS/images/huge.jpg", huge, false})
+	if len(in) > len(plain)+1<<20 {
+		t.Fatalf("the huge entry adds %d bytes: it should deflate", len(in)-len(plain))
+	}
+	out, with := allocated(in)
+	if got, _ := tUnzip(t, out); got["OEBPS/images/huge.jpg"] != huge {
+		t.Error("the huge entry changed")
+	}
+	if with > base+shrinkMaxPicture/2 {
+		t.Errorf("the huge entry was read: %d MB allocated, %d MB without it", with>>20, base>>20)
 	}
 }
 

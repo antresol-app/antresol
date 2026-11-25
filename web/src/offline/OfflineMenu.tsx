@@ -2,6 +2,8 @@
 // line under a page's buttons («Загружено», «Сохраняется… 40 %», errors).
 import { Link } from 'react-router'
 import { Icon } from '../components/Icon'
+import { Button } from '../ui/Button'
+import { IconButton } from '../ui/IconButton'
 import { MenuItem } from '../ui/Menu'
 import { t as tr, useT } from '../i18n'
 import {
@@ -88,9 +90,9 @@ export function OfflineStatus({ target }: { target: OfflineTarget }) {
         <span className={styles.bar} aria-hidden>
           <span style={{ width: `${p}%` }} />
         </span>
-        <button type="button" className={styles.cancel} onClick={() => cancelSaving(target)}>
+        <Button variant="link" onClick={() => cancelSaving(target)}>
           {t('common.cancelAction')}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -99,9 +101,7 @@ export function OfflineStatus({ target }: { target: OfflineTarget }) {
       <p className={styles.error} role="alert">
         <Icon name="warning" size={15} />
         {s.message}
-        <button type="button" className={styles.cancel} onClick={() => clearSaveError(target)} aria-label={t('offline.hide')}>
-          <Icon name="close" size={14} />
-        </button>
+        <IconButton size="xs" variant="plain" icon="close" label={t('offline.hide')} onClick={() => clearSaveError(target)} />
       </p>
     )
   }

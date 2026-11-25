@@ -144,7 +144,7 @@ func app10Device(userID int64, password string) string {
 // asks: health, setup, profiles, auth/token, me, a card list and play.
 func TestApp10Contract(t *testing.T) {
 	contract := loadContract(t)
-	e := newLibEnv(t) // the administrator «Папа», password "secret"
+	e := newLibEnv(t) // the administrator «Папа», password adminPass
 	kid := e.do("POST", "/api/users", `{"name":"Ребёнок","isKid":true,"maxRating":"12+"}`, e.admin)
 	if kid.Code != 201 {
 		t.Fatalf("kid %d %s", kid.Code, kid.Body)
@@ -216,7 +216,7 @@ func TestApp10Contract(t *testing.T) {
 		t.Fatalf("profiles %v", profiles)
 	}
 	token := func(v any) string { return v.(map[string]any)["token"].(string) }
-	admin := call("POST", path("authToken"), app10Device(adminID, "secret"), "")
+	admin := call("POST", path("authToken"), app10Device(adminID, adminPass), "")
 	check("authToken", admin)
 	kidTok := call("POST", path("authToken"), app10Device(kidID, ""), "")
 	check("authToken", kidTok)

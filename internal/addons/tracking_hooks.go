@@ -153,12 +153,7 @@ func (s *hookScanner) Scan(ctx context.Context, t tracking.Title, eps []tracking
 func (h *Hooks) ExtraTracked(ensure func(ctx context.Context, kind string, tmdbID int64, name, poster string) (int64, error)) func(ctx context.Context) ([]int64, error) {
 	return func(ctx context.Context) ([]int64, error) {
 		var titles []addonkit.ExtraTitle
-		h.Each(ctx, "tracking.titles", nil, nil, func(id string, raw json.RawMessage) {
-			var a addonkit.TitlesAnswer
-			if err := json.Unmarshal(raw, &a); err != nil {
-				h.log().Warn("addon hook: left out", "addon", id, "hook", "tracking.titles", "err", err)
-				return
-			}
+		eachAnswer(h, ctx, "tracking.titles", nil, nil, func(_ string, a addonkit.TitlesAnswer) {
 			titles = append(titles, a.Titles...)
 		})
 		seen := map[[2]any]bool{}
@@ -192,12 +187,7 @@ func (h *Hooks) ExtraTracked(ensure func(ctx context.Context, kind string, tmdbI
 func (h *Hooks) watchStates(ctx context.Context, userID int64, kind string, tmdbID int64) map[[2]int]tracking.WatchState {
 	out := map[[2]int]tracking.WatchState{}
 	req := addonkit.WatchedRequest{UserID: userID, Kind: kind, TMDBID: tmdbID}
-	h.Each(ctx, "tracking.watched", nil, req, func(id string, raw json.RawMessage) {
-		var a addonkit.WatchedAnswer
-		if err := json.Unmarshal(raw, &a); err != nil {
-			h.log().Warn("addon hook: left out", "addon", id, "hook", "tracking.watched", "err", err)
-			return
-		}
+	eachAnswer(h, ctx, "tracking.watched", nil, req, func(_ string, a addonkit.WatchedAnswer) {
 		for _, e := range a.Episodes {
 			k := [2]int{e.Season, e.Number}
 			st := out[k]
@@ -239,12 +229,7 @@ func (h *Hooks) WatchStates() tracking.WatchStateFunc {
 func (h *Hooks) Interest() notify.InterestFunc {
 	return func(ctx context.Context, kind string, tmdbID int64) ([]int64, error) {
 		var ids []int64
-		h.Each(ctx, "notify.interest", nil, addonkit.InterestRequest{Kind: kind, TMDBID: tmdbID}, func(id string, raw json.RawMessage) {
-			var a addonkit.InterestAnswer
-			if err := json.Unmarshal(raw, &a); err != nil {
-				h.log().Warn("addon hook: left out", "addon", id, "hook", "notify.interest", "err", err)
-				return
-			}
+		eachAnswer(h, ctx, "notify.interest", nil, addonkit.InterestRequest{Kind: kind, TMDBID: tmdbID}, func(_ string, a addonkit.InterestAnswer) {
 			for _, u := range a.UserIDs {
 				if u > 0 {
 					ids = append(ids, u)

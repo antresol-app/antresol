@@ -40,6 +40,30 @@ build).
    gallery's own headings are the only exception; the gallery is developer
    tooling and is not in a build.
 
+### What enforces them
+
+Two tests count what rules 1 and 2 forbid and compare it with
+`src/design/__tests__/ratchet.json`, the list of what is still there:
+
+- `tokensOnly.test.ts` walks every module CSS (the app's and each addon's):
+  a literal colour, a written-out font size, a radius, a shadow colour, a
+  numeric `font-weight` or `z-index`, a duration, a padding/margin/gap above
+  2 px, a control size of the scale, and a second `@keyframes spin`.
+  `design/`, `ui/gallery` and the video and reader chrome (`cssRules.ts`) are
+  exempt. An excuse says why: a trailing comment on one declaration,
+  `color: #000; /* ds-allow: a mask, its alpha only */`, or a comment that
+  opens a rule, `/* ds-allow: a poster */`, which excuses every declaration in
+  it.
+- `rawControls.test.ts` counts, per component file outside `ui/`, the raw
+  `<button>`, `<input>`, `<textarea>`, `<select>`, `role="switch"`,
+  `role="menu"` and `style={{ … }}` that writes a number.
+
+A count may fall and never rise; a file that has none gets none. A new raw
+control or literal is therefore a line added to `ratchet.json`, which is where
+review looks. When a count falls the test says so: lower the baseline with
+`UPDATE_RATCHET=1 npx vitest run src/design --no-file-parallelism` (it refuses
+to write a higher number; `force` is for a file that moved).
+
 ## Tokens
 
 ### Colour roles
@@ -109,12 +133,24 @@ bar's sections and the library menu. Numbers that change
 - Sheets: `--sheet-alert-w` 300, `--sheet-wide-w` 440, `--sheet-large-w`
   880, `--r-sheet-phone` 28, `--scrim`, `--shadow-sheet`, the alert's type
   `--t-alert-title/-message/-button`.
-- Layers: `--z-raised` 1, `--z-above` 2 (inside a component), `--z-sticky` 5 (a list's header), `--z-playerbar` 45, `--z-nav` 50, `--z-overlay` 95 (a page's full-window overlay: Quick Look), `--z-sheet` 96, `--z-toast` 97, `--z-menu` 110
+- Layers: `--z-behind` −1 (behind its parent's content, a scrim), `--z-raised` 1, `--z-above` 2 (inside a component), `--z-sticky` 5 (a list's header), `--z-playerbar` 45, `--z-nav` 50, `--z-overlay` 95 (a page's full-window overlay: Quick Look), `--z-sheet` 96, `--z-toast` 97, `--z-menu` 110
   (a menu opened inside a sheet stays above it), `--z-top` 200.
 - Elevation: `--shadow-card`, `--shadow-lift` (a dragged thing),
   `--shadow-pop` (menus, sheets), `--shadow-knob`.
 - Motion: `--ease-out`, `--spring`, `--d-fast`, `--d-base`, `--d-slow`
-  (all zero with reduced motion).
+  (all zero with reduced motion). The busy ring turns by the one global
+  `@keyframes spin` and its `.spin` class (`design/motion.css`; Reduce motion
+  slows it to 2.4 s, never stops it). A new module `@keyframes spin` fails
+  `tokensOnly.test.ts`; the copies that are still there are counted in
+  `ratchet.json` until their pages draw `ui/Spinner`.
+- Weights: `--w-medium` 500 and `--w-semibold` 600 for a weight set after a
+  type token.
+- Over a cover: `--shadow-cover` (a book's or comic's detail page) and
+  `--shadow-cover-sm` (a book's card in a row); `--scrim-hero-bottom`,
+  `--scrim-hero-side` and `--scrim-hero-phone` are the hero's scrims.
+- Slider: `--slider-fill`, `--slider-track`, `--slider-thumb`,
+  `--slider-thumb-size`, `--slider-track-h` (`-active` under the pointer),
+  `--slider-thumb-shadow`.
 
 ## Components (`src/ui/`)
 
@@ -124,8 +160,8 @@ bar's sections and the library menu. Numbers that change
 | `IconButton` | every round, icon-only button | `size` xs 30 · sm 36 · md 44 · lg 52 — one size means one diameter, glyph size and colour; `material` `fill` (default) · `glass` · `clear` (over artwork or video); a row over a title's art (`ActionTiles`) gives its buttons `clear` (`MaterialContext`). `variant="plain"` inside a row (no fill until hovered); `tone="destructive"` (red glyph); `toggled` (white, aria-pressed); `label` is the accessible name and tooltip (`tooltip` when the state changes the words); `tile` shows the label under the glyph in the phone tile row. Also `IconButtonLink`, `IconButtonAnchor`. |
 | `Artwork` | every picture of the library in a page (a cover, a track's or a playlist's art, a search row's thumb) | `width` it is drawn at (the srcset runs to twice it), `sizes` for a fluid one, `eager` for the page's main picture, `fallback` (a glyph on its tile) when there is none or it fails. Lazy and decoded off the main thread. |
 | `Card` | a block of a page on a surface (a chart, a figure, an empty state) | paddings `sm`/`md`/`lg`. A list of rows is a `GroupedSection`, not a Card. (`components/Card` is the library's poster tile, a different thing.) |
-| `GroupedSection`, `ListRow` | settings and every list of things with actions (downloads, profiles, statistics) | the System Settings list: a title over a solid group, a footnote under it; a row has optional `leading` media, `label`, `hint`, `status`, and the control/actions on the trailing edge. `stack`: the control goes under the text on phones (segmented controls); `wide`: always under (ordered lists, forms); `shrink`: the control gives way and cuts its choice. On a phone a plain row's control goes under the text by itself when the text would be narrower than `--row-text-min`, so a word is never split; a `ListLinkRow`'s value is cut by an ellipsis before the chevron or the label's longest word gives way. Pages that build rows by hand compose the same classes (`Manage.module.css`). |
-| `TextField` | a labelled text input in a form or sheet; every search field | the field height; `hint`, `error`, `revealable` passwords; `size="small"` for a toolbar or the top of a menu; `type="search"` is Apple's search field (magnifier, the focus ring when focused) with `onClear` (× and Escape). |
+| `GroupedSection`, `ListRow` | settings and every list of things with actions (downloads, profiles, statistics) | the System Settings list: a title over a solid group, a footnote under it; a row has optional `leading` media, `label`, `hint`, `status`, and the control/actions on the trailing edge. `stack`: the control goes under the text on phones (segmented controls); `wide`: always under (ordered lists, forms); `shrink`: the control gives way and cuts its choice. On a phone a plain row's control goes under the text by itself when the text would be narrower than `--row-text-min`, so a word is never split; a `ListLinkRow`'s value is cut by an ellipsis before the chevron or the label's longest word gives way. Pages that build rows by hand compose the same classes (`Manage.module.css`). `ListSelectRow`: a row that chooses (a source, a device, a playlist to add to) — the link row's button with the choice's check at the trailing edge; `selected` marks the chosen one (`aria-pressed`), without it the row only acts; `leading`, `hint`, `disabled`. |
+| `TextField`, `TextArea` | a labelled text input in a form or sheet; every search field; a note or a list of lines | the field height; `hint`, `error`, `revealable` passwords; `size="small"` for a toolbar or the top of a menu; `type="search"` is Apple's search field (magnifier, the focus ring when focused) with `onClear` (× and Escape); `type="time"` a time of day in even digits. `TextArea` is the same field for several lines (`rows`, default 4; the corner stretches it down). |
 | `NumberField` | a number with a unit in a row («2 МБ/с», «10 ГБ») | the small height, the number and its unit on one line (one baseline), tabular digits; as wide as the number it shows, `chars` the narrowest (in digits); a press anywhere on it types into it; keeps what is typed, reports valid values (`min`, `max`, `decimals`), restores the saved value when left invalid. |
 | `Select`, `MultiSelect` | choosing one / several of a fixed list | a filled pop-up button with ⌃⌄; the menu is a `Menu`. Put `placement="bottom-end"` on a trigger at a row's trailing edge. |
 | `Menu`, `PointMenu`, `MenuItem`, `MenuHeading`, `MenuSeparator` | actions behind a button («⋯»), sort and filter; `PointMenu` is the same menu at a point (a right click, Files) | floating (rule 3); arrow keys, Home/End, Escape returns focus; radio and checkbox items, a `detail` line, `destructive`, `icon`, a `badge`, a trailing `shortcut` («⌘I»). `maxHeight` for a deliberately tall menu. A Sheet opened from an item gives focus back to the trigger (`menuTrigger`). |
@@ -135,8 +171,13 @@ bar's sections and the library menu. Numbers that change
 | `Badge`, `Badges` | a small fact or status capsule | tones `default`, `strong`, `outline` (over artwork), `warning`, `accent`, `success`, `destructive`; `round` for a status. Other modules `composes: badge … from '../ui/Badge.module.css'`. |
 | `SegmentedControl` | 2–5 mutually exclusive options shown at once | the toolbar height (`size="small"`: the small height, in a toolbar); a segment may be an `icon` (its label is the name and tooltip); arrow keys move; scrolls sideways on phones. `row`: a page's filter under its title (Поиск, up to 7 segments) — centred in its column; when it does not fit, the whole pill scrolls out to the window's edges (`--segmented-bleed`, the page's gutter) and the edge with more segments past it fades. `align="start"`: the row starts at its column's edge instead of centring (a filter over a list that starts there — «ТВ»). |
 | `Toggle` | on/off that applies at once | the iOS switch, green when on; the row's label names it. `size="small"` (40×24) for a column of switches in a table (the source's «Показ»); a finger still gets 44. |
-| `Checkbox` | a choice that changes what an action will do (a confirmation's «Удалить навсегда, минуя корзину»), never a setting that applies at once (that is a `Toggle`) | the native box in `--accent`, the label beside it, the whole row the target (a finger’s 44 pt on touch); `tone="destructive"` turns the label red while checked. Unchecked by default when it makes an action irreversible. |
-| `FilterChips` | one choice of many, each with a count (a playlist's groups) | capsules of the small control height on `--fill-2`, the chosen one white with the inverse label (as SegmentedControl's thumb), the count tabular in `--label-2`; arrow keys, Home/End move. A wide window wraps them; a phone keeps one line that scrolls sideways out to the window's edges (`--chips-bleed`, the page's gutter). Two to five fixed words are a `SegmentedControl`, not chips. |
+| `Checkbox` | a choice that changes what an action will do (a confirmation's «Удалить навсегда, минуя корзину»), never a setting that applies at once (that is a `Toggle`) | the native box in `--accent`, the label beside it, the whole row the target (a finger’s 44 pt on touch); `tone="destructive"` turns the label red while checked. Unchecked by default when it makes an action irreversible. `description` is a footnote line under the label; `indeterminate` is a group's box over its rows (the dash; a press makes it checked, the caller decides); with no `label` a box in a table's row is named by `aria-label`. |
+| `Chips` | one choice of many, each with a count (a playlist's groups), or several on at once (a channel's genres) | capsules of the small control height on `--fill-2`, the chosen ones white with the inverse label (as SegmentedControl's thumb), the count tabular in `--label-2`. One choice (default): radio buttons, arrow keys and Home/End move, a wide window wraps them and a phone keeps one line that scrolls sideways out to the window's edges (`--chips-bleed`, the page's gutter). `multiple`: toggles (`aria-pressed`) that always wrap, `onChange(value, on)`, `children` after them (a «Ещё…» pop-up). `FilterChips` and `ToggleChips` are the same component under the names older callers use. Two to five fixed words are a `SegmentedControl`, not chips. (`components/Chips`, the accent-filled pill an addon radio group draws, is the SDK's older `Chip`/`Chips`, a different thing from `ui.Chips`.) |
+| `Spinner` | a wait: a button whose request is out, a confirmed action, a panel that loads | a ring in the colour of the text around it, a quarter open, turning by the global `.spin`; `size` xs 16 · sm 18 (default) · md 20 · lg 24 (the `--icon-*` sizes) or, without one, `--spinner-size` / `--spinner-width` set on the class the caller passes (a button's `1em`); `track` adds a faint full ring for a ring over artwork or video; `label` names it for assistive tech (without one it is decoration and the control says what is happening with `aria-busy`). `Button`, `IconButton` and `Sheet` draw it when busy. A page that still draws its own ring has its own `@keyframes spin`; `tokensOnly.test.ts` counts those copies and fails on a new one. |
+| `EmptyState` | an empty page or panel (nothing here yet, an empty trash) and a failed load | the glyph (`icon`, tertiary), the `title` as a heading (`as` h2; h1 when it is the page's only one), a `hint` line (42 characters, balanced), the `actions` under it, centred above the middle of the window (`margin-top: 14vh`); `inset` keeps the page's gutters; `role="alert"` for a failure. An empty list inside a group is a `ListRow` with a hint, not this. |
+| `Skeleton` | a placeholder where content is on its way | a quiet static block (`--fill-4`; `tone="soft"` is `--fill-3`, a title's bar), no shimmer; the caller's class gives it size and shape; hidden from assistive tech, the list around it carries `aria-busy`. |
+| `Slider` | one value out of a range: a volume, a speed | the native range input in the video bars' volume look: a 4 pt track filled in white up to the thumb (6 pt under the pointer), a white thumb that shows under the pointer and the focus (`thumb="always"`: always), the accent ring round the thumb for the keyboard, a 44 pt strip; `value`, `min`, `max`, `step`, `onChange(number)`, `valueText`. Not a stream's seek bar (that is the player's scrubber). |
+| `RankedList` | an ordered list of names the viewer edits, with «+ Добавить…» (languages, studios) | built on `SortableList` + `Menu`; `field` adds a text field for any name. In the SDK as `ui.RankedList` (an addon need not copy it). |
 | `Notice` | a state that waits for the viewer, or a problem worth reading (a refresh that lost too many channels) | a tinted ground (`warning` default, `accent`, `destructive`), the glyph in the tint, a `title` and the message in the label colours, the `actions` (small secondary `Button`s) under the words. `as="li"` makes it the first row of a `GroupedSection`. A passing confirmation is a `Toast`, not a notice. |
 | `VirtualList` | a list of thousands of rows of one height (a source's channel table) | renders only the rows near the screen plus `overscan`, keeps its full height so the scroll bar tells the truth, and follows whichever scroller moves (the window or an ancestor). `itemHeight` per layout (a phone's two-line row passes its own); `role`/`itemRole` `list`/`listitem` or `rowgroup`/`row` under a header row the caller draws. Rows are positioned inside it, so a scroller around it keeps them. |
 | `Sheet` | confirmations, forms, read-only panels | `alert` (default), `wide`, `large`. Wide screens: centred. Phones: a bottom sheet that slides up and slides away when closed, inset 8 pt from the edges with 28 pt corners; the page behind it is locked (`scrollLock.ts`); the keyboard lifts it (`--keyboard-inset`, `--vv-top`); the message and the form scroll between the pinned title and buttons (`[data-sheet-body]`), so «Сохранить» stays on screen; its buttons are capsules at the thumb, three or more stacked with Cancel at the bottom. A read-only picker (`dismissOnOutside`) has the grabber: drag or flick it down to close. A dialog without Cancel gets the round ✕. On open, focus goes to a field the caller marks (`data-autofocus`, `autoFocus`), else the first field — but not on a touch screen, where a form opens with the sheet itself focused so the on-screen keyboard and AutoFill bar wait for a tap. |

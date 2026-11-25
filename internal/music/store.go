@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -421,12 +421,8 @@ func (s *Store) RecentAlbums(ctx context.Context, userID int64, limit int) ([]in
 // byLatestPlay orders albums whose latest plays share a time by the
 // latest play stored (rowid), latest first.
 func (s *Store) byLatestPlay(ctx context.Context, userID int64, albums []int64) error {
-	args := []any{userID}
-	for _, a := range albums {
-		args = append(args, a)
-	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.parent_id, MAX(p.rowid) FROM plays p JOIN items t ON t.id=p.item_id
-	  WHERE p.user_id=? AND t.parent_id IN (?`+strings.Repeat(",?", len(albums)-1)+`) GROUP BY t.parent_id`, args...)
+	  WHERE p.user_id=? AND t.parent_id IN `+db.In(len(albums))+` GROUP BY t.parent_id`, append([]any{userID}, db.Args(albums)...)...)
 	if err != nil {
 		return err
 	}

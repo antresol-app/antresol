@@ -55,9 +55,9 @@ export function ShikimoriAdmin() {
     <GroupedSection title="Shikimori" footer={cfg.fromEnv ? t('acct.admin.fromEnv') : undefined}>
       <ListRow wide label={t('acct.admin.client')} hint={t('acct.admin.hint')} status={saved === 'saved' ? t('acct.admin.saved') : error || undefined}>
         <div className={styles.aiFields}>
-          <TextField label="Client ID" value={id} readOnly={cfg.fromEnv} onChange={(e) => setId(e.target.value)} onBlur={() => void commit()} autoComplete="off" spellCheck={false} />
+          <TextField label={t('acct.admin.clientId')} value={id} readOnly={cfg.fromEnv} onChange={(e) => setId(e.target.value)} onBlur={() => void commit()} autoComplete="off" spellCheck={false} />
           <TextField
-            label="Client Secret"
+            label={t('acct.admin.clientSecret')}
             type="password"
             value={secret}
             readOnly={cfg.fromEnv}
@@ -71,7 +71,7 @@ export function ShikimoriAdmin() {
       <ListRow wide label={t('acct.admin.redirect')} hint={t('acct.admin.redirect.hint')}>
         <div className={styles.aiFields}>
           {cfg.redirectUri ? (
-            <TextField label="Redirect URI" value={cfg.redirectUri} readOnly onFocus={(e) => e.currentTarget.select()} />
+            <TextField label={t('acct.admin.redirectUri')} value={cfg.redirectUri} readOnly onFocus={(e) => e.currentTarget.select()} />
           ) : (
             // no address yet: where it is set, not a dead end
             <div className={styles.aiFields}>
@@ -83,7 +83,7 @@ export function ShikimoriAdmin() {
               </div>
             </div>
           )}
-          <TextField label="Scope" value={cfg.scope} readOnly />
+          <TextField label={t('acct.admin.scope')} value={cfg.scope} readOnly />
         </div>
       </ListRow>
     </GroupedSection>

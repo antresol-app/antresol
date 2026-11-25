@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/netguard"
 )
 
 // Fetch limits and timeouts (callers put the overall one on ctx).
@@ -36,9 +38,13 @@ func (e ErrHTTP) Error() string { return fmt.Sprintf("iptv: HTTP %d", e.Code) }
 // Fetcher downloads playlists and guides: within size limits (counted
 // while reading, on the wire and after gunzip), gzip found by its magic
 // bytes, at most cap(Sem) at once. Its errors show URLs only through
-// StripCreds.
+// StripCreds. Its clients never dial a link-local, reserved or other
+// address that is no one's server (netguard), and the LAN's own addresses
+// only for a download whose source is spelled as a LAN address (OpenVia).
 type Fetcher struct {
-	Client          *http.Client
+	Client *http.Client
+	// Local: the client for a LAN source (nil: Client does it all).
+	Local           *http.Client
 	MaxCompressed   int64
 	MaxUncompressed int64
 	// Sem holds a slot per open download (nil: no cap).
@@ -48,21 +54,38 @@ type Fetcher struct {
 // NewFetcher is a Fetcher with the default limits, a 15 s connect timeout
 // and MaxFetches slots.
 func NewFetcher() *Fetcher {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.DialContext = (&net.Dialer{Timeout: ConnectTimeout, KeepAlive: 30 * time.Second}).DialContext
-	tr.TLSHandshakeTimeout = ConnectTimeout
-	tr.ResponseHeaderTimeout = time.Minute
 	return &Fetcher{
-		Client:          &http.Client{Transport: tr},
+		Client:          guardedClient(false),
+		Local:           guardedClient(true),
 		MaxCompressed:   DefaultMaxCompressed,
 		MaxUncompressed: DefaultMaxUncompressed,
 		Sem:             make(chan struct{}, MaxFetches),
 	}
 }
 
+// guardedClient dials public addresses, and the LAN's when lan is set, at
+// every connection (redirects included). It uses no proxy: a proxy would be
+// the address dialled, not the target.
+func guardedClient(lan bool) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = nil
+	tr.DialContext = (&net.Dialer{Timeout: ConnectTimeout, KeepAlive: 30 * time.Second, ControlContext: netguard.Control(lan)}).DialContext
+	tr.TLSHandshakeTimeout = ConnectTimeout
+	tr.ResponseHeaderTimeout = time.Minute
+	return &http.Client{Transport: tr}
+}
+
 // Open starts a download; the reader gives the uncompressed body. Close it
-// to free the slot. ua "" sends Go's default User-Agent.
+// to free the slot. ua "" sends Go's default User-Agent. rawURL is also
+// what decides whether the LAN may be reached (OpenVia).
 func (f *Fetcher) Open(ctx context.Context, rawURL, ua string) (io.ReadCloser, error) {
+	return f.OpenVia(ctx, rawURL, ua, rawURL)
+}
+
+// OpenVia is Open for a download whose address is a third party's word (a
+// guide a playlist names): the LAN is reachable only when lanOf, the
+// address the admin typed for its source, is spelled as a LAN address.
+func (f *Fetcher) OpenVia(ctx context.Context, rawURL, ua, lanOf string) (io.ReadCloser, error) {
 	safe := StripCreds(rawURL)
 	if f.Sem != nil {
 		select {
@@ -76,7 +99,7 @@ func (f *Fetcher) Open(ctx context.Context, rawURL, ua string) (io.ReadCloser, e
 			<-f.Sem
 		}
 	}
-	rc, err := f.open(ctx, rawURL, ua)
+	rc, err := f.open(ctx, rawURL, ua, lanOf)
 	if err != nil {
 		release()
 		return nil, fmt.Errorf("iptv: fetch %s: %w", safe, err)
@@ -89,7 +112,7 @@ type opened struct {
 	body io.Closer
 }
 
-func (f *Fetcher) open(ctx context.Context, rawURL, ua string) (opened, error) {
+func (f *Fetcher) open(ctx context.Context, rawURL, ua, lanOf string) (opened, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return opened{}, errors.New("bad URL")
@@ -101,6 +124,9 @@ func (f *Fetcher) open(ctx context.Context, rawURL, ua string) (opened, error) {
 	// counters; gzip is found by its magic bytes below.
 	req.Header.Set("Accept-Encoding", "gzip")
 	c := f.Client
+	if u, err := url.Parse(lanOf); err == nil && f.Local != nil && netguard.LANSpelling(u.Hostname()) {
+		c = f.Local
+	}
 	if c == nil {
 		c = http.DefaultClient
 	}

@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/media"
 )
 
@@ -163,8 +164,17 @@ func (r *Repacker) repackOne(ctx context.Context, id int64, src string) error {
 	defer os.Remove(tmp) // a failed run leaves nothing; a done one renamed it
 	start := time.Now()
 	r.Log.Info("library: repack to Matroska", "file", src)
-	cmd := r.Command(ctx, r.FFmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-		"-i", src, "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-c", "copy", "-f", "matroska", tmp)
+	// the file protocol and the transport-stream demuxer only: a .ts that is
+	// really a playlist must not make ffmpeg open other files, and "-c copy"
+	// writes what it reads into the library (media.InputArgs)
+	opts, in, err := media.InputArgs(src)
+	if err != nil {
+		return err
+	}
+	args := append([]string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}, opts...)
+	args = append(args, "-format_whitelist", "mpegts", "-i", in,
+		"-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-c", "copy", "-f", "matroska", tmp)
+	cmd := r.Command(ctx, r.FFmpeg, args...)
 	// a film read and written whole: at the lowest CPU and I/O priority,
 	// like the other background readers of the media disk
 	media.LowPriority(cmd)
@@ -243,8 +253,12 @@ type repackProbe struct {
 }
 
 func (r *Repacker) probe(ctx context.Context, path string) (repackProbe, error) {
-	out, err := r.Command(ctx, r.FFprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type",
-		"-of", "json", path).Output()
+	opts, in, err := media.InputArgs(path)
+	if err != nil {
+		return repackProbe{}, err
+	}
+	out, err := r.Command(ctx, r.FFprobe, append(append([]string{"-v", "error"}, opts...),
+		"-show_entries", "format=duration:stream=codec_type", "-of", "json", in)...).Output()
 	if err != nil {
 		return repackProbe{}, fmt.Errorf("ffprobe %s: %w", filepath.Base(path), err)
 	}
@@ -301,25 +315,12 @@ func (r *Repacker) purge(ctx context.Context) error {
 
 func (r *Repacker) loadMap(ctx context.Context, key string) (map[string]string, error) {
 	m := map[string]string{}
-	var raw string
-	err := r.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return m, nil
-	}
-	if err != nil {
+	if _, err := db.GetJSON(ctx, r.DB, key, &m); err != nil {
 		return nil, err
-	}
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		return nil, fmt.Errorf("settings %s: %w", key, err)
 	}
 	return m, nil
 }
 
 func (r *Repacker) saveMap(ctx context.Context, key string, m map[string]string) error {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	_, err = r.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, string(b))
-	return err
+	return db.PutJSON(ctx, r.DB, key, m)
 }

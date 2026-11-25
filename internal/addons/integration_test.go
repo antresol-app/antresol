@@ -126,7 +126,7 @@ func newStage2a(t *testing.T, opts ...func(*stage2a, *api.Deps)) *stage2a {
 		os.RemoveAll(run)
 	})
 
-	w := s.do("POST", "/api/setup", `{"name":"Папа","password":"secret"}`, nil)
+	w := s.do("POST", "/api/setup", `{"name":"Папа","password":"secret-pass"}`, nil)
 	if w.Code != 200 && w.Code != 201 {
 		t.Fatalf("setup %d %s", w.Code, w.Body)
 	}

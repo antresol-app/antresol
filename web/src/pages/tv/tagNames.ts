@@ -2,15 +2,11 @@
 // countries that no longer exist, which it names oddly or not at all),
 // original languages and TMDB's themes (English keywords; the common ones
 // in Russian).
-import { getLanguage } from '../../i18n'
+import { getLanguage, t } from '../../i18n'
 
-const GONE: Record<string, { ru: string; en: string }> = {
-  SU: { ru: 'СССР', en: 'USSR' },
-  XC: { ru: 'Чехословакия', en: 'Czechoslovakia' },
-  YU: { ru: 'Югославия', en: 'Yugoslavia' },
-  DD: { ru: 'ГДР', en: 'East Germany' },
-  XG: { ru: 'ФРГ', en: 'West Germany' },
-}
+// the names of those countries are in the catalogs (tv.country.*)
+const GONE = ['SU', 'XC', 'YU', 'DD', 'XG'] as const
+const isGone = (c: string): c is (typeof GONE)[number] => (GONE as readonly string[]).includes(c)
 
 const display = new Map<string, Intl.DisplayNames | null>()
 function names(type: 'region' | 'language'): Intl.DisplayNames | null {
@@ -29,8 +25,7 @@ const capital = (s: string) => (s ? s[0]!.toLocaleUpperCase() + s.slice(1) : s)
 
 export function countryName(code: string): string {
   const c = code.toUpperCase()
-  const gone = GONE[c]
-  if (gone) return getLanguage() === 'ru' ? gone.ru : gone.en
+  if (isGone(c)) return t(`tv.country.${c}`)
   try {
     return names('region')?.of(c) ?? c
   } catch {

@@ -9,8 +9,15 @@ import { ActionTiles } from '../ActionTiles'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { Card } from '../Card'
+import { Checkbox } from '../Checkbox'
+import { Chips } from '../Chips'
+import { EmptyState } from '../EmptyState'
 import { IconButton } from '../IconButton'
-import { GroupedSection, ListLinkRow, ListRow } from '../List'
+import { GroupedSection, ListLinkRow, ListRow, ListSelectRow } from '../List'
+import { RankedList } from '../RankedList'
+import { Skeleton } from '../Skeleton'
+import { Slider } from '../Slider'
+import { Spinner } from '../Spinner'
 import { SETTINGS_GLYPHS, SETTINGS_TINTS, SettingsIcon } from '../SettingsIcon'
 import { ToggleChips } from '../ToggleChips'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../Menu'
@@ -24,7 +31,7 @@ import { SwipeRow } from '../SwipeRow'
 import { TabBar } from '../TabBar'
 import { MultiSelect, Select } from '../Select'
 import { ProgressRing, StatusRing } from '../StatusRing'
-import { TextField } from '../TextField'
+import { TextArea, TextField } from '../TextField'
 import { Toast } from '../Toast'
 import { Toggle } from '../Toggle'
 import { FilterChips } from '../FilterChips'
@@ -57,6 +64,8 @@ const SCOPES = [
   { value: 'audiobooks', label: 'Аудиокниги', short: 'Аудио' },
   { value: 'comics', label: 'Манга' },
 ]
+
+const LANGS: Record<string, string> = { ru: 'Русский', en: 'Английский', de: 'Немецкий', fr: 'Французский' }
 
 const SORTABLE: { key: string; icon: 'tv' | 'film' | 'folder'; title: string; detail: string }[] = [
   { key: 'title:1', icon: 'tv', title: 'Друзья', detail: 'Сериал · 1994 · 236 серий' },
@@ -96,9 +105,14 @@ export function Gallery() {
   const [mbs, setMbs] = useState(2)
   const [gb, setGb] = useState(10)
   const [wl, setWl] = useState(false)
-  const [sheet, setSheet] = useState<'' | 'alert' | 'wide' | 'large' | 'three'>('')
+  const [sheet, setSheet] = useState<'' | 'alert' | 'wide' | 'large' | 'three' | 'busy'>('')
   const [toast, setToast] = useState('')
   const [following, setFollowing] = useState(false)
+  const [volume, setVolume] = useState(0.6)
+  const [source, setSource] = useState('hd')
+  const [checks, setChecks] = useState({ a: true, b: false, c: true })
+  const [genres, setGenres] = useState<string[]>(['drama'])
+  const [ranked, setRanked] = useState(['ru', 'en'])
   const SIZES = ['2', '4', '6', '8', '10', '15', '20', '30', '40', '60', '80', '0']
   return (
     <main className={styles.page}>
@@ -572,6 +586,9 @@ export function Gallery() {
           <Button size="small" variant="secondary" onClick={() => setSheet('three')}>
             Three buttons
           </Button>
+          <Button size="small" variant="secondary" onClick={() => setSheet('busy')}>
+            Busy (a request is out)
+          </Button>
           <Button size="small" variant="secondary" onClick={() => setSheet('wide')}>
             Wide with a field
           </Button>
@@ -590,6 +607,18 @@ export function Gallery() {
             title="Удалить «Интерстеллар»?"
             message="Файлы фильма уйдут в Корзину."
             icon={<Icon name="trash" size={34} strokeWidth={1.6} />}
+            onCancel={() => setSheet('')}
+            actions={[
+              { label: 'Отменить', kind: 'cancel', run: () => setSheet('') },
+              { label: 'Удалить', kind: 'destructive', run: () => setSheet('') },
+            ]}
+          />
+        )}
+        {sheet === 'busy' && (
+          <Sheet
+            title="Удалить «Интерстеллар»?"
+            message="Файлы фильма уйдут в Корзину."
+            busy
             onCancel={() => setSheet('')}
             actions={[
               { label: 'Отменить', kind: 'cancel', run: () => setSheet('') },
@@ -646,6 +675,108 @@ export function Gallery() {
         <SegmentedControl label="Что искать" value={scope} onChange={setScope} segments={SCOPES} row align="start" />
       </Section>
 
+      <Section title="Spinner" note="A busy ring in the colour of the text around it. Sizes are the glyph sizes; the ring turns by the global .spin class (design/motion.css) — one keyframes, Reduce motion slows it to 2.4 s. Button, IconButton and Sheet draw this one when busy.">
+        <div className={styles.row}>
+          {(['xs', 'sm', 'md', 'lg'] as const).map((z) => (
+            <span key={z} className={styles.spinnerCell}>
+              <Spinner size={z} />
+              <code>{z}</code>
+            </span>
+          ))}
+          <span className={styles.spinnerCell}>
+            <Spinner />
+            <code>default</code>
+          </span>
+          <span className={`${styles.spinnerCell} ${styles.spinnerArt}`}>
+            <Spinner size="lg" track />
+            <code>track</code>
+          </span>
+          <span className={styles.spinnerCell}>
+            <span className={styles.spinnerAccent}>
+              <Spinner size="md" label="Загрузка" />
+            </span>
+            <code>label</code>
+          </span>
+        </div>
+      </Section>
+
+      <Section title="EmptyState · Skeleton" note="EmptyState: nothing here yet, or the load failed (role alert). Skeleton: a quiet placeholder, no shimmer; the caller gives it size and shape.">
+        <div className={styles.emptyStage}>
+          <EmptyState icon={<Icon name="film" size={48} strokeWidth={1.4} />} title="Здесь пока пусто" hint="Добавьте фильмы в папку «Фильмы» на сервере и запустите сканирование." actions={<Button variant="secondary">Сканировать в настройках</Button>} />
+        </div>
+        <div className={styles.emptyStage}>
+          <EmptyState role="alert" icon={<Icon name="cloud" size={44} strokeWidth={1.5} />} title="Не удалось загрузить" hint="Сервер не ответил." actions={<Button variant="secondary">Повторить</Button>} />
+        </div>
+        <div className={styles.row}>
+          <Skeleton className={styles.skeletonPoster} />
+          <Skeleton className={styles.skeletonPoster} />
+          <Skeleton tone="soft" className={styles.skeletonTitle} />
+        </div>
+      </Section>
+
+      <Section title="Slider" note="One value out of a range, the video bars' volume slider as a kit part: a thin track filled in white, a white thumb under the pointer and the focus (thumb=&quot;always&quot;: always there), the accent ring round the thumb for the keyboard, a 44 pt strip to the finger.">
+        <div className={styles.sliders}>
+          <Slider label="Громкость" value={volume} onChange={setVolume} valueText={`${Math.round(volume * 100)}%`} />
+          <Slider label="Громкость" value={volume} onChange={setVolume} thumb="always" />
+          <Slider label="Громкость" value={0.3} onChange={() => {}} disabled />
+        </div>
+      </Section>
+
+      <Section title="ListSelectRow" note="A row that chooses: the link row's button with the check of the choice made at the trailing edge. Without selected it only acts and has no check.">
+        <GroupedSection title="Источник">
+          {[
+            ['hd', 'Источник A · 1080p', 'RU · субтитры'],
+            ['sd', 'Источник A · 720p', 'RU'],
+            ['off', 'Недоступный источник', 'Нет ответа'],
+          ].map(([v, label, hint]) => (
+            <ListSelectRow key={v} label={label} hint={hint} selected={source === v} disabled={v === 'off'} onSelect={() => setSource(v!)} />
+          ))}
+          <ListSelectRow label="Другой источник…" onSelect={() => setToast('Другой источник')} />
+        </GroupedSection>
+      </Section>
+
+      <Section title="Checkbox" note="A choice that changes what an action will do. A description under the label; indeterminate for a group's box over its rows; no label for a box in a table row (aria-label names it).">
+        <div className={styles.fields}>
+          <Checkbox label="Удалить навсегда, минуя корзину" tone="destructive" checked={checks.a} onChange={(a) => setChecks({ ...checks, a })} />
+          <Checkbox label="Сохранить список" description="Список останется в профиле и после выхода." checked={checks.b} onChange={(b) => setChecks({ ...checks, b })} />
+          <Checkbox label="Все файлы" indeterminate={checks.b !== checks.c} checked={checks.b && checks.c} onChange={(on) => setChecks({ ...checks, b: on, c: on })} />
+          <Checkbox aria-label="Выбрать строку" checked={checks.c} onChange={(c) => setChecks({ ...checks, c })} />
+          <Checkbox label="Недоступно" checked disabled onChange={() => {}} />
+        </div>
+      </Section>
+
+      <Section title="TextArea · time" note="TextField's field for several lines (the corner stretches it down) and a time of day.">
+        <div className={styles.fields}>
+          <TextArea label="Заметка" placeholder="Что вы думаете об этой главе?" hint="Видна только вам." />
+          <TextArea label="Адреса" error="Один адрес в строке" rows={3} defaultValue="http://" />
+          <TextField label="С" type="time" size="small" defaultValue="22:00" />
+        </div>
+      </Section>
+
+      <Section title="Chips · RankedList" note="Chips: FilterChips (one choice, radio buttons) and ToggleChips (several, toggles) are this one component, the capsules of one look. RankedList: an ordered list of names with «+ Добавить…» (built on SortableList).">
+        <div className={styles.fields}>
+          <Chips
+            multiple
+            label="Жанры"
+            value={genres}
+            onChange={(v, on) => setGenres(on ? [...genres, v] : genres.filter((g) => g !== v))}
+            chips={[
+              { value: 'drama', label: 'Драма', count: 214 },
+              { value: 'comedy', label: 'Комедия', count: 98 },
+              { value: 'scifi', label: 'Фантастика' },
+            ]}
+          />
+          <RankedList
+            label="Мои языки"
+            items={ranked}
+            itemLabel={(v) => LANGS[v] ?? v}
+            onChange={setRanked}
+            choices={() => Object.keys(LANGS).filter((c) => !ranked.includes(c)).map((c) => ({ value: c, label: LANGS[c]! }))}
+            onAdd={(v) => setRanked([...ranked, v])}
+            addLabel="Добавить язык"
+          />
+        </div>
+      </Section>
     </main>
   )
 }

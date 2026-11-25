@@ -1,0 +1,29 @@
+/* ui/Spinner: a ring in the colour of the text around it, a quarter of it
+   left open; the turning is the global .spin (design/motion.css). */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: var(--spinner-size, var(--icon-sm));
+  height: var(--spinner-size, var(--icon-sm));
+  border: var(--spinner-width, 2px) solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.xs {
+  --spinner-size: var(--icon-xs);
+}
+.sm {
+  --spinner-size: var(--icon-sm);
+}
+.md {
+  --spinner-size: var(--icon-md);
+}
+.lg {
+  --spinner-size: var(--icon-lg);
+}
+/* over artwork or video: the whole ring faint, the head in the text colour */
+.track {
+  border-color: var(--spinner-track-art);
+  border-top-color: currentColor;
+}

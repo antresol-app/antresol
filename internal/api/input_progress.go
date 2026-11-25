@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/antresol-app/antresol/addonkit"
@@ -106,9 +105,7 @@ func (f *keyTimes) take(k string, now time.Time, every time.Duration, force bool
 	if t, ok := f.m[k]; ok && !force && (every == 0 || now.Sub(t) < every) {
 		return false
 	}
-	if f.m == nil || len(f.m) >= probeCacheMax {
-		f.m = map[string]time.Time{}
-	}
+	f.room(k, probeCacheMax, nil)
 	f.m[k] = now
 	return true
 }
@@ -119,8 +116,7 @@ func (f *keyTimes) take(k string, now time.Time, every time.Duration, force bool
 // latest, but an end is never replaced by a plain position) and starts
 // when the running one finishes.
 type progressFlights struct {
-	mu sync.Mutex
-	m  map[string]*progressFlight
+	boundedCache[string, *progressFlight]
 }
 
 type progressFlight struct {
@@ -140,9 +136,7 @@ func (f *progressFlights) submit(id string, now time.Time, keepalive, ended bool
 	defer f.mu.Unlock()
 	s := f.m[id]
 	if s == nil {
-		if f.m == nil || len(f.m) >= probeCacheMax {
-			f.m = map[string]*progressFlight{}
-		}
+		f.room(id, probeCacheMax, func(s *progressFlight) bool { return s.running }) // a running call is never forgotten
 		s = &progressFlight{}
 		f.m[id] = s
 	}

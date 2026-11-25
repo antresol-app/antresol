@@ -84,7 +84,8 @@ export function listenEvent(type: string) {
 }
 
 /**
- * Subscribes to server-sent events. `types` filters by event type; omit for all.
+ * Subscribes to server-sent events. `types` filters by event type; omit for all
+ * (an empty list is none: nothing is heard, no stream is opened for it).
  * The handler may change between renders without resubscribing.
  */
 export function useEvents(handler: Handler, types?: readonly string[]) {
@@ -93,7 +94,9 @@ export function useEvents(handler: Handler, types?: readonly string[]) {
     ref.current = handler
   })
   const key = types?.join(',') ?? ''
+  const none = types !== undefined && types.length === 0
   useEffect(() => {
+    if (none) return
     const allow = key ? new Set(key.split(',')) : null
     const h: Handler = (e) => {
       if (!allow || allow.has(e.type)) ref.current(e)
@@ -104,5 +107,5 @@ export function useEvents(handler: Handler, types?: readonly string[]) {
       handlers.delete(h)
       if (handlers.size === 0) disconnect()
     }
-  }, [key])
+  }, [key, none])
 }

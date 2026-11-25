@@ -23,6 +23,7 @@ import { resetUsageCache } from '../files/StorageBar'
 import { ago, formatSize } from '../../state/format'
 import { locale, useT, type Key } from '../../i18n'
 import { FILE_SEGMENTS, FILE_SORTS, FILE_WATCHES, filterStorage, sortStorage, type FileSegment, type FileSort, type FileView, type FileWatch } from './filesView'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 import styles from './Files.module.css'
 
@@ -220,7 +221,7 @@ export function Files() {
           </div>
         ) : (
           <div className={m.spinnerRow} role="status">
-            <span className={m.spinner} aria-hidden /> {t('mfiles.counting')}
+            <Spinner track className={m.spinner} /> {t('mfiles.counting')}
           </div>
         )}
       </div>
@@ -236,7 +237,7 @@ export function Files() {
         </div>
       )}
       {done && (
-        <p className={`${m.groupFoot} ${m.ok}`} role="status" style={{ marginBottom: 12 }}>
+        <p className={`${m.groupFoot} ${m.ok} ${m.footGap}`} role="status">
           {done}
         </p>
       )}
@@ -261,7 +262,7 @@ export function Files() {
             </div>
           ) : (
             <>
-              <p className={m.groupFoot} style={{ marginTop: 0, marginBottom: 10 }} data-testid="storage-summary">
+              <p className={`${m.groupFoot} ${m.footSummary}`} data-testid="storage-summary">
                 {t('mfiles.summary', { count: list.length, size: formatSize(total) })}
               </p>
               <ul className={m.group}>

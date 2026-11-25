@@ -3,6 +3,7 @@
 // ↑ ↓) go to the neighbouring files; Space or Esc closes.
 import { Button } from '../../ui/Button'
 import { IconButton, IconButtonAnchor } from '../../ui/IconButton'
+import { Spinner } from '../../ui/Spinner'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError, errorText } from '../../api/client'
@@ -56,7 +57,7 @@ function TextPreview({ url }: { url: string }) {
     return () => ac.abort()
   }, [url])
   if (state.error) return <p className={styles.message}>{state.error}</p>
-  if (state.text === undefined) return <div className={styles.spinner} aria-label={t('common.loading')} />
+  if (state.text === undefined) return <Spinner className={styles.spinner} label={t('common.loading')} />
   return (
     <pre className={styles.text} tabIndex={0}>
       {state.text}

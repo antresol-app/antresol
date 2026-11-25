@@ -37,8 +37,9 @@ import { ago } from '../../../state/format'
 import { COMPACT_QUERY, useMediaQuery } from '../../../state/useMediaQuery'
 import { Badge } from '../../../ui/Badge'
 import { Button, ButtonLink } from '../../../ui/Button'
+import { EmptyState } from '../../../ui/EmptyState'
 import { useChannelsFrame } from '../manageBase'
-import { FilterChips } from '../../../ui/FilterChips'
+import { Chips } from '../../../ui/Chips'
 import { IconButton } from '../../../ui/IconButton'
 import { GroupedSection, ListRow } from '../../../ui/List'
 import { Menu, MenuItem, MenuSeparator } from '../../../ui/Menu'
@@ -370,7 +371,7 @@ export function SourceChannels() {
           />
         </div>
         <div className={styles.chips}>
-          <FilterChips
+          <Chips
             label={t('iptv.table.groups')}
             value={group}
             onChange={setGroup}
@@ -381,7 +382,7 @@ export function SourceChannels() {
 
         {langs.length > 1 && (
           <div className={styles.chips}>
-            <FilterChips
+            <Chips
               label={t('iptv.table.langs')}
               value={lang}
               onChange={setLang}
@@ -425,11 +426,11 @@ export function SourceChannels() {
           </p>
         )}
         {list && rows.length === 0 && (
-          <div className={styles.empty}>
-            <Icon name="search" size={40} strokeWidth={1.4} />
-            <h2>{t('iptv.table.empty')}</h2>
-            <p>{list.length ? t('iptv.table.emptyHint') : t('iptv.table.emptyNoChannels')}</p>
-          </div>
+          <EmptyState
+            icon={<Icon name="search" size={40} strokeWidth={1.4} />}
+            title={t('iptv.table.empty')}
+            hint={list.length ? t('iptv.table.emptyHint') : t('iptv.table.emptyNoChannels')}
+          />
         )}
         {!list && !error && <div className={styles.loading}>{t('iptv.loading')}</div>}
 

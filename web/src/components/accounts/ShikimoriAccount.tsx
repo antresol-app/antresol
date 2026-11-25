@@ -5,7 +5,7 @@
 // server has no accounts.
 
 import { useEffect, useState } from 'react'
-import { errorText, linkShikimori, setShikimoriWrite, syncAccount, unlinkShikimori } from '../../api/client'
+import { errorText, linkShikimori, safeHttpUrl, setShikimoriWrite, syncAccount, unlinkShikimori } from '../../api/client'
 import type { ShikimoriState } from '../../api/types'
 import { useT, type Key } from '../../i18n'
 import { loadAccounts, setAccountsState } from '../../state/accounts'
@@ -75,7 +75,7 @@ export function ShikimoriAccount() {
     run(async () => {
       const r = await setShikimoriWrite(on)
       if (on) {
-        const url = r && 'authorizeUrl' in r ? r.authorizeUrl : undefined
+        const url = safeHttpUrl(r && 'authorizeUrl' in r ? r.authorizeUrl : undefined)
         if (url) window.location.assign(url)
         return
       }

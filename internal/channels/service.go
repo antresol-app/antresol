@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/media"
 )
@@ -62,9 +64,11 @@ type Service struct {
 	warm     WarmFunc // SetWarm (nil: none)
 	warmKick chan struct{}
 
-	// streams of titles outside the library resolved ahead (prefetch)
+	// streams of titles outside the library resolved ahead (prefetch); pctx
+	// is Run's context, which ends the waiting for them and lets them go
 	pmu      sync.Mutex
 	prefetch map[entryKey]*prefetched
+	pctx     context.Context
 
 	// channels with fetching (fetch.go; SetFetch): what fetches, names
 	// the titles' programmes and removes what aired (nil: none)
@@ -138,41 +142,52 @@ func (s *Service) refreshSoon() {
 	}
 }
 
+// planEvery: the timer re-plans the generated channels (generate.go) at
+// every this many ticks; a Kick (a library scan) or a failed plan does it
+// at once. What the plan reads is the whole library, what a tick otherwise
+// does is mostly nothing.
+const planEvery = 6
+
 // Run refreshes at once, then every interval and on Kick, until ctx ends
 // (and the warm hook with it).
 func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	s.init()
+	s.pmu.Lock()
+	s.pctx = ctx
+	s.pmu.Unlock()
+	defer s.sweepPrefetch(true) // nobody takes a stream now
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	start := func(run func(context.Context)) {
+		wg.Add(1)
+		go func() { defer wg.Done(); run(ctx) }()
+	}
 	if s.warm != nil {
-		done := make(chan struct{})
-		go func() { defer close(done); s.warmLoop(ctx) }()
-		defer func() { <-done }()
+		start(s.warmLoop)
+		s.askWarm() // once at start: a restart retries failed guide texts
 	}
 	if s.Franchises != nil && s.Franchises.TMDB != nil {
-		done := make(chan struct{})
-		go func() { defer close(done); s.Franchises.Run(ctx) }()
-		defer func() { <-done }()
+		start(s.Franchises.Run)
 	}
-	{
-		done := make(chan struct{})
-		go func() { defer close(done); s.segmentsLoop(ctx) }()
-		defer func() { <-done }()
-	}
-	{
-		done := make(chan struct{})
-		go func() { defer close(done); s.fetchLoop(ctx) }()
-		defer func() { <-done }()
-	}
+	start(s.segmentsLoop)
+	start(s.fetchLoop)
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	for {
-		if err := s.Refresh(ctx); err != nil && ctx.Err() == nil {
+	plan := true
+	for ticks := 0; ; {
+		err := s.refresh(ctx, plan)
+		if err != nil && ctx.Err() == nil {
 			log.Printf("channels: refresh: %v", err)
 		}
+		s.sweepPrefetch(false)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			ticks++
+			plan = err != nil || ticks%planEvery == 0
 		case <-s.kick:
+			plan = true
 		}
 	}
 }
@@ -180,20 +195,26 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) {
 // Refresh brings the generated channels in step with the library, cuts
 // schedules at programmes whose files went and builds every enabled
 // channel to the horizon.
-func (s *Service) Refresh(ctx context.Context) error {
-	if _, err := s.Generator.Sync(ctx); err != nil {
-		return err
+func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, true) }
+
+// refresh is Refresh; plan false leaves the generated channels as they are
+// (a failed plan does not keep the schedules from being extended).
+func (s *Service) refresh(ctx context.Context, plan bool) error {
+	var errs []error
+	if plan {
+		if _, err := s.Generator.Sync(ctx); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	s.autoLogos(ctx) // franchises and series show their titles' logo
 	// one list 1…N (numbers.go): also what a version before it numbered
 	if err := s.Store.Renumber(ctx); err != nil {
-		return err
+		return errors.Join(append(errs, err)...)
 	}
 	all, err := s.Store.All(ctx)
 	if err != nil {
-		return err
+		return errors.Join(append(errs, err)...)
 	}
-	var errs []error
 	for _, c := range all {
 		if !c.Enabled || c.External() {
 			continue
@@ -213,13 +234,17 @@ func (s *Service) BuildChannel(ctx context.Context, c Channel) error {
 	}
 	s.build.Lock()
 	defer s.build.Unlock()
-	if _, err := s.Store.CutMissing(ctx, c.ID); err != nil {
+	cut, err := s.Store.CutMissing(ctx, c.ID)
+	if err != nil {
 		return err
 	}
-	if err := s.Builder.Build(ctx, c); err != nil {
+	added, err := s.Builder.Build(ctx, c)
+	if err != nil {
 		return err
 	}
-	s.askWarm()
+	if cut || added { // a no-op build changes nothing the guide shows
+		s.askWarm()
+	}
 	return nil
 }
 
@@ -370,9 +395,7 @@ func (s *Service) Program(ctx context.Context, ch int64, t time.Time) (Program, 
 			continue // the schedule was made again without it
 		}
 		s.prefetchNext(ch, e)
-		var path string
-		var probe sql.NullString
-		err = s.Store.DB.QueryRowContext(ctx, `SELECT path, probe_json FROM files WHERE id=? AND missing_since IS NULL`, e.FileID).Scan(&path, &probe)
+		path, stored, err := s.fileProbe(ctx, e.FileID)
 		if errors.Is(err, sql.ErrNoRows) {
 			if try > 0 {
 				return Program{}, ErrNothing
@@ -386,10 +409,8 @@ func (s *Service) Program(ctx context.Context, ch int64, t time.Time) (Program, 
 			return Program{}, err
 		}
 		p := Program{Entry: e, Path: path}
-		if probe.Valid && probe.String != "" {
-			if err := json.Unmarshal([]byte(probe.String), &p.Probe); err != nil {
-				log.Printf("channels: probe of file %d: %v", e.FileID, err)
-			}
+		if stored != nil {
+			p.Probe = *stored
 		} else if s.Probe != nil {
 			if pr, err := s.Probe(ctx, path); err == nil {
 				p.Probe = pr
@@ -458,8 +479,8 @@ func (s *Service) Describe(ctx context.Context, ids []int64) (map[int64]Info, er
 	if err := s.describeFetch(ctx, fetch, out); err != nil {
 		return nil, err
 	}
-	for part := range chunks(uniq, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(uniq, 500) {
+		in, args := db.InList(part)
 		rows, err := s.Store.DB.QueryContext(ctx, `SELECT i.id, i.kind, i.title, COALESCE(i.season_no,0), COALESCE(i.episode_no,0), i.overview, i.year, `+library.RatingOf("i")+`, i.meta_json,
 		  COALESCE(sr.id, 0), COALESCE(sr.title,''), COALESCE(sr.overview,''), COALESCE(sr.year,0), COALESCE(`+library.RatingOf("sr")+`,''), COALESCE(sr.meta_json,'{}'), COALESCE(sr.poster,''), COALESCE(i.poster,'')
 		  FROM items i LEFT JOIN items se ON se.id=i.parent_id AND i.kind='episode' LEFT JOIN items sr ON sr.id=se.parent_id

@@ -2,6 +2,7 @@
 // episode of a series/season), where to start, and what comes next, then
 // hands over to VideoPlayer. Closing returns to wherever the viewer came from.
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { APP_NAME } from '../brand'
 import { useCallback, useEffect, useState, useLayoutEffect } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -95,7 +96,7 @@ export function Player() {
   if (state.status === 'loading') {
     return (
       <div className={styles.screen} aria-busy="true" aria-label={t('common.loading')}>
-        <span className={styles.spinner} />
+        <Spinner track className={styles.spinner} />
       </div>
     )
   }

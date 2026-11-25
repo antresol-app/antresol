@@ -21,16 +21,7 @@ func mountAppPassword(r chi.Router, users *auth.Store) {
 			storeErr(w, r, err)
 			return
 		}
-		out := struct {
-			Exists    bool    `json:"exists"`
-			CreatedAt *string `json:"createdAt"`
-		}{Exists: ok}
-		if ok && !at.IsZero() {
-			s := at.UTC().Format(time.RFC3339)
-			out.CreatedAt = &s
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, out)
+		writeAppPasswordInfo(w, ok, at)
 	})
 	r.Post("/api/me/app-password", func(w http.ResponseWriter, r *http.Request) {
 		p, err := users.SetAppPassword(r.Context(), userOf(r).ID)
@@ -48,4 +39,19 @@ func mountAppPassword(r chi.Router, users *auth.Store) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// writeAppPasswordInfo answers {exists, createdAt}: whether an app password
+// exists and when it was made (never the password).
+func writeAppPasswordInfo(w http.ResponseWriter, exists bool, at time.Time) {
+	out := struct {
+		Exists    bool    `json:"exists"`
+		CreatedAt *string `json:"createdAt"`
+	}{Exists: exists}
+	if exists && !at.IsZero() {
+		s := at.UTC().Format(time.RFC3339)
+		out.CreatedAt = &s
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
 }

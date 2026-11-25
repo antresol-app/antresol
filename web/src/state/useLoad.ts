@@ -3,7 +3,7 @@
 // on the server's events (the shown data stays until the new one is in), and
 // an update for what the page changes itself (a «Нравится»).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useEvents } from '../api/client'
+import { useEventReload } from './useEventReload'
 
 export type Loaded<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: T }
 
@@ -52,7 +52,7 @@ export function useLoad<T>(fetch: (signal: AbortSignal) => Promise<T>, deps: unk
     return () => abortRef.current?.abort()
   }, [load])
 
-  useEvents(() => load(true), opts.events ?? LIBRARY)
+  useEventReload(() => load(true), opts.events ?? LIBRARY)
 
   const update = useCallback((fn: (data: T) => T) => setState((s) => (s.status === 'ready' ? { status: 'ready', data: fn(s.data) } : s)), [])
 

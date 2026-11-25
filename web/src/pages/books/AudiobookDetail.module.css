@@ -21,9 +21,7 @@
   border-radius: var(--r-card);
   overflow: hidden;
   background: var(--fill-3);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.3),
-    0 18px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-cover);
 }
 .cover::after {
   content: '';
@@ -66,7 +64,8 @@
 }
 .eyebrow {
   margin-bottom: var(--s-1h);
-  font: 600 13px / 1.3 var(--font-text);
+  font: var(--t-footnote-em);
+  line-height: 1.3;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--label-2);
@@ -160,7 +159,7 @@
   align-items: center;
   gap: var(--s-3);
   width: 100%;
-  min-height: 52px;
+  min-height: var(--control-h-lg);
   padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
   border: 0;
   border-radius: var(--r-field);
@@ -201,7 +200,7 @@
   color: var(--accent);
 }
 .now .name {
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }
 
 .empty {

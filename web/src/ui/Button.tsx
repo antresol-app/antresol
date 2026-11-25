@@ -10,6 +10,7 @@
 import { createContext, forwardRef, useContext, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router'
 import { Icon, type IconName } from '../components/Icon'
+import { Spinner } from './Spinner'
 import styles from './Button.module.css'
 
 /** The stroke of a glyph inside a control (Button, IconButton). */
@@ -50,7 +51,7 @@ function classes(variant: ButtonVariant, size: ButtonSize, material: Material, e
 function Inner({ icon, loading, children, size = 'regular' }: Common) {
   return (
     <>
-      {loading ? <span className={styles.spinner} aria-hidden /> : icon ? <Icon name={icon} size={BUTTON_ICON[size]} strokeWidth={GLYPH_STROKE} /> : null}
+      {loading ? <Spinner className={styles.spinner} /> : icon ? <Icon name={icon} size={BUTTON_ICON[size]} strokeWidth={GLYPH_STROKE} /> : null}
       {children != null && <span className={styles.label}>{children}</span>}
     </>
   )

@@ -25,6 +25,15 @@ personal channels the same way, from TV.
 
 ![New external source](images/guide/en/tv-sources-add.png)
 
+The server downloads the playlist and the guide itself. It never connects to a link-local or
+reserved address, and it reaches an address on your own network only when the playlist link is
+written as an IP address, a name like `iptv.local` or `iptv.lan`, or a single word such as
+`iptv`: a name from the internet that your home DNS points at a private address is refused
+(`address not allowed` in the source's status), and so are the guide links a playlist names
+itself unless the playlist is on your network. These downloads do not use the server's proxy
+variables (`HTTP_PROXY`, `HTTPS_PROXY`): a server that reaches the internet only through a proxy
+cannot fetch playlists.
+
 A source's settings can hide timeshift copies and adult channels, merge variants of one channel
 (HD, FHD) and keep only the languages you want.
 

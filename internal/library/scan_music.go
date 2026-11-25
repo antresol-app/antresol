@@ -55,69 +55,21 @@ func codecOf(ft tag.FileType, path string) string {
 	return strings.TrimPrefix(ext, ".")
 }
 
-type musicFile struct {
-	path        string
-	size, mtime int64
-}
-
 // walkMusic lists the track files and the .cue sheets (by folder) under
 // root. Hidden entries, NAS/macOS junk and scan folders are skipped. An
 // error means the walk is incomplete: the caller must not prune.
-func walkMusic(ctx context.Context, root string) ([]musicFile, map[string][]string, error) {
-	st, err := os.Stat(root)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !st.IsDir() {
-		return nil, nil, fmt.Errorf("%s is not a directory", root)
-	}
-	var out []musicFile
+func walkMusic(ctx context.Context, root string) ([]walkedFile, map[string][]string, error) {
+	var out []walkedFile
 	cues := map[string][]string{}
-	var firstErr error
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
+	err := walkTree(ctx, root, func(low string) bool { return skipDirs[low] || musicSkipDirs[low] },
+		func(p string, d fs.DirEntry) bool {
+			if strings.EqualFold(filepath.Ext(d.Name()), ".cue") {
+				cues[filepath.Dir(p)] = append(cues[filepath.Dir(p)], p)
+				return false
 			}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			low := strings.ToLower(name)
-			if p != root && (strings.HasPrefix(name, ".") || skipDirs[low] || musicSkipDirs[low]) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(name, ".") {
-			return nil
-		}
-		if strings.EqualFold(filepath.Ext(name), ".cue") {
-			cues[filepath.Dir(p)] = append(cues[filepath.Dir(p)], p)
-			return nil
-		}
-		if !musicExt(name) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-		out = append(out, musicFile{p, info.Size(), info.ModTime().Unix()})
-		return nil
-	})
-	if err == nil {
-		err = firstErr
-	}
+			return musicExt(d.Name())
+		},
+		func(p string, info fs.FileInfo) { out = append(out, walkedFile{p, info.Size(), info.ModTime().Unix()}) })
 	return out, cues, err
 }
 
@@ -162,37 +114,26 @@ var coverStems = []string{"cover", "folder", "front"}
 // sidecarCover finds the album cover file: cover|folder|front|albumart* in
 // the album folder, then Covers/front*, Scans/front* (any case).
 func sidecarCover(dir string) string {
-	isImg := func(name string) bool {
-		e := strings.ToLower(filepath.Ext(name))
-		return e == ".jpg" || e == ".jpeg" || e == ".png" || e == ".webp"
+	stem := func(p string) string {
+		n := filepath.Base(p)
+		return strings.ToLower(strings.TrimSuffix(n, filepath.Ext(n)))
 	}
-	list := func(d string) []string {
-		es, err := os.ReadDir(d)
-		if err != nil {
-			return nil
-		}
-		var out []string
-		for _, e := range es {
-			if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") && isImg(e.Name()) {
-				out = append(out, e.Name())
+	first := func(images []string, ok func(stem string) bool) string {
+		for _, p := range images {
+			if ok(stem(p)) {
+				return p
 			}
 		}
-		natsort.Sort(out)
-		return out
+		return ""
 	}
-	stem := func(n string) string { return strings.ToLower(strings.TrimSuffix(n, filepath.Ext(n))) }
-	files := list(dir)
+	images := listDirArt(dir).images
 	for _, want := range coverStems {
-		for _, n := range files {
-			if stem(n) == want {
-				return filepath.Join(dir, n)
-			}
+		if p := first(images, func(s string) bool { return s == want }); p != "" {
+			return p
 		}
 	}
-	for _, n := range files {
-		if strings.HasPrefix(stem(n), "albumart") {
-			return filepath.Join(dir, n)
-		}
+	if p := first(images, func(s string) bool { return strings.HasPrefix(s, "albumart") }); p != "" {
+		return p
 	}
 	es, _ := os.ReadDir(dir)
 	for _, sub := range []string{"covers", "scans"} {
@@ -200,10 +141,8 @@ func sidecarCover(dir string) string {
 			if !e.IsDir() || strings.ToLower(e.Name()) != sub {
 				continue
 			}
-			for _, n := range list(filepath.Join(dir, e.Name())) {
-				if strings.HasPrefix(stem(n), "front") {
-					return filepath.Join(dir, e.Name(), n)
-				}
+			if p := first(listDirArt(filepath.Join(dir, e.Name())).images, func(s string) bool { return strings.HasPrefix(s, "front") }); p != "" {
+				return p
 			}
 		}
 	}
@@ -212,7 +151,7 @@ func sidecarCover(dir string) string {
 
 // musicEntry is one track before grouping into albums.
 type musicEntry struct {
-	file          musicFile
+	file          walkedFile
 	tags          audioTags
 	tagged        bool
 	album         string // album title, disc marker stripped
@@ -225,12 +164,13 @@ type musicEntry struct {
 	endMs         *int64
 	lyrics        string
 	image         bool
+	cover         string // the name of the file's embedded picture, saved (readEntries); "" when it has none or the folder has a cover file
 }
 
 // albumFolder is a folder holding an album's audio (disc subfolders merged in).
 type albumFolder struct {
 	dir   string
-	files []musicFile
+	files []walkedFile
 	disc  map[string]int // file path -> disc from its disc folder
 }
 
@@ -253,9 +193,7 @@ func (s *Scanner) scanMusicIn(ctx context.Context, dir string, st *ScanStats) er
 	}
 	folders := map[string]*albumFolder{}
 	var order []string
-	seen := map[string]bool{}
 	for _, f := range files {
-		seen[f.path] = true
 		dir, disc := filepath.Dir(f.path), 0
 		if dir != root {
 			if n := discFolder(filepath.Base(dir)); n > 0 && filepath.Dir(dir) != root {
@@ -283,7 +221,7 @@ func (s *Scanner) scanMusicIn(ctx context.Context, dir string, st *ScanStats) er
 	if walkErr != nil {
 		return walkErr // incomplete walk: no pruning
 	}
-	return s.finish(ctx, root, seen, st)
+	return s.finish(ctx, root, seenPaths(files), st)
 }
 
 // imageSheet is a CUE FILE entry that splits one audio file into tracks.
@@ -380,174 +318,229 @@ const folderSigVersion = 2
 // Covers/Scans folders (audio, .cue, .lrc, covers). "" when a folder cannot
 // be listed (no skipping then).
 func folderSig(af *albumFolder) string {
+	ls := dirLister{}
 	dirs := map[string]bool{af.dir: true}
 	for _, f := range af.files {
 		dirs[filepath.Dir(f.path)] = true
 	}
-	if es, err := os.ReadDir(af.dir); err == nil {
+	if es, err := ls.read(af.dir); err == nil {
 		for _, e := range es {
 			if l := strings.ToLower(e.Name()); e.IsDir() && (l == "covers" || l == "scans") {
 				dirs[filepath.Join(af.dir, e.Name())] = true
 			}
 		}
 	}
-	var list []string
+	list := make([]string, 0, len(dirs))
 	for d := range dirs {
 		list = append(list, d)
 	}
 	sort.Strings(list)
 	h := sha1.New()
 	fmt.Fprintf(h, "v%d\x00", folderSigVersion)
-	for _, d := range list {
-		es, err := os.ReadDir(d)
-		if err != nil {
-			return ""
-		}
-		fmt.Fprintf(h, "D%s\x00", d)
-		for _, e := range es {
-			if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			info, err := e.Info()
-			if err != nil {
-				return ""
-			}
-			fmt.Fprintf(h, "%s\x00%d\x00%d\x00", e.Name(), info.Size(), info.ModTime().UnixNano())
-		}
+	if !hashDirs(h, list, ls) {
+		return ""
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (s *Scanner) scanAlbumFolder(ctx context.Context, root string, af *albumFolder, cues map[string][]string, st *ScanStats) error {
 	natsortFiles(af.files)
-	// a folder unchanged since its last scan keeps its rows: no tags,
-	// covers or sheets are read again
 	sig := folderSig(af)
-	if sig != "" {
-		paths := make([]string, len(af.files))
-		for i, f := range af.files {
-			paths[i] = f.path
-		}
-		albums, tracks, ok, err := s.Repo.unchangedFolder(ctx, af.dir, sig, paths)
+	if unchanged, err := s.skipUnchangedFolder(ctx, af, sig, st); unchanged || err != nil {
+		return err
+	}
+	st.Changed++
+	names := albumFolderNames(root, af)
+	sidecar := fileURL(sidecarCover(af.dir))
+	entries := s.readEntries(af, findImages(af, cues), sidecar)
+	groups, err := s.groupByEdition(ctx, af, names.album, entries)
+	if err != nil {
+		return err
+	}
+	var albumIDs []int64
+	for _, g := range groups {
+		id, err := s.upsertGroup(ctx, af, g, names, sidecar, st)
 		if err != nil {
 			return err
 		}
-		if ok {
-			st.Albums += albums
-			st.Tracks += tracks
-			st.Files += len(paths)
-			return nil
-		}
+		albumIDs = append(albumIDs, id)
 	}
-	images := findImages(af, cues)
-	isRoot := af.dir == root
-	var fArtist, fAlbum string
-	var fYear int
-	if !isRoot {
-		fArtist, fAlbum, fYear = parseAlbumFolder(filepath.Base(af.dir))
+	if sig == "" {
+		return nil
 	}
-	parentArtist := ""
-	if p := filepath.Dir(af.dir); !isRoot && p != root && strings.HasPrefix(p, root) {
-		parentArtist = filepath.Base(p)
-	}
-	di := dirIndex{}
+	return s.Repo.setFolderSig(ctx, albumIDs, sig)
+}
 
+// skipUnchangedFolder reports whether a folder unchanged since its last scan
+// keeps its rows: no tags, covers or sheets are read again.
+func (s *Scanner) skipUnchangedFolder(ctx context.Context, af *albumFolder, sig string, st *ScanStats) (bool, error) {
+	if sig == "" {
+		return false, nil
+	}
+	paths := make([]string, len(af.files))
+	for i, f := range af.files {
+		paths[i] = f.path
+	}
+	albums, tracks, ok, err := s.Repo.unchangedFolder(ctx, af.dir, sig, paths)
+	if err != nil || !ok {
+		return false, err
+	}
+	st.Albums += albums
+	st.Tracks += tracks
+	st.Files += len(paths)
+	return true, nil
+}
+
+// folderNames is what the names of an album folder say: its artist, album
+// and year ("Artist - Album (Year)"), and the folder above it as the artist.
+type folderNames struct {
+	artist, album, parentArtist string
+	year                        int
+}
+
+func albumFolderNames(root string, af *albumFolder) folderNames {
+	var n folderNames
+	if af.dir == root {
+		return n
+	}
+	n.artist, n.album, n.year = parseAlbumFolder(filepath.Base(af.dir))
+	if p := filepath.Dir(af.dir); p != root && strings.HasPrefix(p, root) {
+		n.parentArtist = filepath.Base(p)
+	}
+	return n
+}
+
+// readEntries reads the tags of the folder's files into track entries (a CUE
+// image gives one per track of its sheet). A folder with a cover file
+// (sidecar) needs no embedded picture; else each file's picture is saved at
+// once and the entry keeps its name: a box set of a hundred tracks does not
+// hold a hundred pictures until the folder is done.
+func (s *Scanner) readEntries(af *albumFolder, images map[string]imageSheet, sidecar string) []*musicEntry {
 	var entries []*musicEntry
+	di := dirIndex{}
 	for _, f := range af.files {
 		tg, err := readTags(f.path)
 		tagged := err == nil
 		if err != nil && !errors.Is(err, tag.ErrNoTagsFound) {
 			slog.Warn("music: tags", "file", f.path, "err", err)
 		}
-		stem := strings.TrimSuffix(filepath.Base(f.path), filepath.Ext(f.path))
-		folderDisc := af.disc[f.path]
+		cover := ""
+		if sidecar == "" && tg.picture != nil {
+			var cerr error
+			if cover, cerr = s.saveCover(tg.picture); cerr != nil {
+				slog.Warn("music: cover", "file", f.path, "err", cerr)
+			}
+		}
+		tg.picture = nil
 		if sh, ok := images[f.path]; ok {
-			album := tg.album
-			if album == "" {
-				album = sh.cue.Title
-			}
-			year := tg.year
-			if year == 0 {
-				year = cueYear(sh.cue.Date)
-			}
-			genre := tg.genre
-			if genre == "" {
-				genre = sh.cue.Genre
-			}
-			_, imgDisc := stripDiscSuffix(stem)
-			_, cueDisc := stripDiscSuffix(strings.TrimSuffix(filepath.Base(sh.path), filepath.Ext(sh.path)))
-			disc := firstNonZero(tg.disc, sh.cue.Disc, folderDisc, imgDisc, cueDisc)
-			aa := tg.albumArtist
-			if aa == "" {
-				aa = sh.cue.Performer
-			}
-			for i, ct := range sh.file.Tracks {
-				e := &musicEntry{file: f, tags: tg, tagged: tagged, album: album, disc: disc, no: ct.Number,
-					title: ct.Title, artist: ct.Performer, albumArtist: aa, year: year, genre: genre, startMs: ct.StartMs, image: true}
-				if e.artist == "" {
-					e.artist = tg.artist
-				}
-				if e.no == 0 {
-					e.no = i + 1
-				}
-				if e.title == "" {
-					e.title = i18n.TL(i18n.RU, "Трек %d", e.no)
-				}
-				if i+1 < len(sh.file.Tracks) {
-					end := sh.file.Tracks[i+1].StartMs
-					e.endMs = &end
-				}
-				entries = append(entries, e)
-			}
+			entries = append(entries, imageEntries(f, tg, tagged, cover, sh, af.disc[f.path])...)
 			continue
 		}
-		nameDisc, nameNo, nameTitle := parseTrackFileDisc(stem)
-		e := &musicEntry{file: f, tags: tg, tagged: tagged, album: tg.album, artist: tg.artist, albumArtist: tg.albumArtist,
-			year: tg.year, genre: tg.genre, title: tg.title, no: tg.track}
-		e.disc = firstNonZero(tg.disc, folderDisc)
-		if e.no == 0 {
-			e.no = nameNo
-		}
-		if e.disc == 0 && nameDisc > 0 && tg.track == 0 {
-			e.disc = nameDisc
-		}
-		e.title = cleanTagTitle(e.title, e.no)
-		if e.title == "" {
-			e.title = nameTitle
-		}
-		if e.title == "" {
-			if e.no > 0 {
-				e.title = i18n.TL(i18n.RU, "Трек %d", e.no)
-			} else {
-				e.title = stem
-			}
-		}
-		if p := di.find(filepath.Dir(f.path), stem+".lrc"); p != "" {
-			if data, err := readSmall(p, 1<<20); err == nil {
-				e.lyrics = decodeText(data)
-			} else {
-				slog.Warn("music: lyrics", "file", p, "err", err)
-			}
-		}
-		if e.lyrics == "" {
-			e.lyrics = tg.lyrics
-		}
-		entries = append(entries, e)
+		entries = append(entries, trackEntry(f, tg, tagged, cover, af.disc[f.path], di))
 	}
+	return entries
+}
 
-	// album title (disc marker stripped) and groups by normalised title,
-	// editions folded: a track tagged «Группа крови (Remastered)» added to
-	// the folder of «Группа крови» joins that album (which keeps its title,
-	// so its item and match key stay)
-	type group struct {
-		title   string
-		entries []*musicEntry
+// imageEntries are the track entries of a CUE image file: one per track of
+// its sheet, the sheet filling what the tags leave empty.
+func imageEntries(f walkedFile, tg audioTags, tagged bool, cover string, sh imageSheet, folderDisc int) []*musicEntry {
+	stem := strings.TrimSuffix(filepath.Base(f.path), filepath.Ext(f.path))
+	album := tg.album
+	if album == "" {
+		album = sh.cue.Title
 	}
-	var groups []*group
-	byKey := map[string]*group{}
+	year := tg.year
+	if year == 0 {
+		year = cueYear(sh.cue.Date)
+	}
+	genre := tg.genre
+	if genre == "" {
+		genre = sh.cue.Genre
+	}
+	_, imgDisc := stripDiscSuffix(stem)
+	_, cueDisc := stripDiscSuffix(strings.TrimSuffix(filepath.Base(sh.path), filepath.Ext(sh.path)))
+	disc := firstNonZero(tg.disc, sh.cue.Disc, folderDisc, imgDisc, cueDisc)
+	aa := tg.albumArtist
+	if aa == "" {
+		aa = sh.cue.Performer
+	}
+	var out []*musicEntry
+	for i, ct := range sh.file.Tracks {
+		e := &musicEntry{file: f, tags: tg, tagged: tagged, cover: cover, album: album, disc: disc, no: ct.Number,
+			title: ct.Title, artist: ct.Performer, albumArtist: aa, year: year, genre: genre, startMs: ct.StartMs, image: true}
+		if e.artist == "" {
+			e.artist = tg.artist
+		}
+		if e.no == 0 {
+			e.no = i + 1
+		}
+		if e.title == "" {
+			e.title = i18n.TL(i18n.RU, "Трек %d", e.no)
+		}
+		if i+1 < len(sh.file.Tracks) {
+			end := sh.file.Tracks[i+1].StartMs
+			e.endMs = &end
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// trackEntry is the entry of a file that is one track: its tags, the file
+// name where the tags are empty, the .lrc beside it where it has no lyrics.
+func trackEntry(f walkedFile, tg audioTags, tagged bool, cover string, folderDisc int, di dirIndex) *musicEntry {
+	stem := strings.TrimSuffix(filepath.Base(f.path), filepath.Ext(f.path))
+	nameDisc, nameNo, nameTitle := parseTrackFileDisc(stem)
+	e := &musicEntry{file: f, tags: tg, tagged: tagged, cover: cover, album: tg.album, artist: tg.artist, albumArtist: tg.albumArtist,
+		year: tg.year, genre: tg.genre, title: tg.title, no: tg.track}
+	e.disc = firstNonZero(tg.disc, folderDisc)
+	if e.no == 0 {
+		e.no = nameNo
+	}
+	if e.disc == 0 && nameDisc > 0 && tg.track == 0 {
+		e.disc = nameDisc
+	}
+	e.title = cleanTagTitle(e.title, e.no)
+	if e.title == "" {
+		e.title = nameTitle
+	}
+	if e.title == "" {
+		if e.no > 0 {
+			e.title = i18n.TL(i18n.RU, "Трек %d", e.no)
+		} else {
+			e.title = stem
+		}
+	}
+	if p := di.find(filepath.Dir(f.path), stem+".lrc"); p != "" {
+		if data, err := readSmall(p, 1<<20); err == nil {
+			e.lyrics = decodeText(data)
+		} else {
+			slog.Warn("music: lyrics", "file", p, "err", err)
+		}
+	}
+	if e.lyrics == "" {
+		e.lyrics = tg.lyrics
+	}
+	return e
+}
+
+// albumGroup is the tracks of one album of a folder.
+type albumGroup struct {
+	title   string
+	entries []*musicEntry
+}
+
+// groupByEdition groups the entries by normalised album title (disc marker
+// stripped), editions folded: a track tagged «Группа крови (Remastered)»
+// added to the folder of «Группа крови» joins that album (which keeps its
+// title, so its item and match key stay). folderAlbum is the album named by
+// the folder, for tracks with no album tag.
+func (s *Scanner) groupByEdition(ctx context.Context, af *albumFolder, folderAlbum string, entries []*musicEntry) ([]*albumGroup, error) {
+	var groups []*albumGroup
+	byKey := map[string]*albumGroup{}
 	had, err := s.Repo.albumTitlesIn(ctx, af.dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	kept := map[string]string{} // folded key → title of an album item already in the folder
 	for _, t := range had {
@@ -558,7 +551,7 @@ func (s *Scanner) scanAlbumFolder(ctx context.Context, root string, af *albumFol
 	for _, e := range entries {
 		album := e.album
 		if album == "" {
-			album = fAlbum
+			album = folderAlbum
 		}
 		if album == "" {
 			album = "Без альбома"
@@ -581,90 +574,97 @@ func (s *Scanner) scanAlbumFolder(ctx context.Context, root string, af *albumFol
 			if t := kept[k]; t != "" {
 				title = t
 			}
-			g = &group{title: title}
+			g = &albumGroup{title: title}
 			byKey[k] = g
 			groups = append(groups, g)
 		}
 		g.entries = append(g.entries, e)
 	}
+	return groups, nil
+}
 
-	cover := fileURL(sidecarCover(af.dir))
-	var albumIDs []int64
-	for _, g := range groups {
-		sort.SliceStable(g.entries, func(i, j int) bool {
-			a, b := g.entries[i], g.entries[j]
-			if a.disc != b.disc {
-				return a.disc < b.disc
-			}
-			if a.no != b.no {
-				return a.no < b.no
-			}
-			if a.file.path != b.file.path {
-				return natsort.Less(a.file.path, b.file.path)
-			}
-			return a.startMs < b.startMs
+// upsertGroup writes one album of the folder with its tracks, in disc and
+// track order, and returns the album's id.
+func (s *Scanner) upsertGroup(ctx context.Context, af *albumFolder, g *albumGroup, names folderNames, sidecar string, st *ScanStats) (int64, error) {
+	sort.SliceStable(g.entries, func(i, j int) bool {
+		a, b := g.entries[i], g.entries[j]
+		if a.disc != b.disc {
+			return a.disc < b.disc
+		}
+		if a.no != b.no {
+			return a.no < b.no
+		}
+		if a.file.path != b.file.path {
+			return natsort.Less(a.file.path, b.file.path)
+		}
+		return a.startMs < b.startMs
+	})
+	albumArtist, compilation := chooseAlbumArtist(g.entries)
+	if albumArtist == "" {
+		albumArtist = firstNonEmpty(names.artist, names.parentArtist, unknownArtist)
+	}
+	albumYear := albumYearOf(g.entries, names.year)
+	in, files := trackInputs(af, g, albumArtist, compilation, albumYear, groupCover(sidecar, g.entries))
+	id, err := s.Repo.UpsertAlbumTracks(ctx, albumArtist, in)
+	if err != nil {
+		return 0, err
+	}
+	st.Albums++
+	st.Tracks += len(in)
+	st.Files += files
+	return id, nil
+}
+
+// albumYearOf is the year most of the tracks carry, else the folder's.
+func albumYearOf(entries []*musicEntry, folderYear int) int {
+	var years []string
+	for _, e := range entries {
+		if y := plausibleYear(e.year); y != 0 {
+			years = append(years, strconv.Itoa(y))
+		}
+	}
+	if y, _ := strconv.Atoi(mostCommon(years)); y != 0 {
+		return y
+	}
+	return plausibleYear(folderYear)
+}
+
+// groupCover is the album's cover: the folder's cover file, else the
+// embedded picture of the first track that has one.
+func groupCover(sidecar string, entries []*musicEntry) string {
+	if sidecar != "" {
+		return sidecar
+	}
+	for _, e := range entries {
+		if e.cover != "" {
+			return e.cover
+		}
+	}
+	return ""
+}
+
+// trackInputs are the tracks of a group for UpsertAlbumTracks, and the
+// number of distinct files they come from.
+func trackInputs(af *albumFolder, g *albumGroup, albumArtist string, compilation bool, albumYear int, cover string) ([]TrackInput, int) {
+	var in []TrackInput
+	filesSeen := map[string]bool{}
+	for _, e := range g.entries {
+		year := e.year
+		if year == 0 {
+			year = albumYear
+		}
+		codec := codecOf(e.tags.fileType, e.file.path)
+		in = append(in, TrackInput{
+			File:     FileInput{Path: e.file.path, Size: e.file.size, Mtime: e.file.mtime},
+			AlbumDir: af.dir, Album: g.title, AlbumArtist: albumArtist, Artist: firstNonEmpty(e.artist, albumArtist),
+			Title: e.title, Genre: e.genre, Year: year, Disc: e.disc, Track: e.no,
+			StartMs: e.startMs, EndMs: e.endMs, Codec: codec, Lossless: losslessCodecs[codec], Compilation: compilation,
+			MBReleaseGroupID: e.tags.mbReleaseGroup, MBTrackID: e.tags.mbTrack, Lyrics: e.lyrics, Cover: cover,
+			ReplayGain: trackReplayGain(e),
 		})
-		albumArtist, compilation := chooseAlbumArtist(g.entries)
-		if albumArtist == "" {
-			albumArtist = firstNonEmpty(fArtist, parentArtist, unknownArtist)
-		}
-		var years []string
-		for _, e := range g.entries {
-			if y := plausibleYear(e.year); y != 0 {
-				years = append(years, strconv.Itoa(y))
-			}
-		}
-		albumYear, _ := strconv.Atoi(mostCommon(years))
-		if albumYear == 0 {
-			albumYear = plausibleYear(fYear)
-		}
-		gc := cover
-		if gc == "" {
-			for _, e := range g.entries {
-				if e.tags.picture == nil {
-					continue
-				}
-				name, err := s.saveCover(e.tags.picture)
-				if err != nil {
-					slog.Warn("music: cover", "file", e.file.path, "err", err)
-				}
-				if name != "" {
-					gc = name
-					break
-				}
-			}
-		}
-		var in []TrackInput
-		filesSeen := map[string]bool{}
-		for _, e := range g.entries {
-			year := e.year
-			if year == 0 {
-				year = albumYear
-			}
-			codec := codecOf(e.tags.fileType, e.file.path)
-			in = append(in, TrackInput{
-				File:     FileInput{Path: e.file.path, Size: e.file.size, Mtime: e.file.mtime},
-				AlbumDir: af.dir, Album: g.title, AlbumArtist: albumArtist, Artist: firstNonEmpty(e.artist, albumArtist),
-				Title: e.title, Genre: e.genre, Year: year, Disc: e.disc, Track: e.no,
-				StartMs: e.startMs, EndMs: e.endMs, Codec: codec, Lossless: losslessCodecs[codec], Compilation: compilation,
-				MBReleaseGroupID: e.tags.mbReleaseGroup, MBTrackID: e.tags.mbTrack, Lyrics: e.lyrics, Cover: gc,
-				ReplayGain: trackReplayGain(e),
-			})
-			filesSeen[e.file.path] = true
-		}
-		id, err := s.Repo.UpsertAlbumTracks(ctx, albumArtist, in)
-		if err != nil {
-			return err
-		}
-		albumIDs = append(albumIDs, id)
-		st.Albums++
-		st.Tracks += len(in)
-		st.Files += len(filesSeen)
+		filesSeen[e.file.path] = true
 	}
-	if sig == "" {
-		return nil
-	}
-	return s.Repo.setFolderSig(ctx, albumIDs, sig)
+	return in, len(filesSeen)
 }
 
 // chooseAlbumArtist picks the album artist: the albumartist tag (or the
@@ -749,7 +749,7 @@ func firstNonEmpty(v ...string) string {
 	return ""
 }
 
-func natsortFiles(fs []musicFile) {
+func natsortFiles(fs []walkedFile) {
 	sort.SliceStable(fs, func(i, j int) bool { return natsort.Less(fs[i].path, fs[j].path) })
 }
 

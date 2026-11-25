@@ -2,6 +2,7 @@ package addons
 
 import (
 	"archive/tar"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -45,4 +46,11 @@ func WriteLocalAddon(t *testing.T, dev string, m Manifest, mode string) {
 	if err := os.WriteFile(filepath.Join(dir, ManifestName), mb, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// UpdateAvailable returns the version of the source's latest release when
+// it is newer than the installed one.
+func (m *Manager) UpdateAvailable(ctx context.Context, id string) (string, bool) {
+	c := m.CheckUpdate(ctx, id, false)
+	return c.Version, c.Version != ""
 }

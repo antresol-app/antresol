@@ -21,6 +21,15 @@ func TestHelperValid(t *testing.T) {
 	if err := goodHelper().Valid(); err != nil {
 		t.Fatalf("good helper: %v", err)
 	}
+	h := goodHelper()
+	h.Limits = Limits{Memory: "1g", CPUs: 0.5}
+	if err := h.Valid(); err != nil {
+		t.Fatalf("limits: %v", err)
+	}
+	h.Limits = Limits{Memory: "64m"}
+	if err := h.Valid(); err != nil {
+		t.Fatalf("limits: %v", err)
+	}
 	bad := map[string]func(h *Helper){
 		"empty name":       func(h *Helper) { h.Name = "" },
 		"upper name":       func(h *Helper) { h.Name = "Cache" },
@@ -42,6 +51,16 @@ func TestHelperValid(t *testing.T) {
 		"backslash health": func(h *Helper) { h.Health = `/a\b` },
 		"long title":       func(h *Helper) { h.Title.EN = strings.Repeat("x", MaxHelperTitle+1) },
 		"newline title":    func(h *Helper) { h.Title.RU = "a\nb" },
+		"memory unit":      func(h *Helper) { h.Limits.Memory = "1gb" },
+		"memory no unit":   func(h *Helper) { h.Limits.Memory = "1024" },
+		"memory zero":      func(h *Helper) { h.Limits.Memory = "0m" },
+		"memory tiny":      func(h *Helper) { h.Limits.Memory = "32m" },
+		"memory huge":      func(h *Helper) { h.Limits.Memory = "65g" },
+		"memory newline":   func(h *Helper) { h.Limits.Memory = "1g\nports: [1:1]" },
+		"memory upper":     func(h *Helper) { h.Limits.Memory = "1G" },
+		"cpus negative":    func(h *Helper) { h.Limits.CPUs = -1 },
+		"cpus tiny":        func(h *Helper) { h.Limits.CPUs = 0.01 },
+		"cpus huge":        func(h *Helper) { h.Limits.CPUs = 64 },
 	}
 	for name, mod := range bad {
 		t.Run(name, func(t *testing.T) {
@@ -65,13 +84,35 @@ func TestHelperComposeBlock(t *testing.T) {
 	want := "  cache-svc:\n" +
 		"    image: ghcr.io/example/cache-svc:1.2.3\n" +
 		"    restart: unless-stopped\n" +
-		"    # past this the kernel stops the service, not the server\n" +
-		"    mem_limit: 1536m\n"
+		"    # past these limits the kernel stops the service, not the server\n" +
+		"    mem_limit: 1536m\n" +
+		"    pids_limit: 4096\n" +
+		"    cap_drop: [ALL]\n" +
+		"    security_opt:\n" +
+		"      - no-new-privileges:true\n"
 	if got != want {
 		t.Fatalf("compose block:\n%s\nwant:\n%s", got, want)
 	}
 	if strings.Contains(got, "ports") {
 		t.Fatal("a helper never publishes a port")
+	}
+	if strings.Contains(got, "cpus") {
+		t.Fatal("no CPU cap unless the manifest names one")
+	}
+}
+
+// The manifest's limits replace the defaults, one by one.
+func TestHelperComposeBlockLimits(t *testing.T) {
+	h := goodHelper()
+	h.Limits = Limits{Memory: "1g", CPUs: 0.5}
+	got := h.Compose()
+	if !strings.Contains(got, "    mem_limit: 1g\n") || !strings.Contains(got, "    cpus: 0.5\n") {
+		t.Fatalf("limits not in the block:\n%s", got)
+	}
+	h.Limits = Limits{CPUs: 2}
+	got = h.Compose()
+	if !strings.Contains(got, "    mem_limit: 1536m\n") || !strings.Contains(got, "    cpus: 2\n") {
+		t.Fatalf("a CPU limit alone:\n%s", got)
 	}
 }
 
@@ -89,6 +130,16 @@ func TestHelpersFromManifest(t *testing.T) {
 	hs, err = HelpersFromManifest([]byte(`{"helpers":[{"name":"cache-svc","image":"i","port":1,"health":"/","title":{"ru":"Кэш","en":"Cache"}}]}`))
 	if err != nil || len(hs) != 1 || hs[0].Title != (Text{RU: "Кэш", EN: "Cache"}) {
 		t.Fatalf("title: %+v %v", hs, err)
+	}
+	// limits: both optional, either alone
+	hs, err = HelpersFromManifest([]byte(`{"helpers":[{"name":"cache-svc","image":"i","port":1,"health":"/","limits":{"memory":"1g","cpus":0.5}}]}`))
+	if err != nil || len(hs) != 1 || hs[0].Limits != (Limits{Memory: "1g", CPUs: 0.5}) {
+		t.Fatalf("limits: %+v %v", hs, err)
+	}
+	for _, bad := range []string{`{"memory":"lots"}`, `{"cpus":-1}`, `{"mem":"1g"}`} {
+		if _, err := HelpersFromManifest([]byte(`{"helpers":[{"name":"cache-svc","image":"i","port":1,"health":"/","limits":` + bad + `}]}`)); err == nil {
+			t.Fatalf("limits %s: want an error", bad)
+		}
 	}
 	// a manifest without the field: none, no error (contract 1 as before)
 	hs, err = HelpersFromManifest([]byte(`{"id":"demo","contract":1}`))
@@ -162,6 +213,35 @@ func TestProbeHelper(t *testing.T) {
 	h.Health = "/ok"
 	if err := ProbeHelper(context.Background(), client, h); err == nil {
 		t.Fatal("closed: want down")
+	}
+}
+
+// ProbeHelperAt asks another base (the admin's own address), keeps the
+// manifest's health path, and never names the base in an error.
+func TestProbeHelperAt(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.URL.Path == "/ok" {
+			return
+		}
+		http.Error(w, "no", http.StatusServiceUnavailable)
+	}))
+	h := goodHelper()
+	h.Health = "/ok"
+	if err := ProbeHelperAt(context.Background(), nil, srv.URL+"/", h); err != nil || gotPath != "/ok" {
+		t.Fatalf("up: %v, asked %q", err, gotPath)
+	}
+	h.Health = "/fail"
+	err := ProbeHelperAt(context.Background(), nil, srv.URL, h)
+	var st *HelperStatusError
+	if !errors.As(err, &st) || st.Code != 503 || HelperProblem(err) != HelperProblemStatus || !strings.Contains(err.Error(), h.Name) {
+		t.Fatalf("503: %v", err)
+	}
+	srv.Close()
+	h.Health = "/ok"
+	if err := ProbeHelperAt(context.Background(), nil, srv.URL, h); err == nil || strings.Contains(err.Error(), srv.URL) {
+		t.Fatalf("closed: %v", err)
 	}
 }
 

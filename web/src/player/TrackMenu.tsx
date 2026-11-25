@@ -4,6 +4,7 @@
 import { useId } from 'react'
 import type { SubTrack, Track } from '../api/types'
 import { Icon, type IconName } from '../components/Icon'
+import { IconButton } from '../ui/IconButton'
 import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
 import { audioLabel, audioMenuOrder, subtitleLabel } from './timeline'
 import { offsetSeconds, OFFSET_STEP_MS } from './lrc'
@@ -61,9 +62,7 @@ export function TrackMenu({ audio, audioIndex, subtitles, subIndex, onAudio, onS
       className={[styles.menu, showAudio ? styles.two : ''].join(' ')}
       onOpenChange={onOpenChange}
       trigger={(p) => (
-        <button {...p} type="button" className={styles.trigger} aria-label={t('player.tracks.title')} title={t('player.tracks.title')}>
-          <Icon name="captions" size={24} />
-        </button>
+        <IconButton {...p} icon={<Icon name="captions" size={24} />} label={t('player.tracks.title')} variant="plain" className={styles.trigger} />
       )}
     >
       {(close) => (

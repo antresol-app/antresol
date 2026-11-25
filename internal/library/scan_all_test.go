@@ -40,7 +40,7 @@ func TestScanAllEmptyRealRoots(t *testing.T) {
 	}
 	s := &Scanner{Repo: newRepo(t), Movies: dir("movies"), Series: dir("series"), Music: dir("music"),
 		Ebooks: dir("books/ebooks"), Audiobooks: dir("books/audiobooks"), Comics: dir("books/manga"),
-		ArtDir: dir("data/images"), ComicsCache: dir("data/comics-cache")}
+		ArtDir: dir("data/images")}
 	movie := filepath.Join(s.Movies, "Брат (1997)", "Брат (1997).mkv")
 	touch(t, movie, "x")
 	ctx := context.Background()

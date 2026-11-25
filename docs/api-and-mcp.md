@@ -59,5 +59,10 @@ anything.
 
 The same key works with the server's HTTP API: send
 `Authorization: Bearer YOUR_KEY` to the `/api/…` routes the web app uses.
-A Read Only key gets `GET` requests only. A key may make about 120 requests
+A Read Only key gets `GET` requests only. An Administration key reads
+whatever its admin reads, but writes with admin rights only to scan the
+library, enable or disable an addon and call an addon's `acquire` (what the
+tools above do): changing the settings, installing, updating or removing an
+addon, and the file manager need the signed-in web app, so a leaked key
+cannot install code or redirect mail. A key may make about 120 requests
 a minute (`429` with `Retry-After` beyond that).

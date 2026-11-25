@@ -52,15 +52,11 @@ func (p Program) fileSec(t time.Time) float64 {
 func (p Program) external() bool { return p.URL != "" || p.ExtraID != 0 }
 
 // Source finds the programme of a channel at t (on air at t, else the
-// next one); ErrNothing when there is none.
+// next one); ErrNothing when there is none. TrackSet makes a run's track
+// set from what is scheduled from then on (Service: the schedule's next
+// 48 h, cheaply).
 type Source interface {
 	Program(ctx context.Context, channel int64, t time.Time) (Program, error)
-}
-
-// SetSource is a Source that makes a run's track set itself (Service:
-// from the schedule's next 48 h, cheaply). Live walks a plain Source's
-// programmes instead.
-type SetSource interface {
 	TrackSet(ctx context.Context, channel int64, from time.Time) TrackSet
 }
 
@@ -251,7 +247,6 @@ type liveChan struct {
 	changed  chan struct{}
 	last     time.Time // last request
 	err      error     // why the encoder stopped (nil: still running)
-	program  int64     // item on air (for the status)
 	set      TrackSet  // the run's renditions (made before its first segment)
 	hasSet   bool
 	// the run's start, for its log line once its first segment is out:
@@ -398,8 +393,7 @@ func (l *Live) channel(k runKey, start bool) (*liveChan, error) {
 		c.mu.Lock()
 		c.err = err
 		why := c.why
-		close(c.changed)
-		c.changed = make(chan struct{})
+		c.wakeLocked()
 		c.mu.Unlock()
 		switch {
 		case err != nil:
@@ -528,37 +522,6 @@ func (l *Live) RunSet(id int64) (TrackSet, bool) {
 	defer c.mu.Unlock()
 	return c.set, c.hasSet
 }
-
-// trackSet makes a run's set: the Source's own (SetSource), else from
-// the Source's programmes of the next SetHorizon (at most maxSetProgs).
-func (l *Live) trackSet(ctx context.Context, id int64, from time.Time) TrackSet {
-	if ss, ok := l.Source.(SetSource); ok {
-		return ss.TrackSet(ctx, id, from)
-	}
-	var progs []Tracks
-	t := from
-	for range maxSetProgs {
-		p, err := l.Source.Program(ctx, id, t)
-		if err != nil || !p.End.After(t) {
-			break
-		}
-		if !p.Skip {
-			tr := Plan(p.Probe, nil, nil, PlanOptions{})
-			if p.Tracks != nil {
-				tr = *p.Tracks
-			}
-			progs = append(progs, tr)
-		}
-		t = p.End
-		if t.Sub(from) >= SetHorizon {
-			break
-		}
-	}
-	return BuildSet(progs, PlanOptions{})
-}
-
-// maxSetProgs bounds the programmes a plain Source's set is made from.
-const maxSetProgs = 200
 
 // master is the channel run's master playlist (fixed for the run: its
 // track set and picture are).
@@ -690,8 +653,7 @@ func (c *liveChan) add(segs []liveSeg, keep int) {
 		}
 		c.segs = append([]liveSeg(nil), c.segs[n:]...)
 	}
-	close(c.changed)
-	c.changed = make(chan struct{})
+	c.wakeLocked()
 }
 
 // runPlaylist reads the segments ffmpeg's own playlist lists (complete
@@ -744,7 +706,7 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 	first := true
 	fails := 0
 	// the run's renditions, from what can air while somebody watches
-	set := l.trackSet(ctx, c.id, now)
+	set := l.Source.TrackSet(ctx, c.id, now)
 	c.mu.Lock()
 	c.set, c.hasSet = set, true
 	c.setTook = time.Since(c.started)
@@ -790,9 +752,6 @@ func (l *Live) run(ctx context.Context, c *liveChan) error {
 		// burst ahead until the stream leads the clock by Lead
 		burst := (l.Lead - pos.Sub(now)).Seconds()
 		burst = math.Max(0, math.Min(burst, l.Lead.Seconds()))
-		c.mu.Lock()
-		c.program = p.ItemID
-		c.mu.Unlock()
 		segs, clean, err := l.encode(ctx, c, p, set, p.fileSec(pos), rem.Seconds(), seq, tsOffset, burst, !first)
 		if p.Release != nil {
 			p.Release()
@@ -998,126 +957,192 @@ const maxSubFile = 8 << 20
 // audioBitrate is each audio output's bit rate (media.LiveArgs).
 const audioBitrate = 192_000
 
+// startFFmpeg starts ffmpeg with args. The error channel gets its exit
+// (once); the returned stderr holds the first of what it said.
+func (l *Live) startFFmpeg(ctx context.Context, args []string) (*limited, <-chan error, error) {
+	cmd := exec.CommandContext(ctx, l.FFmpeg, args...)
+	cmd.WaitDelay = 2 * time.Second
+	stderr := &limited{n: 4096}
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	return stderr, exited, nil
+}
+
+// liveRun is what runFFmpeg knows of one programme's encode: the segments
+// it published and the playlists ffmpeg keeps listing them in.
+type liveRun struct {
+	l        *Live
+	c        *liveChan
+	prog     *liveProg
+	playlist string // ffmpeg's own, in c.dir
+	disc     bool   // its first segment follows another programme's
+
+	got     []liveSeg           // published
+	video   []liveSeg           // as ffmpeg listed them
+	videoPl fileStamp           // the video playlist as last read
+	audio   []map[int64]float64 // each audio output's segment lengths, by number
+	audioPl []fileStamp
+
+	// the stall check: the segments made when last looked, and since when
+	lastN   int
+	lastAt  time.Time
+	stalled bool // logged already
+}
+
+// fileStamp is a file as it was when it was last read.
+type fileStamp struct {
+	size int64
+	mod  time.Time
+}
+
+// readChanged reads path unless it is as it was at the last read: ffmpeg's
+// playlists list every segment of the programme, and a new one comes every
+// few seconds.
+func (f *fileStamp) readChanged(path string) ([]byte, bool) {
+	st, err := os.Stat(path)
+	if err != nil || st.Size() == f.size && st.ModTime().Equal(f.mod) {
+		return nil, false
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	f.size, f.mod = st.Size(), st.ModTime()
+	return b, true
+}
+
+// collect publishes the segments that are complete: video listed and every
+// audio output's own of it made (final: the programme is over, read the
+// subtitles to the end).
+func (r *liveRun) collect(final bool) {
+	c, prog := r.c, r.prog
+	if b, ok := r.videoPl.readChanged(filepath.Join(c.dir, r.playlist)); ok {
+		r.video = runPlaylist(b)
+	}
+	for k := range r.audio {
+		if b, ok := r.audioPl[k].readChanged(filepath.Join(c.dir, media.LiveAudioPlaylist(k))); ok {
+			m := map[int64]float64{}
+			for _, s := range runPlaylist(b) {
+				m[s.seq] = s.dur
+			}
+			r.audio[k] = m
+		}
+	}
+	// a segment goes out once every audio output has its own of it
+	var fresh []liveSeg
+	for _, s := range r.video[min(len(r.got), len(r.video)):] {
+		s.adur = make([]float64, prog.outs)
+		ok := true
+		for k := range r.audio {
+			d, has := r.audio[k][s.seq]
+			ok = ok && has
+			s.adur[k] = d
+		}
+		if !ok {
+			break
+		}
+		pts, err := firstPTS(filepath.Join(c.dir, "seg"+strconv.FormatInt(s.seq, 10)+".ts"))
+		if err != nil {
+			log.Printf("channels: channel %d: segment %d: %v", c.id, s.seq, err)
+			break
+		}
+		if !prog.hasP0 {
+			prog.p0, prog.hasP0 = pts, true
+		}
+		s.prog, s.pts, s.at = prog, pts, float64(ptsSince(prog.p0, pts))/90000
+		if len(r.got)+len(fresh) == 0 && r.disc {
+			s.disc = true
+		}
+		fresh = append(fresh, s)
+	}
+	r.got = append(r.got, fresh...)
+	c.mu.Lock()
+	subsChanged := prog.readSubs(final)
+	c.mu.Unlock()
+	if len(fresh) > 0 {
+		c.add(fresh, r.l.Keep)
+	} else if subsChanged {
+		c.wake()
+	}
+}
+
+// dropUnpublished removes the files of segments past the last published
+// one (an audio output's extra second, a video segment whose audio never
+// came) and the subtitle outputs, whose cues are read.
+func (r *liveRun) dropUnpublished() {
+	last := int64(-1)
+	if len(r.got) > 0 {
+		last = r.got[len(r.got)-1].seq
+	}
+	for _, s := range r.video {
+		if s.seq > last {
+			os.Remove(filepath.Join(r.c.dir, "seg"+strconv.FormatInt(s.seq, 10)+".ts"))
+		}
+	}
+	for k, m := range r.audio {
+		for n := range m {
+			if n > last {
+				os.Remove(filepath.Join(r.c.dir, media.LiveAudioSegment(k, n)))
+			}
+		}
+	}
+	for _, sub := range r.prog.subs {
+		if sub != nil {
+			os.Remove(sub.path)
+		}
+	}
+}
+
+// checkStall logs, once, a programme that stops making segments while
+// somebody watches: a stream standing still, with what ffmpeg said so far.
+func (r *liveRun) checkStall(stderr *limited) {
+	n := len(r.got)
+	switch {
+	case n != r.lastN:
+		r.lastN, r.lastAt = n, time.Now()
+	case !r.stalled && time.Since(r.lastAt) > stallAfter && !r.c.idle(r.l.Now(), 2*media.LiveSegmentSeconds*time.Second):
+		r.stalled = true
+		log.Printf("channels: channel %d%s: no new segment for %s (programme from segment %d, %d made): %s",
+			r.c.id, r.c.key.label(), time.Since(r.lastAt).Round(time.Second), firstSeq(r.got), n, stderr)
+	}
+}
+
 // runFFmpeg runs a programme's ffmpeg (args) and, beside it, the one of
 // its subtitles (subArgs, media.LiveSubArgs; nil: none), which is stopped
 // once the programme's own has finished (subGrace after it at most).
 func (l *Live) runFFmpeg(ctx context.Context, c *liveChan, args, subArgs []string, playlist string, prog *liveProg, disc bool) ([]liveSeg, bool, error) {
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(rctx, l.FFmpeg, args...)
-	cmd.WaitDelay = 2 * time.Second
-	var stderr bytes.Buffer
-	cmd.Stderr = &limited{b: &stderr, n: 4096}
-	if err := cmd.Start(); err != nil {
+	stderr, exited, err := l.startFFmpeg(rctx, args)
+	if err != nil {
 		return nil, false, err
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
 	stopSubs := l.startSubs(rctx, c, subArgs)
-	var got []liveSeg // published
-	audio := make([]map[int64]float64, prog.outs)
-	var video []liveSeg // as ffmpeg listed them
-	collect := func(final bool) {
-		if b, err := os.ReadFile(filepath.Join(c.dir, playlist)); err == nil {
-			video = runPlaylist(b)
-		}
-		for k := range audio {
-			if b, err := os.ReadFile(filepath.Join(c.dir, media.LiveAudioPlaylist(k))); err == nil {
-				m := map[int64]float64{}
-				for _, s := range runPlaylist(b) {
-					m[s.seq] = s.dur
-				}
-				audio[k] = m
-			}
-		}
-		// a segment goes out once every audio output has its own of it
-		var fresh []liveSeg
-		for _, s := range video[min(len(got), len(video)):] {
-			s.adur = make([]float64, prog.outs)
-			ok := true
-			for k := range audio {
-				d, has := audio[k][s.seq]
-				ok = ok && has
-				s.adur[k] = d
-			}
-			if !ok {
-				break
-			}
-			pts, err := firstPTS(filepath.Join(c.dir, "seg"+strconv.FormatInt(s.seq, 10)+".ts"))
-			if err != nil {
-				log.Printf("channels: channel %d: segment %d: %v", c.id, s.seq, err)
-				break
-			}
-			if !prog.hasP0 {
-				prog.p0, prog.hasP0 = pts, true
-			}
-			s.prog, s.pts, s.at = prog, pts, float64(ptsSince(prog.p0, pts))/90000
-			if len(got)+len(fresh) == 0 && disc {
-				s.disc = true
-			}
-			fresh = append(fresh, s)
-		}
-		got = append(got, fresh...)
-		c.mu.Lock()
-		subsChanged := prog.readSubs(final)
-		c.mu.Unlock()
-		if len(fresh) > 0 {
-			c.add(fresh, l.Keep)
-		} else if subsChanged {
-			c.wake()
-		}
-	}
+	r := &liveRun{l: l, c: c, prog: prog, disc: disc, playlist: playlist, lastAt: time.Now(),
+		audio: make([]map[int64]float64, prog.outs), audioPl: make([]fileStamp, prog.outs)}
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
-	lastN, lastAt, stuck := 0, time.Now(), false
 	for {
 		select {
-		case err := <-done:
+		case err := <-exited:
 			stopSubs()
-			collect(true)
-			// segments past the last published one (an audio output's
-			// extra second, a video segment whose audio never came) go
-			last := int64(-1)
-			if len(got) > 0 {
-				last = got[len(got)-1].seq
-			}
-			for _, s := range video {
-				if s.seq > last {
-					os.Remove(filepath.Join(c.dir, "seg"+strconv.FormatInt(s.seq, 10)+".ts"))
-				}
-			}
-			for k, m := range audio {
-				for n := range m {
-					if n > last {
-						os.Remove(filepath.Join(c.dir, media.LiveAudioSegment(k, n)))
-					}
-				}
-			}
-			for _, sub := range prog.subs {
-				if sub != nil {
-					os.Remove(sub.path) // its cues are read
-				}
-			}
+			r.collect(true)
+			r.dropUnpublished()
 			if err != nil && ctx.Err() == nil {
-				err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+				err = fmt.Errorf("%w: %s", err, stderr)
 			}
-			return got, err == nil, err
+			return r.got, err == nil, err
 		case <-tick.C:
-			collect(false)
+			r.collect(false)
 			if c.idle(l.Now(), l.IdleTimeout) {
 				c.idleOut()
-				cancel() // nobody watches: done picks it up
+				cancel() // nobody watches: exited picks it up
 			}
-			// a programme that stops making segments while somebody
-			// watches is a stream standing still: said once, with what
-			// ffmpeg said so far
-			if n := len(got); n != lastN {
-				lastN, lastAt = n, time.Now()
-			} else if !stuck && time.Since(lastAt) > stallAfter && !c.idle(l.Now(), 2*media.LiveSegmentSeconds*time.Second) {
-				stuck = true
-				log.Printf("channels: channel %d%s: no new segment for %s (programme from segment %d, %d made): %s",
-					c.id, c.key.label(), time.Since(lastAt).Round(time.Second), firstSeq(got), n, strings.TrimSpace(stderr.String()))
-			}
+			r.checkStall(stderr)
 		}
 	}
 }
@@ -1136,24 +1161,19 @@ func (l *Live) startSubs(ctx context.Context, c *liveChan, args []string) (stop 
 		return func() {}
 	}
 	sctx, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(sctx, l.FFmpeg, args...)
-	cmd.WaitDelay = 2 * time.Second
-	var stderr bytes.Buffer
-	cmd.Stderr = &limited{b: &stderr, n: 4096}
-	if err := cmd.Start(); err != nil {
+	stderr, exited, err := l.startFFmpeg(sctx, args)
+	if err != nil {
 		cancel()
 		log.Printf("channels: channel %d: subtitles: %v", c.id, err)
 		return func() {}
 	}
-	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
 	return func() {
 		t := time.NewTimer(subGrace)
 		defer t.Stop()
 		select {
 		case err := <-exited:
 			if err != nil && sctx.Err() == nil {
-				log.Printf("channels: channel %d: subtitles: %v: %s", c.id, err, strings.TrimSpace(stderr.String()))
+				log.Printf("channels: channel %d: subtitles: %v: %s", c.id, err, stderr)
 			}
 		case <-t.C:
 		}
@@ -1193,9 +1213,14 @@ func (p *liveProg) readSubs(final bool) bool {
 // wake tells the waiters something changed.
 func (c *liveChan) wake() {
 	c.mu.Lock()
+	c.wakeLocked()
+	c.mu.Unlock()
+}
+
+// wakeLocked is wake with c.mu held.
+func (c *liveChan) wakeLocked() {
 	close(c.changed)
 	c.changed = make(chan struct{})
-	c.mu.Unlock()
 }
 
 // stallAfter: a programme's ffmpeg that made no segment this long while
@@ -1223,15 +1248,26 @@ func (c *liveChan) idleOut() {
 // tsGap separates the timelines of two programmes (seconds).
 const tsGap = 0.25
 
-// limited keeps the first n bytes written to it.
+// limited keeps the first n bytes written to it (ffmpeg's stderr, which
+// exec copies in its own goroutine while the programme runs).
 type limited struct {
-	b *bytes.Buffer
-	n int
+	mu sync.Mutex
+	b  bytes.Buffer
+	n  int
 }
 
 func (w *limited) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if room := w.n - w.b.Len(); room > 0 {
 		w.b.Write(p[:min(len(p), room)])
 	}
 	return len(p), nil
+}
+
+// String is what was kept, trimmed.
+func (w *limited) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return strings.TrimSpace(w.b.String())
 }

@@ -138,8 +138,12 @@
   text-align: left;
   cursor: pointer;
 }
-.linkButton:hover {
+.linkButton:hover:not(:disabled) {
   background: var(--surface-grouped-hover);
+}
+.linkButton:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .linkButton:focus-visible {
   outline: none;
@@ -168,6 +172,18 @@
 .chevron {
   flex: none;
   color: var(--label-3);
+}
+/* ListSelectRow's check: the accent, as the glyph of the choice made */
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-xs);
+  color: var(--accent);
+}
+.check > svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
 }
 
 @media (max-width: 699px) {

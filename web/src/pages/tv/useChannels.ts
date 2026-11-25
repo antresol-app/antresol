@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorText } from '../../api/client'
 import { getChannels, setChannelFavorite, type ChannelList } from '../../api/channels'
 import { locale, useT } from '../../i18n'
+import { usePolling } from '../../state/usePolling'
 import { useLoad } from '../../state/useLoad'
 import { withFavorite } from './model'
 
@@ -15,10 +16,7 @@ export const REFRESH_MS = 30_000
 /** «Now» for the progress bars, ticking. */
 export function useNow(every = REFRESH_MS / 3) {
   const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), every)
-    return () => window.clearInterval(id)
-  }, [every])
+  usePolling(() => setNow(Date.now()), every, { immediate: false })
   return now
 }
 
@@ -37,10 +35,7 @@ export function useChannelList() {
     message: (e) => errorText(e, t('common.loadFailed')),
     events: ['library.updated'],
   })
-  useEffect(() => {
-    const id = window.setInterval(() => load(true), REFRESH_MS)
-    return () => window.clearInterval(id)
-  }, [load])
+  usePolling(() => load(true), REFRESH_MS, { immediate: false })
   // stars set here and not yet confirmed: they win over a list read meanwhile
   const [stars, setStars] = useState<Record<number, boolean>>({})
   const [favError, setFavError] = useState<string | null>(null)

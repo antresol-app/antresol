@@ -427,10 +427,10 @@ func TestImportRetryInCore(t *testing.T) {
 	e.db.QueryRow(`SELECT id FROM import_groups WHERE release_group = 'rg-a'`).Scan(&ga)
 	e.db.QueryRow(`SELECT id FROM import_groups WHERE release_group = 'rg-b'`).Scan(&gb)
 
-	w = e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcdef"}`, e.admin)
+	w = e.do("POST", "/api/users", `{"name":"Мама","isAdmin":true,"password":"abcdef-ghijk"}`, e.admin)
 	var mom struct{ ID int64 }
 	json.Unmarshal(w.Body.Bytes(), &mom)
-	other := session(e.do("POST", "/api/login", `{"userId":`+itoa(mom.ID)+`,"password":"abcdef"}`, nil))
+	other := session(e.do("POST", "/api/login", `{"userId":`+itoa(mom.ID)+`,"password":"abcdef-ghijk"}`, nil))
 	if other == nil {
 		t.Fatalf("second admin %d %s", w.Code, w.Body)
 	}

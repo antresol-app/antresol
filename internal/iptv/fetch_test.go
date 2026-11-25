@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/netguard"
 )
 
 func gz(t *testing.T, b []byte) []byte {
@@ -161,4 +163,48 @@ func TestFetchConcurrencyCap(t *testing.T) {
 	}
 	b.Close()
 	b.Close() // twice is harmless
+}
+
+// No download reaches an address that is no one's server (metadata,
+// link-local, unspecified, multicast), whatever source asks, and a redirect
+// to one stops at the socket too.
+func TestFetcherNeverDialsReservedAddresses(t *testing.T) {
+	f := NewFetcher()
+	for _, u := range []string{"http://169.254.169.254/latest/meta-data/", "http://[::ffff:169.254.169.254]/", "http://0.0.0.0:1/",
+		"http://[fe80::1]:1/", "http://224.0.0.1:1/"} {
+		if _, err := f.Open(context.Background(), u, ""); !errors.Is(err, netguard.ErrDial) {
+			t.Errorf("%s: %v", u, err)
+		}
+	}
+	redir := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://169.254.169.254/", http.StatusFound)
+	})
+	if _, err := f.Open(context.Background(), redir.URL, ""); !errors.Is(err, netguard.ErrDial) {
+		t.Errorf("redirect to metadata: %v", err)
+	}
+}
+
+// The LAN opens only for a source spelled as a LAN address; a download a
+// playlist names itself takes that from the source (OpenVia).
+func TestFetcherLANOnlyForALANSource(t *testing.T) {
+	srv := serve(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
+	f := NewFetcher()
+	open := func(lanOf string) error {
+		rc, err := f.OpenVia(context.Background(), srv.URL, "", lanOf)
+		if err == nil {
+			rc.Close()
+		}
+		return err
+	}
+	if err := open(srv.URL); err != nil {
+		t.Errorf("a LAN source: %v", err)
+	}
+	if err := open("http://box.lan/list.m3u"); err != nil {
+		t.Errorf("a source on a LAN name: %v", err)
+	}
+	for _, via := range []string{"http://provider.example.com/list.m3u", "", "://bad"} {
+		if err := open(via); !errors.Is(err, netguard.ErrDial) {
+			t.Errorf("source %q reached the LAN: %v", via, err)
+		}
+	}
 }

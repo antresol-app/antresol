@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // Store persists tracking data in SQLite.
@@ -187,7 +188,7 @@ func (s *Store) Marks(ctx context.Context, userID int64, states ...MarkState) ([
 	q := `SELECT user_id, title_id, state, score, origin, updated_at FROM title_marks WHERE user_id=?`
 	args := []any{userID}
 	if len(states) > 0 {
-		q += ` AND state IN (?` + strings.Repeat(",?", len(states)-1) + `)`
+		q += ` AND state IN ` + db.In(len(states))
 		for _, st := range states {
 			args = append(args, string(st))
 		}
@@ -373,10 +374,8 @@ func (s *Store) trackedFilter(ctx context.Context) (string, []any, error) {
 			return "", nil, err
 		}
 		if len(ids) > 0 {
-			where += ` OR id IN (?` + strings.Repeat(",?", len(ids)-1) + `)`
-			for _, id := range ids {
-				args = append(args, id)
-			}
+			where += ` OR id IN ` + db.In(len(ids))
+			args = db.Args(ids)
 		}
 	}
 	return "(" + where + ")", args, nil

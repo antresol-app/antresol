@@ -1,6 +1,6 @@
-/* «Семья»: one quiet line under the action bar; unfolds into a glass list. */
+/* «Семья»: one quiet line under the action bar; unfolds into a glass list
+   (a Menu on a wide window, in place on a phone). */
 .family {
-  position: relative;
   margin-top: var(--s-4);
   max-width: 520px;
 }
@@ -41,8 +41,8 @@
 .extra {
   display: inline-grid;
   place-items: center;
-  min-width: 36px;
-  height: 36px;
+  min-width: var(--control-h-sm);
+  height: var(--control-h-sm);
   padding: 0 var(--s-1h);
   border-radius: var(--r-pill);
   background: var(--fill-2);
@@ -66,7 +66,7 @@
   overflow: hidden;
   color: var(--label-2);
   font: var(--t-footnote);
-  font-weight: 500;
+  font-weight: var(--w-medium);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -133,21 +133,15 @@
   text-align: left;
   animation: unfold var(--d-base) var(--ease-out);
 }
-/* wide screens: over the page like a menu, so the hero does not move */
-@media (min-width: 700px) {
-  .panel {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    z-index: var(--z-sticky);
-    width: min(460px, calc(100vw - 2 * var(--gutter)));
-    box-shadow: var(--shadow-pop);
-  }
-  .upward {
-    top: auto;
-    bottom: 100%;
-    margin: 0 0 var(--s-2);
-  }
+.body:focus {
+  outline: none;
+}
+/* wide screens: over the page like any menu, so the hero does not move */
+.menu {
+  width: min(460px, calc(100vw - 2 * var(--gutter)));
+  max-width: none;
+  padding: var(--s-2) var(--s-2) var(--s-3);
+  text-align: left;
 }
 @keyframes unfold {
   from {
@@ -187,7 +181,7 @@
 .name {
   color: var(--label);
   font: var(--t-subhead);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }
 .place {
   color: var(--label-2);

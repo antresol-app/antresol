@@ -589,8 +589,8 @@ function TopSkeleton() {
             <span className={`${styles.topArt} ${styles.skeleton}`} data-shape="square" />
             <div className={styles.topFoot}>
               <div className={`${styles.topText} ${styles.skeletonText}`}>
-                <div className={styles.skeletonLine} style={{ width: '60%', height: 18 }} />
-                <div className={styles.skeletonLine} style={{ width: '35%' }} />
+                <div className={`${styles.skeletonLine} ${styles.w60} ${styles.lineTall}`} />
+                <div className={`${styles.skeletonLine} ${styles.w35}`} />
               </div>
             </div>
           </Surface>
@@ -603,7 +603,7 @@ function TopSkeleton() {
                 <span className={`${styles.skeletonThumb} ${styles.skeleton}`} />
                 <span className={styles.skeletonText}>
                   <div className={styles.skeletonLine} style={{ width: `${55 - i * 6}%` }} />
-                  <div className={styles.skeletonLine} style={{ width: '30%' }} />
+                  <div className={`${styles.skeletonLine} ${styles.w30}`} />
                 </span>
               </li>
             ))}

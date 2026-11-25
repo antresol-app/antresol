@@ -356,14 +356,10 @@ func (h *lib) list(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "Неизвестный раздел")
 		return
 	}
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit <= 0 || limit > 500 {
-		limit = 100
-	}
-	offset, _ := strconv.Atoi(q.Get("offset"))
+	limit, offset := pageParams(r, 100)
 	u := userOf(r)
 	items, total, err := h.Library.List(r.Context(), library.ListQuery{Kind: kind, Sort: q.Get("sort"), Limit: limit,
-		Offset: max(offset, 0), MaxRating: ratingLimit(u), Owner: scopeOwner(r, u)})
+		Offset: offset, MaxRating: ratingLimit(u), Owner: scopeOwner(r, u)})
 	if err != nil {
 		internalErr(w, r, "list", err)
 		return
@@ -682,7 +678,7 @@ func (h *lib) scan(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusServiceUnavailable, "Обновление медиатеки недоступно")
 		return
 	}
-	h.Jobs.Trigger()
+	h.Jobs.TriggerFull() // a manual scan reads everything again
 	writeJSON(w, http.StatusAccepted, localizedScan(r, h.Jobs.Status()))
 }
 
@@ -758,14 +754,9 @@ func (h *lib) saveProgress(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	var at time.Time
-	if in.UpdatedAt != "" {
-		t, err := time.Parse(time.RFC3339, in.UpdatedAt)
-		if err != nil {
-			writeErr(w, r, http.StatusBadRequest, "Неверное время записи")
-			return
-		}
-		at = t
+	at, ok := parseWireTime(w, r, in.UpdatedAt)
+	if !ok {
+		return
 	}
 	ctx, uid := r.Context(), auth.HistoryID(r.Context())
 	var err error
@@ -848,14 +839,9 @@ func (h *lib) watched(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	var at time.Time
-	if in.UpdatedAt != "" {
-		t, err := time.Parse(time.RFC3339, in.UpdatedAt)
-		if err != nil {
-			writeErr(w, r, http.StatusBadRequest, "Неверное время записи")
-			return
-		}
-		at = t
+	at, ok := parseWireTime(w, r, in.UpdatedAt)
+	if !ok {
+		return
 	}
 	ids, err := h.playable(r.Context(), it)
 	if err != nil {

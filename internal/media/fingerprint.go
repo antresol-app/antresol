@@ -13,7 +13,9 @@ import (
 )
 
 // Runner runs an ffmpeg command (RunYielding in the background; cmd.Run in
-// tests).
+// tests). Fingerprint and BlackRuns are background reads: their ffmpeg is
+// one thread at the lowest CPU and I/O priority (LowPriority), as every
+// other background ffmpeg here.
 type Runner func(*exec.Cmd) error
 
 func runCmd(run Runner, cmd *exec.Cmd) error {
@@ -51,7 +53,7 @@ func Fingerprint(ctx context.Context, ffmpeg, path string, idx int, fromSec, dur
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1"}
 	if fromSec > 0 {
 		args = append(args, "-ss", secArg(fromSec))
 	}
@@ -62,6 +64,7 @@ func Fingerprint(ctx context.Context, ffmpeg, path string, idx int, fromSec, dur
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	LowPriority(cmd)
 	if err := runCmd(run, cmd); err != nil {
 		return nil, fmt.Errorf("ffmpeg chromaprint: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
@@ -89,7 +92,7 @@ func BlackRuns(ctx context.Context, ffmpeg, path string, fromSec, durSec, minSec
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"-hide_banner", "-loglevel", "info", "-nostdin", "-nostats"}
+	args := []string{"-hide_banner", "-loglevel", "info", "-nostdin", "-nostats", "-threads", "1"}
 	if keyframesOnly {
 		args = append(args, "-skip_frame", "nokey")
 	}
@@ -104,6 +107,7 @@ func BlackRuns(ctx context.Context, ffmpeg, path string, fromSec, durSec, minSec
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	cmd.Stderr = &stderr
+	LowPriority(cmd)
 	if err := runCmd(run, cmd); err != nil {
 		return nil, fmt.Errorf("ffmpeg blackdetect: %w: %s", err, lastLine(stderr.String()))
 	}

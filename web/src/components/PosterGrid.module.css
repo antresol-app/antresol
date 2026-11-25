@@ -44,7 +44,6 @@
 .skeleton {
   aspect-ratio: 2 / 3;
   border-radius: var(--r-card);
-  background: var(--fill-4);
 }
 .squareGrid {
   --cols: 6;

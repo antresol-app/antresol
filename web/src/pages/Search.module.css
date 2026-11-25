@@ -124,14 +124,14 @@
 .tileOn {
   box-shadow:
     var(--shadow-card),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+    inset 0 0 0 2px rgba(255, 255, 255, 0.85); /* ds-allow: the chosen tile's ring over its gradient */
 }
 /* the cover leans out of the corner over the gradient */
 .tileArt {
   position: absolute;
   right: -14px;
   bottom: -18px;
-  z-index: -1;
+  z-index: var(--z-behind);
   width: 84px;
   aspect-ratio: 2 / 3;
   object-fit: cover;
@@ -576,6 +576,25 @@
   height: 12px;
   border-radius: var(--r-sm);
   margin-top: var(--s-1h);
+}
+/* the widths and the tall one of a skeleton card's lines */
+.w30 {
+  width: 30%;
+}
+.w35 {
+  width: 35%;
+}
+.w55 {
+  width: 55%;
+}
+.w60 {
+  width: 60%;
+}
+.w80 {
+  width: 80%;
+}
+.lineTall {
+  height: 18px;
 }
 @keyframes pulse {
   50% {

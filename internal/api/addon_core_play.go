@@ -47,6 +47,7 @@ func (a *addonsAPI) coreAddInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req addonkit.InputRequest
+	bodyDeadline(w)
 	r.Body = http.MaxBytesReader(w, r.Body, addonInputBody)
 	dec := json.NewDecoder(r.Body)
 	err := dec.Decode(&req)

@@ -12,6 +12,7 @@ import { Glyph } from './glyphs'
 import { MovePicker, NameField, Sheet, nameProblem, type MoveTarget } from './Sheet'
 import { Thumb } from './Thumb'
 import { Checkbox } from '../../ui/Checkbox'
+import styles from './FileOps.module.css'
 import { t, useT } from '../../i18n'
 
 export type Op =
@@ -116,7 +117,7 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
         { label: t('files.op.continue'), kind: 'destructive', run: () => void wrap(() => submit(true)) },
       ]}
     >
-      {error && <p style={{ marginTop: 10, color: 'var(--red)', font: 'var(--t-footnote)' }}>{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
     </Sheet>
   )
 
@@ -253,7 +254,7 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
             value={target}
             onChange={setTarget}
           />
-          {error && <p style={{ marginTop: 10, color: 'var(--red)', font: 'var(--t-footnote)' }} role="alert">{error}</p>}
+          {error && <p className={styles.error} role="alert">{error}</p>}
         </Sheet>
       )
     }
@@ -271,7 +272,7 @@ export function FileOps({ op, root, dir, roots, names, onClose, onDone, onChange
           ]}
         >
           <Checkbox label={t('comp.delete.skipTrash')} checked={permanent} onChange={setPermanent} disabled={busy} tone="destructive" />
-          {error && <p style={{ marginTop: 10, color: 'var(--red)', font: 'var(--t-footnote)' }} role="alert">{error}</p>}
+          {error && <p className={styles.error} role="alert">{error}</p>}
         </Sheet>
       )
   }

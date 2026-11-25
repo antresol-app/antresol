@@ -5,7 +5,7 @@
 .trigger {
   display: grid;
   place-items: center;
-  width: 44px;
+  width: var(--control-h-md);
   height: var(--control-h-md);
   padding: 0;
   border: 0;

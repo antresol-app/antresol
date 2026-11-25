@@ -7,10 +7,11 @@
 // titles. The cards come from the addons (library.pending); without any,
 // the list is empty.
 import { useEffect, useState } from 'react'
-import { getLibraryPending, useEvents } from '../api/client'
+import { getLibraryPending } from '../api/client'
 import type { Card, CardKind, Shelf } from '../api/types'
 import { answerSlot, lastAnswer, rememberAnswer } from './lastAnswer'
 import { useLibraryScope } from './libraryScope'
+import { useEventReload } from './useEventReload'
 
 /** How often the list is asked while a title is on its way. */
 export const POLL_MS = 2000
@@ -45,7 +46,7 @@ export function usePendingCards(): readonly Card[] {
   // back on a library page: the last list at once (the cards stay with the shelves kept by state/lastAnswer)
   const [cards, setCards] = useState<readonly Card[]>(() => lastAnswer<readonly Card[]>(`pending ${scope}`) ?? NONE)
   const [kick, setKick] = useState(0)
-  useEvents(() => setKick((k) => k + 1), ['library.updated'])
+  useEventReload(() => setKick((k) => k + 1), ['library.updated'])
 
   useEffect(() => {
     const ac = new AbortController()

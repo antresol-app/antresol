@@ -25,6 +25,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/iptv"
+	"github.com/antresol-app/antresol/internal/netguard"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -85,7 +86,7 @@ const relayInflight = 8
 var (
 	errRelayRef   = errors.New("relay: bad reference")
 	errRelayLimit = errors.New("relay: too many streams")
-	errRelayDial  = errors.New("relay: address not allowed")
+	errRelayDial  = netguard.ErrDial
 )
 
 // relayPath is the web's relay of stream n of external channel id.
@@ -102,7 +103,7 @@ type relaySession struct {
 	started  time.Time
 	// lan: the stream's source is on the LAN (its playlist address is), so
 	// its streams may dial the LAN's addresses too; otherwise public ones
-	// only (channels_relay_net.go). Set before ready is closed.
+	// only (internal/netguard). Set before ready is closed.
 	lan   bool
 	ready chan struct{}
 }
@@ -360,7 +361,7 @@ func (rl *extRelay) visible(r *http.Request, u auth.User, id int64, look func() 
 }
 
 // sourceOnLAN: the playlist address the admin typed for source id is the
-// LAN's by its spelling (channels_relay_net.go). Anything unknown is not.
+// LAN's by its spelling (internal/netguard). Anything unknown is not.
 func (a *channelsAPI) sourceOnLAN(ctx context.Context, id int64) bool {
 	if a.ext == nil || a.ext.Store == nil || id == 0 {
 		return false
@@ -374,7 +375,7 @@ func (a *channelsAPI) sourceOnLAN(ctx context.Context, id int64) bool {
 		return false
 	}
 	u, err := url.Parse(raw)
-	return err == nil && lanSpelling(u.Hostname())
+	return err == nil && netguard.LANSpelling(u.Hostname())
 }
 
 // ---- the handler ----
@@ -383,9 +384,9 @@ func (a *channelsAPI) sourceOnLAN(ctx context.Context, id int64) bool {
 func (a *channelsAPI) extRelay(w http.ResponseWriter, r *http.Request) {
 	relayHardenHeaders(w)
 	rl := a.relay
-	id, err1 := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	n, err2 := strconv.Atoi(chi.URLParam(r, "n"))
-	if err1 != nil || err2 != nil || n < 0 {
+	id, valid := urlID(r, "id")
+	n, err := strconv.Atoi(chi.URLParam(r, "n"))
+	if !valid || err != nil || n < 0 {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}

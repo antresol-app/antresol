@@ -58,12 +58,6 @@ const docsGenre = "документальный"
 // animationGenre is the genre of animated films and series (i18n.GenreKey).
 const animationGenre = "мультфильм"
 
-// planned is a generated channel the library has content for.
-type planned struct {
-	Channel
-	from int // the old number ranges (kept for the plan's order only)
-}
-
 // Generator makes and keeps the generated channels.
 type Generator struct {
 	Store   *Store
@@ -75,8 +69,44 @@ type Generator struct {
 	sync sync.Mutex // one Sync at a time (a refresh and an admin's request overlap)
 }
 
+// planner is one Plan's view of the library: the movies and series that have
+// something to play, their programmes, and the channels made so far.
+type planner struct {
+	movies, series, all []Unit // all: the movies, then the series
+	progs               map[int64][]Prog
+	minRuntime          time.Duration
+	out                 []Channel
+}
+
+// playMs is how long title id plays: all its programmes.
+func (p *planner) playMs(id int64) int64 {
+	var ms int64
+	for _, pr := range p.progs[id] {
+		for _, part := range pr.Parts {
+			ms += part.DurationMs
+		}
+	}
+	return ms
+}
+
+func (p *planner) runtime(us []Unit) time.Duration {
+	var ms int64
+	for _, u := range us {
+		ms += p.playMs(u.ID)
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+func (p *planner) enough(us []Unit) bool {
+	return len(us) >= MinTitles && p.runtime(us) >= p.minRuntime
+}
+
+func (p *planner) add(key, name, cat string, r Rules) {
+	p.out = append(p.out, Channel{Name: name, Category: cat, AutoKey: key, Rules: r, Enabled: true})
+}
+
 // Plan returns the generated channels the library has enough for.
-func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
+func (g *Generator) Plan(ctx context.Context) ([]Channel, error) {
 	units, err := g.Catalog.Units(ctx)
 	if err != nil {
 		return nil, err
@@ -85,63 +115,74 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	var movies, series []Unit
+	p := &planner{progs: progs, minRuntime: g.MinRuntime}
+	if p.minRuntime == 0 {
+		p.minRuntime = DefaultMinRuntime
+	}
 	for _, u := range units {
-		if len(progs[u.ID]) == 0 {
-			continue
+		switch {
+		case len(progs[u.ID]) == 0:
+		case u.Kind == library.KindMovie:
+			p.movies = append(p.movies, u)
+		default:
+			p.series = append(p.series, u)
 		}
-		if u.Kind == library.KindMovie {
-			movies = append(movies, u)
-		} else {
-			series = append(series, u)
-		}
 	}
-	runtime := func(us []Unit) time.Duration {
-		var ms int64
-		for _, u := range us {
-			for _, p := range progs[u.ID] {
-				for _, part := range p.Parts {
-					ms += part.DurationMs
-				}
-			}
-		}
-		return time.Duration(ms) * time.Millisecond
+	p.all = append(append([]Unit(nil), p.movies...), p.series...)
+	p.planGeneral()
+	p.planGenres()
+	p.planDecades()
+	// franchises in their order (the background pass's, franchise_pass.go)
+	inFranchise, err := g.planFranchises(ctx, p)
+	if err != nil {
+		return nil, err
 	}
-	minRuntime := g.MinRuntime
-	if minRuntime == 0 {
-		minRuntime = DefaultMinRuntime
+	kids := Rules{Genres: kidsGenres, MaxRating: "6+", SkipSegments: true}
+	if p.enough(Match(p.all, kids)) {
+		p.add("kids", "Детский", CatKids, kids)
 	}
-	enough := func(us []Unit) bool { return len(us) >= MinTitles && runtime(us) >= minRuntime }
-	var out []planned
-	add := func(key, name, cat string, from int, r Rules) {
-		out = append(out, planned{Channel: Channel{Name: name, Category: cat, AutoKey: key, Rules: r, Enabled: true}, from: from})
+	docs := Rules{Genres: []string{docsGenre}}
+	if p.enough(Match(p.all, docs)) {
+		p.add("docs", "Документальное", CatDocs, docs)
 	}
-	if enough(movies) {
-		add("movies", "Все фильмы", CatGeneral, 1, Rules{Kinds: []string{library.KindMovie}})
+	p.planMarathons(inFranchise)
+	if err := g.planOwned(ctx, p); err != nil {
+		return nil, err
+	}
+	return p.out, nil
+}
+
+// planGeneral: all films, all series (animated ones apart).
+func (p *planner) planGeneral() {
+	if p.enough(p.movies) {
+		p.add("movies", "Все фильмы", CatGeneral, Rules{Kinds: []string{library.KindMovie}})
 	}
 	// animated series get their own channel and stay out of «Все сериалы»
 	toons := Rules{Kinds: []string{library.KindSeries}, Genres: []string{animationGenre}, SkipSegments: true}
-	hasToons := enough(Match(series, toons))
+	hasToons := p.enough(Match(p.series, toons))
 	all := Rules{Kinds: []string{library.KindSeries}, SkipSegments: true}
 	if hasToons {
 		all.NotGenres = []string{animationGenre}
 	}
-	if enough(Match(series, all)) {
-		add("series", "Все сериалы", CatGeneral, 1, all)
+	if p.enough(Match(p.series, all)) {
+		p.add("series", "Все сериалы", CatGeneral, all)
 	}
 	if hasToons {
-		add("toons", "Мультсериалы", CatGeneral, 1, toons)
+		p.add("toons", "Мультсериалы", CatGeneral, toons)
 	}
-	// genres of movies, most titles first
+}
+
+// planGenres: a channel of each genre of movies, most titles first.
+func (p *planner) planGenres() {
 	count := map[string]int{}
-	for _, u := range movies {
+	for _, u := range p.movies {
 		for _, gk := range dedupe(u.Genres) {
 			count[gk]++
 		}
 	}
 	var genres []string
 	for gk, n := range count {
-		if n >= MinTitles && genreChannel[gk] != "" && enough(Match(movies, Rules{Genres: []string{gk}})) {
+		if n >= MinTitles && genreChannel[gk] != "" && p.enough(Match(p.movies, Rules{Genres: []string{gk}})) {
 			genres = append(genres, gk)
 		}
 	}
@@ -152,63 +193,60 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 		return genres[i] < genres[j]
 	})
 	for _, gk := range genres {
-		add("genre:"+gk, genreChannel[gk], CatGenres, 10, Rules{Kinds: []string{library.KindMovie}, Genres: []string{gk}})
+		p.add("genre:"+gk, genreChannel[gk], CatGenres, Rules{Kinds: []string{library.KindMovie}, Genres: []string{gk}})
 	}
-	// decades of movies
+}
+
+// planDecades: a channel of each decade of movies.
+func (p *planner) planDecades() {
 	decades := map[int]int{}
-	for _, u := range movies {
+	for _, u := range p.movies {
 		if u.Year >= 1900 {
 			decades[u.Year/10*10]++
 		}
 	}
 	var ds []int
 	for d, n := range decades {
-		if n >= MinTitles && enough(Match(movies, Rules{YearFrom: d, YearTo: d + 9})) {
+		if n >= MinTitles && p.enough(Match(p.movies, Rules{YearFrom: d, YearTo: d + 9})) {
 			ds = append(ds, d)
 		}
 	}
 	sort.Ints(ds)
 	for _, d := range ds {
-		add("decade:"+strconv.Itoa(d), DecadeName(d), CatDecades, 40,
+		p.add("decade:"+strconv.Itoa(d), DecadeName(d), CatDecades,
 			Rules{Kinds: []string{library.KindMovie}, YearFrom: d, YearTo: d + 9})
 	}
-	// franchises in their order (the background pass's, franchise_pass.go)
-	inFranchise, err := g.planFranchises(ctx, append(append([]Unit{}, movies...), series...), progs, minRuntime, add)
-	if err != nil {
-		return nil, err
-	}
-	kids := Rules{Genres: kidsGenres, MaxRating: "6+", SkipSegments: true}
-	if enough(Match(append(append([]Unit{}, movies...), series...), kids)) {
-		add("kids", "Детский", CatKids, 50, kids)
-	}
-	docs := Rules{Genres: []string{docsGenre}}
-	if enough(Match(append(append([]Unit{}, movies...), series...), docs)) {
-		add("docs", "Документальное", CatDocs, 60, docs)
-	}
-	// series marathons: most episodes first
-	long := append([]Unit(nil), series...)
-	sort.SliceStable(long, func(i, j int) bool { return len(progs[long[i].ID]) > len(progs[long[j].ID]) })
+}
+
+// planMarathons: a series' own channel, most episodes first.
+func (p *planner) planMarathons(inFranchise map[int64]bool) {
+	long := append([]Unit(nil), p.series...)
+	sort.SliceStable(long, func(i, j int) bool { return len(p.progs[long[i].ID]) > len(p.progs[long[j].ID]) })
 	n := 0
 	for _, u := range long {
-		if n == MaxSeries || len(progs[u.ID]) < MinEpisodes {
+		if n == MaxSeries || len(p.progs[u.ID]) < MinEpisodes {
 			break
 		}
-		if runtime([]Unit{u}) < minRuntime {
+		if p.runtime([]Unit{u}) < p.minRuntime {
 			continue // a short series repeats within days: no channel of its own
 		}
 		if inFranchise[u.ID] {
 			continue // its franchise's channel plays it
 		}
 		n++
-		add("series:"+strconv.FormatInt(u.ID, 10), u.Title, CatSeries, 100, Rules{Titles: []int64{u.ID}, Order: OrderOrdered, SkipSegments: true})
+		name := fitFranchiseName(u.Title) // a title the channel store would refuse is cut to fit
+		p.add("series:"+strconv.FormatInt(u.ID, 10), name, CatSeries, Rules{Titles: []int64{u.ID}, Order: OrderOrdered, SkipSegments: true})
 	}
-	// each profile's own library
+}
+
+// planOwned: each profile's own library.
+func (g *Generator) planOwned(ctx context.Context, p *planner) error {
 	owners, err := g.owners(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	playable := map[int64]Unit{}
-	for _, u := range append(append([]Unit{}, movies...), series...) {
+	for _, u := range p.all {
 		playable[u.ID] = u
 	}
 	for _, o := range owners {
@@ -218,54 +256,48 @@ func (g *Generator) Plan(ctx context.Context) ([]planned, error) {
 				mine = append(mine, u)
 			}
 		}
-		if enough(mine) {
-			p := planned{Channel: Channel{Name: "Моя медиатека", Category: CatMine, AutoKey: "mine:" + strconv.FormatInt(o.uid, 10),
-				UserID: o.uid, Rules: Rules{LibraryUser: o.uid}, Enabled: true}, from: 200}
-			out = append(out, p)
+		if p.enough(mine) {
+			p.out = append(p.out, Channel{Name: "Моя медиатека", Category: CatMine, AutoKey: "mine:" + strconv.FormatInt(o.uid, 10),
+				UserID: o.uid, Rules: Rules{LibraryUser: o.uid}, Enabled: true})
 		}
 	}
-	return out, nil
+	return nil
 }
 
 // planFranchises adds a channel of each franchise with at least
-// MinFranchiseTitles playable titles and min of them: its titles in the
-// effective order (an admin's order kept), played in order, episodes without
-// their openings and credits. It returns the titles those channels play: a
-// series of a franchise gets no channel of its own.
-func (g *Generator) planFranchises(ctx context.Context, units []Unit, progs map[int64][]Prog, min time.Duration, add func(key, name, cat string, from int, r Rules)) (map[int64]bool, error) {
+// MinFranchiseTitles playable titles and p's minimum runtime: its titles in
+// the effective order (an admin's order kept), played in order, episodes
+// without their openings and credits. It returns the titles those channels
+// play: a series of a franchise gets no channel of its own.
+func (g *Generator) planFranchises(ctx context.Context, p *planner) (map[int64]bool, error) {
 	fs, err := g.Store.Franchises(ctx)
 	if err != nil {
 		return nil, err
 	}
 	covered := map[int64]bool{}
 	playable := map[int64]bool{}
-	for _, u := range units {
+	for _, u := range p.all {
 		playable[u.ID] = true
 	}
 	for _, f := range fs {
 		var picks []Pick
 		var ms int64
 		for _, id := range f.Effective() {
-			if !playable[id] {
-				continue
-			}
-			picks = append(picks, Pick{Kind: PickTitle, ID: id})
-			for _, p := range progs[id] {
-				for _, part := range p.Parts {
-					ms += part.DurationMs
-				}
+			if playable[id] {
+				picks = append(picks, Pick{Kind: PickTitle, ID: id})
+				ms += p.playMs(id)
 			}
 		}
-		if len(picks) < MinFranchiseTitles || time.Duration(ms)*time.Millisecond < min {
+		if len(picks) < MinFranchiseTitles || time.Duration(ms)*time.Millisecond < p.minRuntime {
 			continue
 		}
 		name := fitFranchiseName(f.Name)
 		if name == "" { // a name the channel store would refuse
 			name = franchiseFallbackName(f.Key)
 		}
-		add("franchise:"+f.Key, name, CatFranchises, 45, Rules{Picks: picks, Order: OrderOrdered, SkipSegments: true})
-		for _, p := range picks {
-			covered[p.ID] = true
+		p.add("franchise:"+f.Key, name, CatFranchises, Rules{Picks: picks, Order: OrderOrdered, SkipSegments: true})
+		for _, pk := range picks {
+			covered[pk.ID] = true
 		}
 	}
 	return covered, nil
@@ -285,10 +317,12 @@ func DecadeName(d int) string {
 	return fmt.Sprintf("Кино %02d-х", d%100)
 }
 
+// dedupe is s trimmed, without empty entries and with each once (nil when
+// none is left).
 func dedupe(s []string) []string {
 	var out []string
 	for _, x := range s {
-		if !contains(out, x) {
+		if x = strings.TrimSpace(x); x != "" && !contains(out, x) {
 			out = append(out, x)
 		}
 	}
@@ -351,6 +385,17 @@ func (g *Generator) Reset(ctx context.Context) (SyncResult, error) {
 	return g.syncLocked(ctx)
 }
 
+// skipKey logs a channel the store refused and lets the pass go on: one
+// channel must not stop the others (nil); a pass that was cancelled stops
+// (err).
+func skipKey(ctx context.Context, verb, key string, err error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("channels: %s %s: %w", verb, key, err)
+	}
+	log.Printf("channels: %s %s: %v", verb, key, err)
+	return nil
+}
+
 func (g *Generator) syncLocked(ctx context.Context) (SyncResult, error) {
 	var res SyncResult
 	plan, err := g.Plan(ctx)
@@ -385,16 +430,15 @@ func (g *Generator) syncLocked(ctx context.Context) (SyncResult, error) {
 			if err != nil {
 				return res, err
 			}
-			p.Channel.Number = n
-			if _, err := g.Store.Create(ctx, p.Channel); err != nil {
+			p.Number = n
+			if _, err := g.Store.Create(ctx, p); err != nil {
 				if errors.Is(err, ErrRemoved) { // deleted while this pass ran
 					continue
 				}
-				if keyKind(p.AutoKey) == "franchise" { // one franchise must not stop every channel
-					log.Printf("channels: create %s: %v", p.AutoKey, err)
-					continue
+				if err := skipKey(ctx, "create", p.AutoKey, err); err != nil {
+					return res, err
 				}
-				return res, fmt.Errorf("channels: create %s: %w", p.AutoKey, err)
+				continue
 			}
 			res.Created++
 		case c.Edited:
@@ -404,11 +448,10 @@ func (g *Generator) syncLocked(ctx context.Context) (SyncResult, error) {
 				if errors.Is(err, ErrNotFound) { // deleted while this pass ran
 					continue
 				}
-				if keyKind(p.AutoKey) == "franchise" {
-					log.Printf("channels: update %s: %v", p.AutoKey, err)
-					continue
+				if err := skipKey(ctx, "update", p.AutoKey, err); err != nil {
+					return res, err
 				}
-				return res, fmt.Errorf("channels: update %s: %w", p.AutoKey, err)
+				continue
 			}
 			res.Updated++
 		}

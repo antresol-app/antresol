@@ -54,10 +54,7 @@ func VocabularyOf(units []Unit) Vocabulary {
 // model, when there is one, adds themes and a name and fills what the words
 // left open. A model that fails or is slow leaves the words' answer.
 func (s *Service) Suggest(ctx context.Context, text string, vocab Vocabulary) Suggestion {
-	text = strings.TrimSpace(text)
-	if utf8.RuneCountInString(text) > 300 {
-		text = string([]rune(text)[:300])
-	}
+	text = clipRunes(strings.TrimSpace(text), 300, "")
 	out := suggestWords(text)
 	out.Via = "words"
 	if l := s.Model(ctx); l != nil && text != "" {

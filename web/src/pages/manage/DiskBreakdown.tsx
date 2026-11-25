@@ -11,6 +11,7 @@ import type { DiskBreakdown } from '../../api/types'
 import { formatSize } from '../../components/ActionBar'
 import type { DiskSegment } from '../../components/DiskMeter'
 import { Sheet } from '../../ui/Sheet'
+import { Spinner } from '../../ui/Spinner'
 import { useT, type Key } from '../../i18n'
 import { Icon } from '../../components/Icon'
 import { FileIcon } from '../files/FileIcon'
@@ -90,7 +91,7 @@ export function DiskBreakdownSheet({ segment, onClose }: { segment: DiskSegment;
     >
       {pending && (
         <div className={data ? `${styles.status} ${styles.compact}` : styles.status} role="status">
-          {!gaveUp && <span className={styles.spinner} aria-hidden />}{' '}
+          {!gaveUp && <Spinner size="md" track className={styles.spinner} />}{' '}
           {gaveUp ? t('stats.disk.later') : load.status !== 'ready' ? t('common.loading') : data ? t('stats.disk.updating') : t('stats.disk.counting')}
         </div>
       )}

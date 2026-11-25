@@ -319,22 +319,19 @@ func (s *Sessions) RevokeUser(ctx context.Context, userID int64, keep string) er
 	return err
 }
 
-func secure(r *http.Request) bool {
-	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-}
-
-// SetCookie writes the session cookie.
-func SetCookie(w http.ResponseWriter, r *http.Request, token string) {
+// SetCookie writes the session cookie, Secure when n says the browser came
+// over HTTPS (Network.Secure).
+func SetCookie(w http.ResponseWriter, r *http.Request, n *Network, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: CookieName, Value: token, Path: "/",
 		MaxAge: int(sessionTTL / time.Second), HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: secure(r),
+		SameSite: http.SameSiteLaxMode, Secure: n.Secure(r),
 	})
 }
 
-func ClearCookie(w http.ResponseWriter, r *http.Request) {
+func ClearCookie(w http.ResponseWriter, r *http.Request, n *Network) {
 	http.SetCookie(w, &http.Cookie{
 		Name: CookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: secure(r),
+		SameSite: http.SameSiteLaxMode, Secure: n.Secure(r),
 	})
 }

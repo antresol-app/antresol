@@ -2,6 +2,7 @@
 // then dates and location, the library item and download the file belongs to,
 // and for media the codecs, resolution, duration and tracks.
 import { IconButton } from '../../ui/IconButton'
+import { Spinner } from '../../ui/Spinner'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { FileEntry, FileProbe, FileStat } from '../../api/types'
@@ -144,7 +145,7 @@ function sizeOf(e: FileEntry, stat?: FileStat, gaveUp?: boolean): ReactNode {
   if (stat?.dirSizePending)
     return (
       <span className={styles.pending}>
-        <span className={styles.spinner} aria-hidden /> {t('files.info.counting')}
+        <Spinner className={styles.spinner} /> {t('files.info.counting')}
       </span>
     )
   return '—'

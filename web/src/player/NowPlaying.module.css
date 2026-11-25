@@ -309,46 +309,13 @@ a.artist:hover {
   gap: 10px;
   color: rgba(255, 255, 255, 0.62);
 }
-.volume input {
+/* the kit's Slider (ui/Slider), here with a thicker track, which does not
+   grow under the pointer, and a 28 pt strip */
+.volume .range {
   flex: 1;
   height: 28px;
-  margin: 0;
-  background: none;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-.volume input::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.92) var(--fill), rgba(255, 255, 255, 0.22) var(--fill));
-}
-.volume input::-moz-range-track {
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.92) var(--fill), rgba(255, 255, 255, 0.22) var(--fill));
-}
-.volume input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -4px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-}
-.volume input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-}
-.volume input:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 4px;
-  border-radius: 4px;
+  --slider-track-h: 6px;
+  --slider-track-h-active: 6px;
 }
 
 .bottom {

@@ -1,6 +1,6 @@
 .overlay {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   pointer-events: none;
 }
 .center {

@@ -1,7 +1,7 @@
 import { Blob as NodeBlob } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCK_PATH, OFFLINE_CACHE } from '../saved'
-import { activate, api, ASSETS_CACHE, install, media, NAVIGATE_TIMEOUT_MS, navigate, resetSWForTests, routeOf, savedChanged, shell } from '../sw'
+import { activate, api, ASSETS_CACHE, install, keepPdfReader, media, NAVIGATE_TIMEOUT_MS, navigate, resetSWForTests, routeOf, savedChanged, shell } from '../sw'
 import { FakeCaches } from './fakeCaches'
 
 const ORIGIN = 'http://vault.test'
@@ -141,6 +141,59 @@ describe('service worker handlers', () => {
     delete self2.__VAULT_ON_DEMAND
   })
 
+  describe('the PDF reader of a saved PDF', () => {
+    const self2 = self_ as typeof self_ & { __VAULT_PDF_READER?: string[] }
+    const READER = ['/assets/pdfjs-2.js', '/assets/pdf.worker.min-1.mjs']
+    let fetched: string[]
+    const savePdf = async (type = 'application/pdf') =>
+      (await caches.open(OFFLINE_CACHE)).put('/api/stream/9', new Response('%PDF', { headers: { 'Content-Type': type } }))
+
+    beforeEach(async () => {
+      fetched = []
+      self2.__VAULT_PDF_READER = READER
+      net = async (url) => {
+        fetched.push(new URL(url).pathname)
+        return new Response('js')
+      }
+      // a device from before the update: the worker's file is kept, the pdf.js chunk it knew had another name
+      const files = await caches.open(ASSETS_CACHE)
+      await files.put('/assets/pdf.worker.min-1.mjs', new Response('w'))
+      await files.put('/assets/PdfReader-old.js', new Response('old reader with pdf.js inside'))
+    })
+    afterEach(() => delete self2.__VAULT_PDF_READER)
+
+    it('is fetched when a PDF is saved and a file of it is not kept; only that file', async () => {
+      await savePdf()
+      await keepPdfReader()
+      expect(fetched).toEqual(['/assets/pdfjs-2.js'])
+      expect(await (await caches.open(ASSETS_CACHE)).match('/assets/pdfjs-2.js')).toBeDefined()
+      fetched.length = 0
+      await keepPdfReader() // all kept now: nothing to do
+      expect(fetched).toEqual([])
+    })
+
+    it('is not fetched when no PDF is saved, or the saved items are locked', async () => {
+      await keepPdfReader()
+      await savePdf('application/epub+zip')
+      await keepPdfReader()
+      expect(fetched).toEqual([])
+      await savePdf()
+      await (await caches.open(OFFLINE_CACHE)).put(LOCK_PATH, new Response(''))
+      await savedChanged()
+      await keepPdfReader()
+      expect(fetched).toEqual([])
+    })
+
+    it('keeps nothing half-way when the network fails', async () => {
+      await savePdf()
+      net = async () => {
+        throw new TypeError('Failed to fetch')
+      }
+      await expect(keepPdfReader()).rejects.toThrow()
+      expect(await (await caches.open(ASSETS_CACHE)).match('/assets/pdfjs-2.js')).toBeUndefined()
+    })
+  })
+
   it('a built file not kept yet is fetched once and then served from the cache', async () => {
     const req = new Request(`${ORIGIN}/assets/app-1.js`)
     expect(await (await shell(req)).text()).toBe('js')
@@ -186,6 +239,18 @@ describe('service worker handlers', () => {
     expect(res.status).toBe(206)
     expect(res.headers.get('Content-Range')).toBe('bytes 500-999/1000')
     expect(res.headers.get('X-Content-Duration')).toBe('20')
+  })
+
+  it('a saved file is found though the server varies on Accept-Language and the request carries the browser\'s', async () => {
+    await (await caches.open(OFFLINE_CACHE)).put(
+      '/api/stream/12',
+      new Response('pdf', { headers: { 'Content-Type': 'application/pdf', Vary: 'Accept-Language' } }),
+    )
+    net = async () => {
+      throw new TypeError('Failed to fetch')
+    }
+    const res = await media(new Request(`${ORIGIN}/api/stream/12`, { headers: { 'Accept-Language': 'ru-RU' } }))
+    expect(await res.text()).toBe('pdf')
   })
 
   it('while locked nothing saved is served (the list is empty)', async () => {

@@ -110,6 +110,47 @@ func (c *conv) keepVisible(items []library.Item) ([]library.Item, error) {
 // searchLimit bounds the matches /Items?searchTerm filters and pages.
 const searchLimit = 200
 
+// pickKinds are the kinds a list covers: those of includeItemTypes, def
+// when it names none.
+func pickKinds(include map[string]bool, def ...string) []string {
+	if len(include) == 0 {
+		return def
+	}
+	var out []string
+	for _, k := range []string{library.KindMovie, library.KindSeries, library.KindSeason, library.KindEpisode} {
+		if include[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// listKinds are the kinds /Items lists of the whole library or of a view
+// (parentId, "" for the library); ok is false when parentId names none.
+func listKinds(r *http.Request, include map[string]bool, recursive bool) (ks []string, ok bool) {
+	p := qv(r, "parentId")
+	if p == "" {
+		return pickKinds(include, library.KindMovie, library.KindSeries), true
+	}
+	k, id, ok := ParseID(p)
+	if !ok || k != kindView {
+		return nil, false
+	}
+	vk := viewKinds(id, recursive)
+	if len(vk) == 0 {
+		return nil, false
+	}
+	if len(include) == 0 {
+		return vk[:1], true
+	}
+	for _, k := range pickKinds(include) {
+		if slices.Contains(vk, k) {
+			ks = append(ks, k)
+		}
+	}
+	return ks, true
+}
+
 // collect gathers the candidates of /Items: by ids, by search, under a
 // parent (a view, a series, a season) or the whole library. ordered: the
 // order is meaningful (ids, children) when no sortBy is given.
@@ -119,18 +160,6 @@ func (c *conv) collect(r *http.Request) (items []library.Item, ordered bool, err
 		return nil, false, nil
 	}
 	recursive := qBool(r, "recursive", false) || qBool(r, "isRecursive", false)
-	pick := func(def ...string) []string {
-		if len(include) == 0 {
-			return def
-		}
-		var out []string
-		for _, k := range []string{library.KindMovie, library.KindSeries, library.KindSeason, library.KindEpisode} {
-			if include[k] {
-				out = append(out, k)
-			}
-		}
-		return out
-	}
 
 	if ids := qList(r, "ids"); len(ids) > 0 {
 		for _, v := range ids {
@@ -152,7 +181,7 @@ func (c *conv) collect(r *http.Request) (items []library.Item, ordered bool, err
 
 	if term := strings.TrimSpace(qv(r, "searchTerm")); term != "" {
 		var ks []string
-		for _, k := range pick(library.KindMovie, library.KindSeries) {
+		for _, k := range pickKinds(include, library.KindMovie, library.KindSeries) {
 			if k == library.KindMovie || k == library.KindSeries {
 				ks = append(ks, k)
 			}
@@ -161,38 +190,17 @@ func (c *conv) collect(r *http.Request) (items []library.Item, ordered bool, err
 		return items, true, err
 	}
 
-	var ks []string
-	if p := qv(r, "parentId"); p != "" {
-		k, id, ok := ParseID(p)
-		switch {
-		case !ok:
-			return nil, false, nil
-		case k == kindView:
-			vk := viewKinds(id, recursive)
-			if len(vk) == 0 {
-				return nil, false, nil
-			}
-			if len(include) == 0 {
-				ks = vk[:1]
-			} else {
-				for _, k := range pick() {
-					if slices.Contains(vk, k) {
-						ks = append(ks, k)
-					}
-				}
-			}
-		case k == kindItem:
-			parent, ok, err := c.visibleItem(id)
-			if err != nil || !ok {
-				return nil, false, err
-			}
-			items, err := c.descendants(parent, recursive)
-			return items, true, err
-		default:
-			return nil, false, nil
+	if k, id, ok := ParseID(qv(r, "parentId")); ok && k == kindItem {
+		parent, ok, err := c.visibleItem(id)
+		if err != nil || !ok {
+			return nil, false, err
 		}
-	} else {
-		ks = pick(library.KindMovie, library.KindSeries)
+		items, err := c.descendants(parent, recursive)
+		return items, true, err
+	}
+	ks, ok := listKinds(r, include, recursive)
+	if !ok {
+		return nil, false, nil
 	}
 	for _, k := range ks {
 		got, err := c.listKind(k, "title", 0)
@@ -251,6 +259,11 @@ func (c *conv) filter(r *http.Request, items []library.Item) ([]library.Item, er
 	for _, y := range qList(r, "years") {
 		if n, err := strconv.Atoi(y); err == nil {
 			years[n] = true
+		}
+	}
+	if flags["isplayed"] || flags["isunplayed"] || flags["isresumable"] {
+		if err := c.prefetchUserData(items); err != nil {
+			return nil, err
 		}
 	}
 	out := items[:0:0]
@@ -343,6 +356,9 @@ func (c *conv) sortItems(r *http.Request, items []library.Item, ordered bool) er
 	played := map[int64]int64{}
 	for _, b := range by {
 		if strings.EqualFold(b, "DatePlayed") {
+			if err := c.prefetchProgress(items); err != nil {
+				return err
+			}
 			for _, it := range items {
 				e, err := c.entry(it.ID)
 				if err != nil {
@@ -354,14 +370,23 @@ func (c *conv) sortItems(r *http.Request, items []library.Item, ordered bool) er
 			}
 		}
 	}
-	cmp := func(a, b library.Item, key string) int {
+	// the name key is made once per item, not twice per comparison
+	type row struct {
+		it  library.Item
+		key string
+	}
+	rows := make([]row, len(items))
+	for i, it := range items {
+		rows[i] = row{it, sortKey(it)}
+	}
+	cmp := func(a, b row, key string) int {
 		switch strings.ToLower(key) {
 		case "datecreated":
-			return a.AddedAt.Compare(b.AddedAt)
+			return a.it.AddedAt.Compare(b.it.AddedAt)
 		case "productionyear", "premieredate":
-			return a.Year - b.Year
+			return a.it.Year - b.it.Year
 		case "dateplayed":
-			switch x, y := played[a.ID], played[b.ID]; {
+			switch x, y := played[a.it.ID], played[b.it.ID]; {
 			case x < y:
 				return -1
 			case x > y:
@@ -369,11 +394,11 @@ func (c *conv) sortItems(r *http.Request, items []library.Item, ordered bool) er
 			}
 			return 0
 		}
-		return strings.Compare(sortKey(a), sortKey(b))
+		return strings.Compare(a.key, b.key)
 	}
-	sort.SliceStable(items, func(i, j int) bool {
+	sort.SliceStable(rows, func(i, j int) bool {
 		for k, key := range by {
-			n := cmp(items[i], items[j], key)
+			n := cmp(rows[i], rows[j], key)
 			if desc(k) {
 				n = -n
 			}
@@ -381,8 +406,11 @@ func (c *conv) sortItems(r *http.Request, items []library.Item, ordered bool) er
 				return n < 0
 			}
 		}
-		return sortKey(items[i]) < sortKey(items[j])
+		return rows[i].key < rows[j].key
 	})
+	for i, r := range rows {
+		items[i] = r.it
+	}
 	return nil
 }
 
@@ -403,6 +431,11 @@ func page[T any](r *http.Request, items []T) ([]T, int) {
 func (s *Server) result(w http.ResponseWriter, r *http.Request, c *conv, items []library.Item) {
 	total := len(items)
 	pg, start := page(r, items)
+	s.send(w, r, c, pg, total, start)
+}
+
+// send converts one page of a list of total items, from index start.
+func (s *Server) send(w http.ResponseWriter, r *http.Request, c *conv, pg []library.Item, total, start int) {
 	out, err := c.dtos(pg)
 	if err != nil {
 		s.internal(w, r, "items", err)
@@ -411,10 +444,78 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, c *conv, items [
 	writeJSON(w, QueryResult[BaseItemDto]{Items: out, TotalRecordCount: total, StartIndex: start})
 }
 
+// plainNameList says whether /Items asks for the commonest list: films
+// and/or series of the library or a view by name, ascending, with no
+// filter that needs an item's own data (ids, search, a parent item,
+// genres, years, played, favourite, folder flags). A sort key the sort
+// does not know sorts by name too (sortItems), so any other key than
+// date or random is the name.
+func plainNameList(r *http.Request) bool {
+	if qv(r, "ids") != "" || strings.TrimSpace(qv(r, "searchTerm")) != "" ||
+		qv(r, "genres") != "" || qv(r, "years") != "" || qv(r, "isPlayed") != "" || qBool(r, "isFavorite", false) {
+		return false
+	}
+	if k, _, ok := ParseID(qv(r, "parentId")); ok && k == kindItem {
+		return false
+	}
+	if len(qList(r, "filters")) > 0 {
+		return false
+	}
+	for _, o := range qList(r, "sortOrder") {
+		if strings.EqualFold(o, "Descending") {
+			return false
+		}
+	}
+	for _, b := range qList(r, "sortBy") {
+		switch strings.ToLower(b) {
+		case "random", "datecreated", "productionyear", "premieredate", "dateplayed":
+			return false
+		}
+	}
+	return true
+}
+
+// sqlPage serves a plainNameList from one paged query instead of loading,
+// filtering and sorting every film and series of the library for each page
+// a client asks for. ok is false when the list is not of that kind.
+func (c *conv) sqlPage(r *http.Request) (items []library.Item, total, start int, ok bool, err error) {
+	if !plainNameList(r) {
+		return nil, 0, 0, false, nil
+	}
+	include, named := typeSet(r, "includeItemTypes")
+	exclude, _ := typeSet(r, "excludeItemTypes")
+	if named && len(include) == 0 {
+		return nil, 0, 0, false, nil
+	}
+	ks, ok := listKinds(r, include, qBool(r, "recursive", false) || qBool(r, "isRecursive", false))
+	if !ok {
+		return nil, 0, 0, false, nil
+	}
+	ks = slices.DeleteFunc(ks, func(k string) bool { return exclude[k] })
+	q := library.ListQuery{Sort: "name", Limit: qInt(r, "limit", 0), Offset: max(qInt(r, "startIndex", 0), 0), MaxRating: c.limit}
+	switch {
+	case slices.Equal(ks, []string{library.KindMovie, library.KindSeries}):
+	case slices.Equal(ks, []string{library.KindMovie}) || slices.Equal(ks, []string{library.KindSeries}):
+		q.Kind = ks[0]
+	default:
+		return nil, 0, 0, false, nil // seasons and episodes: by number, visible by their series
+	}
+	items, total, err = c.s.Library.List(c.ctx, q)
+	return items, total, min(q.Offset, total), true, err
+}
+
 // listItems serves /Items and /Users/{u}/Items. TotalRecordCount counts
 // every visible item after all filters, before the page.
 func (s *Server) listItems(w http.ResponseWriter, r *http.Request) {
 	c := s.conv(r.Context(), userOf(r), fieldsOf(r))
+	if items, total, start, ok, err := c.sqlPage(r); ok || err != nil {
+		if err != nil {
+			s.internal(w, r, "items", err)
+			return
+		}
+		s.send(w, r, c, items, total, start)
+		return
+	}
 	items, ordered, err := c.collect(r)
 	if err == nil {
 		items, err = c.keepVisible(items)

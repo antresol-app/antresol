@@ -232,9 +232,9 @@ func (a *channelsAPI) iptvExternals(r *http.Request, u auth.User, tok string, fr
 // redirectStream answers a 302 to stream n of external channel {id} of
 // m (404 when the viewer's set does not have it).
 func redirectStream(w http.ResponseWriter, r *http.Request, m map[int64]iptv.ExtChannel, n int) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id, valid := urlID(r, "id")
 	x, ok := m[id]
-	if err != nil || !ok || n < 0 || n >= len(x.Streams) {
+	if !valid || !ok || n < 0 || n >= len(x.Streams) {
 		writeErr(w, r, http.StatusNotFound, "Канал не найден")
 		return
 	}
@@ -261,7 +261,7 @@ func (a *channelsAPI) iptvExt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := a.extFor(r, u, chi.URLParam(r, "token"))
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id, _ := urlID(r, "id")
 	if _, ok := m[id]; !ok {
 		writeErr(w, r, http.StatusForbidden, "Канал не найден")
 		return

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { annotationsExportUrl, downloadUrl } from '../api/client'
 import type { Annotation, AnnotationColor, BookDetail } from '../api/types'
 import { Button, ButtonLink } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import { FamilyMarks, ReturnPill } from '../components/FamilyMarks'
 import type { FamilyPlace } from '../player/familyMarks'
@@ -13,6 +14,7 @@ import { useIsCompact, useReducedMotion } from '../state/useMediaQuery'
 import type { RelocateDetail, TocItem, View } from '../vendor/foliate/view.js'
 import * as CFI from '../vendor/foliate/epubcfi.js'
 import { NoteSheet, SelectionMenu } from './Annotations'
+import { openExternalLink } from './externalLink'
 import { HighlightLayer, readSelection, type ScreenRect, type TextSelection } from './highlights'
 import { marksOnPage } from './native/protocol'
 import { useAnnotations } from './useAnnotations'
@@ -181,6 +183,7 @@ export function EpubReader({ book, file, onExit }: BookReaderProps) {
         setChapter(d.tocItem?.label?.trim() ?? '')
         setCurrentHref(d.tocItem?.href)
       })
+      view.addEventListener('external-link', openExternalLink)
       view.addEventListener('load', (e) => {
         const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
         doc.addEventListener('keydown', onKey)
@@ -375,7 +378,7 @@ export function EpubReader({ book, file, onExit }: BookReaderProps) {
       />
       {status.status === 'loading' && (
         <div className={styles.overlay} aria-busy="true" aria-label={t('reader.openingBook')}>
-          <span className={styles.spinner} />
+          <Spinner className={styles.spinner} />
         </div>
       )}
       {status.status === 'error' && (

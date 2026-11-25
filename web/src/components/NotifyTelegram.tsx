@@ -7,7 +7,7 @@
 // kid's profile (its parent's settings never reach here) or where the server
 // has no bot.
 import { useEffect, useId, useRef, useState } from 'react'
-import { getNotifyPrefs, linkTelegram, unlinkTelegram, errorText } from '../api/client'
+import { getNotifyPrefs, linkTelegram, unlinkTelegram, errorText, safeHttpUrl } from '../api/client'
 import type { NotifyPrefs, TelegramLink } from '../api/types'
 import { useT } from '../i18n'
 import { Button, ButtonAnchor } from '../ui/Button'
@@ -123,7 +123,7 @@ export function NotifyTelegram({ prefs, onLinked, onToggle, onError, watchMs = W
         <>
           <p className={styles.hint}>{t('comp.notify.tg.steps')}</p>
           <div className={styles.row}>
-            <ButtonAnchor size="small" variant="primary" icon="send" href={link.url} target="_blank" rel="noopener noreferrer">
+            <ButtonAnchor size="small" variant="primary" icon="send" href={safeHttpUrl(link.url)} target="_blank" rel="noopener noreferrer">
               {t('comp.notify.tg.open')}
             </ButtonAnchor>
             <Button size="small" variant="secondary" onClick={() => setLink(null)}>

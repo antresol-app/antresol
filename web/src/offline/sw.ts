@@ -19,10 +19,10 @@
 //   first and falls back to the cache (also on 502/503/504).
 // - nothing else is touched: other origins, non-GET, /api/events (SSE),
 //   /rest/ (Subsonic) and /opds (readers) — and API calls of unsaved items.
-import { CHANGED_MESSAGE, LOCK_PATH, MEDIA_PATH, OFFLINE_CACHE, WIPED_MESSAGE } from './saved'
+import { CHANGED_MESSAGE, KEEP_PDF_MESSAGE, LOCK_PATH, MEDIA_PATH, OFFLINE_CACHE, WIPED_MESSAGE } from './saved'
 import { rangeResponse } from './range'
 
-declare const self: ServiceWorkerGlobalScope & { __VAULT_ASSETS?: string[]; __VAULT_ON_DEMAND?: string[]; __VAULT_BUILD?: string }
+declare const self: ServiceWorkerGlobalScope & { __VAULT_ASSETS?: string[]; __VAULT_ON_DEMAND?: string[]; __VAULT_PDF_READER?: string[]; __VAULT_BUILD?: string }
 
 export type Route = 'skip' | 'navigate' | 'shell' | 'media' | 'api'
 
@@ -146,11 +146,42 @@ export async function activate() {
   await self.clients.claim()
 }
 
+/** Whether a PDF is among the saved files (its copy answers `application/pdf`; nothing while the saved items are locked). */
+async function hasSavedPdf(): Promise<boolean> {
+  const cache = await caches.open(OFFLINE_CACHE)
+  for (const path of await readSaved()) {
+    if (!/^\/api\/stream\/\d+$/.test(path)) continue
+    if (((await cache.match(path))?.headers.get('Content-Type') ?? '').startsWith('application/pdf')) return true
+  }
+  return false
+}
+
+/**
+ * The PDF reader's big files (pdf.js, its worker: not precached) are fetched when a PDF is
+ * saved and one of them is not kept: a build that names others than the ones the device
+ * has (an update, a newer pdf.js) would leave a PDF saved before it unreadable offline.
+ */
+export async function keepPdfReader(): Promise<void> {
+  const files = await caches.open(ASSETS_CACHE)
+  const missing: string[] = []
+  for (const path of self.__VAULT_PDF_READER ?? []) if (!(await files.match(path))) missing.push(path)
+  if (missing.length === 0 || !(await hasSavedPdf())) return
+  const got = await Promise.all(
+    missing.map(async (path) => {
+      const res = await fetch(new Request(new URL(path, self.location.origin), { cache: 'reload' }))
+      if (!res.ok) throw new Error(`${path}: ${res.status}`)
+      return [path, res] as const
+    }),
+  )
+  await Promise.all(got.map(([path, res]) => files.put(path, res)))
+}
+
 /**
  * Drops the kept files that neither this build nor the one before names
- * (`list`: what it precaches and what it fetches on demand, hls.js). A
- * tab opened before the deploy runs the previous build: its lazy chunks stay
- * until the build after this one, by when it has reloaded.
+ * (`list`: what it precaches and what it fetches on demand: hls.js, mpegts.js,
+ * pdf.js and its worker). A tab opened before the deploy runs the previous
+ * build: its lazy chunks stay until the build after this one, by when it has
+ * reloaded.
  */
 export async function pruneAssets(list: string[], build: string) {
   const meta = await caches.open(META_CACHE)
@@ -207,7 +238,9 @@ export async function shell(req: Request): Promise<Response> {
 /** A saved file by its path (any query); `Range` gets 206 from the whole file. */
 export async function media(req: Request): Promise<Response> {
   const cache = await caches.open(OFFLINE_CACHE)
-  const hit = await cache.match(req, { ignoreSearch: true })
+  // ignoreVary: the server's `Vary: Accept-Language` never matches a request that carries the browser's own
+  // Accept-Language, and the copy was saved without it: the saved file would never be found
+  const hit = await cache.match(req, { ignoreSearch: true, ignoreVary: true })
   if (!hit) return fetch(req)
   const range = req.headers.get('Range')
   if (!range || hit.status !== 200) return hit
@@ -268,5 +301,7 @@ if (typeof ServiceWorkerGlobalScope !== 'undefined' && self instanceof ServiceWo
   self.addEventListener('message', (e) => {
     const type = (e.data as { type?: string } | null)?.type
     if (type === CHANGED_MESSAGE || type === WIPED_MESSAGE) e.waitUntil(savedChanged(type === WIPED_MESSAGE))
+    // best effort: without the network it is asked again at the next start
+    if (type === KEEP_PDF_MESSAGE) e.waitUntil(keepPdfReader().catch(() => undefined))
   })
 }

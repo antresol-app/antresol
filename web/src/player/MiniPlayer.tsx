@@ -8,7 +8,7 @@ import { PlayerBar, PlayerBarButton } from '../ui/PlayerBar'
 import { Toast } from '../ui/Toast'
 import { chapterAt } from './audio/audiobook'
 import { audio, BOOK_BACK_SEC, BOOK_FORWARD_SEC } from './audio/engine'
-import { useAudio, useAudioNotice } from './audio/useAudio'
+import { useAudioItem, useAudioNotice, useAudioSelect } from './audio/useAudio'
 import { useT } from '../i18n'
 
 export interface MiniPlayerProps {
@@ -16,11 +16,24 @@ export interface MiniPlayerProps {
   onExpand?: () => void
 }
 
+/** The bar's progress moves in this many steps. */
+const PROGRESS_STEPS = 400
+
 export function MiniPlayer({ onExpand }: MiniPlayerProps) {
   const t = useT()
-  const s = useAudio()
   const notice = useAudioNotice()
-  const it = s.queue[s.index]
+  // piece by piece: the bar must not render with every tick of the position, only when what it shows changes
+  const it = useAudioItem()
+  const book = useAudioSelect((s) => s.kind === 'audiobook')
+  const chapter = useAudioSelect((s) => {
+    const cur = s.queue[s.index]
+    return s.kind === 'audiobook' && cur ? chapterAt(cur, s.positionSec)?.chapter.title : undefined
+  })
+  const output = useAudioSelect((s) => s.output)
+  const playing = useAudioSelect((s) => s.playing)
+  const buffering = useAudioSelect((s) => s.buffering)
+  // in steps of a quarter of a percent: finer than the bar is wide
+  const steps = useAudioSelect((s) => (s.durationSec > 0 ? Math.round((s.positionSec / s.durationSec) * PROGRESS_STEPS) : 0))
   // Always mounted, so screen readers announce a new text (a live region
   // inserted together with its text often is not read).
   const live = (
@@ -29,10 +42,9 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
     </div>
   )
   if (!it) return live
-  const book = s.kind === 'audiobook'
-  const heard = (book && chapterAt(it, s.positionSec)?.chapter.title) || it.artist
+  const heard = chapter || it.artist
   // a remote output plays it: where, before the artist («Living room · M83»)
-  const second = s.output ? `${s.output} · ${heard}` : heard
+  const second = output ? `${output} · ${heard}` : heard
 
   return (
     <>
@@ -49,7 +61,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         fallbackIcon={book ? 'headphones' : 'music'}
         onOpen={onExpand}
         openLabel={t('player.mini.openAria', { title: it.title, second })}
-        progress={s.durationSec > 0 ? s.positionSec / s.durationSec : 0}
+        progress={steps / PROGRESS_STEPS}
       >
         {book ? (
           <PlayerBarButton icon="back15" label={t('player.skipBack', { n: BOOK_BACK_SEC })} onClick={() => audio.skip(-BOOK_BACK_SEC)} />
@@ -57,9 +69,9 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
           <PlayerBarButton icon="previous" label={t('player.previousTrack')} onClick={() => audio.previous()} />
         )}
         <PlayerBarButton
-          icon={s.playing ? 'pause' : 'play'}
-          label={s.playing ? t('common.pause') : t('player.playAction')}
-          busy={s.playing && s.buffering}
+          icon={playing ? 'pause' : 'play'}
+          label={playing ? t('common.pause') : t('player.playAction')}
+          busy={playing && buffering}
           prominent
           onClick={() => audio.toggle()}
         />

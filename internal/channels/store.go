@@ -151,6 +151,27 @@ const channelCols = `id, number, name, category, COALESCE(user_id,0), rules_json
 
 type rowScanner interface{ Scan(...any) error }
 
+// dbtx is what a *sql.DB and a *sql.Tx both are.
+type dbtx interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// setExtrasAt records when channel id's titles outside the library were
+// asked for last (0: asked again at the next build).
+func setExtrasAt(ctx context.Context, q dbtx, id, at int64) error {
+	_, err := q.ExecContext(ctx, `UPDATE channels SET extras_at_ms=? WHERE id=?`, at, id)
+	return err
+}
+
+// cutFrom drops channel ch's schedule from entry seq on (the builder
+// fills it again).
+func cutFrom(ctx context.Context, q dbtx, ch, seq int64) error {
+	_, err := q.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, ch, seq)
+	return err
+}
+
 func scanChannel(r rowScanner) (Channel, error) {
 	var c Channel
 	var rules string
@@ -284,20 +305,7 @@ func normalize(c *Channel) error {
 			return &Invalid{"Неизвестное возрастное ограничение"}
 		}
 	}
-	var genres []string
-	for _, g := range r.Genres {
-		if g = strings.TrimSpace(g); g != "" && !contains(genres, g) {
-			genres = append(genres, g)
-		}
-	}
-	r.Genres = genres
-	var not []string
-	for _, g := range r.NotGenres {
-		if g = strings.TrimSpace(g); g != "" && !contains(not, g) {
-			not = append(not, g)
-		}
-	}
-	r.NotGenres = not
+	r.Genres, r.NotGenres = dedupe(r.Genres), dedupe(r.NotGenres)
 	r.Countries = cleanList(r.Countries, strings.ToUpper, 40)
 	r.Languages = cleanList(r.Languages, strings.ToLower, 40)
 	r.Keywords = cleanList(r.Keywords, strings.ToLower, 40)
@@ -325,6 +333,23 @@ func cleanList(list []string, norm func(string) string, max int) []string {
 		}
 	}
 	return out
+}
+
+// nullIf0 is v for an SQL argument, NULL when it is the zero value.
+func nullIf0[T comparable](v T) any {
+	var zero T
+	if v == zero {
+		return nil
+	}
+	return v
+}
+
+// clipRunes is s cut to n runes, tail after a cut.
+func clipRunes(s string, n int, tail string) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + tail
+	}
+	return s
 }
 
 func contains[T comparable](s []T, v T) bool {
@@ -382,14 +407,6 @@ func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 		c.Seed = rand.Int64N(1<<53) + 1
 	}
 	rules, _ := json.Marshal(c.Rules)
-	var auto any
-	if c.AutoKey != "" {
-		auto = c.AutoKey
-	}
-	var user any
-	if c.UserID != 0 {
-		user = c.UserID
-	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return c, err
@@ -419,7 +436,7 @@ func (s *Store) Create(ctx context.Context, c Channel) (Channel, error) {
 	}
 	now := s.now().UTC().Format(time.RFC3339)
 	res, err := tx.ExecContext(ctx, `INSERT INTO channels (number, name, category, user_id, rules_json, auto_key, enabled, edited, seed, created_at, updated_at, number_manual)
-	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, c.Number, c.Name, c.Category, user, string(rules), auto, c.Enabled, c.Edited, c.Seed, now, now, c.NumberManual)
+	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, c.Number, c.Name, c.Category, nullIf0(c.UserID), string(rules), nullIf0(c.AutoKey), c.Enabled, c.Edited, c.Seed, now, now, c.NumberManual)
 	if err != nil {
 		if isUnique(err, "number") {
 			return c, ErrNumberTaken
@@ -464,10 +481,6 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 	c.AutoKey, c.Seed = old.AutoKey, old.Seed
 	rules, _ := json.Marshal(c.Rules)
 	oldRules, _ := json.Marshal(old.Rules)
-	var user any
-	if c.UserID != 0 {
-		user = c.UserID
-	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return c, err
@@ -485,7 +498,7 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 		place = p
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE channels SET number=?, name=?, category=?, user_id=?, rules_json=?, enabled=?, edited=?, updated_at=?, number_manual=? WHERE id=?`,
-		c.Number, c.Name, c.Category, user, string(rules), c.Enabled, c.Edited, s.now().UTC().Format(time.RFC3339), c.NumberManual, c.ID)
+		c.Number, c.Name, c.Category, nullIf0(c.UserID), string(rules), c.Enabled, c.Edited, s.now().UTC().Format(time.RFC3339), c.NumberManual, c.ID)
 	if err != nil {
 		if isUnique(err, "number") {
 			return c, ErrNumberTaken
@@ -495,19 +508,17 @@ func (s *Store) Update(ctx context.Context, c Channel) (Channel, error) {
 	if err := s.renumbered(ctx, tx, &c, place); err != nil {
 		return c, err
 	}
-	if err := tx.Commit(); err != nil {
-		return c, err
-	}
 	if string(rules) != string(oldRules) {
-		// other rules, other titles from outside the library
-		if _, err := s.DB.ExecContext(ctx, `UPDATE channels SET extras_at_ms=0 WHERE id=?`, c.ID); err != nil {
+		// other rules, other titles from outside the library: saved or
+		// cut together, or a retry would see the rules as they are
+		if err := setExtrasAt(ctx, tx, c.ID, 0); err != nil {
 			return c, err
 		}
-		if err := s.CutAfterCurrent(ctx, c.ID); err != nil {
+		if err := cutAfterCurrent(ctx, tx, s.now(), c.ID); err != nil {
 			return c, err
 		}
 	}
-	return c, nil
+	return c, tx.Commit()
 }
 
 // Delete removes a channel with its schedule, cursors, favourites, last-channel
@@ -578,9 +589,12 @@ func (s *Store) SetLogo(ctx context.Context, id, version int64, auto int) error 
 // later parts stay: a movie's next file, an episode's piece after its
 // cut intro).
 func (s *Store) CutAfterCurrent(ctx context.Context, id int64) error {
-	now := s.now()
+	return cutAfterCurrent(ctx, s.DB, s.now(), id)
+}
+
+func cutAfterCurrent(ctx context.Context, q dbtx, now time.Time, id int64) error {
 	from := ms(now)
-	cur, err := s.At(ctx, id, now)
+	cur, err := entryAt(ctx, q, id, now)
 	switch {
 	case errors.Is(err, ErrNothing):
 		return nil
@@ -588,7 +602,7 @@ func (s *Store) CutAfterCurrent(ctx context.Context, id int64) error {
 		return err
 	}
 	if !cur.Start.After(now) {
-		rows, err := s.DB.QueryContext(ctx, `SELECT `+entryCols+` FROM channel_playout WHERE channel_id=? AND seq > ? ORDER BY seq LIMIT 16`, id, cur.Seq)
+		rows, err := q.QueryContext(ctx, `SELECT `+entryCols+` FROM channel_playout WHERE channel_id=? AND seq > ? ORDER BY seq LIMIT 16`, id, cur.Seq)
 		if err != nil {
 			return err
 		}
@@ -610,6 +624,6 @@ func (s *Store) CutAfterCurrent(ctx context.Context, id int64) error {
 		}
 		from = max(from, ms(prev.End)-1) // rows starting at prev's end or later go
 	}
-	_, err = s.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND start_ms > ?`, id, from)
+	_, err = q.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND start_ms > ?`, id, from)
 	return err
 }

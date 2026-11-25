@@ -3,12 +3,10 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/extsvc"
 	"github.com/go-chi/chi/v5"
 )
@@ -37,36 +35,22 @@ func (s externalStored) choice() extsvc.Choice {
 	return c
 }
 
-func loadExternal(ctx context.Context, db *sql.DB) (externalStored, error) {
+func loadExternal(ctx context.Context, conn *sql.DB) (externalStored, error) {
 	var out externalStored
-	var raw string
-	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, externalKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return out, nil
-	}
-	if err != nil {
-		return out, err
-	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return externalStored{}, fmt.Errorf("settings %s: %w", externalKey, err)
+	if _, err := db.GetJSON(ctx, conn, externalKey, &out); err != nil {
+		return externalStored{}, err
 	}
 	return out, nil
 }
 
-func saveExternal(ctx context.Context, db *sql.DB, s externalStored) error {
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, externalKey, string(raw))
-	return err
+func saveExternal(ctx context.Context, conn *sql.DB, s externalStored) error {
+	return db.PutJSON(ctx, conn, externalKey, s)
 }
 
 // LoadExternalChoice is the stored choice of «Внешние сервисы» (main
 // applies it to the switches at startup).
-func LoadExternalChoice(ctx context.Context, db *sql.DB) (extsvc.Choice, error) {
-	s, err := loadExternal(ctx, db)
+func LoadExternalChoice(ctx context.Context, conn *sql.DB) (extsvc.Choice, error) {
+	s, err := loadExternal(ctx, conn)
 	return s.choice(), err
 }
 

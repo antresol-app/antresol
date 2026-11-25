@@ -118,12 +118,7 @@ func scanFranchise(r rowScanner) (Franchise, error) {
 	return f, nil
 }
 
-// franchiseQuerier is a *sql.DB or a *sql.Tx.
-type franchiseQuerier interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-}
-
-func readFranchises(ctx context.Context, q franchiseQuerier) ([]Franchise, error) {
+func readFranchises(ctx context.Context, q dbtx) ([]Franchise, error) {
 	rows, err := q.QueryContext(ctx, `SELECT `+franchiseCols+` FROM franchises ORDER BY name, key`)
 	if err != nil {
 		return nil, err

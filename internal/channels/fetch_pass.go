@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -148,7 +149,7 @@ func (s *Service) leaveOrder(ctx context.Context, live map[int64]Channel) error 
 		return err
 	}
 	for _, id := range gone {
-		if _, err := s.Store.DB.ExecContext(ctx, `UPDATE channel_fetch SET pos=-1 WHERE channel_id=?`, id); err != nil {
+		if err := unqueueFetch(ctx, s.Store.DB, id); err != nil {
 			return err
 		}
 		// a channel that stopped fetching (switched off, its rules
@@ -203,13 +204,12 @@ func (s *Service) addDrops(ctx context.Context, keys []string) error {
 			old = append(old, k)
 		}
 	}
-	b, _ := json.Marshal(old)
-	return s.Store.setSetting(ctx, settingFetchDrops, string(b))
+	return db.PutJSON(ctx, s.Store.DB, settingFetchDrops, old)
 }
 
 func (s *Service) drops(ctx context.Context) []string {
 	var out []string
-	if v, ok := s.Store.setting(ctx, s.Store.DB, settingFetchDrops); ok {
+	if v, ok, _ := db.GetSetting(ctx, s.Store.DB, settingFetchDrops); ok {
 		_ = json.Unmarshal([]byte(v), &out)
 	}
 	return out
@@ -282,7 +282,7 @@ func (s *Service) expand(ctx context.Context, c Channel) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE channel_fetch SET pos=-1 WHERE channel_id=?`, c.ID); err != nil {
+	if err := unqueueFetch(ctx, tx, c.ID); err != nil {
 		return err
 	}
 	for i, p := range progs {
@@ -439,8 +439,7 @@ func (s *Service) cutLate(ctx context.Context, c Channel) error {
 			if r.State == fetchRequested {
 				log.Printf("channels: channel %d: «%s» will not be on disk in time for %s; the slot goes to another programme", c.ID, r.Title, fromMs(p.start).Format(time.RFC3339))
 			}
-			_, err := s.Store.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, c.ID, p.seq)
-			return err
+			return cutFrom(ctx, s.Store.DB, c.ID, p.seq)
 		}
 	}
 	return nil
@@ -596,7 +595,7 @@ func (s *Service) fetchTalk(ctx context.Context) error {
 		return err
 	}
 	if len(drops) > 0 {
-		if _, err := s.Store.DB.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingFetchDrops); err != nil {
+		if err := db.DeleteSetting(ctx, s.Store.DB, settingFetchDrops); err != nil {
 			return err
 		}
 	}
@@ -611,12 +610,8 @@ func (s *Service) fetchTalk(ctx context.Context) error {
 		var err error
 		switch {
 		case st.State == FetchFailed:
-			msg := st.Error
-			if len([]rune(msg)) > 300 {
-				msg = string([]rune(msg)[:300])
-			}
 			_, err = s.Store.DB.ExecContext(ctx, `UPDATE channel_fetch SET state=?, failed_until_ms=?, error=? WHERE state=? AND kind=? AND tmdb_id=? AND season=? AND episode=?`,
-				append([]any{fetchFailed, ms(now.Add(fetchFailedFor)), msg, fetchRequested}, keyArgs(st.Key)...)...)
+				append([]any{fetchFailed, ms(now.Add(fetchFailedFor)), clipRunes(st.Error, 300, ""), fetchRequested}, keyArgs(st.Key)...)...)
 		default:
 			_, err = s.Store.DB.ExecContext(ctx, `UPDATE channel_fetch SET size_bytes=?, done_bytes=?, existing=existing OR ? WHERE state=? AND kind=? AND tmdb_id=? AND season=? AND episode=?`,
 				append([]any{max(st.Size, 0), max(st.Done, 0), st.Existing, fetchRequested}, keyArgs(st.Key)...)...)
@@ -816,7 +811,7 @@ func (s *Service) keptBy(ctx context.Context, r fetchRow) (string, error) {
 // not on disk at its slot) and builds it again.
 func (s *Service) fetchCutAt(ctx context.Context, ch, seq int64) error {
 	s.build.Lock()
-	_, err := s.Store.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, ch, seq)
+	err := cutFrom(ctx, s.Store.DB, ch, seq)
 	s.build.Unlock()
 	if err != nil {
 		return err
@@ -826,8 +821,8 @@ func (s *Service) fetchCutAt(ctx context.Context, ch, seq int64) error {
 
 // describeFetch is the Info of programmes not on disk (fetchItem ids).
 func (s *Service) describeFetch(ctx context.Context, ids []int64, out map[int64]Info) error {
-	for part := range chunks(ids, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
 		rows, err := fetchRows(ctx, s.Store.DB, `id IN `+in, args...)
 		if err != nil {
 			return err

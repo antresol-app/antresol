@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/release"
 )
@@ -122,12 +123,12 @@ func (r *Repo) upsertFile(ctx context.Context, x execer, itemID int64, f FileInp
 // marked folder marks its item at once (markFile).
 func (r *Repo) upsertFileID(ctx context.Context, x execer, itemID int64, f FileInput) (int64, error) {
 	var id int64
-	err := x.QueryRowContext(ctx, `INSERT INTO files(item_id,path,size,mtime) VALUES(?,?,?,?)
-	  ON CONFLICT(path) DO UPDATE SET item_id=excluded.item_id, size=excluded.size, mtime=excluded.mtime, missing_since=NULL,
+	err := x.QueryRowContext(ctx, `INSERT INTO files(item_id,path,size,mtime,scan_sig) VALUES(?,?,?,?,?)
+	  ON CONFLICT(path) DO UPDATE SET item_id=excluded.item_id, size=excluded.size, mtime=excluded.mtime, missing_since=NULL, scan_sig=excluded.scan_sig,
 	  probe_json  = CASE WHEN files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime THEN NULL ELSE files.probe_json END,
 	  duration_ms = CASE WHEN files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime THEN NULL ELSE files.duration_ms END
 	  RETURNING id`,
-		itemID, f.Path, f.Size, f.Mtime).Scan(&id)
+		itemID, f.Path, f.Size, f.Mtime, f.sig).Scan(&id)
 	if err != nil {
 		return id, err
 	}
@@ -231,7 +232,7 @@ func findMovie(ctx context.Context, tx *sql.Tx, m MovieInput, files []FileInput)
 	args = append(args, main...)
 	err := tx.QueryRowContext(ctx, `SELECT i.id FROM items i JOIN files f ON f.item_id=i.id JOIN item_titles t ON t.item_id=i.id
 	  WHERE i.kind='movie' AND substr(f.path,1,?)=? AND instr(substr(f.path,?+1), '/')=0
-	    AND (i.year=0 OR ?=0 OR i.year=?) AND t.norm IN (?`+strings.Repeat(",?", len(main)-1)+`) ORDER BY i.id LIMIT 1`, args...).Scan(&id)
+	    AND (i.year=0 OR ?=0 OR i.year=?) AND t.norm IN `+db.In(len(main))+` ORDER BY i.id LIMIT 1`, args...).Scan(&id)
 	return id, err
 }
 
@@ -320,7 +321,7 @@ func findSeries(ctx context.Context, tx *sql.Tx, e EpisodeInput) (int64, error) 
 		return 0, sql.ErrNoRows
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT i.id, i.year, COALESCE(i.tmdb_id,0) FROM item_titles t JOIN items i ON i.id=t.item_id
-	  WHERE i.kind='series' AND t.norm IN (?`+strings.Repeat(",?", len(norms)-1)+`) ORDER BY i.id`, norms...)
+	  WHERE i.kind='series' AND t.norm IN `+db.In(len(norms))+` ORDER BY i.id`, norms...)
 	if err != nil {
 		return 0, err
 	}
@@ -462,21 +463,44 @@ func (r *Repo) Item(ctx context.Context, id int64) (Item, error) {
 	return it, err
 }
 
-func (r *Repo) queryItems(ctx context.Context, q string, args ...any) ([]Item, error) {
-	rows, err := r.db.QueryContext(ctx, q, args...)
+// queryRows runs q and scans each row with scan (nil when there are none).
+func queryRows[T any](ctx context.Context, db *sql.DB, scan func(scanner) (T, error), q string, args ...any) ([]T, error) {
+	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Item
+	var out []T
 	for rows.Next() {
-		it, err := scanItem(rows)
+		v, err := scan(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, it)
+		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// nonNil is s, or an empty list for nil (a JSON [] where null would be wrong).
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+func (r *Repo) queryItems(ctx context.Context, q string, args ...any) ([]Item, error) {
+	return queryRows(ctx, r.db, scanItem, q, args...)
+}
+
+// queryFiles is queryItems for a query that selects fileCols.
+func (r *Repo) queryFiles(ctx context.Context, q string, args ...any) ([]File, error) {
+	return queryRows(ctx, r.db, scanFile, q, args...)
+}
+
+// queryTracks is queryItems for a query that starts with trackSelect.
+func (r *Repo) queryTracks(ctx context.Context, q string, args ...any) ([]Track, error) {
+	return queryRows(ctx, r.db, scanTrack, q, args...)
 }
 
 // Children returns seasons of a series or episodes of a season, in order.
@@ -508,7 +532,8 @@ func allowedRatings(max string) (string, []any) {
 		` OR (i.kind='comic_volume' AND i.adult=0 AND COALESCE((SELECT ` + rp + ` FROM items p WHERE p.id=i.parent_id),'') IN ('',` + in + `)))`, args
 }
 
-// List returns a page of items and the total count for the filter.
+// List returns a page of items and the total count for the filter. Sort is
+// ListQuery's, and "name": the order the Jellyfin list gives by name.
 func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 	where := []string{"i.missing_since IS NULL"}
 	var args []any
@@ -544,6 +569,19 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 		order = "i.sort_title ASC, i.id ASC"
 	case "year":
 		order = "i.year DESC, i.sort_title ASC, i.id ASC"
+	case "name":
+		// the SortName of the Jellyfin list: films before series on a tie, an
+		// item without a sort_title (a title with no letters or digits) by
+		// its lower-cased title. Only a library with such an item sorts by
+		// the expression; the plain order walks the (kind, sort_title) index.
+		order = "i.sort_title ASC, i.kind ASC, i.id ASC"
+		var empty bool
+		if err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM items WHERE kind IN ('movie','series') AND sort_title='' AND missing_since IS NULL)`).Scan(&empty); err != nil {
+			return nil, 0, err
+		}
+		if empty {
+			order = "CASE WHEN i.sort_title<>'' THEN i.sort_title ELSE lower(i.title) END ASC, i.kind ASC, i.sort_title ASC, i.id ASC"
+		}
 	}
 	limit := q.Limit
 	if limit <= 0 {
@@ -568,22 +606,11 @@ func (r *Repo) List(ctx context.Context, q ListQuery) ([]Item, int, error) {
 	return items, total, err
 }
 
-// Search finds movies and series (only: no seasons, episodes, music or
-// books) by title, original title, any alias (item_titles: ё=е,
-// case-insensitive, substring) or full text (FTS5, prefix), else with a
-// typo or two (searchFuzzy). SearchKinds
-// searches other kinds.
-func (r *Repo) Search(ctx context.Context, text string, limit int) ([]Item, error) {
-	return r.SearchRated(ctx, text, limit, "")
-}
-
-// SearchRated is Search restricted to items within maxRating ("" = no limit).
-func (r *Repo) SearchRated(ctx context.Context, text string, limit int, maxRating string) ([]Item, error) {
-	return r.SearchKinds(ctx, text, []string{KindMovie, KindSeries}, limit, maxRating)
-}
-
-// SearchKinds is Search over the given item kinds (e.g. album, artist),
-// restricted to maxRating ("" = no limit). No kinds finds nothing.
+// SearchKinds finds items of the given kinds (e.g. movie and series: not
+// seasons, episodes, music or books) by title, original title, any alias
+// (item_titles: ё=е, case-insensitive, substring) or full text (FTS5,
+// prefix), else with a typo or two (searchFuzzy), restricted to maxRating
+// ("" = no limit). No kinds finds nothing.
 func (r *Repo) SearchKinds(ctx context.Context, text string, kinds []string, limit int, maxRating string) ([]Item, error) {
 	rate, rateArgs := "1", []any(nil)
 	if maxRating != "" {
@@ -652,7 +679,7 @@ func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSec
 	}
 	limitCase += " END"
 	secCase += " END"
-	kindIn := "i.kind IN (?" + strings.Repeat(",?", len(kindArgs)-1) + ")"
+	kindIn := "i.kind IN " + db.In(len(kindArgs))
 	args := append([]any{norm, norm + "%"}, kindArgs...)
 	args = append(args, "%"+norm+"%")
 	args = append(args, rateArgs...)
@@ -702,7 +729,7 @@ func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSec
 	fill, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM (
 	    SELECT iid, sec, ROW_NUMBER() OVER (PARTITION BY sec ORDER BY rk, iid) AS rn FROM (
 	      SELECT f.rowid AS iid, `+fillCase+` END AS sec, f.rank AS rk FROM items_fts f JOIN items i ON i.id=f.rowid`+joins+`
-	      WHERE items_fts MATCH ? AND i.kind IN (?`+strings.Repeat(",?", len(fillKinds)-1)+`) AND i.missing_since IS NULL AND `+rate+`)) g
+	      WHERE items_fts MATCH ? AND i.kind IN `+db.In(len(fillKinds))+` AND i.missing_since IS NULL AND `+rate+`)) g
 	  JOIN items i ON i.id=g.iid WHERE g.rn <= `+fillLimit+` END ORDER BY g.sec, g.rn`, fargs...)
 	if err != nil {
 		return nil, err
@@ -723,20 +750,7 @@ func (r *Repo) searchSections(ctx context.Context, text string, secs []SearchSec
 
 // FilesOf lists the files of an item.
 func (r *Repo) FilesOf(ctx context.Context, itemID int64) ([]File, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files WHERE item_id=? AND missing_since IS NULL ORDER BY path`, itemID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return r.queryFiles(ctx, `SELECT `+fileCols+` FROM files WHERE item_id=? AND missing_since IS NULL ORDER BY path`, itemID)
 }
 
 // FileByID returns one file.
@@ -769,11 +783,8 @@ const leafKinds = `('movie','episode','book','audiobook','comic_volume')`
 var parentKinds = []string{KindSeason, KindSeries, KindAlbum, KindArtist, KindComic}
 
 func (r *Repo) removeMissing(ctx context.Context, root string, seen map[string]bool) (int, error) {
-	prefix := filepath.Clean(root)
-	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
-		prefix += string(filepath.Separator)
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, path FROM files WHERE missing_since IS NULL`)
+	lo, hi := pathRange(root)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, path FROM files WHERE missing_since IS NULL AND path >= ? AND path < ?`, lo, hi)
 	if err != nil {
 		return 0, err
 	}
@@ -785,7 +796,7 @@ func (r *Repo) removeMissing(ctx context.Context, root string, seen map[string]b
 			rows.Close()
 			return 0, err
 		}
-		if strings.HasPrefix(p, prefix) && !seen[p] {
+		if !seen[p] {
 			gone = append(gone, id)
 		}
 	}
@@ -793,37 +804,61 @@ func (r *Repo) removeMissing(ctx context.Context, root string, seen map[string]b
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
+	if len(gone) == 0 {
+		return 0, r.tidy(ctx, false)
+	}
 	ts := now()
-	cutoff := time.Now().UTC().Add(-MissingGrace).Format(time.RFC3339)
 	err = r.inTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range gone {
 			if _, err := tx.ExecContext(ctx, `UPDATE files SET missing_since=? WHERE id=?`, ts, id); err != nil {
 				return err
 			}
 		}
-		if err := hideEmpty(ctx, tx, ts); err != nil {
-			return err
-		}
-		// purge what has been missing long enough (progress and watchlist go with it)
-		if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE missing_since IS NOT NULL AND missing_since < ?`, cutoff); err != nil {
-			return err
-		}
-		// (the files cascade took their tracks and chapters rows)
-		purge := []string{
-			`DELETE FROM items WHERE kind='track' AND NOT EXISTS (SELECT 1 FROM tracks t WHERE t.item_id=items.id)`,
-			`DELETE FROM items WHERE kind IN ` + leafKinds + ` AND NOT EXISTS (SELECT 1 FROM files WHERE item_id=items.id)`,
-		}
-		for _, k := range parentKinds {
-			purge = append(purge, `DELETE FROM items WHERE kind='`+k+`' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id=items.id)`)
-		}
-		for _, q := range purge {
-			if _, err := tx.ExecContext(ctx, q); err != nil {
-				return err
-			}
-		}
-		return nil
+		return tidyMissing(ctx, tx, ts)
 	})
 	return len(gone), err
+}
+
+// tidyMissing hides the items with nothing on disk and purges what has been
+// missing for MissingGrace (progress and watchlist go with it): a walk that
+// found something gone does it at once, one that found nothing only when
+// missing files have outlived the grace (tidy), the scan after a start
+// always (Scanner.tidy).
+func tidyMissing(ctx context.Context, tx *sql.Tx, ts string) error {
+	if err := hideEmpty(ctx, tx, ts); err != nil {
+		return err
+	}
+	cutoff := time.Now().UTC().Add(-MissingGrace).Format(time.RFC3339)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE missing_since IS NOT NULL AND missing_since < ?`, cutoff); err != nil {
+		return err
+	}
+	// (the files cascade took their tracks and chapters rows)
+	purge := []string{
+		`DELETE FROM items WHERE kind='track' AND NOT EXISTS (SELECT 1 FROM tracks t WHERE t.item_id=items.id)`,
+		`DELETE FROM items WHERE kind IN ` + leafKinds + ` AND NOT EXISTS (SELECT 1 FROM files WHERE item_id=items.id)`,
+	}
+	for _, k := range parentKinds {
+		purge = append(purge, `DELETE FROM items WHERE kind='`+k+`' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id=items.id)`)
+	}
+	for _, q := range purge {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tidy runs tidyMissing when missing files have outlived MissingGrace, or
+// when force says so.
+func (r *Repo) tidy(ctx context.Context, force bool) error {
+	if !force {
+		cutoff := time.Now().UTC().Add(-MissingGrace).Format(time.RFC3339)
+		var expired bool
+		if err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM files WHERE missing_since IS NOT NULL AND missing_since < ?)`, cutoff).Scan(&expired); err != nil || !expired {
+			return err
+		}
+	}
+	return r.inTx(ctx, func(tx *sql.Tx) error { return tidyMissing(ctx, tx, now()) })
 }
 
 // hideEmpty hides what has nothing on disk any more: leaves by their own
@@ -948,7 +983,7 @@ func (r *Repo) RecentSeriesOf(ctx context.Context, limit int, maxRating string, 
 // copies the audio codec onto the file's tracks rows.
 func (r *Repo) SetProbe(ctx context.Context, fileID int64, probeJSON string, durationMs int64) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE files SET probe_json=?, duration_ms=COALESCE(?, duration_ms) WHERE id=?`,
-		probeJSON, nullInt(durationMs), fileID)
+		nullStr(probeJSON), nullInt(durationMs), fileID) // no probe is NULL, never '' (files_unprobed)
 	if err != nil {
 		return err
 	}
@@ -985,21 +1020,8 @@ func (r *Repo) FilesWithoutProbe(ctx context.Context, limit int) ([]File, error)
 	if limit <= 0 {
 		limit = -1
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files WHERE (probe_json IS NULL OR probe_json='') AND missing_since IS NULL AND `+probeExtSQL+`
+	return r.queryFiles(ctx, `SELECT `+fileCols+` FROM files WHERE probe_json IS NULL AND missing_since IS NULL AND `+probeExtSQL+`
 	  ORDER BY item_id IN (SELECT id FROM items WHERE kind IN ('movie','episode')) DESC, id LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
 }
 
 // VideoFiles pages through the probed files of movies and episodes, the
@@ -1008,23 +1030,10 @@ func (r *Repo) VideoFiles(ctx context.Context, beforeID int64, limit int) ([]Fil
 	if limit <= 0 {
 		limit = -1
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files
+	return r.queryFiles(ctx, `SELECT `+fileCols+` FROM files
 		WHERE probe_json IS NOT NULL AND probe_json<>'' AND missing_since IS NULL
 		  AND item_id IN (SELECT id FROM items WHERE kind IN ('movie','episode'))
 		  AND (?=0 OR id<?) ORDER BY id DESC LIMIT ?`, beforeID, beforeID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
 }
 
 // FilesUnder lists files whose path is below dir (any depth).
@@ -1041,20 +1050,7 @@ func (r *Repo) filesUnder(ctx context.Context, dir, cols string) ([]File, error)
 	// [prefix, prefix with the separator bumped) is exactly "starts with prefix"
 	// under SQLite's bytewise BINARY collation, and uses the path index.
 	upper := prefix[:len(prefix)-1] + string(rune(filepath.Separator)+1)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+cols+` FROM files WHERE path >= ? AND path < ? AND missing_since IS NULL ORDER BY path`, prefix, upper)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return r.queryFiles(ctx, `SELECT `+cols+` FROM files WHERE path >= ? AND path < ? AND missing_since IS NULL ORDER BY path`, prefix, upper)
 }
 
 // FileByPath returns the file stored under an absolute path.
@@ -1077,59 +1073,59 @@ func (r *Repo) ItemByPath(ctx context.Context, path string) (Item, File, error) 
 }
 
 // ItemIDsByTMDB maps TMDB ids of one kind (movie or series) to the ids
-// of their top-level items, as ItemByTMDB would, in one query; ids not in
-// the library are left out.
+// of their top-level items, as ItemByTMDB would, one query for each 500
+// ids; ids not in the library are left out.
 func (r *Repo) ItemIDsByTMDB(ctx context.Context, kind string, tmdbIDs []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
-	if len(tmdbIDs) == 0 {
-		return out, nil
-	}
-	args := []any{kind}
-	for _, id := range tmdbIDs {
-		args = append(args, id)
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT tmdb_id, MIN(id) FROM items WHERE kind=? AND tmdb_id IN (?`+strings.Repeat(",?", len(tmdbIDs)-1)+`)
-	  AND parent_id IS NULL AND missing_since IS NULL GROUP BY tmdb_id`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var tmdb, id int64
-		if err := rows.Scan(&tmdb, &id); err != nil {
+	for part := range slices.Chunk(tmdbIDs, 500) {
+		rows, err := r.db.QueryContext(ctx, `SELECT tmdb_id, MIN(id) FROM items WHERE kind=? AND tmdb_id IN `+db.In(len(part))+`
+		  AND parent_id IS NULL AND missing_since IS NULL GROUP BY tmdb_id`, append([]any{kind}, db.Args(part)...)...)
+		if err != nil {
 			return nil, err
 		}
-		out[tmdb] = id
+		for rows.Next() {
+			var tmdb, id int64
+			if err := rows.Scan(&tmdb, &id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[tmdb] = id
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // EditionsByTMDB maps TMDB ids of one kind (movie or series) to all of
 // their top-level items (editions of one film are items of their own),
-// lowest id first, in one query; ids not in the library are left out.
+// lowest id first, one query for each 500 ids; ids not in the library are
+// left out.
 func (r *Repo) EditionsByTMDB(ctx context.Context, kind string, tmdbIDs []int64) (map[int64][]int64, error) {
 	out := map[int64][]int64{}
-	if len(tmdbIDs) == 0 {
-		return out, nil
-	}
-	args := []any{kind}
-	for _, id := range tmdbIDs {
-		args = append(args, id)
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT tmdb_id, id FROM items WHERE kind=? AND tmdb_id IN (?`+strings.Repeat(",?", len(tmdbIDs)-1)+`)
-	  AND parent_id IS NULL AND missing_since IS NULL ORDER BY tmdb_id, id`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var tmdb, id int64
-		if err := rows.Scan(&tmdb, &id); err != nil {
+	// each id once: a repeat across two chunks would list its editions twice
+	for part := range slices.Chunk(slices.Compact(slices.Sorted(slices.Values(tmdbIDs))), 500) {
+		rows, err := r.db.QueryContext(ctx, `SELECT tmdb_id, id FROM items WHERE kind=? AND tmdb_id IN `+db.In(len(part))+`
+		  AND parent_id IS NULL AND missing_since IS NULL ORDER BY tmdb_id, id`, append([]any{kind}, db.Args(part)...)...)
+		if err != nil {
 			return nil, err
 		}
-		out[tmdb] = append(out[tmdb], id)
+		for rows.Next() {
+			var tmdb, id int64
+			if err := rows.Scan(&tmdb, &id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[tmdb] = append(out[tmdb], id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // ItemsByIMDb returns the movies and series with this IMDb id (meta_json

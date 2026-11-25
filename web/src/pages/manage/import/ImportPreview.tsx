@@ -3,6 +3,7 @@
 // playlist. Each change is saved at once (PATCH); «Начать импорт» starts.
 import type { ImportJob, ImportJobPatch } from '../../../api/types'
 import { Button } from '../../../ui/Button'
+import { Checkbox } from '../../../ui/Checkbox'
 import { DiskMeter } from '../../../components/DiskMeter'
 import { Toggle } from '../../../ui/Toggle'
 import { getLanguage, t as tr, useT } from '../../../i18n'
@@ -63,7 +64,7 @@ export function ImportPreview({ job, downloads, onPatch, onStart, onCancel, busy
             title={t('import.preview.free', { gb: gb(job.disk.free) })}
             total={job.disk.total}
             free={job.disk.free}
-            segments={[{ id: 'used', label: t('import.preview.used'), bytes: Math.max(0, job.disk.total - job.disk.free), color: '#8e8e93' }]}
+            segments={[{ id: 'used', label: t('import.preview.used'), bytes: Math.max(0, job.disk.total - job.disk.free), color: 'var(--gray)' }]}
           />
           {tight && <p className={styles.tight}>{t('import.preview.tight')}</p>}
         </div>
@@ -92,21 +93,15 @@ export function ImportPreview({ job, downloads, onPatch, onStart, onCancel, busy
           <h3 className={m.groupTitle}>{t('common.playlists')}</h3>
           <ul className={m.group} aria-label={t('common.playlists')}>
             {job.playlists.map((p) => {
-              const id = `import-pl-${p.id}`
+              const on = p.readable && p.selected
+              const disabled = !p.readable || busy !== ''
+              const choose = (value: boolean) => onPatch({ playlists: { [String(p.id)]: value } })
               return (
                 <li key={p.id} className={`${m.row} ${p.readable ? '' : styles.unreadable}`}>
-                  <input
-                    id={id}
-                    type="checkbox"
-                    className={styles.checkbox}
-                    checked={p.readable && p.selected}
-                    disabled={!p.readable || busy !== ''}
-                    onChange={(e) => onPatch({ playlists: { [String(p.id)]: e.target.checked } })}
-                  />
-                  <div className={m.rowText}>
-                    <label htmlFor={id} className={m.rowLabel}>
-                      {p.name}
-                    </label>
+                  <Checkbox aria-label={p.name} checked={on} disabled={disabled} onChange={choose} />
+                  {/* the name and the count are the box's label too: a press on them chooses */}
+                  <div className={m.rowText} onClick={disabled ? undefined : () => choose(!on)}>
+                    <span className={`${m.rowLabel} ${styles.name}`}>{p.name}</span>
                     <p className={m.rowHint}>{p.readable ? t('import.songs', { count: p.songs }) : unreadableHint(job.service)}</p>
                   </div>
                 </li>

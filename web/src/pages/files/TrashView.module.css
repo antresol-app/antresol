@@ -10,7 +10,8 @@
   flex-direction: column;
   min-height: 100%;
   padding: 0 var(--s-2h) var(--s-2h);
-  font: 400 13px / 1 var(--font-text);
+  font: var(--t-footnote);
+  line-height: 1;
   letter-spacing: 0;
 }
 .table:focus-visible {
@@ -28,7 +29,8 @@
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--separator);
   color: var(--label-2);
-  font: 500 12px / 1 var(--font-text);
+  font: var(--t-caption);
+  line-height: 1;
 }
 .header > div {
   padding: 0 var(--s-2);
@@ -102,7 +104,8 @@
   border-radius: var(--r-md);
   background: var(--destructive-fill);
   color: var(--destructive-text);
-  font: 400 13px / 1.35 var(--font-text);
+  font: var(--t-footnote);
+  line-height: 1.35;
 }
 .empty {
   display: flex;
@@ -115,12 +118,13 @@
   color: var(--label-3);
 }
 .empty h2 {
-  font: 600 17px / 1.3 var(--font-text);
+  font: var(--t-headline);
   color: var(--label);
 }
 .empty p {
   max-width: 34ch;
-  font: 400 13px / 1.4 var(--font-text);
+  font: var(--t-footnote);
+  line-height: 1.4;
   color: var(--label-2);
 }
 
@@ -143,11 +147,13 @@
   padding: var(--s-2) var(--s-1) !important;
 }
 .compact .title {
-  font: 400 16px / 1.25 var(--font-text);
+  font: var(--t-callout);
+  line-height: 1.25;
   white-space: nowrap;
 }
 .sub {
-  font: 400 13px / 1.3 var(--font-text);
+  font: var(--t-footnote);
+  line-height: 1.3;
   color: var(--label-2);
   overflow: hidden;
   white-space: nowrap;

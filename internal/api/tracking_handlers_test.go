@@ -1057,6 +1057,49 @@ func TestOnDemandRefreshSharedByConcurrentRequests(t *testing.T) {
 	}
 }
 
+// TestOnDemandStaleEpisodesAreServedWhileTheyRefresh: an untracked title that
+// was read before is not waited for when its refresh is slow: the page gets
+// the stored list after onDemandStaleWait, the refresh goes on, and the next
+// visit has the new list. A title never read waits for its first list.
+func TestOnDemandStaleEpisodesAreServedWhileTheyRefresh(t *testing.T) {
+	e := newTrackEnv(t)
+	ctx := context.Background()
+	ti, err := e.svc.Store.EnsureTitle(ctx, "series", 55, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Store.ReplaceEpisodes(ctx, ti.ID, []tracking.Episode{{TitleID: ti.ID, Season: 1, Number: 1, Name: "Старая"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Store.SetRefreshed(ctx, ti.ID, "ended", time.Now().Add(-2*onDemandFresh)); err != nil {
+		t.Fatal(err)
+	}
+	old := onDemandStaleWait
+	onDemandStaleWait = 30 * time.Millisecond
+	t.Cleanup(func() { onDemandStaleWait = old })
+	e.sk.delay = 600 * time.Millisecond
+
+	count := func() int {
+		var out struct {
+			Episodes []json.RawMessage `json:"episodes"`
+		}
+		w := e.do("GET", "/api/tracking/series/55/episodes", "", e.admin)
+		if w.Code != 200 {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		json.Unmarshal(w.Body.Bytes(), &out)
+		return len(out.Episodes)
+	}
+	start := time.Now()
+	if n := count(); n != 1 || time.Since(start) > 400*time.Millisecond {
+		t.Fatalf("%d episodes after %v, want the stored one at once", n, time.Since(start))
+	}
+	eventually(t, "the refresh to end", func() bool { return e.titleRow(55).Refreshed.After(time.Now().Add(-time.Minute)) })
+	if n := count(); n != 2 {
+		t.Fatalf("%d episodes after the refresh, want 2", n)
+	}
+}
+
 // addonScan is an addon scanner of the tests: it counts its calls, says when
 // one starts, and blocks until released or its context ends.
 type addonScan struct {

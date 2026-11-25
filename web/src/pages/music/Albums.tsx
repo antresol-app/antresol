@@ -6,9 +6,11 @@ import { useSearchParams } from 'react-router'
 import { getAlbums } from '../../api/client'
 import type { AlbumSort, Card } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { RescanLink } from '../../components/RescanLink'
 import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { PosterGrid, PosterGridSkeleton } from '../../components/PosterGrid'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { SegmentedControl, type Segment } from '../../ui/SegmentedControl'
@@ -76,32 +78,25 @@ export function Albums() {
       )}
 
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('common.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('music.retry')}
-          </Button>
-        </div>
+        <LoadFailed title={t('common.loadFailed')} message={state.message} retry={t('music.retry')} onRetry={() => load()} />
       )}
 
-      {state.status === 'ready' && items.length === 0 && scope === 'mine' && <MineEmpty className={styles.empty} />}
+      {state.status === 'ready' && items.length === 0 && scope === 'mine' && <MineEmpty />}
 
       {state.status === 'ready' && items.length === 0 && scope !== 'mine' && (
-        <div className={styles.empty}>
-          <Icon name="music" size={48} strokeWidth={1.4} />
-          <h2>{t('music.emptyTitle')}</h2>
-          {user?.isAdmin ? (
-            <>
-              <p>{t('music.emptyHint')}</p>
-              <RescanLink variant="secondary" />
-              <EmptyStateActions scope="music" variant="secondary" />
-            </>
-          ) : (
-            <p>{t('music.emptySoon')}</p>
-          )}
-        </div>
+        <EmptyState
+          icon={<Icon name="music" size={48} strokeWidth={1.4} />}
+          title={t('music.emptyTitle')}
+          hint={user?.isAdmin ? t('music.emptyHint') : t('music.emptySoon')}
+          actions={
+            user?.isAdmin && (
+              <>
+                <RescanLink variant="secondary" />
+                <EmptyStateActions scope="music" variant="secondary" />
+              </>
+            )
+          }
+        />
       )}
 
       {state.status === 'ready' && items.length > 0 && (

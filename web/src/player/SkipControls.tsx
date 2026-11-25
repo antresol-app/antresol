@@ -8,6 +8,7 @@
 // the next episode by themselves (the end of a last episode or a film).
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import type { PlaySegment } from '../api/types'
+import { IconButton } from '../ui/IconButton'
 import { MenuHeading, MenuItem, Menu } from '../ui/Menu'
 import { Icon } from '../components/Icon'
 import { useT } from '../i18n'
@@ -218,9 +219,7 @@ export function SkipMenu({ kinds, value, onChange, onOpenChange }: SkipMenuProps
       className={styles.menu}
       onOpenChange={onOpenChange}
       trigger={(p) => (
-        <button {...p} type="button" className={styles.trigger} aria-label={label} title={label}>
-          <Icon name="next" size={22} />
-        </button>
+        <IconButton {...p} icon={<Icon name="next" size={22} />} label={label} variant="plain" className={styles.trigger} />
       )}
     >
       {() => (

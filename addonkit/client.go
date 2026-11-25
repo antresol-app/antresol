@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -228,15 +229,9 @@ func (c *Client) ItemByTMDB(ctx context.Context, kind string, tmdbID int64) (Ite
 // number of ids: they go in calls of at most 500.
 func (c *Client) ItemIDsByTMDB(ctx context.Context, kind string, ids []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
-	for len(ids) > 0 {
-		n := min(len(ids), maxTMDBIDs)
-		parts := make([]string, n)
-		for i, id := range ids[:n] {
-			parts[i] = strconv.FormatInt(id, 10)
-		}
-		ids = ids[n:]
+	for part := range slices.Chunk(ids, maxTMDBIDs) {
 		var m map[string]int64
-		if err := c.get(ctx, "/library/tmdb/"+url.PathEscape(kind)+query(url.Values{"ids": {strings.Join(parts, ",")}}), &m); err != nil {
+		if err := c.get(ctx, "/library/tmdb/"+url.PathEscape(kind)+query(url.Values{"ids": {joinIDs(part)}}), &m); err != nil {
 			return nil, err
 		}
 		for k, v := range m {
@@ -296,10 +291,8 @@ func joinIDs(ids []int64) string {
 // not in the answer. An unknown or a kid profile is a 400 *APIError.
 func (c *Client) Progress(ctx context.Context, userID int64, itemIDs []int64) (map[int64]ProgressEntry, error) {
 	out := map[int64]ProgressEntry{}
-	for len(itemIDs) > 0 {
-		n := min(len(itemIDs), maxTMDBIDs)
-		v := url.Values{"userId": {strconv.FormatInt(userID, 10)}, "items": {joinIDs(itemIDs[:n])}}
-		itemIDs = itemIDs[n:]
+	for part := range slices.Chunk(itemIDs, maxTMDBIDs) {
+		v := url.Values{"userId": {strconv.FormatInt(userID, 10)}, "items": {joinIDs(part)}}
 		var body struct {
 			Progress map[string]ProgressEntry `json:"progress"`
 		}
@@ -781,13 +774,6 @@ func claimed(err error) (bool, error) {
 
 func importGroupPath(id int64, op string) string { return fmt.Sprintf("/imports/groups/%d/%s", id, op) }
 
-func nonNilIDs(ids []int64) []int64 {
-	if ids == nil {
-		return []int64{}
-	}
-	return ids
-}
-
 // ImportActiveCount is how many albums of running import jobs are being
 // searched or downloaded (GET /imports/active-count; permission imports).
 func (c *Client) ImportActiveCount(ctx context.Context) (int, error) {
@@ -888,7 +874,7 @@ func (c *Client) GiveUpImportWait(ctx context.Context, id int64, key string) err
 // the caller removes the download it began.
 func (c *Client) StartImportGroup(ctx context.Context, id int64, key string, bytes int64, downloading, missing []int64) (bool, error) {
 	return claimed(c.do(ctx, DefaultTimeout, http.MethodPost, importGroupPath(id, "start"),
-		map[string]any{"key": key, "bytes": bytes, "downloading": nonNilIDs(downloading), "missing": nonNilIDs(missing)}, nil))
+		map[string]any{"key": key, "bytes": bytes, "downloading": nonNil(downloading), "missing": nonNil(missing)}, nil))
 }
 
 // SaveImportClock stores the clock of the album's download key (POST
@@ -915,7 +901,7 @@ func (c *Client) RequeueImportGroup(ctx context.Context, id int64, key, msg stri
 // format: its songs trackIDs are not found (POST …/no-format).
 func (c *Client) ImportNoFormat(ctx context.Context, id int64, trackIDs []int64, msg string) error {
 	return c.do(ctx, DefaultTimeout, http.MethodPost, importGroupPath(id, "no-format"),
-		map[string]any{"trackIds": nonNilIDs(trackIDs), "msg": msg}, nil)
+		map[string]any{"trackIds": nonNil(trackIDs), "msg": msg}, nil)
 }
 
 // FailImportGroup ends an album with msg: its songs trackIDs (and any
@@ -923,7 +909,7 @@ func (c *Client) ImportNoFormat(ctx context.Context, id int64, trackIDs []int64,
 // admin's «Повторить» is left (POST …/fail).
 func (c *Client) FailImportGroup(ctx context.Context, id int64, trackIDs []int64, msg string, retry bool) error {
 	return c.do(ctx, DefaultTimeout, http.MethodPost, importGroupPath(id, "fail"),
-		map[string]any{"trackIds": nonNilIDs(trackIDs), "msg": msg, "retry": retry}, nil)
+		map[string]any{"trackIds": nonNil(trackIDs), "msg": msg, "retry": retry}, nil)
 }
 
 // FinishImportGroup ends a download placed in the library: done maps each
@@ -934,7 +920,7 @@ func (c *Client) FinishImportGroup(ctx context.Context, id int64, done map[int64
 		done = map[int64]int64{}
 	}
 	return c.do(ctx, DefaultTimeout, http.MethodPost, importGroupPath(id, "finish"),
-		map[string]any{"done": done, "failed": nonNilIDs(failed), "album": album}, nil)
+		map[string]any{"done": done, "failed": nonNil(failed), "album": album}, nil)
 }
 
 // ImportHave links the album's songs the library has (song → library
@@ -952,7 +938,7 @@ func (c *Client) ImportHave(ctx context.Context, id int64, have map[int64]int64,
 // not found (POST …/not-found).
 func (c *Client) ImportNotFound(ctx context.Context, id int64, trackIDs []int64, msg string) error {
 	return c.do(ctx, DefaultTimeout, http.MethodPost, importGroupPath(id, "not-found"),
-		map[string]any{"trackIds": nonNilIDs(trackIDs), "msg": msg}, nil)
+		map[string]any{"trackIds": nonNil(trackIDs), "msg": msg}, nil)
 }
 
 // ImportProgress tells the core how many bytes of a downloading album are

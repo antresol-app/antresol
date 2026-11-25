@@ -48,6 +48,10 @@ type seqSource struct {
 	asked map[int64]int
 }
 
+func (s *seqSource) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
+	return programSet(ctx, s, ch, from)
+}
+
 func (s *seqSource) Program(_ context.Context, ch int64, t time.Time) (Program, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

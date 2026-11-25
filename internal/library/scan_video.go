@@ -2,9 +2,11 @@ package library
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/antresol-app/antresol/internal/release"
@@ -38,9 +41,8 @@ type Scanner struct {
 	// общих подборок» (nil: none), read at each scan: what it indexes in
 	// them is marked as it is stored, and every scan ends with the marks of
 	// the whole library brought in line (Repo.SyncFolderFlags).
-	Flags       func() FolderFlags
-	ArtDir      string // extracted artwork (embedded covers): DataDir/images
-	ComicsCache string // unpacked comic pages: DataDir/comics-cache
+	Flags  func() FolderFlags
+	ArtDir string // extracted artwork (embedded covers): DataDir/images
 
 	// Chapters reads the chapters of an audiobook file (nil: none).
 	Chapters func(ctx context.Context, path string) ([]ChapterInput, error)
@@ -56,7 +58,21 @@ type Scanner struct {
 	// mu serializes scans (periodic job, organize after a download): an
 	// older walk must not prune rows a newer scan has just added.
 	mu sync.Mutex
+	// rescan is Rescan's request; full is the running scan's copy of it
+	// (written and read under mu).
+	rescan atomic.Bool
+	full   bool
+	// dirty: a scan since Jobs last looked wrote or removed something, or
+	// read everything again (noteChanges). Whoever runs a scan sets it, an
+	// addon's import included, so Jobs' own scan finding everything in place
+	// does not hide it from the workers.
+	dirty atomic.Bool
 }
+
+// Rescan makes the next scan read every movie and episode again, not only
+// those whose files or sidecars changed (a scan after a start, a manual
+// one: the way to pick up what a signature missed).
+func (s *Scanner) Rescan() { s.rescan.Store(true) }
 
 var videoExt = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".mov": true, ".webm": true, ".ts": true, ".m2ts": true}
 
@@ -72,64 +88,13 @@ var skipDirs = map[string]bool{
 	"behind the scenes": true, "@eadir": true, "subs": true, "subtitles": true,
 }
 
-type videoFile struct {
-	path  string
-	size  int64
-	mtime int64
-}
-
 // walkVideos lists video files under root, skipping samples, extras and hidden entries.
-func walkVideos(ctx context.Context, root string) ([]videoFile, error) {
-	st, err := os.Stat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", root)
-	}
-	var out []videoFile
-	var firstErr error
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			if p != root && (strings.HasPrefix(name, ".") || skipDirs[strings.ToLower(name)]) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(name, ".") || !videoExt[strings.ToLower(filepath.Ext(name))] {
-			return nil
-		}
-		base := strings.TrimSuffix(name, filepath.Ext(name))
-		if reSample.MatchString(base) || reTrailer.MatchString(base) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-		out = append(out, videoFile{p, info.Size(), info.ModTime().Unix()})
-		return nil
+func walkVideos(ctx context.Context, root string) ([]walkedFile, error) {
+	return walkFiles(ctx, root, func(low string) bool { return skipDirs[low] }, func(name string) bool {
+		ext := filepath.Ext(name)
+		base := strings.TrimSuffix(name, ext)
+		return videoExt[strings.ToLower(ext)] && !reSample.MatchString(base) && !reTrailer.MatchString(base)
 	})
-	if err == nil {
-		err = firstErr // incomplete walk: the caller must not prune
-	}
-	return out, err
 }
 
 func withExts(stem string) []string {
@@ -162,6 +127,7 @@ func (s *Scanner) ScanVideo(ctx context.Context) (ScanStats, error) {
 	defer s.mu.Unlock()
 	var st ScanStats
 	err := s.scanVideo(ctx, &st)
+	s.noteChanges(st, s.full)
 	if ferr := s.syncFlags(ctx); ferr != nil {
 		err = errors.Join(err, ferr)
 	}
@@ -170,6 +136,7 @@ func (s *Scanner) ScanVideo(ctx context.Context) (ScanStats, error) {
 
 // scanVideo is ScanVideo without the lock (the caller holds s.mu).
 func (s *Scanner) scanVideo(ctx context.Context, st *ScanStats) error {
+	s.full = s.rescan.Swap(false)
 	var errs []error
 	if len(s.Roots(KindFolderMovies)) > 0 {
 		if err := s.scanMovies(ctx, st); err != nil {
@@ -202,7 +169,7 @@ var reFolderYear = regexp.MustCompile(`\((?:19|20)\d\d\)`)
 type movieGroup struct {
 	dir   string
 	base  string // file base without part suffix
-	files []videoFile
+	files []walkedFile
 }
 
 func (s *Scanner) scanMovies(ctx context.Context, st *ScanStats) error {
@@ -219,10 +186,58 @@ func (s *Scanner) scanMoviesIn(ctx context.Context, dir string, st *ScanStats) e
 	if walkErr != nil && files == nil {
 		return walkErr
 	}
-	// Group multi-part files (… - cd1.mkv, … - cd2.mkv) into one movie.
-	var groups []*movieGroup
+	groups, perDir := groupMovies(files)
+	stored, err := s.Repo.storedFilesUnder(ctx, root, videoKinds, fileSigSQL)
+	if err != nil {
+		return err
+	}
+	di := dirIndex{}
+	for _, g := range groups {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		sort.Slice(g.files, func(i, j int) bool { return g.files[i].path < g.files[j].path })
+		single := perDir[g.dir] == 1 && g.dir != root
+		nfoPath := movieNFO(di, g, single)
+		poster, backdrop := movieArt(di, g, single)
+		sig := movieSig(g, single, nfoPath, poster, backdrop)
+		if !s.full && unchangedFiles(g.files, sig, stored) { // read nothing, write nothing
+			st.Movies++
+			st.Files += len(g.files)
+			continue
+		}
+
+		title, year, alts := movieTitles(g, root, single)
+		in := MovieInput{Title: title, Year: year, AltTitles: alts, Poster: poster, Backdrop: backdrop}
+		for _, f := range g.files {
+			in.Files = append(in.Files, FileInput{Path: f.path, Size: f.size, Mtime: f.mtime, sig: sig})
+		}
+		if n, ok := readNFOIf(nfoPath); ok {
+			applyMovieNFO(&in, n)
+		}
+		if in.Title == "" {
+			st.Skipped += len(g.files)
+			continue
+		}
+		if _, err := s.Repo.UpsertMovie(ctx, in); err != nil {
+			return err
+		}
+		st.Movies++
+		st.Changed++
+		st.Files += len(g.files)
+	}
+	if walkErr != nil {
+		return walkErr // incomplete walk: no pruning
+	}
+	return s.finish(ctx, root, seenPaths(files), st)
+}
+
+// groupMovies groups multi-part files (… - cd1.mkv, … - cd2.mkv) into one
+// movie each, in the order the files come; perDir counts the movies of each
+// folder.
+func groupMovies(files []walkedFile) (groups []*movieGroup, perDir map[string]int) {
 	byKey := map[string]*movieGroup{}
-	perDir := map[string]int{}
+	perDir = map[string]int{}
 	for _, f := range files {
 		dir := filepath.Dir(f.path)
 		base := strings.TrimSuffix(filepath.Base(f.path), filepath.Ext(f.path))
@@ -239,103 +254,133 @@ func (s *Scanner) scanMoviesIn(ctx context.Context, dir string, st *ScanStats) e
 		}
 		g.files = append(g.files, f)
 	}
-	di := dirIndex{}
-	seen := map[string]bool{}
-	for _, g := range groups {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		sort.Slice(g.files, func(i, j int) bool { return g.files[i].path < g.files[j].path })
-		dir, base := g.dir, g.base
-		single := perDir[dir] == 1 && dir != root
+	return groups, perDir
+}
 
-		info := release.Parse(base)
-		title, year := info.Title, info.Year
-		var alts []string
-		if info.AltTitle != "" {
-			alts = append(alts, info.AltTitle)
-		}
-		if dir != root {
-			dname := filepath.Base(dir)
-			d := release.Parse(dname)
-			switch {
-			case single && d.Title != "" && (title == "" || reFolderYear.MatchString(dname)):
-				// the "Title (Year)/…" layout: folder wins over the file name.
-				if title != "" {
-					alts = append(alts, title)
-				}
-				title = d.Title
-				if d.Year != 0 {
-					year = d.Year
-				}
-				if d.AltTitle != "" {
-					alts = append(alts, d.AltTitle)
-				}
-			case title == "":
-				title = d.Title
-				if year == 0 {
-					year = d.Year
-				}
-			case single && d.Title != "" && release.Normalize(d.Title) != release.Normalize(title):
-				alts = append(alts, d.Title)
-				if year == 0 {
-					year = d.Year
-				}
-			}
-		}
-		in := MovieInput{Title: title, Year: year, AltTitles: alts}
-		for _, f := range g.files {
-			in.Files = append(in.Files, FileInput{Path: f.path, Size: f.size, Mtime: f.mtime})
-		}
-		nfoPath := di.find(dir, base+".nfo")
-		if nfoPath == "" {
-			nfoPath = di.find(dir, strings.TrimSuffix(filepath.Base(g.files[0].path), filepath.Ext(g.files[0].path))+".nfo")
-		}
-		if nfoPath == "" && single {
-			nfoPath = di.find(dir, "movie.nfo")
-		}
-		if nfoPath != "" {
-			if n, ok := readNFO(nfoPath); ok {
-				if n.Title != "" {
-					if in.Title != "" {
-						in.AltTitles = append(in.AltTitles, in.Title)
-					}
-					in.Title = n.Title
-				}
-				if n.Year != 0 {
-					in.Year = n.Year
-				}
-				in.OriginalTitle, in.Overview, in.Rating, in.TmdbID, in.ExtIDs = n.Original, n.Plot, n.Rating, n.TmdbID, n.ExtIDs
-				in.Genres = n.Genres
-			}
-		}
-		for _, f := range g.files {
-			seen[f.path] = true
-		}
-		if in.Title == "" {
-			st.Skipped += len(g.files)
-			continue
-		}
-		in.Poster = di.art(dir, base+"-poster", base+".poster")
-		in.Backdrop = di.art(dir, base+"-fanart", base+"-backdrop", base+"-background")
-		if single {
-			if in.Poster == "" {
-				in.Poster = di.art(dir, "poster", "folder", "cover")
-			}
-			if in.Backdrop == "" {
-				in.Backdrop = di.art(dir, "fanart", "backdrop", "background")
-			}
-		}
-		if _, err := s.Repo.UpsertMovie(ctx, in); err != nil {
-			return err
-		}
-		st.Movies++
-		st.Files += len(g.files)
+// movieTitles is the movie's title, year and other titles from its file
+// name and its folder's.
+func movieTitles(g *movieGroup, root string, single bool) (title string, year int, alts []string) {
+	info := release.Parse(g.base)
+	title, year = info.Title, info.Year
+	if info.AltTitle != "" {
+		alts = append(alts, info.AltTitle)
 	}
-	if walkErr != nil {
-		return walkErr // incomplete walk: no pruning
+	if g.dir == root {
+		return title, year, alts
 	}
-	return s.finish(ctx, root, seen, st)
+	dname := filepath.Base(g.dir)
+	d := release.Parse(dname)
+	switch {
+	case single && d.Title != "" && (title == "" || reFolderYear.MatchString(dname)):
+		// the "Title (Year)/…" layout: folder wins over the file name.
+		if title != "" {
+			alts = append(alts, title)
+		}
+		title = d.Title
+		if d.Year != 0 {
+			year = d.Year
+		}
+		if d.AltTitle != "" {
+			alts = append(alts, d.AltTitle)
+		}
+	case title == "":
+		title = d.Title
+		if year == 0 {
+			year = d.Year
+		}
+	case single && d.Title != "" && release.Normalize(d.Title) != release.Normalize(title):
+		alts = append(alts, d.Title)
+		if year == 0 {
+			year = d.Year
+		}
+	}
+	return title, year, alts
+}
+
+// readNFOIf is readNFO of a path that may be "" (no .nfo).
+func readNFOIf(path string) (NFO, bool) {
+	if path == "" {
+		return NFO{}, false
+	}
+	return readNFO(path)
+}
+
+// applyMovieNFO lets the movie's .nfo override what the names said.
+func applyMovieNFO(in *MovieInput, n NFO) {
+	if n.Title != "" {
+		if in.Title != "" {
+			in.AltTitles = append(in.AltTitles, in.Title)
+		}
+		in.Title = n.Title
+	}
+	if n.Year != 0 {
+		in.Year = n.Year
+	}
+	in.OriginalTitle, in.Overview, in.Rating, in.TmdbID, in.ExtIDs = n.Original, n.Plot, n.Rating, n.TmdbID, n.ExtIDs
+	in.Genres = n.Genres
+}
+
+// videoKinds are the kinds whose files the video scan stores (an SQL list).
+const videoKinds = "('movie','episode')"
+
+// videoSigVersion is part of every movie and episode signature: bumping it
+// reads every title once more, for a scan that now reads the same files
+// differently.
+const videoSigVersion = 1
+
+// sigFile adds the sidecar at path (name, size, mtime) to h; "" is none.
+func sigFile(h io.Writer, path string) {
+	if path == "" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		fmt.Fprintf(h, "%s\x00?\x00", path)
+		return
+	}
+	fmt.Fprintf(h, "%s\x00%d\x00%d\x00", path, info.Size(), info.ModTime().UnixNano())
+}
+
+// movieNFO is the .nfo describing a movie group: its own base name's, its
+// first file's, or movie.nfo of a folder that holds only this movie.
+func movieNFO(di dirIndex, g *movieGroup, single bool) string {
+	p := di.find(g.dir, g.base+".nfo")
+	if p == "" {
+		p = di.find(g.dir, strings.TrimSuffix(filepath.Base(g.files[0].path), filepath.Ext(g.files[0].path))+".nfo")
+	}
+	if p == "" && single {
+		p = di.find(g.dir, "movie.nfo")
+	}
+	return p
+}
+
+// movieArt is the movie's local poster and backdrop: named after it, or
+// the folder's own when the folder holds only this movie.
+func movieArt(di dirIndex, g *movieGroup, single bool) (poster, backdrop string) {
+	poster = di.art(g.dir, g.base+"-poster", g.base+".poster")
+	backdrop = di.art(g.dir, g.base+"-fanart", g.base+"-backdrop", g.base+"-background")
+	if single {
+		if poster == "" {
+			poster = di.art(g.dir, "poster", "folder", "cover")
+		}
+		if backdrop == "" {
+			backdrop = di.art(g.dir, "fanart", "backdrop", "background")
+		}
+	}
+	return poster, backdrop
+}
+
+// movieSig is a signature of everything a movie's scan reads: its files
+// (name, size, mtime), its .nfo, its pictures and whether its folder holds
+// only this movie.
+func movieSig(g *movieGroup, single bool, nfo, poster, backdrop string) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "v%d\x00single=%v\x00%s\x00%s\x00", videoSigVersion, single, poster, backdrop)
+	for _, f := range g.files {
+		fmt.Fprintf(h, "%s\x00%d\x00%d\x00", f.path, f.size, f.mtime)
+	}
+	sigFile(h, nfo)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 type seriesMeta struct {
@@ -363,70 +408,41 @@ func (s *Scanner) scanSeriesIn(ctx context.Context, dir string, st *ScanStats) e
 	if walkErr != nil && files == nil {
 		return walkErr
 	}
+	stored, err := s.Repo.storedFilesUnder(ctx, root, videoKinds, fileSigSQL)
+	if err != nil {
+		return err
+	}
 	di := dirIndex{}
 	metas := map[string]*seriesMeta{} // series dir -> meta
-	seen := map[string]bool{}
+	ssigs := map[string]string{}      // series dir -> signature of what its meta reads
 	for _, f := range files {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		seen[f.path] = true
 		dir := filepath.Dir(f.path)
 		base := strings.TrimSuffix(filepath.Base(f.path), filepath.Ext(f.path))
+		sdir := seriesDir(di, root, dir, f.path)
+		ssig, ok := ssigs[sdir]
+		if !ok {
+			ssig = seriesSig(di, sdir)
+			ssigs[sdir] = ssig
+		}
+		sig := episodeSig(ssig, f, di.find(dir, base+".nfo"))
+		if !s.full && unchangedFiles([]walkedFile{f}, sig, stored) { // read nothing, write nothing
+			st.Episodes++
+			st.Files++
+			continue
+		}
 		finfo := release.Parse(base)
-
-		// Series directory: the nearest ancestor with tvshow.nfo, else the first
-		// directory below root, else none (loose file in the root).
-		sdir := ""
-		for d := dir; d != root && strings.HasPrefix(d, root); d = filepath.Dir(d) {
-			if di.find(d, "tvshow.nfo") != "" {
-				sdir = d
-				break
-			}
-		}
-		if sdir == "" && dir != root {
-			rel, _ := filepath.Rel(root, f.path)
-			sdir = filepath.Join(root, strings.Split(rel, string(filepath.Separator))[0])
-		}
 
 		var sm *seriesMeta
 		if sdir != "" {
 			sm = metas[sdir]
 		}
 		if sm == nil {
-			sm = &seriesMeta{}
+			sm = loadSeriesMeta(di, sdir, finfo)
 			if sdir != "" {
-				d := release.Parse(filepath.Base(sdir))
-				if !isSeasonName(d.Title) {
-					sm.title, sm.year = d.Title, d.Year
-					if d.AltTitle != "" {
-						sm.alts = append(sm.alts, d.AltTitle)
-					}
-				}
-				if p := di.find(sdir, "tvshow.nfo"); p != "" {
-					if n, ok := readNFO(p); ok {
-						if n.Title != "" {
-							if sm.title != "" {
-								sm.alts = append(sm.alts, sm.title)
-							}
-							sm.title = n.Title
-						}
-						if n.Year != 0 {
-							sm.year = n.Year
-						}
-						sm.original, sm.rating, sm.tmdb, sm.ext = n.Original, n.Rating, n.TmdbID, n.ExtIDs
-						sm.overview, sm.genres = n.Plot, n.Genres
-					}
-				}
-				sm.poster = di.art(sdir, "poster", "folder", "cover")
-				sm.backdrop = di.art(sdir, "fanart", "backdrop", "background")
 				metas[sdir] = sm
-			}
-			if sm.title == "" {
-				sm.title, sm.year = finfo.Title, finfo.Year // loose file or season-named dir
-				if finfo.AltTitle != "" {
-					sm.alts = append(sm.alts, finfo.AltTitle)
-				}
 			}
 		}
 		if sm.title == "" {
@@ -449,18 +465,96 @@ func (s *Scanner) scanSeriesIn(ctx context.Context, dir string, st *ScanStats) e
 			SeriesRating: sm.rating, SeriesPoster: sm.poster, SeriesBackdrop: sm.backdrop, SeriesAlt: sm.alts,
 			SeriesExtIDs: sm.ext, SeriesOverview: sm.overview, SeriesGenres: sm.genres,
 			Season: season, Episode: ep, Title: etitle, Overview: enfo.Plot,
-			File: FileInput{Path: f.path, Size: f.size, Mtime: f.mtime},
+			File: FileInput{Path: f.path, Size: f.size, Mtime: f.mtime, sig: sig},
 		})
 		if err != nil {
 			return err
 		}
 		st.Episodes++
+		st.Changed++
 		st.Files++
 	}
 	if walkErr != nil {
 		return walkErr
 	}
-	return s.finish(ctx, root, seen, st)
+	return s.finish(ctx, root, seenPaths(files), st)
+}
+
+// loadSeriesMeta is what the series directory sdir says about its series:
+// its name, tvshow.nfo and pictures; a loose file (sdir "") or a
+// season-named directory has the title of the file's own name (finfo).
+func loadSeriesMeta(di dirIndex, sdir string, finfo release.Info) *seriesMeta {
+	sm := &seriesMeta{}
+	if sdir != "" {
+		d := release.Parse(filepath.Base(sdir))
+		if !isSeasonName(d.Title) {
+			sm.title, sm.year = d.Title, d.Year
+			if d.AltTitle != "" {
+				sm.alts = append(sm.alts, d.AltTitle)
+			}
+		}
+		if p := di.find(sdir, "tvshow.nfo"); p != "" {
+			if n, ok := readNFO(p); ok {
+				if n.Title != "" {
+					if sm.title != "" {
+						sm.alts = append(sm.alts, sm.title)
+					}
+					sm.title = n.Title
+				}
+				if n.Year != 0 {
+					sm.year = n.Year
+				}
+				sm.original, sm.rating, sm.tmdb, sm.ext = n.Original, n.Rating, n.TmdbID, n.ExtIDs
+				sm.overview, sm.genres = n.Plot, n.Genres
+			}
+		}
+		sm.poster = di.art(sdir, "poster", "folder", "cover")
+		sm.backdrop = di.art(sdir, "fanart", "backdrop", "background")
+	}
+	if sm.title == "" {
+		sm.title, sm.year = finfo.Title, finfo.Year // loose file or season-named dir
+		if finfo.AltTitle != "" {
+			sm.alts = append(sm.alts, finfo.AltTitle)
+		}
+	}
+	return sm
+}
+
+// seriesDir is the series directory of a file in dir: the nearest ancestor
+// with tvshow.nfo, else the first directory below root, else "" (a loose
+// file in the root).
+func seriesDir(di dirIndex, root, dir, path string) string {
+	for d := dir; d != root && strings.HasPrefix(d, root); d = filepath.Dir(d) {
+		if di.find(d, "tvshow.nfo") != "" {
+			return d
+		}
+	}
+	if dir == root {
+		return ""
+	}
+	rel, _ := filepath.Rel(root, path)
+	return filepath.Join(root, strings.Split(rel, string(filepath.Separator))[0])
+}
+
+// seriesSig is a signature of what the series' meta reads beside the
+// episode files: its directory, tvshow.nfo and pictures.
+func seriesSig(di dirIndex, sdir string) string {
+	if sdir == "" {
+		return ""
+	}
+	h := sha1.New()
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00", sdir, di.art(sdir, "poster", "folder", "cover"), di.art(sdir, "fanart", "backdrop", "background"))
+	sigFile(h, di.find(sdir, "tvshow.nfo"))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// episodeSig is a signature of everything an episode's scan reads: its file
+// (name, size, mtime), its .nfo and its series' (seriesSig).
+func episodeSig(ssig string, f walkedFile, nfo string) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "v%d\x00%s\x00%s\x00%d\x00%d\x00", videoSigVersion, ssig, f.path, f.size, f.mtime)
+	sigFile(h, nfo)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 var (

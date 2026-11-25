@@ -70,6 +70,12 @@ export default defineConfig({
         index: fileURLToPath(new URL('index.html', import.meta.url)),
         boot: fileURLToPath(new URL(BOOT, import.meta.url)),
       },
+      output: {
+        // pdf.js on its own, apart from the reader's code: its file name then stays the
+        // same from build to build, so the service worker (not precaching it, see
+        // scripts/sw-assets.mjs) keeps the copy a saved PDF opens offline with
+        codeSplitting: { groups: [{ name: 'pdfjs', test: /node_modules[\\/]pdfjs-dist[\\/]/ }] },
+      },
     },
   },
   test: {

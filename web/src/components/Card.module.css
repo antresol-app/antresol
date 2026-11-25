@@ -169,9 +169,7 @@
 /* Books: a printed cover — small radius, a soft shadow and spine shading. */
 .book .media {
   border-radius: var(--r-xs) var(--r-xs) var(--r-xs) var(--r-xs);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.35),
-    0 8px 20px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow-cover-sm);
 }
 .book .media::after {
   background: var(--book-spine);

@@ -316,6 +316,25 @@ func (s *Service) toMembers(es []Entry) ([]Member, error) {
 	return out, nil
 }
 
+// lanOf is the address that decides whether guide e's download may reach the
+// LAN: the guide's own when the admin typed it, the source's playlist
+// address for one the playlist named itself (Auto): a third party's word
+// never opens the LAN. "" (nothing known) opens nothing.
+func (s *Service) lanOf(ctx context.Context, e EPGURL, raw string) string {
+	if !e.Auto {
+		return raw
+	}
+	src, err := s.Store.Source(ctx, e.SourceID)
+	if err != nil {
+		return ""
+	}
+	playlist, err := s.PlaylistURL(ctx, src)
+	if err != nil {
+		return ""
+	}
+	return playlist
+}
+
 // autoEPG replaces a source's guide URLs taken from its playlist's url-tvg
 // (Auto); one that stays keeps its row, and so its programmes.
 func (s *Service) autoEPG(ctx context.Context, sourceID int64, urls []string) error {
@@ -844,7 +863,7 @@ func (s *Service) RefreshEPG(ctx context.Context, epgURLID int64) error {
 	}
 	fctx, cancel := context.WithTimeout(ctx, EPGTimeout)
 	defer cancel()
-	rc, err := s.Fetch.Open(fctx, raw, "")
+	rc, err := s.Fetch.OpenVia(fctx, raw, "", s.lanOf(ctx, e, raw))
 	if err != nil {
 		return fail(err)
 	}

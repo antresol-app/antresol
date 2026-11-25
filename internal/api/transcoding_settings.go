@@ -3,15 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/media"
 	"github.com/go-chi/chi/v5"
 )
@@ -23,18 +21,10 @@ const transcodingKey = "transcoding"
 // LoadTranscodingSettings are the stored transcoding settings, else
 // defaults (VAULT_HWACCEL, VAULT_HWACCEL_DEVICE, tone mapping and HEVC
 // on); custom: a stored row.
-func LoadTranscodingSettings(ctx context.Context, db *sql.DB, defaults media.AccelConfig) (cfg media.AccelConfig, custom bool, err error) {
-	var raw string
-	err = db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, transcodingKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return defaults, false, nil
-	}
-	if err != nil {
-		return defaults, false, err
-	}
+func LoadTranscodingSettings(ctx context.Context, conn *sql.DB, defaults media.AccelConfig) (cfg media.AccelConfig, custom bool, err error) {
 	cfg = defaults
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return defaults, false, fmt.Errorf("settings %s: %w", transcodingKey, err)
+	if found, err := db.GetJSON(ctx, conn, transcodingKey, &cfg); err != nil || !found {
+		return defaults, false, err
 	}
 	if !media.ValidHW(cfg.Mode) {
 		cfg.Mode = defaults.Mode
@@ -135,7 +125,7 @@ func (t *transcodingAPI) put(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg := in.AccelConfig
 	if in.Reset {
-		if _, err := t.db.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, transcodingKey); err != nil {
+		if err := db.DeleteSetting(ctx, t.db, transcodingKey); err != nil {
 			internalErr(w, r, "transcoding settings", err)
 			return
 		}
@@ -150,9 +140,7 @@ func (t *transcodingAPI) put(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, r, http.StatusBadRequest, "Нет такого устройства видеокарты")
 			return
 		}
-		raw, _ := json.Marshal(cfg)
-		if _, err := t.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-			ON CONFLICT(key) DO UPDATE SET value=excluded.value`, transcodingKey, string(raw)); err != nil {
+		if err := db.PutJSON(ctx, t.db, transcodingKey, cfg); err != nil {
 			internalErr(w, r, "transcoding settings", err)
 			return
 		}

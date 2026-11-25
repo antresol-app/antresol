@@ -20,30 +20,6 @@
   gap: var(--section-gap);
 }
 
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s-3);
-  margin-top: 14vh;
-  padding: 0 var(--gutter);
-  text-align: center;
-  color: var(--label-2);
-}
-.empty > svg {
-  color: var(--label-3);
-  margin-bottom: var(--s-1h);
-}
-.empty h2 {
-  font: var(--t-title-2);
-  color: var(--label);
-}
-.empty p {
-  max-width: 42ch;
-  margin-bottom: var(--s-2);
-  text-wrap: balance;
-}
-
 /* Static skeleton (no shimmer). */
 .skeleton {
   display: flex;
@@ -54,8 +30,6 @@
 .skeletonTitle {
   width: 220px;
   height: 22px;
-  border-radius: var(--r-sm);
-  background: var(--fill-3);
   margin-bottom: var(--s-4);
 }
 .skeletonRow {
@@ -69,7 +43,6 @@
   min-width: 140px;
   aspect-ratio: 1;
   border-radius: var(--r-card);
-  background: var(--fill-4);
 }
 
 @media (max-width: 699px) {

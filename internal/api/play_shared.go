@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/media"
@@ -21,18 +20,10 @@ import (
 // probeCache keeps ffprobe results of remote inputs (probing over the
 // network is slow). Bounded; only complete-looking probes are kept.
 type probeCache struct {
-	mu sync.Mutex
-	m  map[string]media.ProbeResult
+	boundedCache[string, media.ProbeResult]
 }
 
 const probeCacheMax = 256
-
-func (c *probeCache) get(k string) (media.ProbeResult, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	p, ok := c.m[k]
-	return p, ok
-}
 
 func (c *probeCache) put(k string, p media.ProbeResult) {
 	if p.DurationMs <= 0 || p.Video == nil {
@@ -42,46 +33,23 @@ func (c *probeCache) put(k string, p media.ProbeResult) {
 }
 
 // putAny keeps p as it is (the caller judged it complete).
-func (c *probeCache) putAny(k string, p media.ProbeResult) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.m == nil || len(c.m) >= probeCacheMax {
-		c.m = map[string]media.ProbeResult{}
-	}
-	c.m[k] = p
-}
+func (c *probeCache) putAny(k string, p media.ProbeResult) { c.boundedCache.put(k, p, probeCacheMax) }
 
 // keyTimes remembers when something happened to keys (a probe failed or
 // started), bounded.
 type keyTimes struct {
-	mu sync.Mutex
-	m  map[string]time.Time
+	boundedCache[string, time.Time]
 }
 
 func (f *keyTimes) put(k string) { f.putAt(k, time.Now()) }
 
 // putAt remembers that something happened to k at t (a caller's clock).
-func (f *keyTimes) putAt(k string, t time.Time) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.m == nil || len(f.m) >= probeCacheMax {
-		f.m = map[string]time.Time{}
-	}
-	f.m[k] = t
-}
+func (f *keyTimes) putAt(k string, t time.Time) { f.boundedCache.put(k, t, probeCacheMax) }
 
 // recent says whether k was put within the last d.
 func (f *keyTimes) recent(k string, d time.Duration) bool {
-	t, ok := f.at(k)
+	t, ok := f.get(k)
 	return ok && time.Since(t) < d
-}
-
-// at is when k was put.
-func (f *keyTimes) at(k string) (time.Time, bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	t, ok := f.m[k]
-	return t, ok
 }
 
 // errTrackIncomplete: the track's probe found no audio or no duration

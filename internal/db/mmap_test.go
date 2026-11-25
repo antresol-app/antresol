@@ -26,3 +26,21 @@ func TestMmapSize(t *testing.T) {
 		}
 	}
 }
+
+// The -wal shrinks back to 64 MiB after a checkpoint, on every connection.
+func TestJournalSizeLimit(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	for i := 0; i < 3; i++ {
+		var got int64
+		if err := d.QueryRow(`PRAGMA journal_size_limit`).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != 64<<20 {
+			t.Fatalf("journal_size_limit %d", got)
+		}
+	}
+}

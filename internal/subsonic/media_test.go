@@ -305,7 +305,7 @@ func TestSubsonicCoverArtSize(t *testing.T) {
 	p.Set("size", "120")
 	w := e.req("getCoverArt", "", p)
 	c, _, err := image.DecodeConfig(w.Body)
-	if w.Code != 200 || err != nil || c.Width > 120 || c.Width == 0 {
+	if w.Code != 200 || err != nil || c.Width != 160 { // 120 rounds up to a step of imgcache.Widths
 		t.Fatalf("size=120: %d %v %+v", w.Code, err, c)
 	}
 	p.Del("size")

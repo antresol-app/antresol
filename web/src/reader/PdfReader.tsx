@@ -7,8 +7,10 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { annotationsExportUrl, downloadUrl, fileUrl } from '../api/client'
 import type { BookDetail } from '../api/types'
 import { Button, ButtonLink } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import { ChromeButton, chromeKey, inChrome, ReaderChrome, useAutoHide } from './ReaderChrome'
+import { canvasScale } from './pdfScale'
 import { useAnnotations } from './useAnnotations'
 import { useReaderFamily } from './useReaderFamily'
 import { useReadingProgress, type ReadingPosition } from './useReadingProgress'
@@ -18,6 +20,8 @@ import styles from './Reader.module.css'
 import { useT } from '../i18n'
 
 GlobalWorkerOptions.workerSrc = workerUrl
+/** The worker's file (offline/warm.ts keeps it for a saved PDF). */
+export const PDF_WORKER_URL = workerUrl
 
 export interface PdfReaderProps {
   book: BookDetail
@@ -314,7 +318,7 @@ export function PdfReader({ book, onExit }: PdfReaderProps) {
       </div>
       {status.status === 'loading' && (
         <div className={styles.overlay} aria-busy="true" aria-label={t('reader.openingDocument')}>
-          <span className={styles.spinner} />
+          <Spinner className={styles.spinner} />
         </div>
       )}
       {status.status === 'error' && (
@@ -400,7 +404,7 @@ function PdfPage({ doc, n, width, aspect, draw, onAspect }: PdfPageProps) {
         const base = p.getViewport({ scale: 1 })
         onAspect(n - 1, base.height / base.width)
         const dpr = Math.min(window.devicePixelRatio || 1, 3)
-        const vp = p.getViewport({ scale: (width / base.width) * dpr })
+        const vp = p.getViewport({ scale: canvasScale(base, width, dpr) })
         canvas.width = Math.floor(vp.width)
         canvas.height = Math.floor(vp.height)
         task = p.render({ canvas, viewport: vp })

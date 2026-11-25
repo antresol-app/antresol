@@ -1,12 +1,15 @@
-/* Filter chips: capsules of the small control height; the chosen one white
-   with the inverse label, as SegmentedControl's thumb. */
+/* Chips: capsules of the small control height; the chosen one white with
+   the inverse label, as SegmentedControl's thumb. One choice (radio
+   buttons, in a scroller on a phone) or several (toggles, always wrapping). */
 .scroller {
   min-width: 0;
 }
 .chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--s-2);
+  min-width: 0;
 }
 .chip {
   position: relative;
@@ -27,7 +30,8 @@
 .chip:hover {
   background: var(--fill-1);
 }
-.chip[aria-checked='true'] {
+.chip[aria-checked='true'],
+.chip[aria-pressed='true'] {
   background: var(--label);
   color: var(--label-inverse);
 }
@@ -42,7 +46,8 @@
   font-variant-numeric: tabular-nums;
   text-box: var(--control-text-box);
 }
-.chip[aria-checked='true'] .count {
+.chip[aria-checked='true'] .count,
+.chip[aria-pressed='true'] .count {
   color: inherit;
   opacity: 0.6;
 }
@@ -67,7 +72,8 @@
   .scroller::-webkit-scrollbar {
     display: none;
   }
-  .chips {
+  /* only the one-choice chips scroll: several on at once always wrap */
+  .scroller .chips {
     flex-wrap: nowrap;
     width: max-content;
   }

@@ -95,11 +95,16 @@ type conv struct {
 	prog   map[int64]*progress.Entry
 	fav    map[int64]bool
 	counts map[int64]epCounts
+	// fileRows are the files of items, read for a whole page at once
+	// (prefetch); ext lists the folders of their subtitles once each.
+	fileRows map[int64][]library.File
+	ext      subtitles.Lister
 }
 
 func (s *Server) conv(ctx context.Context, u auth.User, fields fieldSet) *conv {
 	return &conv{s: s, ctx: ctx, u: u, hid: historyOr(ctx, u), limit: u.RatingLimit(), fields: fields,
-		items: map[int64]library.Item{}, vis: map[int64]bool{}, prog: map[int64]*progress.Entry{}, counts: map[int64]epCounts{}}
+		items: map[int64]library.Item{}, vis: map[int64]bool{}, prog: map[int64]*progress.Entry{}, counts: map[int64]epCounts{},
+		fileRows: map[int64][]library.File{}}
 }
 
 // historyOr is the request's history (auth.HistoryID) when ctx is the
@@ -183,8 +188,13 @@ func (c *conv) tag(ref string) string {
 
 func intp(n int) *int { return &n }
 
-// dtos converts items, skipping kinds not served.
+// dtos converts items, skipping kinds not served. What each item needs
+// from the database (files, progress, episode counts, its season and
+// series) is read for all of them first: a few queries, not a few per item.
 func (c *conv) dtos(items []library.Item) ([]BaseItemDto, error) {
+	if err := c.prefetch(items); err != nil {
+		return nil, err
+	}
 	out := make([]BaseItemDto, 0, len(items))
 	for _, it := range items {
 		d, err := c.dto(it)
@@ -280,6 +290,99 @@ func (c *conv) dto(it library.Item) (BaseItemDto, error) {
 	return d, nil
 }
 
+// prefetch fills the conv's caches for dto of items: the season of an
+// episode and the series of a season or episode, the files and progress
+// of movies and episodes, the episode counts of series and seasons.
+func (c *conv) prefetch(items []library.Item) error {
+	if len(items) < 2 {
+		return nil // dto asks for itself
+	}
+	var leaves, folders []library.Item
+	var parents []int64
+	for _, it := range items {
+		if _, ok := c.items[it.ID]; !ok {
+			c.items[it.ID] = it // a season of the page is the parent of its episodes
+		}
+		switch it.Kind {
+		case library.KindMovie:
+			leaves = append(leaves, it)
+		case library.KindEpisode:
+			leaves = append(leaves, it)
+			parents = append(parents, it.ParentID)
+		case library.KindSeason:
+			folders = append(folders, it)
+			parents = append(parents, it.ParentID)
+		case library.KindSeries:
+			folders = append(folders, it)
+		}
+	}
+	if err := c.prefetchItems(parents); err != nil { // seasons and series
+		return err
+	}
+	var series []int64
+	for _, id := range parents {
+		if se, ok := c.items[id]; ok && se.Kind == library.KindSeason {
+			series = append(series, se.ParentID)
+		}
+	}
+	if err := c.prefetchItems(series); err != nil {
+		return err
+	}
+	if err := c.prefetchFiles(leaves); err != nil {
+		return err
+	}
+	if err := c.prefetchProgress(leaves); err != nil {
+		return err
+	}
+	return c.prefetchCounts(folders)
+}
+
+// prefetchItems loads the items with these ids that are not cached yet (a
+// missing one stays out: item answers as before).
+func (c *conv) prefetchItems(ids []int64) error {
+	var want []int64
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if _, ok := c.items[id]; !ok && id != 0 && !seen[id] {
+			seen[id] = true
+			want = append(want, id)
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	got, err := c.s.Library.ItemsByID(c.ctx, want)
+	if err != nil {
+		return err
+	}
+	for id, it := range got {
+		c.items[id] = it
+	}
+	return nil
+}
+
+// prefetchFiles reads the files of items (those without any too: an empty
+// answer is an answer).
+func (c *conv) prefetchFiles(items []library.Item) error {
+	ids := make([]int64, 0, len(items))
+	for _, it := range items {
+		if _, ok := c.fileRows[it.ID]; !ok {
+			ids = append(ids, it.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	got, err := c.s.Library.FilesOfItems(c.ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		c.fileRows[id] = got[id]
+	}
+	return nil
+}
+
 // seriesFields fills the series of a season or an episode: clients take
 // its poster and backdrop when the child has none.
 func (c *conv) seriesFields(d *BaseItemDto, seriesID int64) error {
@@ -301,9 +404,12 @@ func (c *conv) seriesFields(d *BaseItemDto, seriesID int64) error {
 // files fills the run time and, when asked (or for a full item), the
 // media sources, streams and file name of a movie or an episode.
 func (c *conv) files(d *BaseItemDto, it library.Item, m itemMeta) error {
-	fs, err := c.s.Library.FilesOf(c.ctx, it.ID)
-	if err != nil {
-		return err
+	fs, ok := c.fileRows[it.ID]
+	if !ok {
+		var err error
+		if fs, err = c.s.Library.FilesOf(c.ctx, it.ID); err != nil {
+			return err
+		}
 	}
 	full := c.fields[fieldFull]
 	var dur int64 // timeline, below
@@ -316,7 +422,7 @@ func (c *conv) files(d *BaseItemDto, it library.Item, m itemMeta) error {
 		}
 		p, _ := cachedProbe(f)
 		// no external audio: it plays only through an HLS PlaybackInfo answer
-		ms := mediaSource(c.ctx, f, p, nil, subtitles.FindExternal(f.Path, c.s.DataDir, f.ID)...)
+		ms := mediaSource(c.ctx, f, p, nil, c.ext.FindExternal(f.Path, c.s.DataDir, f.ID)...)
 		if full || c.fields["mediasources"] {
 			d.MediaSources = append(d.MediaSources, ms)
 		}

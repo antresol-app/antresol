@@ -53,24 +53,32 @@ describe('VolumeControl', () => {
   })
 })
 
-describe('VolumeControl.module.css', () => {
-  const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../VolumeControl.module.css'), 'utf8')
-  const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1]!.trim(), body: m[2]! }))
+// The look is the kit's Slider (ui/Slider.module.css: every state of the track and the thumb);
+// VolumeControl.module.css only says where it sits.
+describe('the volume slider\'s CSS', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const parse = (rel: string) => {
+    const css = readFileSync(path.resolve(here, rel), 'utf8')
+    return [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1]!.trim(), body: m[2]! }))
+  }
+  const kit = parse('../../ui/Slider.module.css')
+  const own = parse('../VolumeControl.module.css')
 
   it('has hover / focus / press rules', () => {
-    expect(rules.some((r) => /:(hover|focus|active)/.test(r.selector))).toBe(true)
+    expect(kit.some((r) => /:(hover|focus|active)/.test(r.selector))).toBe(true)
   })
 
   it('no hover, focus or press state changes the size or the place of the control (only the track and thumb are drawn differently)', () => {
     // a pseudo-element (the track, the thumb) is drawn inside the input's own box; nothing else may react
-    const offenders = rules
+    const offenders = [...kit, ...own]
       .filter((r) => /:(hover|focus|active)/.test(r.selector) && !/::/.test(r.selector))
       .filter((r) => /(^|[;\s])(width|height|min-|max-|margin|padding|display|flex|gap|position|inset|left|right|top|bottom|transform)/.test(r.body))
     expect(offenders).toEqual([])
   })
 
   it('the slider has one width and one height for every state', () => {
-    const own = rules.filter((r) => r.selector === '.range')
-    expect(own.some((r) => /width:\s*\d+px/.test(r.body) && /height:\s*44px/.test(r.body))).toBe(true)
+    // a width of its own in the bar, and the kit's strip of a button's height
+    expect(own.some((r) => r.selector === '.volume .range' && /width:\s*\d+px/.test(r.body))).toBe(true)
+    expect(kit.some((r) => r.selector === '.slider' && /height:\s*var\(--control-h-md\)/.test(r.body))).toBe(true)
   })
 })

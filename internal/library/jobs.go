@@ -49,11 +49,22 @@ type Jobs struct {
 	Probe         ProbeFunc  // optional: background probe of files without probe_json
 	Interval      time.Duration
 	Log           *slog.Logger
+	// Idle (optional) reports that nothing needs the media disk: the probe
+	// pass waits for it between files (a probe next to a seek delays the
+	// first segment of a playback).
+	Idle func() bool
 	// AfterScan (optional) runs after each scan and its fast enrichers,
 	// when new items have their TMDB ids.
 	AfterScan func(context.Context)
-	// AfterProbe (optional) runs after each run's probe pass: the new
-	// files' durations are known by then.
+	// AfterChange (optional) runs right after AfterScan when a scan since the
+	// last run wrote or removed something, or read everything again (the
+	// first scan after a start, a manual one), whoever ran that scan: what
+	// looks for new work, and needs nothing the probe pass finds, has some.
+	// A run that found nothing new does not call it.
+	AfterChange func(context.Context)
+	// AfterProbe (optional) runs after the probe pass of a run that changed
+	// the library (as for AfterChange) or probed a file: the new files'
+	// durations are known by then, for what needs them.
 	AfterProbe func(context.Context)
 
 	once      sync.Once
@@ -91,6 +102,13 @@ func (j *Jobs) Trigger() {
 	}
 }
 
+// TriggerFull is Trigger for a scan that reads every movie and episode
+// again, not only those that changed on disk (the manual scan).
+func (j *Jobs) TriggerFull() {
+	j.Scanner.Rescan()
+	j.Trigger()
+}
+
 // Status returns a snapshot of the job state.
 func (j *Jobs) Status() JobStatus {
 	j.init()
@@ -99,10 +117,11 @@ func (j *Jobs) Status() JobStatus {
 	return j.status
 }
 
-// Run scans immediately, then on every tick or Trigger, until ctx is done;
-// it returns once the slow-enricher worker has stopped too.
+// Run scans immediately (reading everything), then on every tick or Trigger,
+// until ctx is done; it returns once the slow-enricher worker has stopped too.
 func (j *Jobs) Run(ctx context.Context) {
 	j.init()
+	j.Scanner.Rescan()
 	if len(j.SlowEnrichers) > 0 {
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -145,13 +164,20 @@ func (j *Jobs) RunOnce(ctx context.Context) {
 	default:
 	}
 	j.runEnrichers(ctx, j.Enrichers)
+	// what this scan changed, and what scans run by others (an addon's import)
+	// changed since the last run: all indexed by now
+	changed := j.Scanner.dirty.Swap(false)
 	if j.AfterScan != nil && ctx.Err() == nil {
 		j.AfterScan(ctx)
 	}
-	if j.Probe != nil && ctx.Err() == nil {
-		j.probePending(ctx)
+	if changed && j.AfterChange != nil && ctx.Err() == nil {
+		j.AfterChange(ctx)
 	}
-	if j.AfterProbe != nil && ctx.Err() == nil {
+	probed := 0
+	if j.Probe != nil && ctx.Err() == nil {
+		probed = j.probePending(ctx)
+	}
+	if (changed || probed > 0) && j.AfterProbe != nil && ctx.Err() == nil {
 		j.AfterProbe(ctx)
 	}
 
@@ -196,11 +222,21 @@ func (j *Jobs) slowLoop(ctx context.Context) {
 // probeBatch bounds how many unprobed files one query loads.
 const probeBatch = 500
 
+// probeWait is how long the probe pass waits for Idle before it gives up
+// (the next run carries on): a long playback must not hold back the scans.
+// probePoll is how often it looks.
+var (
+	probeWait = 5 * time.Minute
+	probePoll = 5 * time.Second
+)
+
 // probePending probes the files without a cached probe, videos first, in
-// batches. A Trigger (a finished download) ends the pass after the current
-// file: the follow-up run scans and enriches the new title first, then
-// carries on here. Files ffprobe failed on are skipped until a restart.
-func (j *Jobs) probePending(ctx context.Context) {
+// batches, and returns how many it probed. A Trigger (a finished download)
+// ends the pass after the current file: the follow-up run scans and enriches
+// the new title first, then carries on here. Files ffprobe failed on are
+// skipped until a restart; playback holds the pass between files (Idle).
+func (j *Jobs) probePending(ctx context.Context) int {
+	probed := 0
 	for {
 		j.mu.Lock()
 		nBad := len(j.badProbes)
@@ -209,12 +245,12 @@ func (j *Jobs) probePending(ctx context.Context) {
 		files, err := j.Scanner.Repo.FilesWithoutProbe(ctx, probeBatch+nBad)
 		if err != nil {
 			j.Log.Warn("library: probe list", "err", err)
-			return
+			return probed
 		}
 		progressed := false
 		for _, f := range files {
-			if ctx.Err() != nil {
-				return
+			if ctx.Err() != nil || !j.waitIdle(ctx) {
+				return probed
 			}
 			j.mu.Lock()
 			bad := j.badProbes[f.ID]
@@ -232,13 +268,35 @@ func (j *Jobs) probePending(ctx context.Context) {
 				j.mu.Lock()
 				j.badProbes[f.ID] = true
 				j.mu.Unlock()
+			} else if err == nil {
+				probed++
 			}
 			if len(j.trigger) > 0 {
-				return
+				return probed
 			}
 		}
 		if !progressed || len(files) < probeBatch+nBad {
-			return
+			return probed
 		}
 	}
+}
+
+// waitIdle waits while Idle says no; false when ctx ended, a Trigger is
+// waiting or probeWait ran out.
+func (j *Jobs) waitIdle(ctx context.Context) bool {
+	if j.Idle == nil {
+		return true
+	}
+	deadline := time.Now().Add(probeWait)
+	for !j.Idle() {
+		if len(j.trigger) > 0 || time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(probePoll):
+		}
+	}
+	return true
 }

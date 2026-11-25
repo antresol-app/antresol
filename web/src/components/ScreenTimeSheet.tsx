@@ -9,7 +9,9 @@ import type { ScreenLimits, ScreenReport, ScreenWindow } from '../api/types'
 import { humanMinutes } from '../player/timeline'
 import { locale, t as tr, useT } from '../i18n'
 import { Button } from '../ui/Button'
+import { NumberField } from '../ui/NumberField'
 import { Sheet } from '../ui/Sheet'
+import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
 import styles from './ScreenTimeSheet.module.css'
 
@@ -37,9 +39,9 @@ function weekday(day: string): string {
 }
 
 type Draft = {
-  video: string
+  video: number
   videoOn: boolean
-  audio: string
+  audio: number
   audioOn: boolean
   weekday: ScreenWindow | null
   weekend: ScreenWindow | null
@@ -47,19 +49,14 @@ type Draft = {
 }
 
 const draftOf = (l: ScreenLimits): Draft => ({
-  video: String(l.videoMin ?? 60),
+  video: l.videoMin ?? 60,
   videoOn: l.videoMin !== null,
-  audio: String(l.audioMin ?? 60),
+  audio: l.audioMin ?? 60,
   audioOn: l.audioMin !== null,
   weekday: l.weekday,
   weekend: l.weekend,
   dayStart: l.dayStart || '04:00',
 })
-
-const minutesOf = (s: string): number | null => {
-  const n = Number(s)
-  return s.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 1440 ? n : null
-}
 
 export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps) {
   const t = useT()
@@ -83,18 +80,15 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
   }, [userId, t])
 
   const change = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d))
-  const videoMin = draft ? minutesOf(draft.video) : null
-  const audioMin = draft ? minutesOf(draft.audio) : null
-  const invalid = !!draft && ((draft.videoOn && videoMin === null) || (draft.audioOn && audioMin === null))
 
   const save = async () => {
-    if (!draft || invalid) return
+    if (!draft) return
     setBusy(true)
     setError('')
     try {
       await saveScreenLimits(userId, {
-        videoMin: draft.videoOn ? videoMin : null,
-        audioMin: draft.audioOn ? audioMin : null,
+        videoMin: draft.videoOn ? draft.video : null,
+        audioMin: draft.audioOn ? draft.audio : null,
         weekday: draft.weekday,
         weekend: draft.weekend,
         dayStart: draft.dayStart,
@@ -132,40 +126,30 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
         </div>
         {w && (
           <div className={styles.times} role="group" aria-labelledby={`${id}-${key}`}>
-            <label className={styles.time}>
-              <span>{t('comp.screen.from')}</span>
-              <input type="time" value={w.from} required onChange={(e) => e.target.value && change({ [key]: { ...w, from: e.target.value } })} />
-            </label>
-            <label className={styles.time}>
-              <span>{t('comp.screen.to')}</span>
-              <input type="time" value={w.to} required onChange={(e) => e.target.value && change({ [key]: { ...w, to: e.target.value } })} />
-            </label>
+            <div className={styles.time}>
+              <span aria-hidden>{t('comp.screen.from')}</span>
+              <TextField type="time" size="small" hideLabel label={t('comp.screen.from')} value={w.from} required onChange={(e) => e.target.value && change({ [key]: { ...w, from: e.target.value } })} />
+            </div>
+            <div className={styles.time}>
+              <span aria-hidden>{t('comp.screen.to')}</span>
+              <TextField type="time" size="small" hideLabel label={t('comp.screen.to')} value={w.to} required onChange={(e) => e.target.value && change({ [key]: { ...w, to: e.target.value } })} />
+            </div>
           </div>
         )}
       </div>
     )
   }
-  const minutes = (on: boolean, value: string, valid: boolean, label: string, set: (p: Partial<Draft>) => void, k: 'video' | 'audio') => (
+  const minutes = (on: boolean, value: number, label: string, set: (p: Partial<Draft>) => void, k: 'video' | 'audio') => (
     <div className={styles.limit}>
       <div className={styles.limitHead}>
         <span>{label}</span>
         <Toggle label={`${label}: ${t('comp.screen.limitOn')}`} checked={on} onChange={(x) => set({ [`${k}On`]: x })} />
       </div>
       {on && (
-        <label className={styles.time}>
-          <span>{t('comp.screen.minutes')}</span>
-          <input
-            type="number"
-            min={0}
-            max={1440}
-            step={5}
-            inputMode="numeric"
-            value={value}
-            aria-invalid={!valid}
-            onChange={(e) => set({ [k]: e.target.value })}
-          />
-          {!valid && <span className={styles.bad}>{t('comp.screen.badMinutes')}</span>}
-        </label>
+        <div className={styles.time}>
+          <span aria-hidden>{t('comp.screen.minutes')}</span>
+          <NumberField label={t('comp.screen.minutes')} value={value} min={0} max={1440} chars={4} onChange={(n) => set({ [k]: n })} />
+        </div>
       )}
     </div>
   )
@@ -179,7 +163,7 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
       onCancel={onClose}
       actions={[
         { label: t('common.cancel'), kind: 'cancel', run: onClose },
-        { label: t('common.save'), kind: 'primary', disabled: !draft || invalid, run: () => void save() },
+        { label: t('common.save'), kind: 'primary', disabled: !draft, run: () => void save() },
       ]}
     >
       <div className={styles.form}>
@@ -262,15 +246,15 @@ export function ScreenTimeSheet({ userId, name, onClose }: ScreenTimeSheetProps)
             <h3 className={styles.label} id={`${id}-limits`}>
               {t('comp.screen.limits')}
             </h3>
-            {minutes(draft.videoOn, draft.video, videoMin !== null, t('comp.screen.video'), change, 'video')}
-            {minutes(draft.audioOn, draft.audio, audioMin !== null, t('comp.screen.audio'), change, 'audio')}
+            {minutes(draft.videoOn, draft.video, t('comp.screen.video'), change, 'video')}
+            {minutes(draft.audioOn, draft.audio, t('comp.screen.audio'), change, 'audio')}
             {hours('weekday', t('comp.screen.weekday'))}
             {hours('weekend', t('comp.screen.weekend'))}
             <div className={styles.limit}>
-              <label className={styles.time}>
-                <span>{t('comp.screen.dayStart')}</span>
-                <input type="time" value={draft.dayStart} required onChange={(e) => e.target.value && change({ dayStart: e.target.value })} />
-              </label>
+              <div className={styles.time}>
+                <span aria-hidden>{t('comp.screen.dayStart')}</span>
+                <TextField type="time" size="small" hideLabel label={t('comp.screen.dayStart')} value={draft.dayStart} required onChange={(e) => e.target.value && change({ dayStart: e.target.value })} />
+              </div>
               <p className={styles.hint}>{t('comp.screen.dayStartHint')}</p>
             </div>
             <p className={styles.hint}>{t('comp.screen.note')}</p>

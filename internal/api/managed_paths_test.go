@@ -111,7 +111,7 @@ func TestMergeKeepsAnAccountWithAnAppPassword(t *testing.T) {
 func TestAddonsSeeTheSeparateHistory(t *testing.T) {
 	e := newAddonEnv(t)
 	withAdultsAddon(t, e)
-	tv := &http.Cookie{Name: "vault_session", Value: e.deviceLogin(1, "secret", "tv-living-01")}
+	tv := &http.Cookie{Name: "vault_session", Value: e.deviceLogin(1, adminPass, "tv-living-01")}
 	w := e.do("PUT", "/api/me/devices/current/history", `{"separate":true}`, tv)
 	if w.Code != 200 {
 		t.Fatalf("switch %d %s", w.Code, w.Body)

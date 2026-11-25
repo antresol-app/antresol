@@ -77,23 +77,6 @@
   padding: calc(env(safe-area-inset-top) + 24px) var(--gutter) 0
     var(--gutter);
 }
-.round {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  color: #fff;
-  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
-}
-.round:hover {
-  background: rgba(80, 80, 90, 0.7);
-}
-.round:active {
-  transform: scale(0.94);
-}
 .heading {
   min-width: 0;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
@@ -175,23 +158,13 @@
 .bigPlay:disabled {
   opacity: 0.4;
 }
+/* the buffering ring in the play disc (ui/Spinner, white on its faint track) */
+.waiting {
+  display: flex;
+}
 .spinner {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #fff;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.6s;
-  }
+  --spinner-size: 38px;
+  --spinner-width: 3px;
 }
 
 /* ---------- Bottom bar ---------- */
@@ -242,26 +215,21 @@
   align-items: center;
   gap: 4px;
 }
-.tool {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #fff;
-  transition: background-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+/* A round tool of the video bars: the kit's IconButton (plain, 44) in the bar's own
+   white, the picture's wash under the pointer or while its menu is open. The
+   speaker (VolumeControl) and the menus' triggers (TrackMenu, SkipControls) compose
+   it. Twice, so it outranks the button's own colour and hover. */
+.tool.tool {
+  color: var(--label-over-art);
 }
-.tool:hover {
+.tool.tool:hover:not(:disabled),
+.tool.tool[aria-expanded='true'] {
   background: rgba(255, 255, 255, 0.14);
-}
-.tool:active {
-  transform: scale(0.94);
+  color: var(--label-over-art);
 }
 /* AirPlay: the video plays on a receiver */
-.tool[data-active] {
+.tool.tool[data-active],
+.tool.tool[data-active]:hover:not(:disabled) {
   color: var(--accent);
 }
 

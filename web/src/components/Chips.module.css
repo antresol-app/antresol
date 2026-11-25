@@ -15,7 +15,7 @@
   background: var(--fill-3);
   color: var(--label-2);
   font: var(--t-subhead);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   line-height: 1;
   cursor: pointer;
   transition:

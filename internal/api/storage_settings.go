@@ -17,6 +17,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/config"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/mediacheck"
@@ -55,16 +56,8 @@ const (
 // LoadFolderSettings are the folders an administrator picked, and whether
 // any were (config.Config.WithFolders applies them at start). A row from
 // before several folders per kind (one path each) reads as one folder each.
-func LoadFolderSettings(ctx context.Context, db *sql.DB) (f config.Folders, custom bool, err error) {
-	var raw string
-	err = db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, foldersKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return f, false, nil
-	}
-	if err != nil {
-		return f, false, err
-	}
-	if err := json.Unmarshal([]byte(raw), &f); err != nil {
+func LoadFolderSettings(ctx context.Context, conn *sql.DB) (f config.Folders, custom bool, err error) {
+	if found, err := db.GetJSON(ctx, conn, foldersKey, &f); err != nil || !found {
 		return config.Folders{}, false, err
 	}
 	return f, true, nil
@@ -682,11 +675,9 @@ func (s *storageAPI) put(w http.ResponseWriter, r *http.Request) {
 	if next.Equal(env) {
 		// the same as the server's own: no row, so a later change of
 		// VAULT_*_DIR is still heard
-		_, err = s.db.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, foldersKey)
+		err = db.DeleteSetting(ctx, s.db, foldersKey)
 	} else {
-		raw, _ := json.Marshal(next)
-		_, err = s.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-			ON CONFLICT(key) DO UPDATE SET value=excluded.value`, foldersKey, string(raw))
+		err = db.PutJSON(ctx, s.db, foldersKey, next)
 	}
 	if err != nil {
 		internalErr(w, r, "storage settings", err)
@@ -745,10 +736,7 @@ func (s *storageAPI) forget(ctx context.Context, gone []removal) (int, error) {
 		}
 		n += g.Items
 	}
-	raw, _ := json.Marshal(dirs)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, forgetKey, string(raw))
-	return n, err
+	return n, db.PutJSON(ctx, s.db, forgetKey, dirs)
 }
 
 // browseView is GET /api/settings/storage/browse: one folder the browser
@@ -847,20 +835,18 @@ func (s *storageAPI) create(w http.ResponseWriter, r *http.Request) {
 }
 
 // markWizardPending is called when the first administrator is created.
-func markWizardPending(ctx context.Context, db *sql.DB) {
-	if db == nil {
+func markWizardPending(ctx context.Context, conn *sql.DB) {
+	if conn == nil {
 		return
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, 'pending')
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, wizardKey); err != nil {
+	if err := db.PutSetting(ctx, conn, wizardKey, "pending"); err != nil {
 		log.Printf("api: %s: %v", wizardKey, err)
 	}
 }
 
-func wizardPending(ctx context.Context, db *sql.DB) bool {
-	var v string
-	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, wizardKey).Scan(&v)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) && ctx.Err() == nil {
+func wizardPending(ctx context.Context, conn *sql.DB) bool {
+	v, _, err := db.GetSetting(ctx, conn, wizardKey)
+	if err != nil && ctx.Err() == nil {
 		log.Printf("api: %s: %v", wizardKey, err)
 	}
 	return v == "pending"

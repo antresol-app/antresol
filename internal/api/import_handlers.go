@@ -189,6 +189,7 @@ func (h *importAPI) writeJob(w http.ResponseWriter, r *http.Request, code int, i
 }
 
 func (h *importAPI) create(w http.ResponseWriter, r *http.Request) {
+	bodyDeadline(w)
 	r.Body = http.MaxBytesReader(w, r.Body, maxSnapshotBody)
 	var snap playlistimport.Snapshot
 	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {

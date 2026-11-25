@@ -79,6 +79,12 @@ Put it in **Settings → Server → Server Address**. If you set it in `.env`
 
 Check from a phone on mobile data: `https://media.example.com` should open.
 
+At home the server counts a visitor as home only when they reach it by an IP address, by this
+address's name or by a name only a home network has (`antresol`, `*.local`, `*.lan`,
+`*.home.arpa`). Any other name that points at the server from inside, say a second domain on
+your own DNS, is treated as away from home until you list it in `VAULT_TRUSTED_HOSTS`
+(`media.lan,*.example.org`); the log says so once.
+
 ## What is different away from home
 
 - Profiles **without a password** sign in only from the home network. Give a password to those who

@@ -182,7 +182,7 @@ export default {
   'profiles.adminHint': 'Downloads, sources, files and settings.',
   'profiles.newPassword': 'New password',
   'profiles.tooShort': 'At least {n} characters',
-  'profiles.adminPassword': 'An administrator needs a password — at least 6 characters.',
+  'profiles.adminPassword': 'An administrator needs a password — at least 10 characters.',
   'profiles.passwordDropped': 'The password will be removed.',
   'profiles.keepEmpty': 'Leave empty to keep it.',
   'profiles.optional': 'Optional.',

@@ -29,14 +29,22 @@ services:
   service-name:
     image: <image from the extension's README>
     restart: unless-stopped
-    # past this the kernel stops the service, not the server
+    # past these limits the kernel stops the service, not the server
     mem_limit: 1536m
+    pids_limit: 4096
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
 ```
 
-The block has no `ports:`: only the server reaches the service, nothing outside does. It has a
-memory cap (`mem_limit`): a service that runs a browser can grow until the machine is out of
-memory, and the cap makes the system stop that service instead of the server. Raise it if the
-service is stopped for lack of memory.
+The block has no `ports:`: only the server reaches the service, nothing outside does. It has caps
+on memory (`mem_limit`) and processes (`pids_limit`): a service that runs a browser can grow until
+the machine is out of memory, and the caps make the system stop that service instead of the
+server. The numbers above are the default; an extension may size them for its service (and add a
+`cpus` cap), so the block on its page may differ. Raise `mem_limit` if the service is stopped for
+lack of memory. The service also gets no extra Linux capabilities and cannot gain new
+privileges; if an image refuses to start with that, remove the `cap_drop` and `security_opt`
+lines.
 
 ## The block for each extension
 

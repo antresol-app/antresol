@@ -69,8 +69,8 @@ func mountAPIKeys(r chi.Router, keys *auth.APIKeys, publicURL string) {
 		writeJSON(w, http.StatusOK, map[string]any{"key": key, "info": info})
 	}))
 	r.Delete("/api/me/api-keys/{id}", adultOnly(func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err != nil {
+		id, ok := pathID(r, "id")
+		if !ok {
 			writeErr(w, r, http.StatusNotFound, "Ключ не найден")
 			return
 		}

@@ -267,7 +267,7 @@ func (p *inputPlay) convertInputSub(ctx context.Context, in addons.Input, target
 
 // subFailed: key was put in f within inputSubFailMemory (by p's clock).
 func (p *inputPlay) subFailed(f *keyTimes, key string) bool {
-	t, ok := f.at(key)
+	t, ok := f.get(key)
 	return ok && p.clock().Sub(t) < inputSubFailMemory
 }
 

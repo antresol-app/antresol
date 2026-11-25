@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -22,6 +23,7 @@ type fakeExtras struct {
 	url      string
 	ready    bool
 	err      error
+	released atomic.Int32 // streams let go (Stream.Release)
 	// chans: the channel each Candidates and Resolve call was made for
 	// (ChannelFrom; 0 none)
 	chans []int64
@@ -59,7 +61,7 @@ func (f *fakeExtras) Resolve(ctx context.Context, ch int64, t ExtraTitle) (Strea
 	if f.fail[t.Key] {
 		return Stream{}, errors.New("source failed")
 	}
-	return Stream{URL: f.url, Headers: map[string]string{"X-K": "v"}}, nil
+	return Stream{URL: f.url, Headers: map[string]string{"X-K": "v"}, Release: func() { f.released.Add(1) }}, nil
 }
 
 // extrasFixture: 6 comedies in the library and a comedy channel with
@@ -375,5 +377,102 @@ func TestProgramDoesNotWaitForAPrefetchThatIsNotDueYet(t *testing.T) {
 	p, err := svc.Program(tctx, c.ID, prev.End)
 	if err != nil || p.ExtraID == 0 || p.URL != ex.url {
 		t.Fatalf("%+v %v", p, err)
+	}
+}
+
+// farExtra builds the channel and returns the programme before an extra
+// that starts well ahead (the one whose play prefetches it).
+func farExtra(t *testing.T, f *fixture, svc *Service, c Channel) (prev, next Entry) {
+	t.Helper()
+	if err := svc.BuildChannel(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	es := f.entries(c.ID)
+	for i, e := range es {
+		if e.ExtraID != 0 && i > 0 && es[i-1].ExtraID == 0 && e.Start.Sub(f.now) > 10*time.Minute {
+			return es[i-1], e
+		}
+	}
+	t.Skip("no extra far enough ahead")
+	return
+}
+
+func waitFor(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	for end := time.Now().Add(3 * time.Second); !ok(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatalf("not within 3 s: %s", what)
+		}
+	}
+}
+
+func (s *Service) prefetched(ch, seq int64) *prefetched {
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	return s.prefetch[entryKey{ch, seq}]
+}
+
+// A stream resolved ahead that nobody took is let go when the service
+// stops, and a prefetch still waiting for its time ends then, without
+// leaving its title out.
+func TestPrefetchEndsWithRun(t *testing.T) {
+	ex := &fakeExtras{n: 10, url: "http://127.0.0.1:9/s.m3u8"}
+	f, svc, c := extrasFixture(t, ex, Rules{Genres: []string{"комедия"}, Extras: true})
+	ctx := context.Background()
+	prev, next := farExtra(t, f, svc, c)
+	rctx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); svc.Run(rctx, time.Hour) }()
+	defer func() { stop(); <-done }()
+	waitFor(t, "Run started", func() bool { svc.pmu.Lock(); defer svc.pmu.Unlock(); return svc.pctx != nil })
+	if _, err := svc.Program(ctx, c.ID, prev.Start); err != nil { // its prefetch waits for its time
+		t.Fatal(err)
+	}
+	pf := svc.prefetched(c.ID, next.Seq)
+	if pf == nil {
+		t.Fatal("nothing prefetched")
+	}
+	select {
+	case <-pf.done:
+		t.Fatal("resolved before its time")
+	case <-time.After(50 * time.Millisecond):
+	}
+	stop()
+	<-done
+	select {
+	case <-pf.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the prefetch outlived the service")
+	}
+	var failed int
+	f.db.QueryRow(`SELECT count(*) FROM channel_extras WHERE failed_until_ms > 0`).Scan(&failed)
+	if failed != 0 || ex.released.Load() != 0 {
+		t.Fatalf("a stopping service left %d titles out and let %d streams go", failed, ex.released.Load())
+	}
+}
+
+func TestPrefetchSweepLetsGoOfAnUntakenStream(t *testing.T) {
+	ex := &fakeExtras{n: 10, url: "http://127.0.0.1:9/s.m3u8"}
+	f, svc, c := extrasFixture(t, ex, Rules{Genres: []string{"комедия"}, Extras: true})
+	ctx := context.Background()
+	prev, next := farExtra(t, f, svc, c)
+	f.now = next.Start.Add(-time.Minute) // due: resolved at once
+	if _, err := svc.Program(ctx, c.ID, prev.Start); err != nil {
+		t.Fatal(err)
+	}
+	pf := svc.prefetched(c.ID, next.Seq)
+	if pf == nil {
+		t.Fatal("nothing prefetched")
+	}
+	<-pf.done
+	svc.sweepPrefetch(false)
+	if ex.released.Load() != 0 {
+		t.Fatal("let go before its programme was over")
+	}
+	f.now = next.Start.Add(prefetchKeep + time.Minute)
+	svc.sweepPrefetch(false)
+	waitFor(t, "the stream let go", func() bool { return ex.released.Load() == 1 })
+	if svc.prefetched(c.ID, next.Seq) != nil {
+		t.Fatal("still kept")
 	}
 }

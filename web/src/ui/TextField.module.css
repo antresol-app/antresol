@@ -40,8 +40,17 @@
 }
 /* numbers read from the right edge, in even digits */
 .input[inputmode='numeric'],
-.input[inputmode='decimal'] {
+.input[inputmode='decimal'],
+.input[type='time'] {
   font-variant-numeric: tabular-nums;
+}
+/* TextArea: the field for several lines, which the corner stretches down */
+.multiline {
+  display: block;
+  height: auto;
+  min-height: var(--control-h-field);
+  padding: var(--s-3) var(--s-4);
+  resize: vertical;
 }
 .control:has(.reveal) .input {
   padding-right: calc(var(--control-h-sm) + var(--s-3));

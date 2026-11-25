@@ -8,6 +8,7 @@ import type { Candidate, ReviewTrack } from '../../../api/types'
 import { Button } from '../../../ui/Button'
 import { Icon } from '../../../components/Icon'
 import { TextField } from '../../../ui/TextField'
+import { Spinner } from '../../../ui/Spinner'
 import m from '../Manage.module.css'
 import { t as tr, useT } from '../../../i18n'
 import styles from './ReviewList.module.css'
@@ -108,7 +109,7 @@ function TrackRow({ track, catalog, onResolved }: { track: ReviewTrack; catalog:
       )}
       {mode !== '' && found.status === 'loading' && (
         <p className={styles.note} role="status">
-          <span className={m.spinner} aria-hidden /> {t('import.reviewList.searching')}
+          <Spinner track className={m.spinner} /> {t('import.reviewList.searching')}
         </p>
       )}
       {mode !== '' && found.status === 'error' && (
@@ -186,7 +187,7 @@ export function ReviewList({ jobId, catalog, onChanged }: ReviewListProps) {
   if (!tracks)
     return (
       <div className={m.spinnerRow} role="status">
-        <span className={m.spinner} aria-hidden /> {t('import.reviewList.loading')}
+        <Spinner track className={m.spinner} /> {t('import.reviewList.loading')}
       </div>
     )
   if (tracks.length === 0)

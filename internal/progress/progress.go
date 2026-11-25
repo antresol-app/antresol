@@ -9,8 +9,9 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // finishedPercent is the share of the duration after which an item counts as watched.
@@ -482,11 +483,8 @@ func (s *Store) SeriesWatched(ctx context.Context, userID, seriesID int64) (bool
 func (s *Store) WatchedOf(ctx context.Context, userID int64, items, series []int64) (map[int64]bool, error) {
 	out := map[int64]bool{}
 	if len(items) > 0 {
-		args := []any{userID}
-		for _, id := range items {
-			args = append(args, id)
-		}
-		rows, err := s.db.QueryContext(ctx, `SELECT item_id FROM progress WHERE user_id=? AND finished=1 AND item_id IN `+inList(len(items)), args...)
+		rows, err := s.db.QueryContext(ctx, `SELECT item_id FROM progress WHERE user_id=? AND finished=1 AND item_id IN `+db.In(len(items)),
+			append([]any{userID}, db.Args(items)...)...)
 		if err != nil {
 			return nil, err
 		}
@@ -504,14 +502,10 @@ func (s *Store) WatchedOf(ctx context.Context, userID int64, items, series []int
 		}
 	}
 	if len(series) > 0 {
-		args := []any{userID}
-		for _, id := range series {
-			args = append(args, id)
-		}
 		rows, err := s.db.QueryContext(ctx, `SELECT se.parent_id, COUNT(*), COUNT(p.item_id) FROM items e JOIN items se ON se.id=e.parent_id
 		  LEFT JOIN progress p ON p.item_id=e.id AND p.user_id=? AND p.finished=1
-		  WHERE e.kind='episode' AND se.parent_id IN `+inList(len(series))+` AND e.missing_since IS NULL AND COALESCE(e.season_no,0)>0
-		  GROUP BY se.parent_id`, args...)
+		  WHERE e.kind='episode' AND se.parent_id IN `+db.In(len(series))+` AND e.missing_since IS NULL AND COALESCE(e.season_no,0)>0
+		  GROUP BY se.parent_id`, append([]any{userID}, db.Args(series)...)...)
 		if err != nil {
 			return nil, err
 		}
@@ -556,14 +550,10 @@ func (s *Store) allChildrenFinished(ctx context.Context, userID int64, kind stri
 	if len(parents) == 0 {
 		return out, nil
 	}
-	args := []any{userID, kind}
-	for _, id := range parents {
-		args = append(args, id)
-	}
 	rows, err := s.db.QueryContext(ctx, `SELECT e.parent_id, COUNT(*), COUNT(p.item_id) FROM items e
 	  LEFT JOIN progress p ON p.item_id=e.id AND p.user_id=? AND p.finished=1
-	  WHERE e.kind=? AND e.parent_id IN `+inList(len(parents))+` AND e.missing_since IS NULL
-	  GROUP BY e.parent_id`, args...)
+	  WHERE e.kind=? AND e.parent_id IN `+db.In(len(parents))+` AND e.missing_since IS NULL
+	  GROUP BY e.parent_id`, append([]any{userID, kind}, db.Args(parents)...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -600,16 +590,12 @@ func (s *Store) entriesOf(ctx context.Context, userID int64, kinds []string, fin
 	if limit <= 0 {
 		limit = -1
 	}
-	args := []any{userID}
-	for _, k := range kinds {
-		args = append(args, k)
-	}
 	fin := 0
 	if finished {
 		fin = 1
 	}
-	args = append(args, fin, limit)
-	rows, err := s.db.QueryContext(ctx, selectEntry+`WHERE p.user_id=? AND i.kind IN (?`+strings.Repeat(",?", len(kinds)-1)+`)
+	args := append(append([]any{userID}, db.Args(kinds)...), fin, limit)
+	rows, err := s.db.QueryContext(ctx, selectEntry+`WHERE p.user_id=? AND i.kind IN `+db.In(len(kinds))+`
 	  AND p.finished=? AND i.missing_since IS NULL ORDER BY p.updated_at DESC, p.rowid DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -723,23 +709,14 @@ func (s *Store) Watchlist(ctx context.Context, userID int64) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// inList is "(?,?,…)" for n values.
-func inList(n int) string { return "(?" + strings.Repeat(",?", n-1) + ")" }
-
 // Of returns the users' entries of the items (the family view: other
 // profiles' progress on a page), newest first. Missing items are left out.
 func (s *Store) Of(ctx context.Context, userIDs, itemIDs []int64) ([]Entry, error) {
 	if len(userIDs) == 0 || len(itemIDs) == 0 {
 		return nil, nil
 	}
-	args := make([]any, 0, len(userIDs)+len(itemIDs))
-	for _, id := range userIDs {
-		args = append(args, id)
-	}
-	for _, id := range itemIDs {
-		args = append(args, id)
-	}
-	return s.list(ctx, selectEntry+`WHERE p.user_id IN `+inList(len(userIDs))+` AND p.item_id IN `+inList(len(itemIDs))+`
+	args := append(db.Args(userIDs), db.Args(itemIDs)...)
+	return s.list(ctx, selectEntry+`WHERE p.user_id IN `+db.In(len(userIDs))+` AND p.item_id IN `+db.In(len(itemIDs))+`
 	  AND i.missing_since IS NULL ORDER BY p.updated_at DESC, p.rowid DESC`, args...)
 }
 
@@ -752,15 +729,8 @@ func (s *Store) StartedBy(ctx context.Context, userIDs []int64, kinds []string, 
 	if limit <= 0 {
 		limit = -1
 	}
-	args := make([]any, 0, len(userIDs)+len(kinds)+2)
-	for _, id := range userIDs {
-		args = append(args, id)
-	}
-	for _, k := range kinds {
-		args = append(args, k)
-	}
-	args = append(args, since.UTC().Format(tsLayout), limit)
-	return s.list(ctx, selectEntry+`WHERE p.user_id IN `+inList(len(userIDs))+` AND i.kind IN `+inList(len(kinds))+`
+	args := append(append(db.Args(userIDs), db.Args(kinds)...), since.UTC().Format(tsLayout), limit)
+	return s.list(ctx, selectEntry+`WHERE p.user_id IN `+db.In(len(userIDs))+` AND i.kind IN `+db.In(len(kinds))+`
 	  AND p.finished=0 AND p.position_ms>0 AND p.updated_at>=? AND i.missing_since IS NULL
 	  ORDER BY p.updated_at DESC, p.rowid DESC LIMIT ?`, args...)
 }

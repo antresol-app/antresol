@@ -6,9 +6,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getGenres, getMusicHome, useEvents, errorText } from '../../api/client'
 import type { Genre, MusicHome as MusicHomeData } from '../../api/types'
 import { Button, ButtonLink } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
+import { Skeleton } from '../../ui/Skeleton'
 import { RescanLink } from '../../components/RescanLink'
 import { EmptyStateActions } from '../../components/EmptyStateActions'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { LibraryTools, MineEmpty } from '../../components/LibraryScopeMenu'
 import { Shelf } from '../../components/Shelf'
 import { answerSlot, forgetAnswer, lastAnswer, rememberAnswer } from '../../state/lastAnswer'
@@ -143,10 +146,10 @@ export function MusicHome() {
         <div className={styles.skeleton} aria-busy="true" aria-label={t('common.loading')}>
           {[0, 1].map((r) => (
             <div key={r}>
-              <div className={styles.skeletonTitle} />
+              <Skeleton tone="soft" className={styles.skeletonTitle} />
               <div className={styles.skeletonRow}>
                 {Array.from({ length: 7 }, (_, i) => (
-                  <div key={i} className={styles.skeletonCard} />
+                  <Skeleton key={i} className={styles.skeletonCard} />
                 ))}
               </div>
             </div>
@@ -155,32 +158,26 @@ export function MusicHome() {
       )}
 
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('music.home.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('music.retry')}
-          </Button>
-        </div>
+        <LoadFailed inset title={t('music.home.loadFailed')} message={state.message} retry={t('music.retry')} onRetry={() => load()} />
       )}
 
-      {state.status === 'ready' && shelves.length === 0 && scope === 'mine' && <MineEmpty className={styles.empty} />}
+      {state.status === 'ready' && shelves.length === 0 && scope === 'mine' && <MineEmpty inset />}
 
       {state.status === 'ready' && shelves.length === 0 && scope !== 'mine' && (
-        <div className={styles.empty}>
-          <Icon name="music" size={48} strokeWidth={1.4} />
-          <h2>{t('music.emptyTitle')}</h2>
-          {user?.isKid ? (
-            <p>{t('music.home.emptyKid')}</p>
-          ) : (
-            <>
-              <p>{t('music.emptyHint')}</p>
-              <RescanLink variant="secondary" />
-              <EmptyStateActions scope="music" variant="secondary" />
-            </>
-          )}
-        </div>
+        <EmptyState
+          inset
+          icon={<Icon name="music" size={48} strokeWidth={1.4} />}
+          title={t('music.emptyTitle')}
+          hint={user?.isKid ? t('music.home.emptyKid') : t('music.emptyHint')}
+          actions={
+            !user?.isKid && (
+              <>
+                <RescanLink variant="secondary" />
+                <EmptyStateActions scope="music" variant="secondary" />
+              </>
+            )
+          }
+        />
       )}
 
       {shelves.length > 0 && (

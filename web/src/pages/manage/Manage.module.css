@@ -152,7 +152,8 @@
   gap: var(--s-0);
   min-height: var(--control-h-md);
   margin: calc(-1 * var(--s-1h)) 0 var(--s-1) calc(-1 * var(--s-1h));
-  font: 400 17px / 1 var(--font-text);
+  font: var(--t-body);
+  line-height: 1;
   color: var(--accent);
 }
 
@@ -216,6 +217,11 @@
 .groupFoot {
   composes: foot from '../../ui/List.module.css';
 }
+/* «Мои запросы»: the cards as wide as they need, centred */
+.requests {
+  max-width: 1080px;
+  margin: 0 auto;
+}
 .empty {
   display: flex;
   flex-direction: column;
@@ -239,6 +245,14 @@
   max-width: 46ch;
   text-wrap: balance;
 }
+/* a footnote that sets its own gap: under a status, over a list (two classes:
+   the footnote's own margins come from ui/List.module.css's .foot) */
+.groupFoot.footGap {
+  margin-bottom: var(--s-3);
+}
+.groupFoot.footSummary {
+  margin: 0 0 var(--s-2h);
+}
 .problem {
   display: flex;
   align-items: center;
@@ -249,6 +263,10 @@
   background: var(--warning-fill);
   color: var(--warning);
   font: var(--t-subhead);
+}
+/* the first thing under a section's title */
+.problemTop {
+  margin-top: var(--s-4);
 }
 .ok {
   color: var(--success);
@@ -262,23 +280,12 @@
   color: var(--label-2);
   font: var(--t-subhead);
 }
+/* the ui/Spinner of a loading row: its size, its track and its head */
 .spinner {
-  width: 22px;
-  height: 22px;
-  border: 2.5px solid var(--fill-1);
-  border-top-color: var(--label);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
+  --spinner-size: 22px;
+  --spinner-width: 2.5px;
+  --spinner-track-art: var(--fill-1);
+  color: var(--label);
 }
 
 @media (max-width: 699px) {

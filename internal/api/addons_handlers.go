@@ -328,17 +328,6 @@ func addonsAdminOnly(next http.Handler) http.Handler {
 	})
 }
 
-// addonsNoKids: kids get no addon, with the reason.
-func addonsNoKids(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if userOf(r).IsKid {
-			writeErr(w, r, http.StatusForbidden, msgAddonKid)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 // addonAccess admits admins to every addon and other (adult) profiles to
 // an addon with access "adults". With proxy set, a path the addon could
 // read otherwise than the core is refused for everyone (addonProxyPath),
@@ -740,7 +729,14 @@ func (a *addonsAPI) static(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	// a bundle asked for by its version's URL (web: ?v=) never changes under
+	// it; one asked for bare, and a local build of an addon under
+	// development, is checked every time
+	cache := "no-cache"
+	if r.URL.Query().Get("v") == in.Version && !strings.HasPrefix(strings.TrimSpace(in.Source), addons.LocalPrefix) {
+		cache = "private, max-age=31536000, immutable" // behind the session and the addon's access: no shared cache keeps it
+	}
+	w.Header().Set("Cache-Control", cache)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, name, st.ModTime(), f)
 }
@@ -807,7 +803,8 @@ func (a *addonsAPI) rewrite(pr *httputil.ProxyRequest) {
 	u := userOf(in)
 	b, _ := json.Marshal(addonUser{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(in.Context()),
 		MaxRating: ratingLimit(u), MaxHeight: a.maxHeight(in), History: addonHistory(in.Context())})
-	h.Set("X-Antresol-User", addons.ASCIIJSON(b))
+	sock, _ := in.Context().Value(addonSockKey{}).(string)
+	addons.SetUser(h, sock, addons.ASCIIJSON(b))
 }
 
 // addonHistory is the separate history of the request for an addon
@@ -971,6 +968,7 @@ func (a *addonsAPI) coreEvent(w http.ResponseWriter, r *http.Request) {
 		Name string          `json:"name"`
 		Data json.RawMessage `json:"data"`
 	}
+	bodyDeadline(w)
 	r.Body = http.MaxBytesReader(w, r.Body, addonEventBody)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		var tooBig *http.MaxBytesError

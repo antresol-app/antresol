@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // Kinds of a source.
@@ -257,8 +259,7 @@ func (s *Store) DeleteSource(ctx context.Context, id int64) error {
 		return err
 	}
 	delete(all, strconv.FormatInt(id, 10))
-	_, err = s.DB.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, jsonText(all), settingAdultGroups)
-	return err
+	return db.PutJSON(ctx, s.DB, settingAdultGroups, all)
 }
 
 // EPGURLs returns a source's guide URLs by priority.
@@ -502,16 +503,8 @@ const settingAdultGroups = "iptv_adult_groups"
 
 func (s *Store) adultGroups(ctx context.Context) (map[string]map[string]bool, error) {
 	out := map[string]map[string]bool{}
-	var v string
-	err := s.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingAdultGroups).Scan(&v)
-	if errors.Is(err, sql.ErrNoRows) {
-		return out, nil
-	}
-	if err != nil {
+	if _, err := db.GetJSON(ctx, s.DB, settingAdultGroups, &out); err != nil {
 		return nil, err
-	}
-	if err := json.Unmarshal([]byte(v), &out); err != nil {
-		return nil, fmt.Errorf("iptv adult groups: %w", err)
 	}
 	return out, nil
 }
@@ -535,9 +528,7 @@ func (s *Store) SetAdultGroup(ctx context.Context, sourceID int64, group string,
 		}
 		all[k][group] = *adult
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-		settingAdultGroups, jsonText(all))
-	return err
+	return db.PutJSON(ctx, s.DB, settingAdultGroups, all)
 }
 
 // settingXtream: Xtream sources are on (settings "iptv_xtream" = "1").
@@ -546,16 +537,13 @@ const settingXtream = "iptv_xtream"
 // XtreamEnabled: the admin turned Xtream sources on in the TV settings
 // (off by default).
 func (s *Store) XtreamEnabled(ctx context.Context) bool {
-	var v string
-	err := s.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingXtream).Scan(&v)
+	v, _, err := db.GetSetting(ctx, s.DB, settingXtream)
 	return err == nil && v == "1"
 }
 
 // SetXtreamEnabled turns Xtream sources on or off.
 func (s *Store) SetXtreamEnabled(ctx context.Context, on bool) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-		settingXtream, strconv.Itoa(b2i(on)))
-	return err
+	return db.PutSetting(ctx, s.DB, settingXtream, strconv.Itoa(b2i(on)))
 }
 
 func langsOrEmpty(l []string) []string {

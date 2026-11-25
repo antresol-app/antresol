@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/natsort"
 	"github.com/antresol-app/antresol/internal/release"
 )
@@ -142,6 +144,37 @@ func (r *Repo) UpsertAlbumTracks(ctx context.Context, albumArtist string, tracks
 	if len(tracks) == 0 {
 		return 0, errors.New("library: album without tracks")
 	}
+	sum, err := summarizeTracks(albumArtist, tracks)
+	if err != nil {
+		return 0, err
+	}
+	err = r.inTx(ctx, func(tx *sql.Tx) error {
+		artistID, err := upsertArtist(ctx, tx, sum.artist)
+		if err != nil {
+			return err
+		}
+		if albumID, err = upsertAlbumRow(ctx, tx, artistID, tracks[0].AlbumDir, sum); err != nil {
+			return err
+		}
+		if err := r.upsertTracks(ctx, tx, albumID, sum.artist, tracks); err != nil {
+			return err
+		}
+		return found(ctx, tx, albumID, artistID)
+	})
+	return albumID, err
+}
+
+// albumSummary is what the tracks of one album say about the album.
+type albumSummary struct {
+	artist, title string // the album artist as stored, the album's title
+	year          int    // the commonest year, the earlier one on a tie
+	cover, mbrg   string // the first track's cover, MusicBrainz release group
+	genres        []string
+	compilation   bool
+}
+
+// summarizeTracks reads the album off its tracks (at least one).
+func summarizeTracks(albumArtist string, tracks []TrackInput) (albumSummary, error) {
 	first := tracks[0]
 	albumArtist = strings.TrimSpace(albumArtist)
 	if albumArtist == "" {
@@ -157,128 +190,130 @@ func (r *Repo) UpsertAlbumTracks(ctx context.Context, albumArtist string, tracks
 	if title == "" {
 		title = filepath.Base(first.AlbumDir)
 	}
+	sum := albumSummary{artist: albumArtist, title: title, compilation: albumArtist == VariousArtists}
 	years := map[int]int{}
-	year, cover, mbrg := 0, "", ""
-	var genres []string
 	seenGenre := map[string]bool{}
-	compilation := albumArtist == VariousArtists
 	for _, t := range tracks {
 		if t.File.Path == "" {
-			return 0, errors.New("library: track needs a file path")
+			return albumSummary{}, errors.New("library: track needs a file path")
 		}
 		if plausibleYear(t.Year) != 0 {
 			years[t.Year]++
-			if years[t.Year] > years[year] || (years[t.Year] == years[year] && t.Year < year) {
-				year = t.Year
+			if years[t.Year] > years[sum.year] || (years[t.Year] == years[sum.year] && t.Year < sum.year) {
+				sum.year = t.Year
 			}
 		}
 		if g := strings.TrimSpace(t.Genre); g != "" && !seenGenre[strings.ToLower(g)] {
 			seenGenre[strings.ToLower(g)] = true
-			genres = append(genres, g)
+			sum.genres = append(sum.genres, g)
 		}
-		if cover == "" {
-			cover = t.Cover
+		if sum.cover == "" {
+			sum.cover = t.Cover
 		}
-		if mbrg == "" {
-			mbrg = t.MBReleaseGroupID
+		if sum.mbrg == "" {
+			sum.mbrg = t.MBReleaseGroupID
 		}
-		compilation = compilation || t.Compilation
+		sum.compilation = sum.compilation || t.Compilation
 	}
-	err = r.inTx(ctx, func(tx *sql.Tx) error {
-		artistID, err := upsertArtist(ctx, tx, albumArtist)
-		if err != nil {
-			return err
-		}
-		key := albumMatchKey(first.AlbumDir, title)
-		var scanCover sql.NullString
-		err = tx.QueryRowContext(ctx, `SELECT id, json_extract(meta_json,'$.scan_cover') FROM items WHERE kind='album' AND match_key=? ORDER BY id LIMIT 1`, key).Scan(&albumID, &scanCover)
-		ts := now()
-		if errors.Is(err, sql.ErrNoRows) {
-			res, err := tx.ExecContext(ctx, `INSERT INTO items(kind,parent_id,title,sort_title,year,poster,match_key,added_at,updated_at) VALUES('album',?,?,?,?,?,?,?,?)`,
-				artistID, title, sortTitle(title), year, nullStr(cover), key, ts, ts)
-			if err != nil {
-				return err
-			}
-			if albumID, err = res.LastInsertId(); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET parent_id=?1 WHERE id=?2 AND parent_id IS NOT ?1`, artistID, albumID); err != nil {
-				return err
-			}
-			if err := fillEmpty(ctx, tx, albumID, "", year, "", "", 0, "", ""); err != nil {
-				return err
-			}
-			// a garbage year stored earlier is replaced (or cleared)
-			if _, err := tx.ExecContext(ctx, `UPDATE items SET year=?1 WHERE id=?2 AND year<>?1 AND (year<?3 OR year>?4)`,
-				year, albumID, minYear, maxYear); err != nil {
-				return err
-			}
-			// the scanner replaces only a poster it set itself (or none)
-			if cover != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=?1 WHERE id=?2 AND poster IS NOT ?1 AND (poster IS NULL OR poster=?3)`,
-					cover, albumID, scanCover.String); err != nil {
-					return err
-				}
-			} else if scanCover.String != "" {
-				// the cover the scanner set is gone (cover.jpg deleted)
-				if _, err := tx.ExecContext(ctx, `UPDATE items SET poster=NULL WHERE id=? AND poster=?`, albumID, scanCover.String); err != nil {
-					return err
-				}
-			}
-		}
-		meta := map[string]any{"compilation": compilation}
-		if len(genres) > 0 {
-			meta["genres"] = genres
-		}
-		if mbrg != "" {
-			meta["mb_release_group"] = mbrg
-		}
-		if cover != "" {
-			meta["scan_cover"] = cover
-		} else {
-			meta["scan_cover"] = nil
-		}
-		if err := setAlbumMeta(ctx, tx, albumID, meta); err != nil {
-			return err
-		}
-		if err := addTitles(ctx, tx, albumID, title); err != nil {
-			return err
-		}
+	return sum, nil
+}
 
-		// a file several tracks play from is a CUE image (owned by the album)
-		uses := map[string]int{}
-		for _, t := range tracks {
-			uses[t.File.Path]++
+// upsertAlbumRow creates or refreshes the album item of artistID (found by
+// its match_key in albumDir) with its meta_json and titles, and returns its
+// id. The scanner replaces only a poster it set itself (or none).
+func upsertAlbumRow(ctx context.Context, tx *sql.Tx, artistID int64, albumDir string, sum albumSummary) (int64, error) {
+	var albumID int64
+	key := albumMatchKey(albumDir, sum.title)
+	var scanCover sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT id, json_extract(meta_json,'$.scan_cover') FROM items WHERE kind='album' AND match_key=? ORDER BY id LIMIT 1`, key).Scan(&albumID, &scanCover)
+	ts := now()
+	if errors.Is(err, sql.ErrNoRows) {
+		res, err := tx.ExecContext(ctx, `INSERT INTO items(kind,parent_id,title,sort_title,year,poster,match_key,added_at,updated_at) VALUES('album',?,?,?,?,?,?,?,?)`,
+			artistID, sum.title, sortTitle(sum.title), sum.year, nullStr(sum.cover), key, ts, ts)
+		if err != nil {
+			return 0, err
 		}
-		imageIDs := map[string]int64{}
-		starts := map[int64][]any{} // file id -> starts written in this call
-		for _, t := range tracks {
-			if err := r.upsertTrack(ctx, tx, albumID, albumArtist, t, uses[t.File.Path] > 1, imageIDs, starts); err != nil {
-				return err
-			}
+		if albumID, err = res.LastInsertId(); err != nil {
+			return 0, err
 		}
-		// tracks of a file that are not in the input any more (an edited
-		// sheet, an image now split): their items go, with their rows
-		for fid, st := range starts {
-			if _, err := tx.ExecContext(ctx, staleTracksSQL(len(st)), append([]any{fid}, st...)...); err != nil {
-				return err
-			}
+	} else if err != nil {
+		return 0, err
+	} else {
+		if _, err := tx.ExecContext(ctx, `UPDATE items SET parent_id=?1 WHERE id=?2 AND parent_id IS NOT ?1`, artistID, albumID); err != nil {
+			return 0, err
 		}
-		return found(ctx, tx, albumID, artistID)
-	})
-	return albumID, err
+		if err := fillEmpty(ctx, tx, albumID, "", sum.year, "", "", 0, "", ""); err != nil {
+			return 0, err
+		}
+		// a garbage year stored earlier is replaced (or cleared)
+		if _, err := tx.ExecContext(ctx, `UPDATE items SET year=?1 WHERE id=?2 AND year<>?1 AND (year<?3 OR year>?4)`,
+			sum.year, albumID, minYear, maxYear); err != nil {
+			return 0, err
+		}
+		if err := setScanPoster(ctx, tx, albumID, sum.cover, scanCover.String); err != nil {
+			return 0, err
+		}
+	}
+	meta := map[string]any{"compilation": sum.compilation}
+	if len(sum.genres) > 0 {
+		meta["genres"] = sum.genres
+	}
+	if sum.mbrg != "" {
+		meta["mb_release_group"] = sum.mbrg
+	}
+	if sum.cover != "" {
+		meta["scan_cover"] = sum.cover
+	} else {
+		meta["scan_cover"] = nil
+	}
+	if err := setAlbumMeta(ctx, tx, albumID, meta); err != nil {
+		return 0, err
+	}
+	return albumID, addTitles(ctx, tx, albumID, sum.title)
+}
+
+// upsertTracks writes the tracks of album albumID, and removes the track
+// items of a file that are no longer in the input (an edited sheet, an image
+// now split), with their rows.
+func (r *Repo) upsertTracks(ctx context.Context, tx *sql.Tx, albumID int64, albumArtist string, tracks []TrackInput) error {
+	// a file several tracks play from is a CUE image (owned by the album)
+	uses := map[string]int{}
+	for _, t := range tracks {
+		uses[t.File.Path]++
+	}
+	imageIDs := map[string]int64{}
+	starts := map[int64][]any{} // file id -> starts written in this call
+	for _, t := range tracks {
+		if err := r.upsertTrack(ctx, tx, albumID, albumArtist, t, uses[t.File.Path] > 1, imageIDs, starts); err != nil {
+			return err
+		}
+	}
+	for fid, st := range starts {
+		if err := dropStaleTracks(ctx, tx, fid, st); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dropStaleTracks deletes the track items of file fileID whose start is not
+// among keep. An empty keep deletes nothing: «NOT IN ()» is true of every
+// row, so it would take all the file's tracks.
+func dropStaleTracks(ctx context.Context, x execer, fileID int64, keep []any) error {
+	if len(keep) == 0 {
+		return nil
+	}
+	_, err := x.ExecContext(ctx, staleTracksSQL(len(keep)), append([]any{fileID}, keep...)...)
+	return err
 }
 
 // staleTracksSQL deletes the track items of a file (?1) whose start is not
-// among n given ones. The rows are found through tracks_file_start and
-// deleted by rowid: «+kind» keeps the planner off items_tmdb(kind), which
-// would scan every track item once per file.
+// among n (at least 1) given ones. The rows are found through
+// tracks_file_start and deleted by rowid: «+kind» keeps the planner off
+// items_tmdb(kind), which would scan every track item once per file.
 func staleTracksSQL(n int) string {
-	return `DELETE FROM items WHERE id IN (SELECT item_id FROM tracks WHERE file_id=? AND start_ms NOT IN (?` +
-		strings.Repeat(",?", n-1) + `)) AND +kind='track'`
+	return `DELETE FROM items WHERE id IN (SELECT item_id FROM tracks WHERE file_id=? AND start_ms NOT IN ` +
+		db.In(n) + `) AND +kind='track'`
 }
 
 // upsertTrack writes one track: its item, its files row (its own, or the
@@ -448,7 +483,7 @@ const albumSigsSQL = `SELECT COALESCE(json_extract(meta_json,'$.scan_sig'),'') F
 // tracks (files.path is unique: one index lookup per path).
 func folderFilesSQL(n int) string {
 	return `SELECT COUNT(DISTINCT f.id), COUNT(*) FROM files f JOIN tracks t ON t.file_id=f.id JOIN items i ON i.id=t.item_id
-	  WHERE f.path IN (?` + strings.Repeat(",?", n-1) + `) AND f.missing_since IS NULL AND i.missing_since IS NULL`
+	  WHERE f.path IN ` + db.In(n) + ` AND f.missing_since IS NULL AND i.missing_since IS NULL`
 }
 
 // folderPathsBatch bounds the bound parameters of one query, far below
@@ -563,21 +598,9 @@ func (r *Repo) TrackByID(ctx context.Context, id int64) (Track, error) {
 // AlbumTracks returns the tracks of an album in playing order: disc,
 // number, start within the file, then the title in natural order.
 func (r *Repo) AlbumTracks(ctx context.Context, albumID int64) ([]Track, error) {
-	rows, err := r.db.QueryContext(ctx, trackSelect+` WHERE i.parent_id=? AND i.kind='track' AND i.missing_since IS NULL
+	out, err := r.queryTracks(ctx, trackSelect+` WHERE i.parent_id=? AND i.kind='track' AND i.missing_since IS NULL
 	  ORDER BY t.disc_no, t.track_no, t.start_ms, i.id`, albumID)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Track
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, tr)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -708,10 +731,8 @@ func (r *Repo) Albums(ctx context.Context, q AlbumQuery) ([]Album, int, error) {
 		if err != nil {
 			return nil, 0, err
 		}
-		where = append(where, "json_valid(i.meta_json) AND EXISTS (SELECT 1 FROM json_each(i.meta_json,'$.genres') WHERE value COLLATE NOCASE IN (?"+strings.Repeat(",?", len(forms)-1)+"))")
-		for _, f := range forms {
-			args = append(args, f)
-		}
+		where = append(where, "json_valid(i.meta_json) AND EXISTS (SELECT 1 FROM json_each(i.meta_json,'$.genres') WHERE value COLLATE NOCASE IN "+db.In(len(forms))+")")
+		args = append(args, db.Args(forms)...)
 	}
 	years := q.FromYear != 0 || q.ToYear != 0
 	if years {
@@ -790,8 +811,8 @@ func (r *Repo) AlbumByID(ctx context.Context, id int64) (Album, error) {
 // left out).
 func (r *Repo) AlbumsByID(ctx context.Context, ids []int64) (map[int64]Album, error) {
 	out := make(map[int64]Album, len(ids))
-	for part := range chunks(ids, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
 		as, err := r.queryAlbums(ctx, `SELECT `+albumCols+` FROM items i LEFT JOIN items ar ON ar.id=i.parent_id
 		  WHERE i.id IN `+in+` AND i.kind='album' AND i.missing_since IS NULL`, args...)
 		if err != nil {
@@ -827,28 +848,14 @@ func (r *Repo) Tracks(ctx context.Context, ids []int64) ([]Track, error) {
 		return []Track{}, nil
 	}
 	by := map[int64]Track{}
-	const chunk = 500
-	for start := 0; start < len(ids); start += chunk {
-		part := ids[start:min(start+chunk, len(ids))]
-		args := make([]any, len(part))
-		for i, id := range part {
-			args[i] = id
-		}
-		rows, err := r.db.QueryContext(ctx, trackSelect+` WHERE i.id IN (?`+strings.Repeat(",?", len(part)-1)+`) AND i.kind='track' AND i.missing_since IS NULL`, args...)
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
+		tracks, err := r.queryTracks(ctx, trackSelect+` WHERE i.id IN `+in+` AND i.kind='track' AND i.missing_since IS NULL`, args...)
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			tr, err := scanTrack(rows)
-			if err != nil {
-				rows.Close()
-				return nil, err
-			}
+		for _, tr := range tracks {
 			by[tr.ID] = tr
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
 		}
 	}
 	out := make([]Track, 0, len(ids))
@@ -869,20 +876,8 @@ func (r *Repo) Songs(ctx context.Context, limit, offset int) ([]Track, int, erro
 	if limit <= 0 {
 		limit = -1
 	}
-	rows, err := r.db.QueryContext(ctx, trackSelect+` WHERE i.kind='track' AND i.missing_since IS NULL ORDER BY i.sort_title, i.id LIMIT ? OFFSET ?`, limit, max(offset, 0))
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	out := []Track{}
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		out = append(out, tr)
-	}
-	return out, total, rows.Err()
+	out, err := r.queryTracks(ctx, trackSelect+` WHERE i.kind='track' AND i.missing_since IS NULL ORDER BY i.sort_title, i.id LIMIT ? OFFSET ?`, limit, max(offset, 0))
+	return nonNil(out), total, err
 }
 
 // Artists returns a page of the artists that have visible albums, by
@@ -923,8 +918,8 @@ func (r *Repo) artistRows(ctx context.Context, items []Item) ([]ArtistRow, error
 		out[i] = ArtistRow{Item: it, Cover: ImageURL(0, "poster", "")}
 		at[it.ID], ids[i] = i, it.ID
 	}
-	for part := range chunks(ids, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
 		rows, err := r.db.QueryContext(ctx, `SELECT parent_id, COUNT(*) FROM items WHERE parent_id IN `+in+` AND kind='album' AND missing_since IS NULL
 		  GROUP BY parent_id`, args...)
 		if err != nil {
@@ -1092,22 +1087,10 @@ func (r *Repo) AlbumFolderTracks(ctx context.Context, albumID int64) ([]Track, e
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, trackSelect+` WHERE i.kind='track' AND i.missing_since IS NULL
+	tracks, err := r.queryTracks(ctx, trackSelect+` WHERE i.kind='track' AND i.missing_since IS NULL
 	  AND al.kind='album' AND al.match_key >= ?1 || '|' AND al.match_key < ?1 || '}'
 	  ORDER BY al.id, t.disc_no, t.track_no, t.start_ms, i.id`, dir)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Track{}
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, tr)
-	}
-	return out, rows.Err()
+	return nonNil(tracks), err
 }
 
 // albumTitlesIn returns the titles of the album items in folder dir

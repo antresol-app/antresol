@@ -105,7 +105,7 @@
   background: none;
   color: var(--accent);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   white-space: normal;
 }
 .link:hover:not(:disabled) {
@@ -151,24 +151,9 @@
   flex: none;
 }
 
+/* the busy ring (ui/Spinner) is as big as the label's font */
 .spinner {
-  flex: none;
-  width: 1em;
-  height: 1em;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
+  --spinner-size: 1em;
 }
 /* a finger's 44 pt target (HIG): the hit area grows, the look does not */
 @media (pointer: coarse) {

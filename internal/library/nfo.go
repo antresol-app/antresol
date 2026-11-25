@@ -3,7 +3,6 @@ package library
 import (
 	"bytes"
 	"encoding/xml"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -121,9 +120,13 @@ func ParseNFO(data []byte) (NFO, bool) {
 	return n, n.Title != "" || n.TmdbID != 0 || n.Episode != 0
 }
 
+// nfoLimit is the biggest .nfo the scan reads: a real one is a few KB, and
+// the scan reads one beside every title.
+const nfoLimit = 1 << 20
+
 // readNFO reads and parses the nfo file at path; ok=false if missing/unusable.
 func readNFO(path string) (NFO, bool) {
-	b, err := os.ReadFile(path)
+	b, err := readSmall(path, nfoLimit)
 	if err != nil {
 		return NFO{}, false
 	}

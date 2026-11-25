@@ -117,7 +117,9 @@ for (const where of ['desktop', 'phone'] as const) {
     await shot(page, `series-${where}`)
 
     await fold.click()
-    const list = page.locator('section[aria-label="Семья"]')
+    // a wide window's fold is a menu (its jump buttons are menu items); a phone's opens in place
+    const list = where === 'desktop' ? page.getByRole('menu', { name: 'Семья' }) : page.locator('section[aria-label="Семья"]')
+    const jump = where === 'desktop' ? 'menuitem' : 'button'
     await expect(list.getByText('Далее: С1 Э2')).toBeVisible()
     await expect(list.getByText('Всё просмотрено')).toBeVisible()
     await list.scrollIntoViewIfNeeded()
@@ -134,7 +136,7 @@ for (const where of ['desktop', 'phone'] as const) {
 
     // the player starts at her 17:00, in the admin's own progress
     await fold.click()
-    await list.getByRole('button', { name: /С1 Э2 с 17:00 — с места профиля «Мама»/ }).click()
+    await list.getByRole(jump, { name: /С1 Э2 с 17:00 — с места профиля «Мама»/ }).click()
     await expect(page).toHaveURL(new RegExp(`/watch/${ids.episodes[1]}\\?t=1020$`))
     const mine = (await (await page.request.get(`/api/progress/${ids.episodes[1]}`)).json()) as { positionMs: number }
     expect(mine.positionMs).toBe(17 * MIN)
@@ -142,7 +144,7 @@ for (const where of ['desktop', 'phone'] as const) {
     // the film page, and Главная's «Семья смотрит»
     await page.goto(`/item/${ids.movie}`)
     await page.getByRole('button', { name: /^Семья/ }).click()
-    await expect(page.locator('section[aria-label="Семья"] li').getByText('34 мин из 1 ч 50 мин')).toBeVisible()
+    await expect(list.locator('li').getByText('34 мин из 1 ч 50 мин')).toBeVisible()
     await shot(page, `movie-open-${where}`)
     await page.goto('/')
     const shelf = page.getByRole('region', { name: /Семья смотрит/ })

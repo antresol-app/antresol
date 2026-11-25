@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -346,5 +347,43 @@ func TestLookAlikes(t *testing.T) {
 	want := "0-1 0-3 0-4 5-6 10-11"
 	if strings.Join(got, " ") != want {
 		t.Errorf("pairs %v, want %s", got, want)
+	}
+}
+
+// The tick every 10 minutes does not read the members of every source
+// unless a source asks for variants and a model is there. The table is
+// renamed away, so a read would fail and be logged.
+func TestAskVariantsReadsNoMembersWithoutAWork(t *testing.T) {
+	e := newSvcEnv(t)
+	ctx := context.Background()
+	e.p.put("/ru.m3u", fixture(t))
+	plain := e.source("Plain", "/ru.m3u", nil)
+	if _, err := e.svc.Store.DB.Exec(`INSERT INTO iptv_variant_ai (cluster_key, answer_json, model, made_ms) VALUES ('old','[]','m',1)`); err != nil {
+		t.Fatal(err)
+	}
+	e.refresh(plain.ID) // reads the cached answers once, the old one included
+	if _, err := e.svc.Store.DB.Exec(`ALTER TABLE iptv_members RENAME TO iptv_members_away`); err != nil {
+		t.Fatal(err)
+	}
+	var logs strings.Builder
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	asked := 0
+	e.svc.Model = func(context.Context, channels.Tier) *channels.LLM { asked++; return nil }
+
+	// no source asks for variants: no model asked, no members read, the old answers dropped
+	e.svc.AskVariants(ctx)
+	var n int
+	if err := e.svc.Store.DB.QueryRow(`SELECT COUNT(*) FROM iptv_variant_ai`).Scan(&n); err != nil || n != 0 || asked != 0 || logs.Len() != 0 {
+		t.Fatalf("no preset: answers %d (%v), model asked %d, log %q", n, err, asked, logs.String())
+	}
+
+	// a source asks, there is no model: the members are not read either
+	if _, err := e.svc.Store.SaveSource(ctx, func() Source { plain.PresetVariants = true; return plain }()); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.AskVariants(ctx)
+	if asked != 1 || logs.Len() != 0 {
+		t.Fatalf("no model: asked %d, log %q", asked, logs.String())
 	}
 }

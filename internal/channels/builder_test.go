@@ -68,7 +68,7 @@ func TestOrderedMarathonPlaysEpisodesInOrderAndWraps(t *testing.T) {
 	c := f.create(Channel{Name: "Show", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
 	b := f.builder()
 	b.Horizon = 5 * time.Hour
-	if err := b.Build(context.Background(), c); err != nil {
+	if _, err := b.Build(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -98,7 +98,7 @@ func TestShuffleIsDeterministicWithoutQuickRepeatsAndSeriesInOrder(t *testing.T)
 		c := f.create(Channel{Name: "Drama", Rules: Rules{Genres: []string{"драма"}}})
 		b := f.builder()
 		b.Horizon = 40 * time.Hour
-		if err := b.Build(context.Background(), c); err != nil {
+		if _, err := b.Build(context.Background(), c); err != nil {
 			t.Fatal(err)
 		}
 		return f.entries(c.ID)
@@ -141,11 +141,11 @@ func TestBuildExtendsKeepsHistoryAndTrims(t *testing.T) {
 	c := f.create(Channel{Name: "S", Rules: Rules{Titles: []int64{s}, Order: OrderOrdered}})
 	b := f.builder()
 	b.Horizon, b.Keep = 2*time.Hour, time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	f.now = f.now.Add(3 * time.Hour) // e1, e2 aired; e1 ended 2 h ago
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -167,7 +167,7 @@ func TestEditCutsAfterCurrentAndMissingFileCuts(t *testing.T) {
 	c := f.create(Channel{Name: "X", Rules: Rules{Titles: []int64{a}, Order: OrderOrdered}})
 	b := f.builder()
 	b.Horizon = 4 * time.Hour
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	f.now = f.now.Add(30 * time.Minute)
@@ -175,7 +175,7 @@ func TestEditCutsAfterCurrentAndMissingFileCuts(t *testing.T) {
 	if _, err := f.st.Update(ctx, c); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)
@@ -193,6 +193,40 @@ func TestEditCutsAfterCurrentAndMissingFileCuts(t *testing.T) {
 	}
 	if _, err := f.st.At(ctx, c.ID, f.now.Add(time.Hour)); !errors.Is(err, ErrNothing) {
 		t.Fatalf("at: %v", err)
+	}
+}
+
+// A rule change and the cut of the schedule are one write: when the cut
+// fails the old rules stay, so the retry (which sees other rules) cuts.
+func TestUpdateWithFailedCutKeepsOldRules(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a := f.movie("A", 60, itemOpt{})
+	bb := f.movie("B", 60, itemOpt{})
+	c := f.create(Channel{Name: "X", Rules: Rules{Titles: []int64{a}, Order: OrderOrdered}})
+	b := f.builder()
+	b.Horizon = 4 * time.Hour
+	if _, err := b.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	f.now = f.now.Add(30 * time.Minute)
+	f.exec(`ALTER TABLE channel_playout RENAME TO channel_playout_off`)
+	c.Rules.Titles = []int64{bb}
+	if _, err := f.st.Update(ctx, c); err == nil {
+		t.Fatal("update succeeded without a schedule table")
+	}
+	if got, err := f.st.Get(ctx, c.ID); err != nil || len(got.Rules.Picks) != 1 || got.Rules.Picks[0].ID != a {
+		t.Fatalf("rules after the failed update: %+v %v", got.Rules, err)
+	}
+	f.exec(`ALTER TABLE channel_playout_off RENAME TO channel_playout`)
+	if _, err := f.st.Update(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if es := f.entries(c.ID); es[0].ItemID != a || es[1].ItemID != bb {
+		t.Fatalf("the retry did not cut: %+v", es)
 	}
 }
 
@@ -258,7 +292,7 @@ func TestBuildNoTitleOnTwoChannelsAtOnce(t *testing.T) {
 	dra := f.create(Channel{Name: "Драмы", Rules: Rules{Genres: []string{"драма"}}, Seed: 7})
 	b := f.builder()
 	for _, c := range []Channel{com, dra} {
-		if err := b.Build(ctx, c); err != nil {
+		if _, err := b.Build(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 	}

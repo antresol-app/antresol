@@ -21,7 +21,7 @@ type historyOut struct {
 // tv signs a TV in as the admin (profile 1) and returns its cookie.
 func (e *libEnv) tv(id string) *http.Cookie {
 	e.t.Helper()
-	return &http.Cookie{Name: "vault_session", Value: e.deviceLogin(1, "secret", id)}
+	return &http.Cookie{Name: "vault_session", Value: e.deviceLogin(1, adminPass, id)}
 }
 
 func (e *libEnv) switchHistory(c *http.Cookie, device, body string) historyOut {

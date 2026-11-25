@@ -1,6 +1,5 @@
 /* «Закладки и заметки», the note sheet and the selection menu. */
 .jump,
-.icon,
 .color,
 .menuColor,
 .menuButton {
@@ -40,20 +39,17 @@
   gap: var(--s-3);
   flex: 1;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-h-md);
   padding: var(--s-3);
   border-radius: var(--r-card-sm);
   text-align: left;
 }
 .jump:hover,
-.jump:focus-visible,
-.icon:hover,
-.icon:focus-visible {
+.jump:focus-visible {
   background: var(--fill-3);
   outline: none;
 }
 .jump:focus-visible,
-.icon:focus-visible,
 .color:focus-visible,
 .menuColor:focus-visible,
 .menuButton:focus-visible {
@@ -100,15 +96,9 @@
   font: var(--t-footnote);
   color: var(--red);
 }
+/* the row's own buttons (IconButton) start a little under its top */
 .icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
   margin-top: 2px;
-  border-radius: var(--r-card-sm);
-  color: var(--label-2);
 }
 .export {
   display: flex;
@@ -132,7 +122,7 @@
   display: block;
   width: 100%;
   min-height: 120px;
-  padding: var(--s-3) 14px;
+  padding: var(--s-3) var(--s-3h);
   border: 0;
   border-radius: var(--r-control);
   background: var(--fill-2);
@@ -151,8 +141,8 @@
   margin-top: var(--s-3);
 }
 .color {
-  width: 30px;
-  height: 30px;
+  width: var(--control-h-xs);
+  height: var(--control-h-xs);
   border-radius: var(--r-pill);
   box-shadow: inset 0 0 0 1px var(--hairline);
 }
@@ -169,15 +159,15 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 48px;
+  gap: var(--s-1h);
+  height: var(--control-h-field);
   padding: 0 var(--s-2);
   border-radius: var(--r-pill);
   background: var(--glass-fill-menu);
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-lift);
   color: var(--label);
-  font: 500 15px / 1 var(--font-text);
+  font: var(--t-field);
 }
 .menuColor {
   width: 28px;
@@ -198,9 +188,9 @@
 .menuButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 10px;
+  gap: var(--s-1h);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-2h);
   border-radius: var(--r-pill);
 }
 .menuButton:hover {

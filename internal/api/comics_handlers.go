@@ -73,12 +73,6 @@ func newComicArchives(max int, cacheDir string) *comicArchives {
 	return &comicArchives{max: max, cache: cacheDir, slots: make(chan struct{}, comicOpensAtOnce), lru: list.New(), byID: map[int64]*list.Element{}}
 }
 
-func (c *comicArchives) len() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.lru.Len()
-}
-
 // get returns the open volume of fileID at path; done must be called when
 // the caller has finished with it.
 func (c *comicArchives) get(ctx context.Context, fileID int64, path string) (*comics.Archive, func(), error) {

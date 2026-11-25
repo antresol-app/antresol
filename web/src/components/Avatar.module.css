@@ -6,7 +6,7 @@
   border-radius: 50%;
   color: var(--white);
   font-family: var(--font-rounded);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   letter-spacing: 0;
   line-height: 1;
   text-shadow: var(--text-shadow-avatar);

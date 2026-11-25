@@ -68,7 +68,9 @@ import { useVolume } from '../../player/useVolume'
 import { VolumeControl } from '../../player/VolumeControl'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
+import { Spinner } from '../../ui/Spinner'
 import { useMediaQuery } from '../../state/useMediaQuery'
+import { usePolling } from '../../state/usePolling'
 import { VirtualList } from '../../ui/VirtualList'
 import { ChannelArt } from './ChannelArt'
 import { ChannelLogo } from './ChannelLogo'
@@ -163,28 +165,16 @@ export function LivePlayer() {
   const next = onAir ? (programs[programs.indexOf(onAir) + 1] ?? channel?.next) : undefined
 
   // the list, its now/next for «Каналы»; the profile's defaults for the tracks
-  useEffect(() => {
-    let ac = new AbortController()
-    const load = () => {
-      ac.abort()
-      ac = new AbortController()
+  usePolling(async (signal) => {
+    try {
       // brief: what is on, without descriptions (this channel's are in its guide)
-      getChannels(ac.signal, false, true).then(
-        (l) => {
-          setChannels(l.channels)
-          setFavFirst(Boolean(l.favoritesFirst))
-          setListed(true)
-        },
-        () => setListed(true),
-      )
+      const l = await getChannels(signal, false, true)
+      setChannels(l.channels)
+      setFavFirst(Boolean(l.favoritesFirst))
+    } finally {
+      setListed(true)
     }
-    load()
-    const timer = window.setInterval(load, GUIDE_MS)
-    return () => {
-      window.clearInterval(timer)
-      ac.abort()
-    }
-  }, [])
+  }, GUIDE_MS)
   useEffect(() => {
     const ac = new AbortController()
     getPlaybackPrefs(undefined, ac.signal).then(setPrefs, () => undefined)
@@ -199,21 +189,8 @@ export function LivePlayer() {
     getLiveQuality(quality, ac.signal).then(setQualityInfo, () => undefined)
     return () => ac.abort()
   }, [quality, ownChannel])
-  useEffect(() => {
-    let ac = new AbortController()
-    setPrograms([])
-    const load = () => {
-      ac.abort()
-      ac = new AbortController()
-      getChannelGuide(channelId, 6, ac.signal).then((g) => setPrograms(g.programs), () => undefined)
-    }
-    load()
-    const timer = window.setInterval(load, GUIDE_MS)
-    return () => {
-      window.clearInterval(timer)
-      ac.abort()
-    }
-  }, [channelId])
+  useEffect(() => setPrograms([]), [channelId])
+  usePolling(async (signal) => setPrograms((await getChannelGuide(channelId, 6, signal)).programs), GUIDE_MS, { key: channelId })
   // a TV's «last channel» (never progress or history)
   useEffect(() => {
     if (channelId > 0) setLastChannel(channelId).catch(() => undefined)
@@ -1013,7 +990,9 @@ export function LivePlayer() {
         )}
         {phase === 'starting' && (
           <div className={styles.center}>
-            <span className={styles.spinner} role="status" aria-label={t('tv.starting')} />
+            <span className={styles.starting} role="status" aria-label={t('tv.starting')}>
+              <Spinner track className={styles.spinner} />
+            </span>
             <span className={styles.note}>{t('tv.starting')}</span>
           </div>
         )}

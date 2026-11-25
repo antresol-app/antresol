@@ -17,12 +17,10 @@ import (
 	"github.com/antresol-app/antresol/internal/voclean"
 )
 
-// tracksEntry is a file's planned tracks; full: planned for the encoder
-// (external tracks probed), else from their names.
+// tracksEntry is a file's planned tracks.
 type tracksEntry struct {
-	t    Tracks
-	at   time.Time
-	full bool
+	t  Tracks
+	at time.Time
 }
 
 // How long a file's plan, a channel's track set (when it is not running)
@@ -62,7 +60,7 @@ func (s *Service) plan(ctx context.Context, fileID int64, path string, probe med
 	if s.tracks == nil || len(s.tracks) >= maxTracks {
 		s.tracks = map[int64]tracksEntry{}
 	}
-	s.tracks[fileID] = tracksEntry{t: t, at: now, full: full}
+	s.tracks[fileID] = tracksEntry{t: t, at: now}
 	s.tmu.Unlock()
 	return t
 }
@@ -114,7 +112,7 @@ func (s *Service) SetLanguage(lang string) {
 }
 
 // TrackSet is the track set a run of channel ch starting at from would
-// have (Live's SetSource): the keys of the programmes scheduled from then
+// have (Source.TrackSet): the keys of the programmes scheduled from then
 // to SetHorizon ahead, each file's tracks from their names (cheap: no
 // probing); kept setTTL.
 func (s *Service) TrackSet(ctx context.Context, ch int64, from time.Time) TrackSet {
@@ -249,22 +247,31 @@ func (s *Service) FileTracks(ctx context.Context, fileID int64) (*Tracks, error)
 	if ok && time.Since(e.at) < tracksTTL {
 		return &e.t, nil
 	}
-	var path string
-	var probe sql.NullString
-	err := s.Store.DB.QueryRowContext(ctx, `SELECT path, probe_json FROM files WHERE id=? AND missing_since IS NULL`, fileID).Scan(&path, &probe)
-	if errors.Is(err, sql.ErrNoRows) {
+	path, probe, err := s.fileProbe(ctx, fileID)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && probe == nil {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if !probe.Valid || probe.String == "" {
-		return nil, nil
+	t := s.plan(ctx, fileID, path, *probe, false)
+	return &t, nil
+}
+
+// fileProbe is a library file's path and its stored probe (nil: none, or
+// one that does not read: logged); sql.ErrNoRows when the file is gone or
+// missing.
+func (s *Service) fileProbe(ctx context.Context, fileID int64) (string, *media.ProbeResult, error) {
+	var path string
+	var raw sql.NullString
+	err := s.Store.DB.QueryRowContext(ctx, `SELECT path, probe_json FROM files WHERE id=? AND missing_since IS NULL`, fileID).Scan(&path, &raw)
+	if err != nil || !raw.Valid || raw.String == "" {
+		return path, nil, err
 	}
 	var p media.ProbeResult
-	if err := json.Unmarshal([]byte(probe.String), &p); err != nil {
-		return nil, nil
+	if err := json.Unmarshal([]byte(raw.String), &p); err != nil {
+		log.Printf("channels: probe of file %d: %v", fileID, err)
+		return path, nil, nil
 	}
-	t := s.plan(ctx, fileID, path, p, false)
-	return &t, nil
+	return path, &p, nil
 }

@@ -8,7 +8,7 @@
   background:
     radial-gradient(1200px 700px at 50% -10%, rgba(94, 92, 230, 0.14), rgba(0, 0, 0, 0) 70%),
     radial-gradient(900px 600px at 50% 120%, rgba(10, 132, 255, 0.08), rgba(0, 0, 0, 0) 70%),
-    var(--bg);
+    var(--bg); /* ds-allow: art, the sign-in screen's two glows */
   overflow: hidden;
 }
 
@@ -131,18 +131,13 @@
   background: var(--scrim-art-strong);
   color: var(--label-over-art);
 }
+/* turns by the global .spin (design/motion.css) */
 .avatarBusy {
   position: absolute;
   inset: -6px;
   border-radius: 50%;
   border: 3px solid var(--label-over-art-2);
   border-right-color: transparent;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 .profileSkeleton {
   border-radius: 50%;
@@ -277,4 +272,9 @@
   .shake {
     animation: none;
   }
+}
+
+/* a paragraph inside a card: its own margins give way */
+.flush {
+  margin: 0;
 }

@@ -37,7 +37,7 @@
   background: transparent;
   color: var(--label);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   font-variant-numeric: tabular-nums;
   text-align: right;
   caret-color: var(--accent);

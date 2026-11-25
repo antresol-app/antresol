@@ -55,7 +55,7 @@ var (
 // MinFreeBytes free. Stale session dirs (a crash, a SIGKILL) are removed
 // when the manager starts.
 //
-// Zero values pick defaults (IdleTimeout 120s, SweepInterval 1s,
+// Zero values pick defaults (IdleTimeout 120s, SweepInterval 3s,
 // PlaylistWait 15s, SegmentWait 20s, UserLimit 2, GlobalLimit 4, MaxBytes 20 GiB,
 // AheadSegments 50, KeepBehind 100, ReadRate 2, ReadBurst 30s,
 // MinFreeBytes 2 GiB, EvictIdle 2m, Now = time.Now); a negative value
@@ -178,7 +178,9 @@ func (m *HLSManager) init() {
 			m.IdleTimeout = 120 * time.Second
 		}
 		if m.SweepInterval == 0 {
-			m.SweepInterval = time.Second
+			// each sweep lists and stats every file of every session dir
+			// (up to ~150 per session); the limits it enforces move slowly
+			m.SweepInterval = 3 * time.Second
 		}
 		if m.PlaylistWait == 0 {
 			m.PlaylistWait = 15 * time.Second

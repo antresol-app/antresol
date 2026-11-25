@@ -51,7 +51,7 @@
 }
 .name {
   font: var(--t-subhead);
-  font-weight: 500;
+  font-weight: var(--w-medium);
 }
 .count {
   font: var(--t-footnote);
@@ -60,29 +60,11 @@
 .skeleton {
   aspect-ratio: 1;
   border-radius: var(--r-card);
-  background: var(--fill-4);
 }
 .field {
   width: 100%;
   margin-top: var(--s-3h);
   text-align: left;
-}
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s-3);
-  margin-top: 14vh;
-  text-align: center;
-  color: var(--label-2);
-}
-.empty svg {
-  color: var(--label-3);
-  margin-bottom: var(--s-1h);
-}
-.empty h2 {
-  font: var(--t-title-2);
-  color: var(--label);
 }
 @media (max-width: 699px) {
   .page {

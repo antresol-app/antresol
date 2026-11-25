@@ -45,7 +45,8 @@ reset.
 | --- | --- | --- |
 | `VAULT_PUBLIC_URL` | | The server's outside address, such as `https://media.example.com`, no trailing `/`: links in e-mails and Telegram, Shikimori sign-in, the outside address for the apps. Usually set in «Settings → Server → Server Address»; the variable wins. See [Public address](public-address.md). |
 | `VAULT_TRUSTED_PROXIES` | | Your reverse proxy's addresses, comma-separated: only they are trusted for `X-Forwarded-For` and `X-Forwarded-Proto`. |
-| `VAULT_TRUSTED_NETS` | | Extra home networks, comma separated, e.g. Tailscale `100.64.0.0/10`. |
+| `VAULT_TRUSTED_NETS` | | Extra home networks, comma separated, e.g. Tailscale `100.64.0.0/10`. If you reach the server on such a network by a full name (Tailscale's `host.<tailnet>.ts.net`, a router's `.fritz.box`), list that name in `VAULT_TRUSTED_HOSTS` too, e.g. `*.ts.net`. |
+| `VAULT_TRUSTED_HOSTS` | | Extra names, comma-separated, that people at home reach the server by, e.g. `media.lan,*.example.org`. The server's [public address](public-address.md), IP addresses, `localhost` and names like `antresol`, `*.local`, `*.lan` and `*.home.arpa` already count as home; a request that asks for any other name is treated as away from home, even from a home address. |
 | `VAULT_SERVER_NAME` | `Antresol` | Name the apps show when they find the server. |
 | `VAULT_DISCOVERY` | on | `off` turns off both mDNS and the UDP probe the apps use to find the server. |
 | `VAULT_MDNS` | on | `off` turns off mDNS only, and with it the name `antresol.local` (`antresol-2.local`, … when a server on another computer holds it) a browser at home opens. |
@@ -104,6 +105,7 @@ Set up in the interface, not in `.env`: see [Mail, Kindle and Telegram](mail.md)
 | `VAULT_ADDONS` | on | `off` disables addons. |
 | `VAULT_ADDONS_DEV` | | Local addons for development, one folder per addon (relative: under the data dir). |
 | `VAULT_ADDONS_PIN` | | Addons pinned to releases in `VAULT_ADDONS_DEV` (`id@version`, comma separated), installed at boot and locked in the admin UI. |
+| `VAULT_ADDONS_ACCEPT_UNSIGNED` | off | The server signs the profile header it sends to an addon, and an addon built on a current addonkit refuses one that is not signed. `on` lets such an addon take an unsigned header (an escape hatch for requests made by hand). Addons built on an older addonkit do not check. |
 
 An addon's own settings are variables named `ANTRESOL_<ID>_*` (its README
 lists them). An addon may need a helper service beside the server: it then

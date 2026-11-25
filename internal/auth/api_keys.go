@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -343,7 +345,7 @@ const MCPPath = "/mcp"
 // profiles. A key is for using the library, not for minting access.
 func keyForbidden(r *http.Request) bool {
 	p := r.URL.Path
-	if strings.HasPrefix(p, "/api/me/api-keys") || strings.HasPrefix(p, "/api/auth/") || strings.Contains(p, "/app-password") {
+	if strings.HasPrefix(p, "/api/me/api-keys") || strings.HasPrefix(p, "/api/auth/") || slices.Contains(strings.Split(p, "/"), "app-password") {
 		return true
 	}
 	write := r.Method != http.MethodGet && r.Method != http.MethodHead
@@ -357,6 +359,24 @@ func keyForbidden(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// adminKeyWrites: the only writes an administration key makes with its
+// admin's rights (it reads with them everywhere): what the MCP admin tools
+// and the download tool call. Everything else an admin changes (settings,
+// installing, updating or removing an addon, files, import, migration)
+// takes a signed-in session, so a leaked key cannot install code or send
+// the mail settings elsewhere.
+var adminKeyWrites = []string{"/api/library/scan", MCPPath, "/api/addons/*/enable", "/api/addons/*/disable", "/api/addons/*/x/acquire"}
+
+func adminKeyMay(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	return slices.ContainsFunc(adminKeyWrites, func(pat string) bool {
+		ok, _ := path.Match(pat, r.URL.Path)
+		return ok
+	})
 }
 
 // statusWriter keeps the status a handler answered with.
@@ -439,8 +459,9 @@ func (g *Guard) serveKey(w http.ResponseWriter, r *http.Request, key string, nex
 		jsonErr(w, r, http.StatusForbidden, "Этот ключ API только для чтения")
 		return
 	}
-	// the scope caps the profile's rights: only an admin's admin key is an admin's
-	u.IsAdmin = u.IsAdmin && a.Scope == ScopeAdmin
+	// the scope caps the profile's rights: only an admin's admin key is an
+	// admin's, and for writes only on adminKeyWrites
+	u.IsAdmin = u.IsAdmin && a.Scope == ScopeAdmin && (read || adminKeyMay(r))
 	ctx = WithUser(ctx, u)
 	ctx = context.WithValue(ctx, apiKeyCtx{}, a)
 	ctx = context.WithValue(ctx, tokenKey{}, "")

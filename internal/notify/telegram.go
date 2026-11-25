@@ -38,6 +38,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/telegram"
 )
@@ -117,28 +118,19 @@ func (s *Service) tg() *telegram.Client {
 }
 
 func (s *Service) loadBot(ctx context.Context) (botRow, error) {
-	var raw string
-	err := s.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingsTelegram).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return botRow{}, nil
-	}
+	raw, _, err := db.GetSetting(ctx, s.DB, settingsTelegram)
 	if err != nil {
 		return botRow{}, err
 	}
 	var b botRow
 	if err := json.Unmarshal([]byte(raw), &b); err != nil {
-		return botRow{}, nil // unreadable: as if none
+		return botRow{}, nil // none, or unreadable: as if none
 	}
 	return b, nil
 }
 
 func (s *Service) saveBot(ctx context.Context, b botRow) error {
-	raw, err := json.Marshal(b)
-	if err != nil {
-		return err
-	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingsTelegram, string(raw))
-	return err
+	return db.PutJSON(ctx, s.DB, settingsTelegram, b)
 }
 
 // TelegramBot is the server's bot (Set false: none, Telegram is off).

@@ -38,5 +38,5 @@
 /* The later part's fill would paint over the earlier part's focus ring. */
 .group .main:focus-visible,
 .group .more:focus-visible {
-  z-index: 1;
+  z-index: var(--z-raised);
 }

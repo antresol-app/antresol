@@ -71,25 +71,20 @@ func (h *lib) deviceCopyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	caps, q := h.playbackCaps(r, media.ClientCaps{}, in.Quality)
-	audio := -1
-	if in.AudioIndex != nil {
-		audio = *in.AudioIndex
+	// the files beside the video are listed only when a track of them may play
+	var offered []extAudio
+	if in.AudioIndex == nil || *in.AudioIndex >= externalAudioBase {
+		offered = h.externalAudio(r.Context(), f, p.DurationMs, p.StartMs)
 	}
-	var extA *extAudio
-	if audio >= externalAudioBase {
-		// one gone meanwhile: the copy of the default track
-		if e, ok := pickExtAudio(h.externalAudio(r.Context(), f, p.DurationMs, p.StartMs), audio-externalAudioBase, in.AudioSrc); ok {
-			extA = &e
-		} else {
-			audio = -1
-		}
-	} else if in.AudioIndex == nil {
+	pick := askedAudio(offered, in.AudioIndex, in.AudioSrc)
+	if !pick.named {
 		// the copy's own choice: the cleaned version of the default track
 		// for a profile that prefers it
-		ext := h.externalAudio(r.Context(), f, p.DurationMs, p.StartMs)
-		if k := h.preferredCleaned(r.Context(), userOf(r).ID, media.PlanDeviceCopy(p, nil, 0, 0, -1).AudioIndex, ext); k >= 0 {
-			extA, audio = &ext[k], externalAudioBase+k
-		}
+		pick.pos = h.preferredCleaned(r.Context(), userOf(r).ID, media.PlanDeviceCopy(p, nil, 0, 0, -1).AudioIndex, offered)
+	}
+	audio, extA := pick.own, (*extAudio)(nil)
+	if pick.pos >= 0 {
+		audio, extA = externalAudioBase+pick.pos, &offered[pick.pos]
 	}
 	var paths []string
 	var subs []extSub

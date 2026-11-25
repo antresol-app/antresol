@@ -1,0 +1,98 @@
+/* ui/Slider: the volume slider of the video bars, as a kit part. The track and
+   the thumb are drawn by the engines' own pseudo-elements, so every rule is
+   written twice (WebKit and Gecko) and only here. */
+.slider {
+  /* the value as a part of the range, 0–1 (set by the component) */
+  --v: 0;
+  /* the fill ends under the thumb's centre, which stays a half thumb inside the ends */
+  --fill: calc(var(--slider-thumb-size) / 2 + (100% - var(--slider-thumb-size)) * var(--v));
+  --track: linear-gradient(90deg, var(--slider-fill) var(--fill), var(--slider-track) var(--fill));
+  width: 100%;
+  min-width: 0;
+  /* the hit area is a button's height; the thin track is drawn in its middle */
+  height: var(--control-h-md);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.slider:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* the ring goes round the thumb, not round the whole strip */
+.slider:focus-visible {
+  outline: none;
+}
+.slider::-webkit-slider-runnable-track {
+  height: var(--slider-track-h);
+  border-radius: calc(var(--slider-track-h) / 2);
+  background: var(--track);
+  transition: height var(--d-fast) var(--ease-out);
+}
+.slider::-moz-range-track {
+  height: var(--slider-track-h);
+  border-radius: calc(var(--slider-track-h) / 2);
+  background: var(--track);
+}
+.slider:hover::-webkit-slider-runnable-track,
+.slider:active::-webkit-slider-runnable-track {
+  height: var(--slider-track-h-active);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  /* centred on the track: half the difference of their heights, up */
+  margin-top: calc((var(--slider-track-h) - var(--slider-thumb-size)) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  box-shadow: var(--slider-thumb-shadow);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border: 0;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  box-shadow: var(--slider-thumb-shadow);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
+}
+.slider:hover::-webkit-slider-thumb,
+.slider:active::-webkit-slider-thumb,
+.slider:focus-visible::-webkit-slider-thumb,
+.always::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+.slider:hover::-moz-range-thumb,
+.slider:active::-moz-range-thumb,
+.slider:focus-visible::-moz-range-thumb,
+.always::-moz-range-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+/* keyboard focus: the accent ring round the thumb */
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 var(--focus-ring-width) var(--focus-ring),
+    var(--slider-thumb-shadow);
+}
+.slider:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 var(--focus-ring-width) var(--focus-ring),
+    var(--slider-thumb-shadow);
+}

@@ -169,23 +169,13 @@
   width: 64px;
   height: 64px;
 }
+/* «Запуск канала…»: the ring is ui/Spinner, white on its faint track */
+.starting {
+  display: flex;
+}
 .spinner {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #fff;
-  animation: live-spin 0.9s linear infinite;
-}
-@keyframes live-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.6s;
-  }
+  --spinner-size: 36px;
+  --spinner-width: 3px;
 }
 .note {
   font: var(--t-subhead);

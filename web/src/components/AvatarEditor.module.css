@@ -21,8 +21,8 @@
   gap: var(--s-2);
 }
 .swatch {
-  width: 30px;
-  height: 30px;
+  width: var(--control-h-xs);
+  height: var(--control-h-xs);
   padding: 0;
   border: 2px solid transparent;
   border-radius: 50%;

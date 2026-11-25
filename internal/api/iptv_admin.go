@@ -28,8 +28,9 @@ import (
 // here and never read back: answers carry iptv.Mask of them only.
 
 type iptvAdmin struct {
-	ca  *channelsAPI
-	svc *iptv.Service
+	ca       *channelsAPI
+	svc      *iptv.Service
+	sessions *auth.Sessions
 	// links: IPTV links may be made (Deps.IPTV)
 	links bool
 }
@@ -116,11 +117,6 @@ func optTime(t time.Time) *time.Time {
 	}
 	u := t.UTC()
 	return &u
-}
-
-func tvID(r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	return id, err == nil && id > 0
 }
 
 // ---- sources ----
@@ -530,7 +526,11 @@ func (a *iptvAdmin) createSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.Position == nil {
-		all, _ := a.svc.Store.Sources(ctx)
+		all, err := a.svc.Store.Sources(ctx)
+		if err != nil {
+			internalErr(w, r, "iptv source", err)
+			return
+		}
 		for _, s := range all {
 			src.Position = max(src.Position, s.Position+1)
 		}
@@ -549,7 +549,7 @@ func (a *iptvAdmin) createSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *iptvAdmin) sourceParam(w http.ResponseWriter, r *http.Request) (iptv.Source, bool) {
-	id, ok := tvID(r)
+	id, ok := pathID(r, "id")
 	if !ok {
 		writeErr(w, r, http.StatusNotFound, msgSourceNotFound)
 		return iptv.Source{}, false
@@ -674,7 +674,7 @@ func (a *iptvAdmin) rejectDrop(w http.ResponseWriter, r *http.Request) {
 // POST /api/tv/epg/{id}/refresh: started in the background (202); the
 // result is the guide's lastOk/lastError in GET /api/tv/sources.
 func (a *iptvAdmin) refreshEPG(w http.ResponseWriter, r *http.Request) {
-	id, ok := tvID(r)
+	id, ok := pathID(r, "id")
 	if ok {
 		_, err := a.svc.Store.EPGURL(r.Context(), id)
 		ok = err == nil
@@ -1178,7 +1178,7 @@ func (a *iptvAdmin) epgSearch(w http.ResponseWriter, r *http.Request) {
 // hand (wins the automatic binding, survives renames); its guide is
 // refreshed in the background for the programmes.
 func (a *iptvAdmin) bindEPG(w http.ResponseWriter, r *http.Request) {
-	id, _ := tvID(r)
+	id, _ := pathID(r, "id")
 	var b struct {
 		EPGURLID int64  `json:"epgUrlId"`
 		XMLID    string `json:"xmlId"`
@@ -1205,7 +1205,7 @@ func (a *iptvAdmin) bindEPG(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/tv/channels/{id}/epg: back to the automatic binding (made
 // again on the guide's next refresh).
 func (a *iptvAdmin) unbindEPG(w http.ResponseWriter, r *http.Request) {
-	id, _ := tvID(r)
+	id, _ := pathID(r, "id")
 	if a.setEPG(w, r, id, 0, "") {
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -1285,7 +1285,7 @@ func (a *iptvAdmin) saveSet(w http.ResponseWriter, r *http.Request) {
 	b.ID = 0
 	code := http.StatusCreated
 	if chi.URLParam(r, "id") != "" {
-		id, ok := tvID(r)
+		id, ok := pathID(r, "id")
 		if !ok {
 			writeErr(w, r, http.StatusNotFound, msgSetNotFound)
 			return
@@ -1310,7 +1310,7 @@ func (a *iptvAdmin) saveSet(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/tv/sets/{id}
 func (a *iptvAdmin) deleteSet(w http.ResponseWriter, r *http.Request) {
-	id, _ := tvID(r)
+	id, _ := pathID(r, "id")
 	if err := a.svc.Store.DeleteSet(r.Context(), id); err != nil {
 		internalErr(w, r, "iptv set", err)
 		return
@@ -1378,94 +1378,35 @@ func (a *iptvAdmin) devices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := []deviceJSON{}
-	seen := map[string]bool{}
-	rows, err := a.svc.Store.DB.QueryContext(ctx, `SELECT s.user_id, u.name, s.device_id, s.device_name, s.device_model, s.last_seen
-		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.device_id<>'' ORDER BY s.last_seen DESC`, auth.KindNative)
+	apps, err := a.sessions.NativeDevices(ctx)
 	if err != nil {
 		internalErr(w, r, "iptv devices", err)
 		return
 	}
-	for rows.Next() {
-		var d deviceJSON
-		var model, seenAt string
-		if err := rows.Scan(&d.UserID, &d.Profile, &d.DeviceID, &d.Name, &model, &seenAt); err != nil {
-			rows.Close()
-			internalErr(w, r, "iptv devices", err)
-			return
-		}
-		key := strconv.FormatInt(d.UserID, 10) + "/" + d.DeviceID
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		d.Kind = "app"
-		d.Client, d.ClientName = clientOf(d.Name, model, "")
-		if t, err := time.Parse(time.RFC3339, seenAt); err == nil {
-			d.LastSeen = optTime(t)
-		}
-		d.SetID, d.DefaultSetID = asg[d.UserID][d.DeviceID], asg[d.UserID][""]
+	for _, s := range apps {
+		d := deviceJSON{UserID: s.UserID, Profile: s.Profile, Kind: "app", DeviceID: s.DeviceID, Name: s.Name, LastSeen: optTime(s.LastSeen),
+			SetID: asg[s.UserID][s.DeviceID], DefaultSetID: asg[s.UserID][""]}
+		d.Client, d.ClientName = clientOf(s.Name, s.Model, "")
 		out = append(out, d)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		internalErr(w, r, "iptv devices", err)
-		return
-	}
-	rows, err = a.svc.Store.DB.QueryContext(ctx, `SELECT t.token, t.user_id, u.name, t.device, t.last_seen, COALESCE(t.set_id, 0)
-		FROM app_tokens t JOIN users u ON u.id=t.user_id WHERE t.proto=? ORDER BY t.last_seen DESC`, iptvProto)
+	links, err := a.ca.tokens.ByProto(ctx, iptvProto)
 	if err != nil {
 		internalErr(w, r, "iptv devices", err)
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var d deviceJSON
-		var tok, seenAt string
-		if err := rows.Scan(&tok, &d.UserID, &d.Profile, &d.Name, &seenAt, &d.SetID); err != nil {
-			internalErr(w, r, "iptv devices", err)
-			return
-		}
-		d.Kind, d.LinkID, d.Client, d.ClientName = "iptv", linkID(tok), "iptv", "IPTV"
-		if t, err := time.Parse(time.RFC3339, seenAt); err == nil {
-			d.LastSeen = optTime(t)
-		}
-		d.DefaultSetID = asg[d.UserID][""]
-		base := a.ca.iptvBase(r, tok)
-		d.Playlist, d.Guide = base+"/playlist.m3u", base+"/epg.xml"
-		out = append(out, d)
+	for _, k := range links {
+		base := a.ca.iptvBase(r, k.Token)
+		out = append(out, deviceJSON{UserID: k.UserID, Profile: k.Profile, Kind: "iptv", LinkID: linkID(k.Token), Name: k.Device, Client: "iptv", ClientName: "IPTV",
+			LastSeen: optTime(k.LastSeen), SetID: k.SetID, DefaultSetID: asg[k.UserID][""], Playlist: base + "/playlist.m3u", Guide: base + "/epg.xml"})
 	}
-	if err := rows.Err(); err != nil {
-		internalErr(w, r, "iptv devices", err)
-		return
-	}
-	rows.Close()
-	since := time.Now().Add(-browserWindow).UTC().Format(time.RFC3339)
-	rows, err = a.svc.Store.DB.QueryContext(ctx, `SELECT s.user_id, u.name, s.device_name, s.device_model, MAX(s.last_seen)
-		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.last_seen>=?
-		GROUP BY s.user_id, s.device_name, s.device_model ORDER BY MAX(s.last_seen) DESC`, auth.KindWeb, since)
+	browsers, err := a.sessions.RecentBrowsers(ctx, time.Now().Add(-browserWindow))
 	if err != nil {
 		internalErr(w, r, "iptv devices", err)
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var d deviceJSON
-		var browser, system, seenAt string
-		if err := rows.Scan(&d.UserID, &d.Profile, &browser, &system, &seenAt); err != nil {
-			internalErr(w, r, "iptv devices", err)
-			return
-		}
-		d.Kind, d.Client = "web", "web"
-		d.Name = strings.Join(slices.DeleteFunc([]string{browser, system}, func(s string) bool { return s == "" }), " · ")
-		d.ClientName = d.Name
-		if t, err := time.Parse(time.RFC3339, seenAt); err == nil {
-			d.LastSeen = optTime(t)
-		}
-		out = append(out, d)
-	}
-	if err := rows.Err(); err != nil {
-		internalErr(w, r, "iptv devices", err)
-		return
+	for _, b := range browsers {
+		name := strings.Join(slices.DeleteFunc([]string{b.Name, b.Model}, func(s string) bool { return s == "" }), " · ")
+		out = append(out, deviceJSON{UserID: b.UserID, Profile: b.Profile, Kind: "web", Name: name, Client: "web", ClientName: name, LastSeen: optTime(b.LastSeen)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": out})
 }
@@ -1518,21 +1459,16 @@ func (a *iptvAdmin) assign(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *iptvAdmin) findLink(ctx context.Context, id string) (string, error) {
-	rows, err := a.svc.Store.DB.QueryContext(ctx, `SELECT token FROM app_tokens WHERE proto=?`, iptvProto)
+	links, err := a.ca.tokens.ByProto(ctx, iptvProto)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var tok string
-		if err := rows.Scan(&tok); err != nil {
-			return "", err
-		}
-		if linkID(tok) == id {
-			return tok, nil
+	for _, k := range links {
+		if linkID(k.Token) == id {
+			return k.Token, nil
 		}
 	}
-	return "", rows.Err()
+	return "", nil
 }
 
 // POST /api/tv/links {userId, setId, name}: a new IPTV link of the

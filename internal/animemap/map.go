@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 const (
@@ -107,16 +109,8 @@ func (m *Map) log() *slog.Logger {
 }
 
 func (m *Map) getSetting(ctx context.Context, key string) string {
-	var v string
-	_ = m.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	v, _, _ := db.GetSetting(ctx, m.DB, key)
 	return v
-}
-
-func setSetting(ctx context.Context, x interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, key, val string) error {
-	_, err := x.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, val)
-	return err
 }
 
 // Run refreshes at start when the data is older than a week, then weekly,
@@ -244,7 +238,7 @@ func (m *Map) Refresh(ctx context.Context) error {
 	defer resp.Body.Close()
 	stamp := m.now().UTC().Format(time.RFC3339)
 	if resp.StatusCode == http.StatusNotModified {
-		return setSetting(ctx, m.DB, keyFetchedAt, stamp)
+		return db.PutSetting(ctx, m.DB, keyFetchedAt, stamp)
 	}
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
@@ -305,13 +299,13 @@ func (m *Map) Refresh(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := setSetting(ctx, tx, keyETag, resp.Header.Get("ETag")); err != nil {
+	if err := db.PutSetting(ctx, tx, keyETag, resp.Header.Get("ETag")); err != nil {
 		return err
 	}
-	if err := setSetting(ctx, tx, keyModified, resp.Header.Get("Last-Modified")); err != nil {
+	if err := db.PutSetting(ctx, tx, keyModified, resp.Header.Get("Last-Modified")); err != nil {
 		return err
 	}
-	if err := setSetting(ctx, tx, keyFetchedAt, stamp); err != nil {
+	if err := db.PutSetting(ctx, tx, keyFetchedAt, stamp); err != nil {
 		return err
 	}
 	return tx.Commit()

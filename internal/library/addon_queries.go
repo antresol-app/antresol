@@ -2,10 +2,11 @@ package library
 
 import (
 	"context"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/antresol-app/antresol/addonkit"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/release"
 )
 
@@ -30,41 +31,17 @@ func (r *Repo) FilesUnderNoProbe(ctx context.Context, dir string) ([]File, error
 // FilesOfRef lists the shown files that carry the addon's ref, by path.
 func (r *Repo) FilesOfRef(ctx context.Context, addonID, ref string) ([]File, error) {
 	cond, args := refFiles(addonID, ref)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+fileCols+` FROM files f WHERE `+cond+` AND f.missing_since IS NULL ORDER BY f.path`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []File{}
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	files, err := r.queryFiles(ctx, `SELECT `+fileCols+` FROM files f WHERE `+cond+` AND f.missing_since IS NULL ORDER BY f.path`, args...)
+	return nonNil(files), err
 }
 
 // TracksOfRef returns the visible tracks whose file carries the addon's
 // ref, in album and playing order.
 func (r *Repo) TracksOfRef(ctx context.Context, addonID, ref string) ([]Track, error) {
 	cond, args := refFiles(addonID, ref)
-	rows, err := r.db.QueryContext(ctx, trackSelect+` WHERE `+cond+` AND i.kind='track' AND i.missing_since IS NULL
+	tracks, err := r.queryTracks(ctx, trackSelect+` WHERE `+cond+` AND i.kind='track' AND i.missing_since IS NULL
 	  ORDER BY i.parent_id, t.disc_no, t.track_no, t.start_ms, i.id`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Track{}
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, tr)
-	}
-	return out, rows.Err()
+	return nonNil(tracks), err
 }
 
 // ClaimRef makes userID an owner of the titles of the library files that
@@ -77,12 +54,8 @@ func (r *Repo) ClaimRef(ctx context.Context, addonID, ref string, userID int64) 
 // ClaimFiles makes userID an owner of the titles of these library files;
 // ids with no row are skipped.
 func (r *Repo) ClaimFiles(ctx context.Context, fileIDs []int64, userID int64) error {
-	for part := range chunks(fileIDs, 500) {
-		args := make([]any, len(part))
-		for i, id := range part {
-			args[i] = id
-		}
-		if err := r.claimWhere(ctx, userID, `f.id IN (?`+strings.Repeat(",?", len(part)-1)+`)`, args...); err != nil {
+	for part := range slices.Chunk(fileIDs, 500) {
+		if err := r.claimWhere(ctx, userID, `f.id IN `+db.In(len(part)), db.Args(part)...); err != nil {
 			return err
 		}
 	}
@@ -200,8 +173,7 @@ func (r *Repo) Aliases(ctx context.Context, items ...Item) (map[int64][]string, 
 		own[it.ID] = [2]string{release.Normalize(it.Title), release.Normalize(it.OriginalTitle)}
 		args = append(args, it.ID)
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT item_id, title, norm FROM item_titles WHERE item_id IN (?`+
-		strings.Repeat(",?", len(args)-1)+`) ORDER BY item_id, rowid`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT item_id, title, norm FROM item_titles WHERE item_id IN `+db.In(len(args))+` ORDER BY item_id, rowid`, args...)
 	if err != nil {
 		return nil, err
 	}

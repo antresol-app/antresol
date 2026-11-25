@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -49,8 +50,7 @@ type ChannelExtras struct {
 // ChannelLibrary is what ChannelExtras reads of the library
 // (*library.Repo).
 type ChannelLibrary interface {
-	ItemIDsByTMDB(ctx context.Context, kind string, tmdbIDs []int64) (map[int64]int64, error)
-	ItemsByID(ctx context.Context, ids []int64) (map[int64]library.Item, error)
+	ItemsByTMDB(ctx context.Context, byKind map[string][]int64) (map[string]map[int64]library.Item, error)
 }
 
 type readyAnswer struct {
@@ -107,12 +107,7 @@ func (x *ChannelExtras) clock() time.Time {
 	return time.Now()
 }
 
-func (x *ChannelExtras) log() *slog.Logger {
-	if x.Log != nil {
-		return x.Log
-	}
-	return slog.Default()
-}
+func (x *ChannelExtras) log() *slog.Logger { return cmp.Or(x.Log, slog.Default()) }
 
 // errNoChannelAddon: no addon answers for this channel now.
 var errNoChannelAddon = errors.New("addons: no addon answers channels.* now")
@@ -292,34 +287,7 @@ func (x *ChannelExtras) libraryRatings(ctx context.Context, ts []addonkit.Channe
 			byKind[k] = append(byKind[k], t.TMDBID)
 		}
 	}
-	idOf := map[string]map[int64]int64{}
-	var ids []int64
-	for kind, tmdb := range byKind {
-		m, err := x.Library.ItemIDsByTMDB(ctx, kind, tmdb)
-		if err != nil {
-			return nil, err
-		}
-		idOf[kind] = m
-		for _, id := range m {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	items, err := x.Library.ItemsByID(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	for kind, m := range idOf {
-		out[kind] = map[int64]library.Item{}
-		for tmdb, id := range m {
-			if it, ok := items[id]; ok {
-				out[kind][tmdb] = it
-			}
-		}
-	}
-	return out, nil
+	return x.Library.ItemsByTMDB(ctx, byKind)
 }
 
 func validChannelKey(k string) bool {

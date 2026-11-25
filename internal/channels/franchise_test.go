@@ -528,7 +528,7 @@ func TestGeneratorFranchiseChannels(t *testing.T) {
 	}
 	// the schedule plays the picks in order
 	b := f.builder()
-	if err := b.Build(ctx, c); err != nil {
+	if _, err := b.Build(ctx, c); err != nil {
 		t.Fatal(err)
 	}
 	es := f.entries(c.ID)

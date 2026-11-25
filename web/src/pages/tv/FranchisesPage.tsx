@@ -9,11 +9,13 @@ import { APP_NAME } from '../../brand'
 import { errorText } from '../../api/client'
 import { getFranchises, refreshFranchises, resetFranchiseOrder, setFranchiseOrder, type Franchise, type FranchiseItem } from '../../api/channels'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { useT } from '../../i18n'
 import { ago } from '../../state/format'
 import { useLoad } from '../../state/useLoad'
 import { Badge } from '../../ui/Badge'
 import { Button, ButtonLink } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { EXTERNAL_PATH } from '../../api/external'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
@@ -85,19 +87,10 @@ export function FranchisesPage() {
           )}
         </header>
         {state.status === 'error' && (
-          <div className={styles.empty} role="alert">
-            <p>{state.message}</p>
-            <Button variant="secondary" onClick={() => load()}>
-              {t('common.retry')}
-            </Button>
-          </div>
+          <LoadFailed title={t('common.loadFailed')} message={state.message} retry={t('common.retry')} onRetry={() => load()} />
         )}
         {data && !data.available && (
-          <div className={styles.empty}>
-            <Icon name="broadcast" size={48} strokeWidth={1.4} />
-            <h2>{t('tv.franchises.unavailable')}</h2>
-            <p>{t('tv.franchises.unavailableHint')}</p>
-          </div>
+          <EmptyState icon={<Icon name="broadcast" size={48} strokeWidth={1.4} />} title={t('tv.franchises.unavailable')} hint={t('tv.franchises.unavailableHint')} />
         )}
         {data?.available && (
           <>
@@ -126,10 +119,7 @@ export function FranchisesPage() {
             )}
             {status && !status.model && !status.running && <p className={styles.franchiseStatus}>{t('tv.franchises.whyNoAI')}</p>}
             {data.franchises.length === 0 ? (
-              <div className={styles.empty}>
-                <h2>{t('tv.franchises.empty')}</h2>
-                <p>{t('tv.franchises.emptyHint')}</p>
-              </div>
+              <EmptyState title={t('tv.franchises.empty')} hint={t('tv.franchises.emptyHint')} />
             ) : (
               <GroupedSection title={t('tv.franchises.list')} footer={t('tv.franchises.footer')}>
                 {data.franchises.map((f) => {

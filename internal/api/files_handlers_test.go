@@ -77,6 +77,21 @@ func TestKidForbidden(t *testing.T) {
 	}
 }
 
+// A profile with a maxRating of its own is held to it: the file browser
+// would read around the library's rating rule.
+func TestRatedAdultForbidden(t *testing.T) {
+	e := newFilesEnv(t)
+	limited := e.login(`{"name":"Петя","maxRating":"16+"}`)
+	for _, p := range []string{"/api/files/roots", "/api/files/list?" + q("movies", ""), "/api/files/content?" + q("movies", "a.mkv")} {
+		if w := e.do("GET", p, "", limited); w.Code != 403 {
+			t.Errorf("%s: %d", p, w.Code)
+		}
+	}
+	if w := e.do("GET", "/api/files/roots", "", e.login(`{"name":"Мама"}`)); w.Code != 200 {
+		t.Errorf("an adult without a limit: %d", w.Code)
+	}
+}
+
 func TestUserReadOnly(t *testing.T) {
 	e := newFilesEnv(t)
 	u := e.login(`{"name":"Мама"}`)

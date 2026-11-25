@@ -7,9 +7,11 @@ import (
 	"errors"
 	"hash/fnv"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -140,8 +142,7 @@ func (b *Builder) refreshExtras(ctx context.Context, c Channel, limit int) error
 			return ctx.Err()
 		}
 		log.Printf("channels: channel %d: titles outside the library: %v", c.ID, err)
-		_, err = b.Store.DB.ExecContext(ctx, `UPDATE channels SET extras_at_ms=? WHERE id=?`, ms(now.Add(extrasRetry-extrasTTL)), c.ID)
-		return err
+		return setExtrasAt(ctx, b.Store.DB, c.ID, ms(now.Add(extrasRetry-extrasTTL)))
 	}
 	tx, err := b.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -174,7 +175,7 @@ func (b *Builder) refreshExtras(ctx context.Context, c Channel, limit int) error
 	  AND id NOT IN (SELECT extra_id FROM channel_playout WHERE channel_id=? AND extra_id IS NOT NULL)`, c.ID, c.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE channels SET extras_at_ms=? WHERE id=?`, ms(now), c.ID); err != nil {
+	if err := setExtrasAt(ctx, tx, c.ID, ms(now)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -242,8 +243,7 @@ func (s *Store) ExtraFailed(ctx context.Context, ch, seq, extra int64) error {
 	if _, err := s.DB.ExecContext(ctx, `UPDATE channel_extras SET failed_until_ms=? WHERE id=?`, ms(s.now().Add(extraFailedFor)), extra); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, ch, seq)
-	return err
+	return cutFrom(ctx, s.DB, ch, seq)
 }
 
 const (
@@ -352,7 +352,12 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 	if s.Extras == nil {
 		return
 	}
-	ctx := context.Background()
+	s.pmu.Lock()
+	ctx := s.pctx // Run's: the service stopping ends the wait
+	s.pmu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	next, err := s.Store.At(ctx, ch, e.End)
 	if err != nil || next.ExtraID == 0 || next.Seq <= e.Seq {
 		return
@@ -362,17 +367,6 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 	s.pmu.Lock()
 	if s.prefetch == nil {
 		s.prefetch = map[entryKey]*prefetched{}
-	}
-	for ok, old := range s.prefetch { // taken by nobody (the channel stopped)
-		if now.Sub(old.start) > prefetchKeep {
-			delete(s.prefetch, ok)
-			go func(p *prefetched) {
-				<-p.done
-				if p.st.Release != nil {
-					p.st.Release()
-				}
-			}(old)
-		}
 	}
 	if s.prefetch[k] != nil {
 		s.pmu.Unlock()
@@ -384,10 +378,11 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 	wait := max(0, next.Start.Sub(now)-prefetchLead)
 	go func() {
 		t := time.NewTimer(wait)
+		defer t.Stop()
 		select {
 		case <-t.C:
 		case <-pf.now:
-			t.Stop()
+		case <-ctx.Done():
 		}
 		pf.st, pf.err = s.resolveExtra(ctx, next)
 		close(pf.done)
@@ -398,7 +393,7 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 				delete(s.prefetch, k)
 			}
 			s.pmu.Unlock()
-			if !owned {
+			if !owned || ctx.Err() != nil { // a service that stops fails no title
 				return
 			}
 			log.Printf("channels: channel %d: the title outside the library (entry %d) would not play: %v", ch, next.Seq, pf.err)
@@ -409,11 +404,31 @@ func (s *Service) prefetchNext(ch int64, e Entry) {
 	}()
 }
 
+// sweepPrefetch lets go of the streams resolved ahead that nobody took (the
+// channel stopped) once their programme started prefetchKeep ago; all: of
+// every one (the service stops).
+func (s *Service) sweepPrefetch(all bool) {
+	now := s.Store.now()
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	for k, old := range s.prefetch {
+		if all || now.Sub(old.start) > prefetchKeep {
+			delete(s.prefetch, k)
+			go func(p *prefetched) {
+				<-p.done
+				if p.st.Release != nil {
+					p.st.Release()
+				}
+			}(old)
+		}
+	}
+}
+
 // describeExtras adds the Info of titles outside the library (by their
 // channel_extras ids) to out, under their item ids (-id).
 func (s *Service) describeExtras(ctx context.Context, ids []int64, out map[int64]Info) error {
-	for part := range chunks(ids, 500) {
-		in, args := inArgs(part)
+	for part := range slices.Chunk(ids, 500) {
+		in, args := db.InList(part)
 		rows, err := s.Store.DB.QueryContext(ctx, `SELECT id, key, kind, title, year, overview, rating, genres_json, poster, backdrop, season, episode
 		  FROM channel_extras WHERE id IN `+in, args...)
 		if err != nil {

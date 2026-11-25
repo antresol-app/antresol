@@ -7,7 +7,7 @@ import (
 
 func loadAddons(t *testing.T, env map[string]string) Config {
 	t.Helper()
-	for _, k := range []string{"VAULT_ADDONS", "VAULT_ADDONS_DEV", "VAULT_ADDONS_PIN", "VAULT_LISTEN", "VAULT_DATA_DIR"} {
+	for _, k := range []string{"VAULT_ADDONS", "VAULT_ADDONS_DEV", "VAULT_ADDONS_PIN", "VAULT_ADDONS_ACCEPT_UNSIGNED", "VAULT_LISTEN", "VAULT_DATA_DIR"} {
 		t.Setenv(k, "")
 	}
 	t.Setenv("VAULT_MEDIA_ROOT", "/srv/media")
@@ -31,6 +31,18 @@ func TestAddonsDefaults(t *testing.T) {
 	}
 	if c.AddonsDev != "" {
 		t.Fatalf("dev %q", c.AddonsDev)
+	}
+}
+
+func TestAddonsAcceptUnsigned(t *testing.T) {
+	if loadAddons(t, nil).AddonsAcceptUnsigned {
+		t.Fatal("unsigned headers are refused by default")
+	}
+	if loadAddons(t, map[string]string{"VAULT_ADDONS_ACCEPT_UNSIGNED": "off"}).AddonsAcceptUnsigned {
+		t.Fatal("off refuses them")
+	}
+	if !loadAddons(t, map[string]string{"VAULT_ADDONS_ACCEPT_UNSIGNED": "on"}).AddonsAcceptUnsigned {
+		t.Fatal("VAULT_ADDONS_ACCEPT_UNSIGNED=on should accept them")
 	}
 }
 

@@ -3,6 +3,7 @@
 // (offline, or a new version replaced the old chunk files).
 import { Component, Suspense, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { Icon } from '../components/Icon'
 import styles from './ChunkBoundary.module.css'
 import { useT } from '../i18n'
@@ -50,7 +51,7 @@ export function ChunkBoundary({ children, fallback }: { children: ReactNode; fal
         fallback={
           fallback ?? (
             <div className={styles.box} aria-busy="true" aria-label={t('common.loading')}>
-              <span className={styles.spinner} />
+              <Spinner className={styles.spinner} />
             </div>
           )
         }

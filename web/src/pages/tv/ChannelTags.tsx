@@ -10,7 +10,7 @@ import { Artwork } from '../../ui/Artwork'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { NumberField } from '../../ui/NumberField'
 import { MultiSelect } from '../../ui/Select'
-import { ToggleChips } from '../../ui/ToggleChips'
+import { Chips } from '../../ui/Chips'
 import { countryName, languageName, themeName } from './tagNames'
 import styles from './ChannelTags.module.css'
 
@@ -76,11 +76,12 @@ function TagRow({
   const rest = tags.filter((x) => !shown.includes(x))
   return (
     <ListRow label={label} wide>
-      <ToggleChips
+      <Chips
+        multiple
         label={label}
         chips={shown.map((x) => ({ value: x.key, label: name(x.key), count: x.count || undefined }))}
         value={on}
-        onToggle={(v, isOn) => onChange(toggled(value, v, isOn))}
+        onChange={(v, isOn) => onChange(toggled(value, v, isOn))}
       >
         {rest.length > 0 && (
           <MultiSelect
@@ -92,7 +93,7 @@ function TagRow({
             placement="bottom-start"
           />
         )}
-      </ToggleChips>
+      </Chips>
     </ListRow>
   )
 }
@@ -109,14 +110,15 @@ export function ChannelTags({ options, value, onChange }: { options: ChannelOpti
       <TagPreview rules={value} />
       <GroupedSection footer={pending ? t('tv.tags.pending') : undefined}>
         <ListRow label={t('tv.tags.kinds')} wide>
-          <ToggleChips
+          <Chips
+            multiple
             label={t('tv.tags.kinds')}
             chips={[
               { value: 'movie' as const, label: t('tv.rules.movies') },
               { value: 'series' as const, label: t('tv.rules.series') },
             ]}
             value={kinds}
-            onToggle={(v, on) => {
+            onChange={(v, on) => {
               const next = on ? [...kinds.filter((k) => k !== v), v] : kinds.filter((k) => k !== v)
               // both or none: no filter
               set({ kinds: next.length === 1 ? next : undefined })
@@ -134,11 +136,12 @@ export function ChannelTags({ options, value, onChange }: { options: ChannelOpti
         <TagRow label={t('tv.tags.countries')} tags={options?.countries ?? []} name={countryName} value={value.countries} onChange={(countries) => set({ countries })} top={12} />
         {decades.length > 0 && (
           <ListRow label={t('tv.tags.years')} wide>
-            <ToggleChips
+            <Chips
+              multiple
               label={t('tv.tags.years')}
               chips={decades.map((d) => ({ value: String(d), label: t('tv.rules.decade', { decade: d }) }))}
               value={decades.filter((d) => decadeOn(value.yearFrom, value.yearTo, d)).map(String)}
-              onToggle={(v) => set(decadeToggle(value.yearFrom, value.yearTo, Number(v)))}
+              onChange={(v) => set(decadeToggle(value.yearFrom, value.yearTo, Number(v)))}
             />
             <div className={styles.years}>
               <NumberField

@@ -48,7 +48,7 @@ func (a *channelsAPI) editable(w http.ResponseWriter, r *http.Request) (channels
 		return c, false
 	}
 	if !channels.CanEdit(c, viewerOf(userOf(r))) {
-		writeErr(w, r, http.StatusForbidden, "Этот канал может менять только администратор")
+		writeErr(w, r, http.StatusForbidden, msgChannelAdminOnly)
 		return c, false
 	}
 	return c, true

@@ -3,8 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -62,41 +60,7 @@ func helperOverride(addonID, name string) string {
 // probeHelper asks h's health path on base (its compose address, or the
 // admin's own); nil when it answers below 400 (tests replace it).
 var probeHelper = func(ctx context.Context, base string, h addons.Helper) error {
-	if err := h.Valid(); err != nil {
-		return err
-	}
-	c := http.Client{Timeout: addonkit.HelperProbeTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+h.Health, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return err
-	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return statusErr(resp.StatusCode)
-	}
-	return nil
-}
-
-type statusErr int
-
-func (s statusErr) Error() string { return fmt.Sprintf("status %d", int(s)) }
-
-// helperProblem sorts a probe's error for the page.
-func helperProblem(err error) string {
-	var st statusErr
-	if errors.As(err, &st) {
-		return helperProblemOf(int(st))
-	}
-	return addonkit.HelperProblem(err)
-}
-
-func helperProblemOf(code int) string {
-	return addonkit.HelperProblem(&addonkit.HelperStatusError{Code: code})
+	return addonkit.ProbeHelperAt(ctx, nil, base, h)
 }
 
 // helperStates asks the addons answering helpers.status (tests replace it).
@@ -163,12 +127,11 @@ func (a *addonsAPI) helpers(w http.ResponseWriter, r *http.Request) {
 			// the admin's own address may put the service under a path of
 			// its own, where the manifest's health path is not: any HTTP
 			// answer there but 401/403 means it is up
-			var st statusErr
-			if out[i].Custom && errors.As(err, &st) && helperProblemOf(int(st)) != addonkit.HelperProblemAuth {
+			if out[i].Custom && errors.As(err, new(*addonkit.HelperStatusError)) && addonkit.HelperProblem(err) != addonkit.HelperProblemAuth {
 				err = nil
 			}
 			if err != nil {
-				out[i].Problem = helperProblem(err)
+				out[i].Problem = addonkit.HelperProblem(err)
 				out[i].Error = err.Error()
 				if out[i].Custom {
 					// the error names the address

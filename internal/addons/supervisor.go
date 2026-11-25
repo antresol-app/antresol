@@ -58,6 +58,11 @@ type Supervisor struct {
 	Health  time.Duration // health deadline per start, default 15s
 	// Mint returns a fresh addon token; called on every (re)start.
 	Mint func(id string) (string, error)
+	// AcceptUnsigned lets the addons take a profile header the server did
+	// not sign (VAULT_ADDONS_ACCEPT_UNSIGNED=on, an escape hatch). Off: an
+	// addon on a current addonkit refuses one; an addon on an older
+	// addonkit does not check signatures at all.
+	AcceptUnsigned bool
 
 	extraEnv    []string      // test hook: added to the child env
 	backoffUnit time.Duration // test hook: restart backoff unit, default 1s
@@ -81,7 +86,6 @@ type entry struct {
 	in       Installed // what cur runs; restarts use it
 	life     *life     // nil once stopped
 	backoff  time.Duration
-	restarts int
 	loop     context.CancelFunc // pending restart loop
 	loopDone chan struct{}
 }
@@ -393,16 +397,36 @@ func EnvPrefix(id string) string {
 	return "ANTRESOL_" + strings.ToUpper(strings.ReplaceAll(id, "-", "_")) + "_"
 }
 
-// childEnv: the server env minus VAULT_* and ANTRESOL_* (but for the
-// addon's own ANTRESOL_<ID>_*), plus the contract's variables, which are
-// never taken from the server env.
+// inheritedEnv: the server variables an addon gets besides its own: what a
+// process needs to run, find certificates, reach the network through a
+// proxy, keep time and tune the Go runtime. Nothing else of the server's
+// environment (a `.env` file's passwords, tokens and keys) reaches it.
+var inheritedEnv = map[string]bool{
+	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "TMPDIR": true, "LD_LIBRARY_PATH": true,
+	"TZ": true, "ZONEINFO": true, "LANG": true, "LANGUAGE": true,
+	"SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
+	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
+	"http_proxy": true, "https_proxy": true, "no_proxy": true, "all_proxy": true,
+	"GOMAXPROCS": true, "GOMEMLIMIT": true, "GOGC": true, "GODEBUG": true,
+	"LIBVA_DRIVER_NAME": true,
+}
+
+// childEnv: the contract's variables, the addon's own ANTRESOL_<ID>_* and
+// the server's inheritedEnv (and LC_*); the contract's variables are never
+// taken from the server env.
 func (s *Supervisor) childEnv(id, sock, token string) []string {
+	acceptUnsigned := "off"
+	if s.AcceptUnsigned {
+		acceptUnsigned = "on"
+	}
 	contract := []string{
 		"ANTRESOL_ADDON_ID=" + id,
 		"ANTRESOL_ADDON_DATA_DIR=" + s.DataDir(id),
 		"ANTRESOL_ADDON_SOCKET=" + sock,
 		"ANTRESOL_CORE_URL=" + s.CoreURL,
 		"ANTRESOL_ADDON_TOKEN=" + token,
+		"ANTRESOL_ADDON_USER_KEY=" + UserKey(sock),
+		"ANTRESOL_ADDON_ACCEPT_UNSIGNED=" + acceptUnsigned,
 		"ANTRESOL_CONTRACT=" + strconv.Itoa(ContractVersion),
 		"ANTRESOL_LOCALE=" + s.Locale,
 	}
@@ -418,10 +442,9 @@ func (s *Supervisor) childEnv(id, sock, token string) []string {
 		if reserved[k] {
 			continue
 		}
-		if (strings.HasPrefix(k, "VAULT_") || strings.HasPrefix(k, "ANTRESOL_")) && !strings.HasPrefix(k, own) {
-			continue
+		if strings.HasPrefix(k, own) || inheritedEnv[k] || strings.HasPrefix(k, "LC_") {
+			env = append(env, kv)
 		}
-		env = append(env, kv)
 	}
 	env = append(env, contract...)
 	return append(env, s.extraEnv...)
@@ -593,7 +616,6 @@ func (s *Supervisor) restartLoop(ctx context.Context, e *entry, in Installed, do
 		}
 		e.cur = p
 		s.setStatusLocked(e, p.running())
-		e.restarts++
 		e.loop, e.loopDone = nil, nil
 		s.mu.Unlock()
 		go s.watch(e, p)
@@ -704,13 +726,4 @@ func (s *Supervisor) LogTail(id string, n int) []string {
 		return nil
 	}
 	return e.ring.tail(n)
-}
-
-func (s *Supervisor) restartCount(id string) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e := s.entries[id]; e != nil {
-		return e.restarts
-	}
-	return 0
 }

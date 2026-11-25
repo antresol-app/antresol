@@ -2,6 +2,7 @@ package iptv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/netguard"
 )
 
 // provider is a fake IPTV provider: paths answer what the test puts there.
@@ -392,6 +395,41 @@ const guideXML = `<?xml version="1.0" encoding="UTF-8"?>
 <programme start="20261112110000 +0000" stop="20261112120000 +0000" channel="g.other"><title>Чужое</title></programme>
 <programme start="20261125110000 +0000" stop="20261125120000 +0000" channel="g.one"><title>Далеко</title></programme>
 </tv>`
+
+// A guide a playlist names is a third party's word: for a source on the
+// internet it never reaches the LAN, the guide's own address aside; one the
+// admin typed is theirs to ask for.
+func TestAutoEPGOfAnInternetSourceNeverReachesTheLAN(t *testing.T) {
+	e := newSvcEnv(t)
+	ctx := context.Background()
+	e.p.put("/guide.xml", guideXML)
+	enc, err := e.svc.Seal.Seal("http://provider.example.com/pl.m3u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := e.svc.Store.SaveSource(ctx, Source{Name: "Net", Kind: KindM3U, URLEnc: enc, RefreshHours: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	guide, _ := e.svc.Seal.Seal(e.p.url("/guide.xml"))
+	auto, err := e.svc.Store.SaveEPGURL(ctx, EPGURL{SourceID: src.ID, URLEnc: guide, Position: 1, RefreshHours: 24, Auto: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.RefreshEPG(ctx, auto.ID); !errors.Is(err, netguard.ErrDial) {
+		t.Fatalf("auto guide of an internet source: %v", err)
+	}
+	if got, _ := e.svc.Store.EPGURL(ctx, auto.ID); !strings.Contains(got.LastErr, "address not allowed") {
+		t.Errorf("LastErr %q", got.LastErr)
+	}
+	own, err := e.svc.Store.SaveEPGURL(ctx, EPGURL{SourceID: src.ID, URLEnc: guide, Position: 2, RefreshHours: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.RefreshEPG(ctx, own.ID); err != nil {
+		t.Fatalf("the admin's own LAN guide: %v", err)
+	}
+}
 
 func TestEPGStoresOnlyMatchedWindow(t *testing.T) {
 	e := newSvcEnv(t)

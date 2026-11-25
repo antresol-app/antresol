@@ -295,16 +295,6 @@ func (h *lib) visibleAlbums(ctx context.Context, r *http.Request, ids []int64) (
 	return out, nil
 }
 
-func pageParams(r *http.Request, def int) (limit, offset int) {
-	q := r.URL.Query()
-	limit, _ = strconv.Atoi(q.Get("limit"))
-	if limit <= 0 || limit > 500 {
-		limit = def
-	}
-	offset, _ = strconv.Atoi(q.Get("offset"))
-	return limit, max(offset, 0)
-}
-
 func (h *lib) musicHome(w http.ResponseWriter, r *http.Request) {
 	ctx, u := r.Context(), userOf(r)
 	var shelves []shelf
@@ -881,14 +871,9 @@ func (h *lib) played(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "Неверный id")
 		return
 	}
-	var at time.Time
-	if in.At != "" {
-		t, err := time.Parse(time.RFC3339, in.At)
-		if err != nil {
-			writeErr(w, r, http.StatusBadRequest, "Неверное время записи")
-			return
-		}
-		at = t
+	at, ok := parseWireTime(w, r, in.At)
+	if !ok {
+		return
 	}
 	it, ok := h.item(w, r, in.TrackID)
 	if !ok {

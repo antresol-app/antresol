@@ -102,8 +102,9 @@ func TestStage2b_EndToEnd(t *testing.T) {
 	if w := s.do("GET", "/api/me", "", s.adult); w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &me) != nil || me.ID == 0 {
 		t.Fatalf("me: %d %s", w.Code, w.Body)
 	}
-	t.Setenv("FAKE_MEDIA", file)
-	t.Setenv("FAKE_USER", strconv.FormatInt(me.ID, 10))
+	// the addon's own variables (ANTRESOL_FAKE_*): the server passes no other
+	t.Setenv("ANTRESOL_FAKE_MEDIA", file)
+	t.Setenv("ANTRESOL_FAKE_USER", strconv.FormatInt(me.ID, 10))
 	addons.WriteLocalAddon(t, s.mgr.Dev, addons.Manifest{ID: "fake", Name: addons.Text{RU: "Плеер", EN: "Player"},
 		Version: "1.0.0", Access: "adults", Permissions: []string{"play"}}, "player")
 	if w := s.do("POST", "/api/addons", `{"url":"local:fake","version":"1.0.0"}`, s.admin); w.Code != 200 {

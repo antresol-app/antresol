@@ -63,7 +63,8 @@ export { KIND_ICON, kindLabel, useDebounced, type Found } from '../state/searchK
 export { formatSize, formatRate } from '../state/format'
 export { formatPercent, locale } from '../i18n'
 export { useIsCompact } from '../state/useMediaQuery'
-// the core's pill choices (a radio group or toggles), the one chip style
+// the core's pill choices (a radio group or toggles) in the accent fill, as an addon's picker draws them;
+// the kit's own chip (white when chosen, with counts) is `ui.Chips`
 export { Chip, Chips, type ChipProps } from '../components/Chips'
 // the player's language and time helpers: a track's badge («RU») and name, a clock («1:02:03»)
 export { clock, langBadge, langCode, languageName } from '../player/timeline'

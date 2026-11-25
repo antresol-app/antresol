@@ -17,6 +17,7 @@ import type { MediaFile, PlayRequest, PlayerInput } from '../api/types'
 import { AddonBoundary, useAddonSlot } from '../addons/slots'
 import { Icon } from '../components/Icon'
 import { Button } from '../ui/Button'
+import { Spinner } from '../ui/Spinner'
 import { VideoPlayer } from '../player/VideoPlayer'
 import { audio } from '../player/audio/engine'
 import { useT } from '../i18n'
@@ -132,7 +133,7 @@ export function InputPlayer() {
   if (state.status === 'loading') {
     return (
       <div className={styles.screen} aria-busy="true" aria-label={t('common.loading')}>
-        <span className={styles.spinner} />
+        <Spinner track className={styles.spinner} />
       </div>
     )
   }

@@ -155,40 +155,14 @@ func (h *lib) play(w http.ResponseWriter, r *http.Request) {
 	caps, q := h.playbackCaps(r, in.Caps, in.Quality)
 	ext := h.externalAudio(r.Context(), f, p.DurationMs, p.StartMs)
 	burned := h.burnable(p, in.BurnSubtitle)
-	var d media.Decision
-	audioIndex := -1
-	ai := in.audioIndex()
-	e, external := extAudio{}, false
-	if ai >= externalAudioBase {
-		// an audio file beside the video (ffmpeg's second input); one gone
-		// meanwhile plays the default track, like an unknown embedded index
-		e, external = pickExtAudio(ext, ai-externalAudioBase, in.AudioSrc)
-		ai = -1
-	} else if in.AudioIndex == nil {
+	pick := askedAudio(ext, in.AudioIndex, in.AudioSrc)
+	if !pick.named {
 		// the server's own choice: the cleaned version of the default track
 		// for a profile that prefers it
-		if k := h.preferredCleaned(r.Context(), userOf(r).ID, media.Decide(p, caps, -1).AudioIndex, ext); k >= 0 {
-			e, external = ext[k], true
-		}
+		pick.pos = h.preferredCleaned(r.Context(), userOf(r).ID, media.Decide(p, caps, -1).AudioIndex, ext)
 	}
-	if external {
-		d = media.DecideExternalAudio(p, caps, e.media(), burned)
-		for i := range ext {
-			if ext[i].path == e.path {
-				audioIndex = externalAudioBase + i
-			}
-		}
-	} else {
-		d = media.Decide(p, caps, ai)
-		if burned > 0 {
-			d = media.DecideBurn(p, caps, ai, burned)
-		}
-		audioIndex = d.AudioIndex
-	}
-	out := map[string]any{
-		"mode": d.Mode, "reason": d.Reason, "startSec": max(in.StartSec, 0), "durationMs": p.DurationMs,
-		"audioIndex": audioIndex, "audio": withExternalAudio(audioTracks(p), ext), "subtitles": subTracks(f, p, h.DataDir), "quality": q,
-	}
+	d, audioIndex := decideAudio(p, caps, ext, pick, burned)
+	out := playAnswer(in, p, d, audioIndex, ext, subTracks(f, p, h.DataDir), q)
 	if burned > 0 {
 		out["burnedSubtitle"] = burned
 	}
@@ -237,6 +211,15 @@ type playRequest struct {
 	BurnSubtitle *int `json:"burnSubtitle"`
 }
 
+// playAnswer is the answer of a play request before its stream url: the
+// decision d (its audio track audioIndex), what the file has and offers.
+func playAnswer(in playRequest, p media.ProbeResult, d media.Decision, audioIndex int, ext []extAudio, subs []SubTrack, q qualityInfo) map[string]any {
+	return map[string]any{
+		"mode": d.Mode, "reason": d.Reason, "startSec": max(in.StartSec, 0), "durationMs": p.DurationMs,
+		"audioIndex": audioIndex, "audio": withExternalAudio(audioTracks(p), ext), "subtitles": subs, "quality": q,
+	}
+}
+
 // burnable is the index of the image subtitle stream wanted for burn-in, or 0.
 func (h *lib) burnable(p media.ProbeResult, want *int) int {
 	if want == nil {
@@ -248,13 +231,6 @@ func (h *lib) burnable(p media.ProbeResult, want *int) int {
 		}
 	}
 	return 0
-}
-
-func (in playRequest) audioIndex() int {
-	if in.AudioIndex != nil {
-		return *in.AudioIndex
-	}
-	return -1
 }
 
 // startHLS starts the session for an HLS decision and fills out's url and

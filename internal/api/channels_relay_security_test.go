@@ -144,10 +144,11 @@ func (m hostMap) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // publicSource: the playlist is typed as http://provider.example.test (an
-// internet host) and fetched from the test provider.
+// internet host) and fetched from the test provider (the fetcher's own dial
+// guard would refuse the loopback it is sent to, so its client is swapped).
 func (e *tvEnv) publicSource(pl string) map[string]channelJSON {
 	e.t.Helper()
-	e.tv.Fetch.Client.Transport = hostMap{from: "provider.example.test", to: e.p.srv.Listener.Addr().String(), rt: e.tv.Fetch.Client.Transport}
+	e.tv.Fetch.Client.Transport = hostMap{from: "provider.example.test", to: e.p.srv.Listener.Addr().String(), rt: http.DefaultTransport}
 	return e.addRelaySource(pl, "http://provider.example.test")
 }
 

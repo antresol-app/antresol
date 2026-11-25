@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/extaudio"
 	"github.com/antresol-app/antresol/internal/media"
@@ -23,6 +25,9 @@ type extAudioEnv struct {
 	ext        string
 	probes     atomic.Int32
 	probeErr   error
+	// probeDelay: how long each probe takes; most is the most probes at once
+	probeDelay    time.Duration
+	probing, most atomic.Int32
 }
 
 func newExtAudioEnv(t *testing.T) *extAudioEnv {
@@ -34,6 +39,11 @@ func newExtAudioEnv(t *testing.T) *extAudioEnv {
 				t.Fatalf("probed %s", p)
 			}
 			x.probes.Add(1)
+			if n := x.probing.Add(1); n > x.most.Load() {
+				x.most.Store(n)
+			}
+			time.Sleep(x.probeDelay)
+			x.probing.Add(-1)
 			if x.probeErr != nil {
 				return media.ProbeResult{}, x.probeErr
 			}
@@ -87,6 +97,47 @@ func TestPlayListsExternalAudio(t *testing.T) {
 	x.play(`{` + extDirectCaps + `}`)
 	if n := x.probes.Load(); n != 1 {
 		t.Fatalf("probes %d", n)
+	}
+}
+
+// The item page lists the tracks of a movie with several voice-overs
+// probed together (each is a read of the media disk), in the order of their
+// paths, as one after another would list them.
+func TestItemDetailProbesExternalAudioTogether(t *testing.T) {
+	x := newExtAudioEnv(t)
+	x.probeDelay = 40 * time.Millisecond
+	names := []string{"Брат.Kubik.mka", "Брат.Jaskier.mka", "Брат.Studio.mka"}
+	for _, n := range names {
+		x.writeNextTo(x.file, n, []byte("mka"))
+	}
+	paths := []string{x.ext}
+	for _, n := range names {
+		paths = append(paths, filepath.Join(x.media, n))
+	}
+	slices.Sort(paths)
+	w := x.do("GET", "/api/items/"+itoa(x.item), "", x.admin)
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var d ItemDetail
+	if err := json.Unmarshal(w.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, a := range d.Files[0].Audio {
+		if a.External {
+			got = append(got, a.Src)
+		}
+	}
+	var want []string
+	for _, p := range paths {
+		want = append(want, extaudio.ID(p))
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("tracks %v, want %v", got, want)
+	}
+	if n := x.probes.Load(); n != 4 || x.most.Load() < 2 {
+		t.Fatalf("%d probes, %d at once", n, x.most.Load())
 	}
 }
 
@@ -205,6 +256,14 @@ func TestDeviceCopyExternalAudio(t *testing.T) {
 	if b.ID == a.ID || b.ID == plain.ID {
 		t.Fatal(plain.ID, a.ID, b.ID)
 	}
+	// the src is authoritative: a track whose position moved meanwhile is the
+	// same copy as when asked at its real position (alex is at 2000, lost at 2001)
+	if code, st, body := post(`{"fileId":` + itoa(f) + `,"quality":"original","audioIndex":2001,"audioSrc":"` + alex + `"}`); code/100 != 2 || st.ID != b.ID {
+		t.Fatalf("alex asked at the position of lost: %d %s (want copy %s)", code, body, b.ID)
+	}
+	if code, st, body := post(`{"fileId":` + itoa(f) + `,"quality":"original","audioIndex":2000,"audioSrc":"` + lost + `"}`); code/100 != 2 || st.ID != a.ID {
+		t.Fatalf("lost asked at the position of alex: %d %s (want copy %s)", code, body, a.ID)
+	}
 	// a stale id: the copy of the default track
 	if code, st, body := post(`{"fileId":` + itoa(f) + `,"quality":"original","audioIndex":2000,"audioSrc":"00000000"}`); code != 200 || st.ID != plain.ID {
 		t.Fatalf("%d %s", code, body)
@@ -217,7 +276,7 @@ func TestDeviceCopyExternalAudio(t *testing.T) {
 // understands them (X-Vault-Caps), and a browser always gets them.
 func TestExternalAudioOnlyForClientsThatKnowIt(t *testing.T) {
 	x := newExtAudioEnv(t)
-	tok := x.deviceLogin(1, "secret", "phone-0001")
+	tok := x.deviceLogin(1, adminPass, "phone-0001")
 	tracks := func(hdr ...string) int {
 		t.Helper()
 		w := x.do("POST", "/api/play/"+itoa(x.file), `{`+extDirectCaps+`}`, nil, append(bearer(tok), hdr...)...)

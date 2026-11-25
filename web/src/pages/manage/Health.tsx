@@ -16,7 +16,7 @@
 // /api/admin/health/network, /api/library/status.
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { APP_NAME } from '../../brand'
-import { errorText, getAddonHelpers, getAddons, getCoreUpdate, getLibraryStatus, getNetworkHealth, getTranscoding } from '../../api/client'
+import { errorText, getAddonHelpers, getAddons, getCoreUpdate, getLibraryStatus, getNetworkHealth, getTranscoding, safeHttpUrl } from '../../api/client'
 import { getStorage, type StorageView } from '../../api/storage'
 import { EXTERNAL_PATH, getExternal, saveExternal } from '../../api/external'
 import type { AddonInfo, CoreUpdate, HelperHealth, LibraryStatus, NetCheck, TranscodingView } from '../../api/types'
@@ -378,8 +378,8 @@ function CoreRow({ core }: { core: Load<CoreUpdate> }) {
   if (c.checked) status = c.newer ? t('updates.available', { version: latest }) : versioned ? t('updates.upToDate') : t('updates.devBuild', { version: latest })
   return (
     <ListRow leading={icon} label={APP_NAME} hint={t('updates.installed', { version: c.commit && !versioned ? `${c.version} (${c.commit.slice(0, 7)})` : c.version })} status={c.newer ? <span className={styles.newer}>{status}</span> : status}>
-      {c.checked && c.releaseUrl && (
-        <ButtonAnchor size="small" variant={c.newer ? 'primary' : 'secondary'} href={c.releaseUrl} target="_blank" rel="noopener noreferrer">
+      {c.checked && safeHttpUrl(c.releaseUrl) && (
+        <ButtonAnchor size="small" variant={c.newer ? 'primary' : 'secondary'} href={safeHttpUrl(c.releaseUrl)} target="_blank" rel="noopener noreferrer">
           {t('updates.notes')}
         </ButtonAnchor>
       )}

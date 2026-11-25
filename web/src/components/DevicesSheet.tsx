@@ -135,9 +135,9 @@ export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
           {state.status === 'error' && (
             <div className={styles.retry} role="alert">
               <span className={styles.error}>{state.message}</span>
-              <button type="button" className={styles.button} onClick={() => load()}>
+              <Button variant="secondary" size="small" onClick={() => load()}>
                 {t('common.retry')}
-              </button>
+              </Button>
             </div>
           )}
           {state.status === 'ready' && state.items.length === 0 && (

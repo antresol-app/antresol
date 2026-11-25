@@ -9,12 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
+	"github.com/antresol-app/antresol/internal/media"
 )
 
 func fp(v float64) *float64 { return &v }
@@ -350,5 +352,31 @@ func TestFFmpegLoudness(t *testing.T) {
 	// lavfi's sine is 1/8 of full scale: ×4 gives 0.5
 	if r.LUFS == nil || *r.LUFS > -5 || *r.LUFS < -12 || math.Abs(r.Peak-0.5) > 0.01 {
 		t.Fatalf("got lufs %v peak %v", r.LUFS, r.Peak)
+	}
+}
+
+// ffmpeg reads the track through the file protocol only, with a "file:"
+// operand, so a "track" named like a protocol opens nothing else, and a
+// name that is an address is refused.
+func TestFFmpegLoudnessReadsOnlyTheFileProtocol(t *testing.T) {
+	for _, path := range []string{"/music/a.flac", "concat:/music/a.flac|/music/b.flac"} {
+		var args []string
+		run := func(c *exec.Cmd) error {
+			args = c.Args
+			return errors.New("not run")
+		}
+		FFmpegLoudness(context.Background(), "ffmpeg", path, 0, nil, run)
+		line := strings.Join(args, " ")
+		if !strings.Contains(line, "-protocol_whitelist file ") || !strings.Contains(line, " -i file:"+path+" ") {
+			t.Errorf("%s: %s", path, line)
+		}
+		if strings.Index(line, "-protocol_whitelist") > strings.Index(line, " -i ") {
+			t.Errorf("%s: the whitelist comes after the input: %s", path, line)
+		}
+	}
+	ran := false
+	_, err := FFmpegLoudness(context.Background(), "ffmpeg", "http://192.168.1.2/a.flac", 0, nil, func(*exec.Cmd) error { ran = true; return nil })
+	if !errors.Is(err, media.ErrUnsafeInput) || ran {
+		t.Errorf("an address as a track: %v (ran %v)", err, ran)
 	}
 }

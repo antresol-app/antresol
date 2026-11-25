@@ -98,7 +98,7 @@ type Deps struct {
 	// (and the listening shelves of /api/home).
 	Music *music.Store
 	// ComicsCache is where RAR/7z volumes are unpacked for the page API
-	// (the scanner's Scanner.ComicsCache); "": DataDir/comics-cache.
+	// ("": DataDir/comics-cache).
 	ComicsCache string
 
 	// Tracking is ongoing tracking: marks, the feed and calendar of the
@@ -349,6 +349,7 @@ func NewRouter(deps Deps) http.Handler { return newRouter(deps, nil) }
 // when they are mounted (NewRouterWithPlayer).
 func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	r := chi.NewRouter()
+	r.Use(securityHeaders)
 	// the request's interface language (ru | en) for everything below
 	r.Use(i18n.Middleware)
 	r.Use(csrf)
@@ -384,13 +385,53 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	}
 	// the one session check of every authenticated route
 	guard := &auth.Guard{Sessions: deps.Sessions, Network: deps.Network, Keys: deps.MediaKeys}
+	mcp := mountAccountRoutes(r, deps, guard, requestsOpen)
+	h := mountLibraryRoutes(r, deps, guard, requests, onLib)
+	if deps.Notify != nil {
+		mountNotifyLinks(r, deps.Notify) // the letters' links: a token, no session
+	}
+	mountServerRoutes(r, deps, guard)
+	// the sources build's own routes (none in the core build)
+	mountFull(r, deps, guard, h)
+	if deps.Sessions != nil && deps.Files != nil {
+		authed(r, guard, func(r chi.Router) {
+			mountFiles(r, deps.Files)
+			mountItemDelete(r, deps.Files, deps.Events)
+		})
+	}
+	mountAddonRoutes(r, deps, guard, h, requests)
+	if deps.AddonRelay != nil {
+		// the key and the token in the path, loopback only, no session
+		r.Get(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
+		r.Head(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
+	}
+	r.Handle("/api/*", http.NotFoundHandler())
+	r.NotFound(spa(webui.FS).ServeHTTP)
+	if mcp != nil {
+		mcp.api = r // the tools call the routes above
+	}
+	return r
+}
+
+// authed mounts mount behind the session check.
+func authed(r chi.Router, guard *auth.Guard, mount func(chi.Router)) {
+	r.Group(func(r chi.Router) {
+		r.Use(guard.Require)
+		mount(r)
+	})
+}
+
+// mountAccountRoutes mounts what concerns the signed-in profile itself: API
+// keys and MCP, sign-in, managed accounts, TV pairing and the local name.
+// The MCP server (nil without the database) is given the router's routes
+// by the caller.
+func mountAccountRoutes(r chi.Router, deps Deps, guard *auth.Guard, requestsOpen func(context.Context) bool) *mcpServer {
 	// personal API keys («Ключи API и ИИ») and the MCP server that takes them
 	var mcp *mcpServer
 	if deps.DB != nil && deps.Sessions != nil {
 		guard.APIKeys = auth.NewAPIKeys(deps.DB)
 		mcp = &mcpServer{addons: deps.Addons}
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
+		authed(r, guard, func(r chi.Router) {
 			mountAPIKeys(r, guard.APIKeys, deps.PublicURL)
 			mountMCP(r, mcp)
 		})
@@ -409,13 +450,8 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 					}
 				}
 			})
-	}
-	// «Отдельная история на этом устройстве» (managed accounts)
-	if deps.Users != nil && deps.Sessions != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountManaged(r, deps.Users, deps.Sessions, deps.Progress)
-		})
+		// «Отдельная история на этом устройстве» (managed accounts)
+		authed(r, guard, func(r chi.Router) { mountManaged(r, deps.Users, deps.Sessions, deps.Progress) })
 	}
 	// sign-in on a TV by QR code (/api/auth/pair/*)
 	if deps.Users != nil && deps.Sessions != nil && deps.DB != nil {
@@ -423,84 +459,90 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 	}
 	// the address to open on the home network («О сервере»): for the signed in
 	if deps.Sessions != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountLocalName(r, deps.LocalName)
-		})
+		authed(r, guard, func(r chi.Router) { mountLocalName(r, deps.LocalName) })
 	}
-	var h *lib
-	if deps.Sessions != nil && deps.Library != nil && deps.Progress != nil {
-		if deps.AudioTranscoder == nil {
-			ff := deps.FFmpeg
-			if ff == "" {
-				ff = "ffmpeg"
-			}
-			deps.AudioTranscoder = &media.AudioTranscoder{FFmpeg: ff, Limit: defaultAudioLimit}
-		}
-		if deps.ComicsCache == "" && deps.DataDir != "" {
-			deps.ComicsCache = filepath.Join(deps.DataDir, "comics-cache")
-		}
-		h = &lib{Deps: deps, guard: guard, comics: newComicArchives(comicArchivesOpen, deps.ComicsCache), requests: requests}
-		if deps.TrailerAddons != nil || deps.TrailerLocal != nil {
-			h.trailerKeys = trailers.NewListed(trailerKeysFile(deps.DataDir))
-		}
-		if onLib != nil {
-			onLib(h)
-		}
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountLibrary(r, h)
-			mountRelated(r, h)
-			mountPlay(r, h)
-			mountTrackPrefs(r, h)
-			mountUILanguage(r, h)
-			mountAudio(r, h)
-			mountBooks(r, h)
-			mountAnnotations(r, h)
-			mountComics(r, h)
-			mountDeviceCopies(r, h)
-			if deps.Music != nil {
-				mountMusic(r, h)
-			}
-			mountImages(r, h)
-			mountSubtitles(r, h)
-			if deps.Notify != nil && deps.Users != nil {
-				mountNotify(r, h)
-			}
-			mountTrickplay(r, h)
-			if deps.Tracking != nil {
-				mountTracking(r, h)
-			}
-			mountScreenTime(r, h)
-			if requests != nil {
-				mountKidRequests(r, requests)
-			}
-			mountTitle(r, h)
-			if deps.Channels != nil && deps.DB != nil {
-				ca := newChannelsAPI(deps, h)
-				if deps.Translations != nil {
-					// the guide's text in the viewers' languages, fetched ahead
-					deps.Channels.SetWarm((&guideWarmer{h: h, svc: deps.Channels}).warm)
-				}
-				mountChannels(r, ca)
-				if deps.IPTV {
-					mountIPTVLinks(r, ca)
-				}
-				if deps.ExtIPTV != nil {
-					mountIPTVAdmin(r, &iptvAdmin{ca: ca, svc: deps.ExtIPTV, links: deps.IPTV})
-				}
-			}
-		})
-		if deps.Channels != nil && deps.DB != nil && deps.IPTV {
-			mountIPTV(r, newChannelsAPI(deps, h)) // a token in the path, no session (h: the guide's language)
-		}
+	return mcp
+}
+
+// mountLibraryRoutes mounts the library handlers and everything that reads
+// them: playback, books, music, kids' requests, «ТВ» channels. It returns
+// the handlers (nil when the library is not mounted).
+func mountLibraryRoutes(r chi.Router, deps Deps, guard *auth.Guard, requests *kidRequests, onLib func(*lib)) *lib {
+	if deps.Sessions == nil || deps.Library == nil || deps.Progress == nil {
+		return nil
 	}
-	if deps.Notify != nil {
-		mountNotifyLinks(r, deps.Notify) // the letters' links: a token, no session
+	if deps.AudioTranscoder == nil {
+		ff := deps.FFmpeg
+		if ff == "" {
+			ff = "ffmpeg"
+		}
+		deps.AudioTranscoder = &media.AudioTranscoder{FFmpeg: ff, Limit: defaultAudioLimit}
 	}
+	if deps.ComicsCache == "" && deps.DataDir != "" {
+		deps.ComicsCache = filepath.Join(deps.DataDir, "comics-cache")
+	}
+	h := &lib{Deps: deps, guard: guard, comics: newComicArchives(comicArchivesOpen, deps.ComicsCache), requests: requests}
+	if deps.TrailerAddons != nil || deps.TrailerLocal != nil {
+		h.trailerKeys = trailers.NewListed(trailerKeysFile(deps.DataDir))
+	}
+	if onLib != nil {
+		onLib(h)
+	}
+	var ca *channelsAPI
+	authed(r, guard, func(r chi.Router) {
+		mountLibrary(r, h)
+		mountRelated(r, h)
+		mountPlay(r, h)
+		mountTrackPrefs(r, h)
+		mountUILanguage(r, h)
+		mountAudio(r, h)
+		mountBooks(r, h)
+		mountAnnotations(r, h)
+		mountComics(r, h)
+		mountDeviceCopies(r, h)
+		if deps.Music != nil {
+			mountMusic(r, h)
+		}
+		mountImages(r, h)
+		mountSubtitles(r, h)
+		if deps.Notify != nil && deps.Users != nil {
+			mountNotify(r, h)
+		}
+		mountTrickplay(r, h)
+		if deps.Tracking != nil {
+			mountTracking(r, h)
+		}
+		mountScreenTime(r, h)
+		if requests != nil {
+			mountKidRequests(r, requests)
+		}
+		mountTitle(r, h)
+		if deps.Channels != nil && deps.DB != nil {
+			ca = newChannelsAPI(deps, h)
+			if deps.Translations != nil {
+				// the guide's text in the viewers' languages, fetched ahead
+				deps.Channels.SetWarm((&guideWarmer{h: h, svc: deps.Channels}).warm)
+			}
+			mountChannels(r, ca)
+			if deps.IPTV {
+				mountIPTVLinks(r, ca)
+			}
+			if deps.ExtIPTV != nil {
+				mountIPTVAdmin(r, &iptvAdmin{ca: ca, svc: deps.ExtIPTV, sessions: deps.Sessions, links: deps.IPTV})
+			}
+		}
+	})
+	if ca != nil && deps.IPTV {
+		mountIPTV(r, ca) // a token in the path, no session (h: the guide's language)
+	}
+	return h
+}
+
+// mountServerRoutes mounts the server's own pages: events, disk, stats,
+// settings, storage, imports and the accounts of a build that has them.
+func mountServerRoutes(r chi.Router, deps Deps, guard *auth.Guard) {
 	if deps.Sessions != nil && deps.Events != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
+		authed(r, guard, func(r chi.Router) {
 			var forAdults addonForAdults
 			if rt := deps.Addons; rt != nil {
 				forAdults = func(ctx context.Context, id string) bool {
@@ -512,20 +554,15 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 		})
 	}
 	if deps.Sessions != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
+		authed(r, guard, func(r chi.Router) {
 			mountPendingCards(r, deps.AddonHooks, func(r *http.Request) int { return remoteMaxHeight(&deps, r) })
 		})
 	}
 	if deps.Sessions != nil && deps.DiskUsage != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountDisk(r, deps.DiskUsage)
-		})
+		authed(r, guard, func(r chi.Router) { mountDisk(r, deps.DiskUsage) })
 	}
 	if deps.Sessions != nil && deps.DB != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
+		authed(r, guard, func(r chi.Router) {
 			mountStats(r, newStats(deps, time.Now))
 			mountSettings(r, newSettingsAPI(deps))
 			mountExternal(r, deps)
@@ -537,64 +574,38 @@ func newRouter(deps Deps, onLib func(*lib)) http.Handler {
 		})
 	}
 	if deps.Sessions != nil && deps.Users != nil && deps.MediaImport != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountMediaImport(r, deps)
-		})
+		authed(r, guard, func(r chi.Router) { mountMediaImport(r, deps) })
 	}
 	if deps.Sessions != nil && deps.PlaylistImport != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountImport(r, deps)
-		})
+		authed(r, guard, func(r chi.Router) { mountImport(r, deps) })
 	}
 	if deps.Sessions != nil {
 		mountAccounts(r, guard, deps.Accounts)
 	}
-	// the sources build's own routes (none in the core build)
-	mountFull(r, deps, guard, h)
-	if deps.Sessions != nil && deps.Files != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountFiles(r, deps.Files)
-			mountItemDelete(r, deps.Files, deps.Events)
-		})
-	}
+}
+
+// mountAddonRoutes mounts the addons' management, their calls into the core
+// and their inputs' playback.
+func mountAddonRoutes(r chi.Router, deps Deps, guard *auth.Guard, h *lib, requests *kidRequests) {
 	if deps.Sessions != nil && deps.Addons != nil {
 		aa := newAddonsAPI(deps)
 		aa.requests = requests // /requests/approve (nil: 503)
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountAddons(r, aa)
-		})
+		authed(r, guard, func(r chi.Router) { mountAddons(r, aa) })
 		mountAddonCore(r, aa) // an addon's token, no session
 	}
 	if deps.Sessions != nil && deps.AddonInputs != nil && h != nil {
 		ip := newInputPlay(h, deps)
 		mountInputRelay(r, ip) // the per-process token on loopback, no session
-		r.Group(func(r chi.Router) {
-			r.Use(guard.Require)
-			mountInputPlay(r, ip)
-		})
+		authed(r, guard, func(r chi.Router) { mountInputPlay(r, ip) })
 	}
-	if deps.AddonRelay != nil {
-		// the key and the token in the path, loopback only, no session
-		r.Get(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
-		r.Head(addons.RelayPrefix+"*", deps.AddonRelay.ServeHTTP)
-	}
-	r.Handle("/api/*", http.NotFoundHandler())
-	r.NotFound(spa(webui.FS).ServeHTTP)
-	if mcp != nil {
-		mcp.api = r // the tools call the routes above
-	}
-	return r
 }
 
 // compressTypes are the response types the router gzips: the API's JSON
 // and the web app's text files. Never media, images, archives or
 // text/event-stream (its events must reach the tab at once).
 var compressTypes = []string{"application/json", "text/html", "text/css", "text/javascript", "application/javascript",
-	"application/manifest+json", "image/svg+xml", "text/plain", "application/xml", "audio/x-mpegurl"}
+	"application/manifest+json", "image/svg+xml", "text/plain", "application/xml", "audio/x-mpegurl",
+	"text/xml", "application/atom+xml"} // Subsonic's XML, OPDS feeds
 
 // compressText gzips the GET responses of compressTypes. Media routes and
 // range requests are passed straight through, unwrapped: a wrapped writer
@@ -682,6 +693,20 @@ func mediaRoute(p string) bool {
 func compressible(ct string) bool {
 	ct, _, _ = strings.Cut(ct, ";")
 	return slices.Contains(compressTypes, strings.TrimSpace(ct))
+}
+
+// securityHeaders: every answer says it is not to be sniffed, keeps the path
+// and query out of what other sites are sent as Referer (the browser's own
+// default, spelled out) and gives the page no camera, microphone or
+// location. A handler that sets its own (no-referrer, say) overrides them.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // appCSP is the Content-Security-Policy of the web app. Only the app's own

@@ -27,8 +27,8 @@ export default {
   'app.setup.nameRequired': 'Как вас зовут?',
   'app.setup.passwordPlaceholder': 'Пароль администратора',
   'app.setup.passwordRequired': 'Придумайте пароль',
-  'app.setup.passwordShort': 'Не короче 6 символов',
-  'app.setup.passwordHint': 'Не короче 6 символов. С этим профилем вы будете добавлять фильмы и управлять семьёй.',
+  'app.setup.passwordShort': 'Не короче 10 символов',
+  'app.setup.passwordHint': 'Не короче 10 символов. С этим профилем вы будете добавлять фильмы и управлять семьёй.',
   'app.setup.continue': 'Продолжить',
   'app.setup.footnote': 'Профили для близких можно добавить позже в разделе «Настройки → Сервер → Профили».',
   // «Кто смотрит?»

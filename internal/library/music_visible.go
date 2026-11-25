@@ -47,19 +47,7 @@ func (r *Repo) MusicSongs(ctx context.Context, limit, offset int, maxRating stri
 		limit = -1
 	}
 	args = append(args, limit, max(offset, 0))
-	rows, err := r.db.QueryContext(ctx, trackSelect+` LEFT JOIN items ar ON ar.id=al.parent_id
+	tracks, err := r.queryTracks(ctx, trackSelect+` LEFT JOIN items ar ON ar.id=al.parent_id
 	  WHERE i.kind='track' AND i.missing_since IS NULL AND `+rate+` ORDER BY i.sort_title, i.id LIMIT ? OFFSET ?`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Track{}
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, tr)
-	}
-	return out, rows.Err()
+	return nonNil(tracks), err
 }

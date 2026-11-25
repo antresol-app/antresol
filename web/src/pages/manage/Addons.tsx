@@ -35,6 +35,7 @@ import { Notice } from "../../ui/Notice";
 import { Sheet } from "../../ui/Sheet";
 import { TextField } from "../../ui/TextField";
 import { Toggle } from "../../ui/Toggle";
+import { Spinner } from "../../ui/Spinner";
 import m from "./Manage.module.css";
 import styles from "./Addons.module.css";
 
@@ -221,7 +222,7 @@ export function Addons() {
       )}
       {state.status === "loading" && (
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t("addons.loading")}
+          <Spinner track className={m.spinner} /> {t("addons.loading")}
         </div>
       )}
       {state.status === "error" && (
@@ -639,7 +640,7 @@ function LogSheet({
           role="status"
           aria-label={t("common.loading")}
         >
-          <span className={m.spinner} aria-hidden />
+          <Spinner track className={m.spinner} />
         </div>
       ) : lines.length === 0 ? (
         <p className={styles.previewMeta}>{t("addons.logEmpty")}</p>

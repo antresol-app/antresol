@@ -2,7 +2,8 @@ package library
 
 import (
 	"context"
-	"strings"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // Root walks up to the top of an item's hierarchy (or returns it as is).
@@ -48,7 +49,7 @@ func MusicRootAllowed(root, maxRating string) (string, []any) {
 	for i := 0; i <= rank; i++ {
 		args = append(args, ruRatings[i])
 	}
-	return "(COALESCE(" + root + ",'') = '' OR " + root + " IN (?" + strings.Repeat(",?", rank) + "))", args
+	return "(COALESCE(" + root + ",'') = '' OR " + root + " IN " + db.In(len(args)) + ")", args
 }
 
 // musicRootJoins joins p1 (the parent) and p2 (the grandparent) of items

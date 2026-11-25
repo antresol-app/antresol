@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/antresol-app/antresol/internal/auth"
-	"github.com/go-chi/chi/v5"
 )
 
 // A profile's photo (auth.User.Photo is its address): an admin sets or
@@ -22,21 +21,11 @@ import (
 //	                                  as /api/me/app-password is its own; a kid's is the
 //	                                  parents' (403), as «Скрывать прогресс» is
 
-// photoID is the {id} of the path, or an answer already written.
-func photoID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		writeErr(w, r, http.StatusBadRequest, "Неверный id")
-		return 0, false
-	}
-	return id, true
-}
-
 // servePhoto: GET /api/profiles/{id}/photo. The address carries the upload's
 // version (?v=): a match is kept for good, a bare or stale one is asked again.
 func (a *authAPI) servePhoto(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
+	id, ok := pathID(r, "id")
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
@@ -62,7 +51,7 @@ func (a *authAPI) servePhoto(w http.ResponseWriter, r *http.Request) {
 
 // uploadPhoto: POST /api/users/{id}/photo.
 func (a *authAPI) uploadPhoto(w http.ResponseWriter, r *http.Request) {
-	if id, ok := photoID(w, r); ok {
+	if id, ok := idParam(w, r, "id"); ok {
 		if u, ok := a.savePhoto(w, r, id); ok {
 			writeJSON(w, http.StatusOK, u)
 		}
@@ -70,23 +59,14 @@ func (a *authAPI) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 }
 
 // uploadMyPhoto: POST /api/me/photo; answers as /api/me does (the web app
-// puts the answer in its session).
+// puts the answer in its session). A kid's photo is the parents' choice
+// (an admin sets it in «Профили»): 403.
 func (a *authAPI) uploadMyPhoto(w http.ResponseWriter, r *http.Request) {
-	if u := userOf(r); a.mayEditOwnPhoto(w, r, u) {
-		if fresh, ok := a.savePhoto(w, r, u.ID); ok {
+	if !kidLocked(w, r) {
+		if fresh, ok := a.savePhoto(w, r, userOf(r).ID); ok {
 			writeJSON(w, http.StatusOK, a.meOf(r, fresh))
 		}
 	}
-}
-
-// mayEditOwnPhoto: a kid's photo is the parents' choice (an admin sets it in
-// «Профили»); otherwise it answers 403 itself.
-func (a *authAPI) mayEditOwnPhoto(w http.ResponseWriter, r *http.Request, u auth.User) bool {
-	if u.IsKid {
-		writeErr(w, r, http.StatusForbidden, "Это может изменить только администратор")
-		return false
-	}
-	return true
 }
 
 // savePhoto reads the multipart upload and keeps it as profile id's photo;
@@ -128,7 +108,7 @@ func (a *authAPI) savePhoto(w http.ResponseWriter, r *http.Request, id int64) (a
 
 // deletePhoto: DELETE /api/users/{id}/photo.
 func (a *authAPI) deletePhoto(w http.ResponseWriter, r *http.Request) {
-	if id, ok := photoID(w, r); ok {
+	if id, ok := idParam(w, r, "id"); ok {
 		if u, ok := a.dropPhoto(w, r, id); ok {
 			writeJSON(w, http.StatusOK, u)
 		}
@@ -137,8 +117,8 @@ func (a *authAPI) deletePhoto(w http.ResponseWriter, r *http.Request) {
 
 // deleteMyPhoto: DELETE /api/me/photo.
 func (a *authAPI) deleteMyPhoto(w http.ResponseWriter, r *http.Request) {
-	if u := userOf(r); a.mayEditOwnPhoto(w, r, u) {
-		if fresh, ok := a.dropPhoto(w, r, u.ID); ok {
+	if !kidLocked(w, r) {
+		if fresh, ok := a.dropPhoto(w, r, userOf(r).ID); ok {
 			writeJSON(w, http.StatusOK, a.meOf(r, fresh))
 		}
 	}

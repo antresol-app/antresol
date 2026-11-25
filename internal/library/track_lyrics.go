@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // Stored lyrics statuses (track_lyrics.status).
@@ -104,14 +107,8 @@ func (r *Repo) SetLyricsOffset(ctx context.Context, itemID int64, ms int) (int, 
 // TrackLyricsStatus returns the stored status of each of ids that has one.
 func (r *Repo) TrackLyricsStatus(ctx context.Context, ids []int64) (map[int64]string, error) {
 	out := map[int64]string{}
-	for len(ids) > 0 {
-		n := min(len(ids), 500)
-		args := make([]any, n)
-		for i, id := range ids[:n] {
-			args[i] = id
-		}
-		rows, err := r.db.QueryContext(ctx, `SELECT item_id, status FROM track_lyrics WHERE item_id IN (?`+
-			strings.Repeat(",?", n-1)+`)`, args...)
+	for part := range slices.Chunk(ids, 500) {
+		rows, err := r.db.QueryContext(ctx, `SELECT item_id, status FROM track_lyrics WHERE item_id IN `+db.In(len(part)), db.Args(part)...)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +125,6 @@ func (r *Repo) TrackLyricsStatus(ctx context.Context, ids []int64) (map[int64]st
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		ids = ids[n:]
 	}
 	return out, nil
 }
@@ -140,25 +136,12 @@ func (r *Repo) TrackLyricsStatus(ctx context.Context, ids []int64) (map[int64]st
 // The SQL filter on synced file words is loose (a line starting with
 // «[digit…:dd»); callers check LRCSynced.
 func (r *Repo) LyricsCandidates(ctx context.Context, now time.Time, limit int) ([]Track, error) {
-	rows, err := r.db.QueryContext(ctx, trackSelect+` LEFT JOIN track_lyrics l ON l.item_id=i.id
+	return r.queryTracks(ctx, trackSelect+` LEFT JOIN track_lyrics l ON l.item_id=i.id
 	  WHERE i.kind='track' AND i.missing_since IS NULL AND TRIM(i.title)<>''
 	    AND t.lyrics NOT GLOB '*[[][0-9]*:[0-9][0-9]*'
 	    AND (l.item_id IS NULL OR l.next_try_at<=?)
 	  ORDER BY l.item_id IS NOT NULL, CASE WHEN l.item_id IS NULL THEN i.id END DESC, l.next_try_at
 	  LIMIT ?`, now.UTC().Format(time.RFC3339), limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Track
-	for rows.Next() {
-		tr, err := scanTrack(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, tr)
-	}
-	return out, rows.Err()
 }
 
 // EffectiveLyrics picks the words to show for tr: synced words from the

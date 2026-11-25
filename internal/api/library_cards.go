@@ -237,13 +237,33 @@ func (h *lib) fileByID(w http.ResponseWriter, r *http.Request, id int64) (librar
 	return f, it, ok
 }
 
-func idParam(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+// pathID is the positive id in the path's {name}; 0, false when it is not one.
+func pathID(r *http.Request, name string) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, name), 10, 64)
 	if err != nil || id <= 0 {
-		writeErr(w, r, http.StatusBadRequest, "Неверный id")
 		return 0, false
 	}
 	return id, true
+}
+
+// idParam is pathID with the 400 answered for a bad one.
+func idParam(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+	id, ok := pathID(r, name)
+	if !ok {
+		writeErr(w, r, http.StatusBadRequest, "Неверный id")
+	}
+	return id, ok
+}
+
+// pageParams is the list page of ?limit= (1..500, else def) and ?offset=.
+func pageParams(r *http.Request, def int) (limit, offset int) {
+	q := r.URL.Query()
+	limit, _ = strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 500 {
+		limit = def
+	}
+	offset, _ = strconv.Atoi(q.Get("offset"))
+	return limit, max(offset, 0)
 }
 
 func internalErr(w http.ResponseWriter, r *http.Request, what string, err error) {

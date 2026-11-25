@@ -4,14 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/antresol-app/antresol/internal/channels"
 	"net/http"
 	"reflect"
 	"strings"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/lang"
 	"github.com/antresol-app/antresol/internal/media"
@@ -152,22 +151,18 @@ func (s AppSettings) RemoteQualityOrDefault() string {
 
 // LoadAppSettings reads the stored settings over defaults (main applies them
 // at startup).
-func LoadAppSettings(ctx context.Context, db *sql.DB, defaults AppSettings) (AppSettings, error) {
+func LoadAppSettings(ctx context.Context, conn *sql.DB, defaults AppSettings) (AppSettings, error) {
 	defaults = defaults.withSubtitleDefaults()
 	defaults.appSettingsFull = defaults.withDefaults()
 	defaults.Trickplay = true // stored settings without the field: on
 	defaults.TrickplayBudgetGB = defaultTrickplayBudgetGB
 	s := defaults
-	var raw string
-	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, appSettingsKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return s, nil
-	}
+	found, err := db.GetJSON(ctx, conn, appSettingsKey, &s)
 	if err != nil {
-		return s, err
+		return defaults, err
 	}
-	if err := json.Unmarshal([]byte(raw), &s); err != nil {
-		return defaults, fmt.Errorf("settings %s: %w", appSettingsKey, err)
+	if !found {
+		return s, nil
 	}
 	if !validSubtitleLangs(s.SubtitleLangs) {
 		s.SubtitleLangs = defaults.SubtitleLangs
@@ -184,32 +179,30 @@ func LoadAppSettings(ctx context.Context, db *sql.DB, defaults AppSettings) (App
 // AppSettings does not define are kept as stored, so saving on core does
 // not wipe the sources build's settings. Keys this build does define are
 // written as s has them, so an omitempty one left out is cleared.
-func saveAppSettings(ctx context.Context, db *sql.DB, s AppSettings) error {
+func saveAppSettings(ctx context.Context, conn *sql.DB, s AppSettings) error {
 	raw, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil) // immediate: the read and the write are one step
+	tx, err := conn.BeginTx(ctx, nil) // immediate: the read and the write are one step
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	var stored []byte
-	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, appSettingsKey).Scan(&stored)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	stored, _, err := db.GetSetting(ctx, tx, appSettingsKey)
+	if err != nil {
 		return err
 	}
-	if raw, err = mergeForeignKeys(stored, raw, appSettingsKeys); err != nil {
+	if raw, err = mergeForeignKeys([]byte(stored), raw, appSettingsKeys); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, appSettingsKey, string(raw)); err != nil {
+	if err = db.PutSetting(ctx, tx, appSettingsKey, string(raw)); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	afterSaveAppSettings(db)
+	afterSaveAppSettings(conn)
 	return nil
 }
 

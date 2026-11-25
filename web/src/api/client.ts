@@ -112,6 +112,7 @@ import type {
 import { getLanguage, t } from '../i18n'
 
 export { useEvents } from './events'
+export { safeHttpUrl } from './safeUrl'
 
 /** An error returned by the API. `message` is already human-readable, in the interface language (Accept-Language). */
 export class ApiError extends Error {

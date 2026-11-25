@@ -3,13 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/antresol-app/antresol/internal/auth"
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/voclean"
 )
 
@@ -27,10 +27,9 @@ type VocleanAdmin interface {
 
 // LoadVocleanBackfill is «Обработать всю медиатеку» (voclean.Worker.Backfill):
 // off when unset or unreadable.
-func LoadVocleanBackfill(ctx context.Context, db *sql.DB) bool {
-	var v string
-	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, vocleanBackfillKey).Scan(&v)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) && ctx.Err() == nil {
+func LoadVocleanBackfill(ctx context.Context, conn *sql.DB) bool {
+	v, _, err := db.GetSetting(ctx, conn, vocleanBackfillKey)
+	if err != nil && ctx.Err() == nil {
 		log.Printf("api: %s: %v", vocleanBackfillKey, err)
 	}
 	return v == "1"
@@ -93,8 +92,7 @@ func (v *vocleanAPI) backfill(w http.ResponseWriter, r *http.Request) {
 	if body.On {
 		val = "1"
 	}
-	if _, err := v.db.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, vocleanBackfillKey, val); err != nil {
+	if err := db.PutSetting(ctx, v.db, vocleanBackfillKey, val); err != nil {
 		internalErr(w, r, "voclean backfill", err)
 		return
 	}

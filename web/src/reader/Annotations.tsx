@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { Annotation, AnnotationColor } from '../api/types'
 import { ButtonAnchor } from '../ui/Button'
 import { Icon } from '../components/Icon'
+import { IconButton } from '../ui/IconButton'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { Sheet } from '../ui/Sheet'
 import { ANNOTATION_COLORS } from '../offline/annotations'
@@ -86,13 +87,9 @@ export function AnnotationsSheet({ list, onJump, onRemove, highlights, onEditNot
                   </span>
                 </button>
                 {onEditNote && a.kind !== 'bookmark' && (
-                  <button type="button" className={styles.icon} aria-label={t('reader.annotations.editNote')} onClick={() => onEditNote(a)}>
-                    <Icon name="pencil" size={18} />
-                  </button>
+                  <IconButton icon={<Icon name="pencil" size={18} />} label={t('reader.annotations.editNote')} variant="plain" className={styles.icon} onClick={() => onEditNote(a)} />
                 )}
-                <button type="button" className={styles.icon} aria-label={t('reader.annotations.deleteOne', { name })} onClick={() => onRemove(a)}>
-                  <Icon name="trash" size={18} />
-                </button>
+                <IconButton icon={<Icon name="trash" size={18} />} label={t('reader.annotations.deleteOne', { name })} variant="plain" className={styles.icon} onClick={() => onRemove(a)} />
               </li>
             )
           })}

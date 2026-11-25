@@ -195,10 +195,7 @@ func (l *LLM) chatHTTP(ctx context.Context, msgs []map[string]string, asJSON boo
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		detail := strings.TrimSpace(string(raw))
-		if r := []rune(detail); len(r) > 200 {
-			detail = string(r[:200]) + "…"
-		}
+		detail := clipRunes(strings.TrimSpace(string(raw)), 200, "…")
 		return "", httpStatusErr{code: resp.StatusCode, text: fmt.Sprintf("llm: %s %s", resp.Status, detail)}
 	}
 	var out struct {
@@ -260,10 +257,7 @@ func (l *LLM) Ping(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if r := []rune(strings.TrimSpace(out)); len(r) > 80 {
-		out = string(r[:80]) + "…"
-	}
-	return strings.TrimSpace(out), nil
+	return clipRunes(strings.TrimSpace(out), 80, "…"), nil
 }
 
 // jsonPart: the object in an answer that wrapped it in prose or a code fence.

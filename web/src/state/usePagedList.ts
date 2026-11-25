@@ -1,9 +1,14 @@
 // A list the server sends in pages (the library's grids, «Песни»): the first
 // page, then the next ones as the end comes near (an IntersectionObserver on
-// a sentinel under the list), reloaded quietly on `library.updated`. One
+// a sentinel under the list), reloaded quietly on `library.updated` (as far
+// as it had been read: the reader keeps their place). One
 // implementation for Browse, Albums, Artists, BooksGrid and Songs.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { errorText, useEvents } from '../api/client'
+import { errorText } from '../api/client'
+import { useEventReload } from './useEventReload'
+
+/** A quiet reload reads back at most this many pages (the list is cut there when it had been read further; the sentinel goes on from it). */
+export const RELOAD_PAGES = 20
 
 export interface Page<T> {
   items: T[]
@@ -62,20 +67,38 @@ export function usePagedList<T>(
     const ac = new AbortController()
     abortRef.current = ac
     const gen = ++generation.current
-    loadingMore.current = false
-    if (!quiet) setState({ status: 'loading' })
-    latest.current
-      .fetchPage(0, page, ac.signal)
-      .then((p) => {
+    // a quiet reload goes as far as the list had been read (but for RELOAD_PAGES), and holds the sentinel's pages until it is in
+    const upTo = quiet ? Math.min(next.current, RELOAD_PAGES * page) : 0
+    loadingMore.current = quiet
+    if (!quiet) {
+      next.current = 0
+      setState({ status: 'loading' })
+    }
+    const read = async () => {
+      let p = await latest.current.fetchPage(0, page, ac.signal)
+      const items = [...p.items]
+      let at = step === 'page' ? page : items.length
+      // a page may come back empty when the server pages over entries this profile cannot see: it goes on
+      while (at < upTo && at < p.total && (step === 'page' || p.items.length > 0)) {
+        p = await latest.current.fetchPage(at, page, ac.signal)
+        items.push(...p.items)
+        at = step === 'page' ? at + page : at + p.items.length
+      }
+      return { items, total: p.total, at }
+    }
+    read()
+      .then((r) => {
         if (gen !== generation.current) return
-        next.current = step === 'page' ? page : p.items.length
-        more.current = next.current < p.total
+        next.current = r.at
+        more.current = r.at < r.total
+        loadingMore.current = false
         setMoreError('')
-        setState({ status: 'ready', items: p.items, total: p.total, more: more.current })
+        setState({ status: 'ready', items: r.items, total: r.total, more: more.current })
       })
       .catch((e: unknown) => {
-        if (ac.signal.aborted || quiet || gen !== generation.current) return
-        setState({ status: 'error', message: errorText(e, latest.current.opts.failed) })
+        if (ac.signal.aborted || gen !== generation.current) return
+        loadingMore.current = false
+        if (!quiet) setState({ status: 'error', message: errorText(e, latest.current.opts.failed) })
       })
     // the list's inputs are the caller's deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,7 +109,7 @@ export function usePagedList<T>(
     return () => abortRef.current?.abort()
   }, [load])
 
-  useEvents(() => load(true), ['library.updated'])
+  useEventReload(() => load(true), ['library.updated'])
 
   const loadMore = useCallback(() => {
     if (!more.current || loadingMore.current) return
@@ -111,16 +134,14 @@ export function usePagedList<T>(
       })
   }, [page, step])
 
-  // the sentinel comes near the viewport: the next page
-  const ready = state.status === 'ready'
-  const count = ready ? state.items.length : 0
+  // the sentinel comes near the viewport: the next page (looked at again after every answer, a reload's too)
   useEffect(() => {
     const el = sentinel.current
-    if (!el || !ready) return
+    if (!el || state.status !== 'ready') return
     const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadMore(), { rootMargin: '800px' })
     io.observe(el)
     return () => io.disconnect()
-  }, [loadMore, ready, count, moreError])
+  }, [loadMore, state, moreError])
 
   return { state, load, loadMore, moreError, sentinel }
 }

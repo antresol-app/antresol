@@ -11,7 +11,19 @@ interface Trimmed {
   url: string
   dark: boolean
 }
+// The most recent logos only: each trimmed one is a blob URL that holds its bitmap until revoked.
+const MAX_CACHED = 24
 const cache = new Map<string, Promise<Trimmed>>()
+
+function remember(src: string, p: Promise<Trimmed>) {
+  cache.delete(src) // the newest goes last
+  cache.set(src, p)
+  while (cache.size > MAX_CACHED) {
+    const [oldest, old] = cache.entries().next().value!
+    cache.delete(oldest)
+    void old.then((t) => t.url !== oldest && URL.revokeObjectURL(t.url))
+  }
+}
 
 /** Mean relative luminance (0..1) under which a logo reads as dark on the dark hero (contrast < 3:1 against black). */
 const DARK_LUMINANCE = 0.1
@@ -44,7 +56,10 @@ export function isDarkGreyLogo(data: ArrayLike<number>): boolean {
 
 function trim(src: string): Promise<Trimmed> {
   const hit = cache.get(src)
-  if (hit) return hit
+  if (hit) {
+    remember(src, hit)
+    return hit
+  }
   const p = new Promise<Trimmed>((done) => {
     let dark = false
     const resolve = (url: string) => done({ url, dark })
@@ -94,7 +109,7 @@ function trim(src: string): Promise<Trimmed> {
     }
     img.src = src
   })
-  cache.set(src, p)
+  remember(src, p)
   return p
 }
 

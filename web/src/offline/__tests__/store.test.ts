@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { session } from '../../state/session'
+import { warmPdfReader } from '../warm'
 import { LOCK_PATH, OFFLINE_CACHE, findSaved } from '../saved'
 import {
   bindOfflineToSession,
@@ -14,6 +15,8 @@ import {
   sendPendingProgress,
 } from '../store'
 import { FakeCaches } from './fakeCaches'
+
+vi.mock('../warm', () => ({ warmPdfReader: vi.fn(async () => undefined) }))
 
 const json = (v: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(v), { status: 200, headers: { 'Content-Type': 'application/json' }, ...init })
@@ -51,6 +54,22 @@ const BOOK = {
   direction: '',
 }
 
+const PDF_BOOK = { ...BOOK, card: { ...BOOK.card, id: 10 }, files: [{ id: 91, format: 'pdf', size: 50 }], readFileId: 91 }
+
+/** A comic series of two volumes, 3 and 2 pages. */
+const COMIC = {
+  ...BOOK,
+  card: { ...BOOK.card, id: 20, kind: 'comic' },
+  kind: 'comic',
+  files: [],
+  readFileId: 0,
+  volumes: [
+    { id: 21, title: 'Том 1', subtitle: '', poster: '', pages: 3, direction: 'ltr', fileId: 201 },
+    { id: 22, title: 'Том 2', subtitle: '', poster: '', pages: 2, direction: 'ltr', fileId: 202 },
+  ],
+}
+const COMIC_PAGES: Record<number, number> = { 201: 3, 202: 2 }
+
 /** Headers of /api/health (the server clock). */
 let health: Record<string, string> = {}
 let progressReply = () => new Response(null, { status: 204 })
@@ -79,6 +98,13 @@ beforeEach(() => {
       if (url.startsWith('/api/tracks/')) return new Response(new Uint8Array(100), { headers: { 'Content-Type': 'audio/flac', 'Content-Length': '100' } })
       if (url === '/api/health') return json({ ok: true }, { headers: health })
       if (url === '/api/books/9') return json(BOOK)
+      if (url === '/api/books/10') return json(PDF_BOOK)
+      if (url === '/api/books/20') return json(COMIC)
+      if (url === '/api/books/21' || url === '/api/books/22') return json({ ...BOOK, card: { ...BOOK.card, id: Number(url.slice(-2)) }, kind: 'comic_volume' })
+      const pages = /^\/api\/comics\/(\d+)\/pages$/.exec(url)
+      if (pages) return json({ count: COMIC_PAGES[Number(pages[1])], direction: 'ltr' })
+      if (/^\/api\/comics\/\d+\/page\/\d+$/.test(url)) return new Response(new Uint8Array(5), { headers: { 'Content-Type': 'image/jpeg' } })
+      if (url === '/api/stream/91') return new Response(new Uint8Array(50), { headers: { 'Content-Type': 'application/pdf' } })
       if (url === '/api/stream/90') return new Response(new Uint8Array(50), { headers: { 'Content-Type': 'application/epub+zip' } })
       if (url.startsWith('/api/progress/')) return progressReply()
       return new Response('{"error":"Не найдено"}', { status: 404 })
@@ -117,6 +143,56 @@ describe('offline store', () => {
     await removeOffline({ kind: 'album', id: 7 })
     expect((await caches.open(OFFLINE_CACHE)).entries.size).toBe(0)
     expect(listOffline()).toEqual([])
+  })
+
+  it('a comic series keeps page counts in the index, not a URL per page, and removal still deletes the pages', async () => {
+    await session.login(1)
+    await saveOffline({ kind: 'comic', id: 20 })
+    const cache = await caches.open(OFFLINE_CACHE)
+    const pageKeys = () => [...cache.entries.keys()].filter((k) => k.includes('/page/'))
+    expect(pageKeys()).toHaveLength(5)
+    const [entry] = listOffline()
+    expect(entry!.pages).toEqual([{ fileId: 201, count: 3 }, { fileId: 202, count: 2 }])
+    expect(entry!.urls.some((u) => u.includes('/page/'))).toBe(false)
+    expect(entry!.urls).toEqual(expect.arrayContaining(['/api/books/20', '/api/books/21', '/api/comics/201/pages']))
+    await removeOffline({ kind: 'comic', id: 20 })
+    expect(cache.entries.size).toBe(0)
+  })
+
+  it('a saved item from before (every page URL in the index) is still removed whole', async () => {
+    const cache = await caches.open(OFFLINE_CACHE)
+    for (const u of ['/api/books/20', '/api/comics/201/page/0', '/api/comics/201/page/1']) await cache.put(u, new Response('x'))
+    localStorage.setItem(
+      'vault.offline.v1',
+      JSON.stringify({ v: 1, owner: null, locked: false, entries: [{ kind: 'comic', id: 20, title: 'С', subtitle: '', poster: '', savedAt: '', bytes: 3, urls: ['/api/books/20', '/api/comics/201/page/0', '/api/comics/201/page/1'] }] }),
+    )
+    await removeOffline({ kind: 'comic', id: 20 })
+    expect(cache.entries.size).toBe(0)
+  })
+
+  it('an index that cannot be written is the full device: the saved files are rolled back and it says so', async () => {
+    await session.login(1)
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+    await expect(saveOffline({ kind: 'album', id: 7 })).rejects.toThrow(noSpace())
+    expect((await caches.open(OFFLINE_CACHE)).entries.size).toBe(0)
+    expect(listOffline()).toEqual([])
+  })
+
+  it('a PDF gets its reader loaded when it is saved; an EPUB does not; a reader that fails to load fails the save whole', async () => {
+    await session.login(1)
+    const warm = vi.mocked(warmPdfReader)
+    warm.mockClear()
+    await saveOffline({ kind: 'book', id: 9 })
+    expect(warm).not.toHaveBeenCalled()
+    await saveOffline({ kind: 'book', id: 10 })
+    expect(warm).toHaveBeenCalledTimes(1)
+    await removeOffline({ kind: 'book', id: 10 })
+    warm.mockRejectedValueOnce(new Error('offline'))
+    await expect(saveOffline({ kind: 'book', id: 10 })).rejects.toThrow()
+    expect(listOffline().map((e) => e.id)).toEqual([9])
+    expect([...(await caches.open(OFFLINE_CACHE)).entries.keys()].some((k) => k.includes('/api/stream/91') || k.includes('/api/books/10'))).toBe(false)
   })
 
   it('index survives storage throwing (returns empty list)', () => {

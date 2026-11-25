@@ -8,6 +8,7 @@ import type { SubtitleResult } from '../api/types'
 import { Button } from '../ui/Button'
 import { Icon } from '../components/Icon'
 import { SegmentedControl } from '../ui/SegmentedControl'
+import { Spinner } from '../ui/Spinner'
 import { Sheet } from '../ui/Sheet'
 import { locale, t, useT } from '../i18n'
 import styles from './SubtitleSearchSheet.module.css'
@@ -120,7 +121,7 @@ export function SubtitleSearchSheet({ fileId, onClose, onDownloaded, initialLang
       )}
       {state.status === 'loading' && (
         <p className={styles.state} role="status">
-          <span className={styles.spinner} aria-hidden /> {t('player.subs.searching')}
+          <Spinner track className={styles.spinner} /> {t('player.subs.searching')}
         </p>
       )}
       {state.status === 'error' && (

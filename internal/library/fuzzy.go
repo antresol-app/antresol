@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // The typo-tolerant pass of a search: when titles and the full text find
@@ -207,7 +209,7 @@ func (r *Repo) searchFuzzy(ctx context.Context, norm string, secs []SearchSectio
 			ids = append(ids, h.id)
 		}
 	}
-	items, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i WHERE i.id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`, ids...)
+	items, err := r.queryItems(ctx, `SELECT `+itemCols+` FROM items i WHERE i.id IN `+db.In(len(ids)), ids...)
 	if err != nil {
 		return nil, err
 	}

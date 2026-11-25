@@ -429,7 +429,11 @@ func (k *kidRequests) count(w http.ResponseWriter, r *http.Request) {
 // POST /api/requests/{id}/decline {reason} (admin) → KidRequest; 409 when
 // it was answered already.
 func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id, ok := pathID(r, "id")
+	if !ok {
+		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
+		return
+	}
 	var in struct {
 		Reason string `json:"reason"`
 	}
@@ -438,11 +442,11 @@ func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	got, qerr := k.query(ctx, `r.id=?`, id)
-	if err != nil || qerr != nil || len(got) != 1 {
-		if qerr != nil {
-			internalErr(w, r, "decline", qerr)
-			return
-		}
+	if qerr != nil {
+		internalErr(w, r, "decline", qerr)
+		return
+	}
+	if len(got) != 1 {
 		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
 		return
 	}
@@ -469,8 +473,8 @@ func (k *kidRequests) decline(w http.ResponseWriter, r *http.Request) {
 // 404 when there is none, 409 when it was approved already. The kid is told
 // by mail when it asked for that.
 func (k *kidRequests) approve(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
+	id, ok := pathID(r, "id")
+	if !ok {
 		writeErr(w, r, http.StatusNotFound, "Запрос не найден")
 		return
 	}
@@ -601,8 +605,7 @@ func (k *kidRequests) mineByKey(ctx context.Context, uid int64) map[string]KidRe
 // search result has none: each is a details lookup). Failed lookups are
 // not kept.
 type ratingCache struct {
-	mu sync.Mutex
-	m  map[string]ratingEntry
+	boundedCache[string, ratingEntry]
 }
 
 type ratingEntry struct {
@@ -623,9 +626,7 @@ const (
 func ratingCacheKey(kind string, id int) string { return kind + ":" + strconv.Itoa(id) }
 
 func (c *ratingCache) get(kind string, id int) (ratingEntry, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.m[ratingCacheKey(kind, id)]
+	e, ok := c.boundedCache.get(ratingCacheKey(kind, id))
 	if !ok || time.Since(e.at) > ratingTTL {
 		return ratingEntry{}, false
 	}
@@ -633,12 +634,7 @@ func (c *ratingCache) get(kind string, id int) (ratingEntry, bool) {
 }
 
 func (c *ratingCache) put(kind string, id int, rating string, adult bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.m == nil || len(c.m) >= ratingCacheMax {
-		c.m = map[string]ratingEntry{}
-	}
-	c.m[ratingCacheKey(kind, id)] = ratingEntry{rating: rating, adult: adult, at: time.Now()}
+	c.boundedCache.put(ratingCacheKey(kind, id), ratingEntry{rating: rating, adult: adult, at: time.Now()}, ratingCacheMax)
 }
 
 // kidMaySee says whether a kid (or any rating-limited) profile may see a movie or series at all

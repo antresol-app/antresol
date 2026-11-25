@@ -49,7 +49,10 @@ func OpenDriver(name, file string) (*sql.DB, error) {
 	// seconds, and the other writers ran out of busy_timeout (SQLITE_BUSY:
 	// lost piece-completion and download writes). NORMAL never corrupts the
 	// database; a power cut can roll back the last commits.
-	dsn := "file:" + file + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
+	//
+	// journal_size_limit: after a write burst (a first scan) the -wal keeps
+	// its high-water size for ever; it shrinks to this at the next checkpoint.
+	dsn := "file:" + file + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_size_limit(67108864)&_txlock=immediate"
 	if n := mmapBytes(); n > 0 {
 		dsn += fmt.Sprintf("&_pragma=mmap_size(%d)", n)
 	}

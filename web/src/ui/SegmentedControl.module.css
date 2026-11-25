@@ -100,8 +100,8 @@
 .row {
   --bleed: var(--segmented-bleed, 0px);
   --fade: var(--s-8);
-  --fade-l: #000;
-  --fade-r: #000;
+  --fade-l: #000; /* ds-allow: a mask, its alpha only */
+  --fade-r: #000; /* ds-allow: a mask, its alpha only */
   display: block;
   margin: calc(-1 * var(--s-1h)) calc(-1 * var(--bleed));
   /* room for the focus ring, which a scroller would clip */
@@ -110,8 +110,8 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r));
-  mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r));
+  -webkit-mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r)); /* ds-allow: a mask, its alpha only */
+  mask-image: linear-gradient(to right, var(--fade-l), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-r)); /* ds-allow: a mask, its alpha only */
 }
 .row::-webkit-scrollbar {
   display: none;

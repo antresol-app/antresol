@@ -147,7 +147,7 @@
 }
 .today .num {
   background: var(--accent);
-  color: #fff;
+  color: var(--label-on-tint);
 }
 .items {
   display: flex;

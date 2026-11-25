@@ -5,14 +5,16 @@
 // waiting, failed or not eligible is in «Задачи» with the other background
 // work (pages/manage/Tasks.tsx); a row leads there. Its own endpoint
 // (/api/admin/voclean), not the settings object.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { errorText, getVoclean, setVocleanBackfill } from '../../api/client'
 import type { VocleanStatus } from '../../api/types'
 import { useT } from '../../i18n'
+import { usePolling } from '../../state/usePolling'
 import { Button } from '../../ui/Button'
 import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import { Toggle } from '../../ui/Toggle'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 
 /** How often the counts are read again while the section is open. */
@@ -25,23 +27,17 @@ export function VocleanSection() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<'' | 'backfill' | 'recheck'>('')
 
-  useEffect(() => {
-    const ac = new AbortController()
-    const load = () =>
-      getVoclean(ac.signal).then(
+  usePolling(
+    (signal) =>
+      getVoclean(signal).then(
         (v) => {
           setSt(v)
           setError('')
         },
-        (e: unknown) => !ac.signal.aborted && setError(errorText(e, t('settings.voclean.loadFailed'))),
-      )
-    void load()
-    const id = window.setInterval(() => void load(), VOCLEAN_POLL_MS)
-    return () => {
-      ac.abort()
-      window.clearInterval(id)
-    }
-  }, [t])
+        (e: unknown) => !signal.aborted && setError(errorText(e, t('settings.voclean.loadFailed'))),
+      ),
+    VOCLEAN_POLL_MS,
+  )
 
   const send = async (on: boolean, recheck: boolean) => {
     setBusy(recheck ? 'recheck' : 'backfill')
@@ -65,7 +61,7 @@ export function VocleanSection() {
             </span>
           ) : (
             <span className={m.spinnerRow} role="status">
-              <span className={m.spinner} aria-hidden />
+              <Spinner track className={m.spinner} />
             </span>
           )}
         </ListRow>

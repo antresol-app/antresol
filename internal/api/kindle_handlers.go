@@ -254,9 +254,13 @@ func kindleAttachment(f library.File, title string) (r io.Reader, size int64, na
 		return file, st.Size(), kindleName(title, format), "application/pdf", func() { file.Close() }, nil
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	// the size was checked above; the file may have grown since
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
 		return nil, 0, "", "", nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, 0, "", "", nil, errKindleTooLarge
 	}
 	// a book added before it was cleaned on the way in, or a read-only folder
 	book, err := kindleFits(library.CleanEPUB(data), title)

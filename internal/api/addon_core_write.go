@@ -69,6 +69,7 @@ func (a *addonsAPI) writeLibrary(w http.ResponseWriter, r *http.Request) (addons
 
 // decodeMax is decode with a body limit of max bytes.
 func decodeMax(w http.ResponseWriter, r *http.Request, v any, max int64) bool {
+	bodyDeadline(w)
 	r.Body = http.MaxBytesReader(w, r.Body, max)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		badRequest(w, r)

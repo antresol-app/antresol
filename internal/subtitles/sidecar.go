@@ -219,9 +219,38 @@ func isSubFolder(name string) bool {
 // Subs»…; named after it, or any file when it is the only video there), in
 // Subs/<stem>/, and Auto's fallback DataDir/subs/ext/<fileID>.*.
 func FindExternal(video, dataDir string, fileID int64) []External {
+	return findExternal(video, dataDir, fileID, os.ReadDir)
+}
+
+// Lister is FindExternal for the many videos of one request (a page of a
+// Jellyfin list): a folder is read once, not once per video in it. It is
+// for one goroutine; the zero value is ready.
+type Lister struct{ read map[string]listed }
+
+type listed struct {
+	es  []os.DirEntry
+	err error
+}
+
+// FindExternal is the function of that name, reading every folder once.
+func (l *Lister) FindExternal(video, dataDir string, fileID int64) []External {
+	return findExternal(video, dataDir, fileID, func(dir string) ([]os.DirEntry, error) {
+		if r, ok := l.read[dir]; ok {
+			return r.es, r.err
+		}
+		if l.read == nil {
+			l.read = map[string]listed{}
+		}
+		es, err := os.ReadDir(dir)
+		l.read[dir] = listed{es, err}
+		return es, err
+	})
+}
+
+func findExternal(video, dataDir string, fileID int64, readDir func(string) ([]os.DirEntry, error)) []External {
 	dir := filepath.Dir(video)
 	stem := strings.TrimSuffix(filepath.Base(video), filepath.Ext(video))
-	es, err := os.ReadDir(dir)
+	es, err := readDir(dir)
 	if err != nil {
 		return extDir(dataDir, fileID)
 	}
@@ -235,12 +264,12 @@ func FindExternal(video, dataDir string, fileID int64) []External {
 		if !isSubFolder(n) {
 			continue
 		}
-		ses, _ := os.ReadDir(filepath.Join(dir, n))
+		ses, _ := readDir(filepath.Join(dir, n))
 		for _, se := range ses {
 			if !se.IsDir() {
 				paths = append(paths, n+"/"+se.Name())
 			} else if se.Name() == stem {
-				nes, _ := os.ReadDir(filepath.Join(dir, n, stem))
+				nes, _ := readDir(filepath.Join(dir, n, stem))
 				for _, ne := range nes {
 					if !ne.IsDir() {
 						paths = append(paths, n+"/"+stem+"/"+ne.Name())

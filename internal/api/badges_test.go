@@ -107,20 +107,20 @@ func TestBookBadges(t *testing.T) {
 	}
 }
 
-// showCache starts over past showCacheMax rather than growing for good; an
-// update of a cached show never drops the rest.
+// showCache drops one entry past showCacheMax rather than growing for good
+// or starting over; an update of a cached show drops nothing.
 func TestShowCacheBounded(t *testing.T) {
 	var c showCache
 	for id := int64(0); id < showCacheMax; id++ {
-		c.put(id, showEntry{key: "k"})
+		c.put(id, showEntry{key: "k"}, showCacheMax)
 	}
-	c.put(0, showEntry{key: "k2"})
+	c.put(0, showEntry{key: "k2"}, showCacheMax)
 	if len(c.m) != showCacheMax {
-		t.Fatalf("an update must not reset: %d", len(c.m))
+		t.Fatalf("an update must not drop: %d", len(c.m))
 	}
-	c.put(showCacheMax, showEntry{key: "k"})
-	if len(c.m) != 1 {
-		t.Fatalf("cache not reset past its bound: %d", len(c.m))
+	c.put(showCacheMax, showEntry{key: "k"}, showCacheMax)
+	if len(c.m) != showCacheMax {
+		t.Fatalf("cache not held at its bound: %d", len(c.m))
 	}
 	if e, ok := c.get(showCacheMax); !ok || e.key != "k" {
 		t.Fatalf("new entry lost: %v %v", e, ok)

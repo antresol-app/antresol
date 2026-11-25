@@ -99,6 +99,41 @@ func TestAPIKeyScopes(t *testing.T) {
 	}
 }
 
+// An administration key reads as its admin does but writes only what the
+// MCP tools need: it cannot install, update or remove an addon, change the
+// settings or touch files (a leaked key would run code or redirect mail).
+func TestAPIKeyAdminWritesAreAllowListed(t *testing.T) {
+	e := newAddonEnv(t)
+	k := &libEnv{env: e.env, admin: e.admin}
+	admin, act := k.newKey(e.admin, auth.ScopeAdmin), k.newKey(e.admin, auth.ScopeAct)
+	for _, key := range []string{admin, act} {
+		for _, c := range [][2]string{{"POST", "/api/addons"}, {"POST", "/api/addons/preview"}, {"POST", "/api/addons/hello/update"},
+			{"DELETE", "/api/addons/hello?data=1"}, {"PUT", "/api/settings"}} {
+			w := e.do(c[0], c[1], `{"url":"github.com/o/r"}`, nil, bearer(key)...)
+			if w.Code != 403 || !strings.Contains(w.Body.String(), "Ключом API") {
+				t.Errorf("%s %s with a key: %d %s", c[0], c[1], w.Code, w.Body)
+			}
+		}
+	}
+	if len(e.fake.calls) != 0 {
+		t.Fatalf("a key reached the runtime: %v", e.fake.calls)
+	}
+	for _, p := range []string{"/api/addons", "/api/users", "/api/settings"} {
+		if w := e.do("GET", p, "", nil, bearer(admin)...); w.Code != 200 {
+			t.Errorf("admin key GET %s: %d %s", p, w.Code, w.Body)
+		}
+	}
+	for _, p := range []string{"/api/addons/hello/disable", "/api/addons/hello/enable"} {
+		if w := e.do("POST", p, "", nil, bearer(admin)...); w.Code >= 300 {
+			t.Errorf("admin key POST %s: %d %s", p, w.Code, w.Body)
+		}
+	}
+	// no admin rights without the admin scope
+	if w := e.do("POST", "/api/addons/hello/disable", "", nil, bearer(act)...); w.Code != 403 {
+		t.Errorf("act key restarted an addon: %d", w.Code)
+	}
+}
+
 func TestAPIKeyWhoMayCreate(t *testing.T) {
 	e := newAPIKeyEnv(t)
 	kid := e.kid("")

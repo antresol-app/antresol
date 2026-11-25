@@ -41,6 +41,11 @@ func RequireAdmin(next http.Handler) http.Handler {
 			return
 		}
 		if !u.IsAdmin {
+			if _, ok := APIKeyFrom(r.Context()); ok {
+				// a key never has more rights than its scope allows (adminKeyMay)
+				jsonErr(w, r, http.StatusForbidden, "Ключом API этого сделать нельзя")
+				return
+			}
 			jsonErr(w, r, http.StatusForbidden, "Недостаточно прав")
 			return
 		}

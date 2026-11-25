@@ -2,11 +2,11 @@ package addonkit
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -38,6 +38,20 @@ type Helper struct {
 	// interface languages (optional, at most MaxHelperTitle characters
 	// each); Health shows Name without one.
 	Title Text `json:"title,omitzero"`
+	// Limits caps the container (optional): memory and CPUs, in the block
+	// Compose gives the admin. Without it a helper gets HelperMemLimit and
+	// no CPU cap.
+	Limits Limits `json:"limits,omitzero"`
+}
+
+// Limits is what a helper's container may use. An empty field is the
+// default.
+type Limits struct {
+	// Memory is compose's mem_limit: a whole number of m or g ("512m",
+	// "1g"), between 64m and 64g.
+	Memory string `json:"memory,omitempty"`
+	// CPUs is compose's cpus: 0.1 to 32.
+	CPUs float64 `json:"cpus,omitempty"`
 }
 
 // MaxHelperTitle is the longest Title (per language, in characters).
@@ -47,6 +61,7 @@ var (
 	helperNameRe   = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	helperImageRe  = regexp.MustCompile(`^[a-z0-9][A-Za-z0-9._/:@+-]{0,254}$`)
 	helperHealthRe = regexp.MustCompile(`^/[A-Za-z0-9._~/-]{0,199}$`)
+	helperMemoryRe = regexp.MustCompile(`^([1-9][0-9]{0,5})([mg])$`)
 )
 
 // MaxHelpers is the most helpers one manifest may declare.
@@ -67,8 +82,28 @@ func (h Helper) Valid() error {
 		return errors.New("helper: bad health path")
 	case !helperTitleOK(h.Title.RU) || !helperTitleOK(h.Title.EN):
 		return errors.New("helper: bad title")
+	case !h.Limits.valid():
+		return errors.New("helper: bad limits")
 	}
 	return nil
+}
+
+func (l Limits) valid() bool {
+	if l.CPUs != 0 && !(l.CPUs >= 0.1 && l.CPUs <= 32) { // NaN fails both
+		return false
+	}
+	if l.Memory == "" {
+		return true
+	}
+	m := helperMemoryRe.FindStringSubmatch(l.Memory)
+	if m == nil {
+		return false
+	}
+	n, _ := strconv.Atoi(m[1])
+	if m[2] == "g" {
+		n *= 1024
+	}
+	return n >= 64 && n <= 64*1024
 }
 
 func helperTitleOK(s string) bool {
@@ -101,21 +136,36 @@ func ValidHelpers(hs []Helper) error {
 // http://<name>:<port>.
 func (h Helper) Address() string { return "http://" + h.Name + ":" + strconv.Itoa(h.Port) }
 
-// HelperMemLimit is the memory cap of a helper's compose block (compose's
-// mem_limit). A helper may run a browser, which can grow until the host is
-// out of memory and the server with it; with the cap the kernel stops the
-// helper instead.
-const HelperMemLimit = "1536m"
+// What a helper's compose block caps when its manifest does not say
+// (Limits). A helper may run a browser, which can grow until the host is
+// out of memory and the server with it; with the caps the kernel stops the
+// helper instead. The defaults are what helpers ran with before the block
+// carried Limits (memory) or loose enough for a browser (processes: threads
+// count): a cap is never tighter than that unless the manifest asks for it.
+const (
+	HelperMemLimit  = "1536m"
+	HelperPidsLimit = 4096
+)
 
 // Compose is the block an admin adds under services: in compose.yml: no
-// ports (the service stays on the project's internal network), and
-// HelperMemLimit as its memory cap.
+// ports (the service stays on the project's internal network), the caps of
+// Limits (HelperMemLimit by default, no CPU cap unless the manifest names
+// one), HelperPidsLimit processes, no capabilities and no new privileges.
 func (h Helper) Compose() string {
+	cpus := ""
+	if h.Limits.CPUs != 0 {
+		cpus = "    cpus: " + strconv.FormatFloat(h.Limits.CPUs, 'f', -1, 64) + "\n"
+	}
 	return "  " + h.Name + ":\n" +
 		"    image: " + h.Image + "\n" +
 		"    restart: unless-stopped\n" +
-		"    # past this the kernel stops the service, not the server\n" +
-		"    mem_limit: " + HelperMemLimit + "\n"
+		"    # past these limits the kernel stops the service, not the server\n" +
+		"    mem_limit: " + cmp.Or(h.Limits.Memory, HelperMemLimit) + "\n" +
+		cpus +
+		"    pids_limit: " + strconv.Itoa(HelperPidsLimit) + "\n" +
+		"    cap_drop: [ALL]\n" +
+		"    security_opt:\n" +
+		"      - no-new-privileges:true\n"
 }
 
 // HelpersFromManifest reads the "helpers" of a manifest (an addon embeds
@@ -151,31 +201,21 @@ const HelperProbeTimeout = HelperCheckTimeout
 // a plain client); nil when it answers below 400. Redirects are not
 // followed, and an invalid h is never asked.
 func ProbeHelper(ctx context.Context, client *http.Client, h Helper) error {
+	return ProbeHelperAt(ctx, client, h.Address(), h)
+}
+
+// ProbeHelperAt is ProbeHelper on base instead of the compose address (one
+// the admin gave, say). An error status is a *HelperStatusError naming the
+// helper; no error names base.
+func ProbeHelperAt(ctx context.Context, client *http.Client, base string, h Helper) error {
 	if err := h.Valid(); err != nil {
 		return err
 	}
-	c := http.Client{Timeout: HelperProbeTimeout}
-	if client != nil {
-		c = *client
-		if c.Timeout == 0 {
-			c.Timeout = HelperProbeTimeout
-		}
+	err := ProbeAddress(ctx, client, base, h.Health, false)
+	if errors.As(err, new(*HelperStatusError)) {
+		return fmt.Errorf("helper %s: %w", h.Name, err)
 	}
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.Address()+h.Health, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return err
-	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("helper %s: %w", h.Name, &HelperStatusError{Code: resp.StatusCode})
-	}
-	return nil
+	return err
 }
 
 // Where an addon's helper service comes from (HelperStatus.Source).

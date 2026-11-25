@@ -8,9 +8,7 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/i18n"
@@ -174,8 +172,9 @@ func (m *managedAPI) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, it)
 }
 
+// managedIDParam is the {id} of the path, 0 (no account) when it is not one.
 func managedIDParam(r *http.Request) int64 {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id, _ := pathID(r, "id")
 	return id
 }
 
@@ -333,16 +332,7 @@ func (m *managedAPI) appPasswordInfo(w http.ResponseWriter, r *http.Request) {
 		managedErr(w, r, err)
 		return
 	}
-	out := struct {
-		Exists    bool    `json:"exists"`
-		CreatedAt *string `json:"createdAt"`
-	}{Exists: ok}
-	if ok && !at.IsZero() {
-		s := at.UTC().Format(time.RFC3339)
-		out.CreatedAt = &s
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, out)
+	writeAppPasswordInfo(w, ok, at)
 }
 
 // newAppPassword: POST → {password}; the old one and the Jellyfin tokens

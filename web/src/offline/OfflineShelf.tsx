@@ -5,6 +5,7 @@ import { imageUrl } from '../api/client'
 import { formatSize } from '../components/ActionBar'
 import { Icon, type IconName } from '../components/Icon'
 import { IconButton } from '../ui/IconButton'
+import { Spinner } from '../ui/Spinner'
 import { useT, type Key } from '../i18n'
 import { removeOffline, type OfflineEntry } from './store'
 import styles from './OfflineShelf.module.css'
@@ -38,7 +39,7 @@ function Item({ e, onOpen, busy }: { e: OfflineEntry; onOpen: () => void; busy: 
               <Icon name={ICON[e.kind]} size={34} strokeWidth={1.4} />
             </span>
           )}
-          {busy && <span className={styles.spinner} aria-hidden />}
+          {busy && <Spinner track className={styles.spinner} />}
         </span>
         <span className={styles.name}>{e.title}</span>
         {e.subtitle && <span className={styles.sub}>{e.subtitle}</span>}

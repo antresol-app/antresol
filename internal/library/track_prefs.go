@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strings"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // PlaybackPrefs are a profile's audio and subtitle defaults («Звук и
@@ -202,28 +205,27 @@ func (r *Repo) RememberSeriesSubtitle(ctx context.Context, userID, seriesID int6
 // (only those that have one).
 func (r *Repo) SubtitleOffsets(ctx context.Context, userID int64, fileIDs []int64) (map[int64]int, error) {
 	out := map[int64]int{}
-	if len(fileIDs) == 0 {
-		return out, nil
-	}
-	args := []any{userID}
-	for _, id := range fileIDs {
-		args = append(args, id)
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT file_id, offset_ms FROM subtitle_offsets
-		WHERE user_id=? AND file_id IN (?`+strings.Repeat(",?", len(fileIDs)-1)+`)`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		var ms int
-		if err := rows.Scan(&id, &ms); err != nil {
+	for part := range slices.Chunk(fileIDs, 500) {
+		rows, err := r.db.QueryContext(ctx, `SELECT file_id, offset_ms FROM subtitle_offsets
+			WHERE user_id=? AND file_id IN `+db.In(len(part)), append([]any{userID}, db.Args(part)...)...)
+		if err != nil {
 			return nil, err
 		}
-		out[id] = ms
+		for rows.Next() {
+			var id int64
+			var ms int
+			if err := rows.Scan(&id, &ms); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[id] = ms
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // SetSubtitleOffset keeps the profile's subtitle offset of the file (0 drops it).

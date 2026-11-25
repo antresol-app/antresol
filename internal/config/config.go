@@ -43,6 +43,11 @@ type Config struct {
 	// releases from AddonsDev the server installs at boot and locks
 	// (addons.ParsePins reads it; cmd/vault refuses a bad one).
 	AddonsPin string
+	// AddonsAcceptUnsigned (VAULT_ADDONS_ACCEPT_UNSIGNED=on) lets an addon
+	// take a profile header the server did not sign; the server signs it
+	// either way, and an addon refuses an unsigned one unless this is set
+	// (an escape hatch for requests made by hand).
+	AddonsAcceptUnsigned bool
 
 	// Relative to MediaRoot.
 	MoviesDir     string
@@ -105,6 +110,10 @@ type Config struct {
 	// believed (the Nginx Proxy Manager host). Comma-separated CIDRs or IPs.
 	TrustedNets    []netip.Prefix
 	TrustedProxies []netip.Prefix
+	// TrustedHosts (VAULT_TRUSTED_HOSTS): names, besides the public
+	// address's, that a home visitor may reach the server by ("media.lan",
+	// "*.example.org"); other names count as away from home (auth.HostPolicy).
+	TrustedHosts []string
 
 	// RepackTS (VAULT_REPACK_TS, on unless "off"): films and episodes in
 	// MPEG-TS (.ts, .m2ts, .mts) are repacked into Matroska without
@@ -212,6 +221,22 @@ func ParsePrefixes(s string) ([]netip.Prefix, error) {
 	return out, nil
 }
 
+// ParseHosts reads comma-separated host names, lower case ("media.lan",
+// "*.example.org"); an entry with a scheme, a port or a path is an error.
+func ParseHosts(s string) ([]string, error) {
+	var out []string
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.ToLower(strings.TrimSpace(f)); f == "" {
+			continue
+		}
+		if strings.ContainsAny(f, "/:@ ") {
+			return nil, fmt.Errorf("%q is not a host name (no scheme, port or path)", f)
+		}
+		out = append(out, strings.TrimSuffix(f, "."))
+	}
+	return out, nil
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -283,6 +308,7 @@ func Load() (Config, error) {
 	c.Addons = os.Getenv("VAULT_ADDONS") != "off"
 	c.AddonsDir = filepath.Join(c.DataDir, "addons")
 	c.AddonsPin = strings.TrimSpace(os.Getenv("VAULT_ADDONS_PIN"))
+	c.AddonsAcceptUnsigned = os.Getenv("VAULT_ADDONS_ACCEPT_UNSIGNED") == "on"
 	if v := os.Getenv("VAULT_ADDONS_DEV"); v != "" {
 		c.AddonsDev = v
 		if !filepath.IsAbs(v) {
@@ -337,6 +363,9 @@ func Load() (Config, error) {
 	}
 	if c.TrustedProxies, err = ParsePrefixes(os.Getenv("VAULT_TRUSTED_PROXIES")); err != nil {
 		return c, fmt.Errorf("VAULT_TRUSTED_PROXIES: %w", err)
+	}
+	if c.TrustedHosts, err = ParseHosts(os.Getenv("VAULT_TRUSTED_HOSTS")); err != nil {
+		return c, fmt.Errorf("VAULT_TRUSTED_HOSTS: %w", err)
 	}
 	c.ImportDir = env("VAULT_IMPORT_DIR", "/import")
 	if v := os.Getenv("VAULT_IMPORT_PATHS"); v != "" {

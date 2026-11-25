@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -126,12 +127,7 @@ func (r *Relay) clock() time.Time {
 	return time.Now()
 }
 
-func (r *Relay) log() *slog.Logger {
-	if r.Log != nil {
-		return r.Log
-	}
-	return slog.Default()
-}
+func (r *Relay) log() *slog.Logger { return cmp.Or(r.Log, slog.Default()) }
 
 // Open opens path (a route on addon addonID's socket: an HLS playlist or
 // a file) for ffmpeg: its loopback URL, and release, which forgets it.

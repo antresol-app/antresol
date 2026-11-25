@@ -57,24 +57,11 @@
   color: inherit;
 }
 
+/* the opening ring (ui/Spinner), faint on the page */
 .spinner {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 3px solid currentColor;
-  border-right-color: transparent;
+  --spinner-size: 28px;
+  --spinner-width: 3px;
   opacity: 0.45;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
 }
 
 /* PDF: a ribbon of pages on a dark desk. */

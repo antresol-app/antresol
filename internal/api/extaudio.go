@@ -9,8 +9,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/extaudio"
@@ -59,10 +60,7 @@ func (e extAudio) copyHash() string {
 // valid while its size and mtime (and the video's duration) stay: the item
 // page and every /api/play list the tracks, and a probe per request would
 // read the media disk each time.
-type extAudioCache struct {
-	mu sync.Mutex
-	m  map[string]extAudioEntry
-}
+type extAudioCache = boundedCache[string, extAudioEntry]
 
 type extAudioEntry struct {
 	size, mtime, videoMs int64
@@ -70,24 +68,16 @@ type extAudioEntry struct {
 	ok                   bool
 }
 
-// maxExtAudioCache bounds the cache (a full one starts over).
+// maxExtAudioCache bounds the cache.
 const maxExtAudioCache = 4096
 
-func (c *extAudioCache) get(path string, st os.FileInfo, videoMs int64) (extAudioEntry, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.m[path]
-	return e, ok && e.size == st.Size() && e.mtime == st.ModTime().UnixNano() && e.videoMs == videoMs
+// fresh: e was made for a file of st's size and mtime and a video of videoMs.
+func (e extAudioEntry) fresh(st os.FileInfo, videoMs int64) bool {
+	return e.size == st.Size() && e.mtime == st.ModTime().UnixNano() && e.videoMs == videoMs
 }
 
-func (c *extAudioCache) put(path string, e extAudioEntry) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.m == nil || len(c.m) >= maxExtAudioCache {
-		c.m = map[string]extAudioEntry{}
-	}
-	c.m[path] = e
-}
+// externalProbesAtOnce: how many of a file's external tracks are described at once.
+const externalProbesAtOnce = 4
 
 // extAudioProbeTimeout bounds one probe of an external file.
 const extAudioProbeTimeout = 15 * time.Second
@@ -102,22 +92,39 @@ func (h *lib) externalAudio(ctx context.Context, f library.File, durationMs int6
 	if !externalAudioClient(ctx) {
 		return nil
 	}
-	var out []extAudio
 	fits := h.fitsOf(ctx, f)
+	var tracks []extaudio.Track
 	for _, t := range extaudio.Find(f.Path) {
-		fit, fitted := fits[t.Path]
-		if fitted && !fit.Offered() {
-			continue // waiting for its fit, or of another cut (vofit)
+		if fit, fitted := fits[t.Path]; !fitted || fit.Offered() { // else: waiting for its fit, or of another cut (vofit)
+			tracks = append(tracks, t)
 		}
-		if a, ok := h.describeAudio(ctx, f, t, durationMs); ok {
-			e := extAudio{path: t.Path, src: extaudio.ID(t.Path), studio: t.Studio, stream: a}
-			if fitted && fit.Applies() {
-				e.offsetMs, e.tempo, e.fitted = fit.OffsetMs, fit.Tempo, true
-			}
-			out = append(out, e)
-		} else if ctx.Err() != nil {
-			return out
+	}
+	// each description may be a probe, a read of the media disk: together,
+	// not one after another (the page of a movie with several voices waits for them)
+	streams := make([]media.AudioStream, len(tracks))
+	described := make([]bool, len(tracks))
+	var g errgroup.Group
+	g.SetLimit(externalProbesAtOnce)
+	for i, t := range tracks {
+		g.Go(func() error {
+			streams[i], described[i] = h.describeAudio(ctx, f, t, durationMs)
+			return nil
+		})
+	}
+	_ = g.Wait()
+	var out []extAudio
+	for i, t := range tracks {
+		if !described[i] {
+			continue
 		}
+		e := extAudio{path: t.Path, src: extaudio.ID(t.Path), studio: t.Studio, stream: streams[i]}
+		if fit, fitted := fits[t.Path]; fitted && fit.Applies() {
+			e.offsetMs, e.tempo, e.fitted = fit.OffsetMs, fit.Tempo, true
+		}
+		out = append(out, e)
+	}
+	if ctx.Err() != nil {
+		return out
 	}
 	return append(out, h.cleanedAudio(ctx, f, durationMs, startMs, out)...)
 }
@@ -190,8 +197,8 @@ func (h *lib) describeAudio(ctx context.Context, f library.File, t extaudio.Trac
 		if err != nil || !st.Mode().IsRegular() {
 			return media.AudioStream{}, false
 		}
-		e, ok := h.extAudio.get(t.Path, st, durationMs)
-		if !ok {
+		e, ok := h.extAudio.get(t.Path)
+		if !ok || !e.fresh(st, durationMs) {
 			pctx, cancel := context.WithTimeout(ctx, extAudioProbeTimeout)
 			e = extAudioEntry{size: st.Size(), mtime: st.ModTime().UnixNano(), videoMs: durationMs}
 			e.a, e.ok = extaudio.Describe(pctx, t, h.probeAudioFile, durationMs)
@@ -207,7 +214,7 @@ func (h *lib) describeAudio(ctx context.Context, f library.File, t extaudio.Trac
 			if !e.ok {
 				log.Printf("api: external audio %s of file %d left out: unreadable, silent or of another cut", filepath.Base(t.Path), f.ID)
 			}
-			h.extAudio.put(t.Path, e)
+			h.extAudio.put(t.Path, e, maxExtAudioCache)
 		}
 		return e.a, e.ok
 	}
@@ -253,25 +260,58 @@ func (h *lib) preferredCleaned(ctx context.Context, uid int64, idx int, ext []ex
 	return k
 }
 
-// pickExtAudio finds the external track of a request: by its src id when
-// given (the track at position i first, then any; gone: not found), else
-// by position i.
-func pickExtAudio(ext []extAudio, i int, src string) (extAudio, bool) {
+// extAudioAt is the position in ext of the external track of a request:
+// by its src id when given (the track at position i first, then any; -1:
+// gone), else by position i (-1: out of range).
+func extAudioAt(ext []extAudio, i int, src string) int {
 	if src == "" {
 		if i >= 0 && i < len(ext) {
-			return ext[i], true
+			return i
 		}
-		return extAudio{}, false
+		return -1
 	}
 	if i >= 0 && i < len(ext) && ext[i].src == src {
-		return ext[i], true
+		return i
 	}
-	for _, e := range ext {
-		if e.src == src {
-			return e, true
-		}
+	return slices.IndexFunc(ext, func(e extAudio) bool { return e.src == src })
+}
+
+// audioPick is the audio track a request plays: the external track
+// ext[pos] (pos >= 0), else the file's own track `own` (-1: its default).
+// named: the request asked for a track; gone: it asked for an external one
+// that is no longer there (the default plays).
+type audioPick struct {
+	pos, own    int
+	named, gone bool
+}
+
+// askedAudio is the track a request names (asked: its audioIndex, src: its
+// audioSrc; externalAudioBase and up are the external tracks). Nothing
+// named: the caller makes the server's own choice.
+func askedAudio(ext []extAudio, asked *int, src string) audioPick {
+	pick := audioPick{pos: -1, own: -1, named: asked != nil}
+	switch {
+	case asked == nil:
+	case *asked >= externalAudioBase:
+		pick.pos = extAudioAt(ext, *asked-externalAudioBase, src)
+		pick.gone = pick.pos < 0
+	default:
+		pick.own = *asked
 	}
-	return extAudio{}, false
+	return pick
+}
+
+// decideAudio is the playback decision for a pick (burned: the image
+// subtitle burned in, 0: none) and the audioIndex the player is told.
+func decideAudio(p media.ProbeResult, caps media.ClientCaps, ext []extAudio, pick audioPick, burned int) (media.Decision, int) {
+	if pick.pos >= 0 {
+		return media.DecideExternalAudio(p, caps, ext[pick.pos].media(), burned), externalAudioBase + pick.pos
+	}
+	d := media.Decide(p, caps, pick.own)
+	if burned > 0 {
+		d = media.DecideBurn(p, caps, pick.own, burned)
+	}
+	return d, d.AudioIndex
 }
 
 // capsHeader is how the native app says what it understands beyond the

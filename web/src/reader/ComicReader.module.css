@@ -223,47 +223,15 @@
   right: 9px;
   top: calc(50% - 2px - 5px - 20px);
 }
-.slider {
+/* the kit's Slider (ui/Slider), here a plain 4 pt track with no fill, a 28 pt strip and an 18 pt thumb */
+.sliderBox .slider {
   flex: 1;
-  min-width: 0;
   height: 28px;
-  margin: 0;
-  background: none;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-.slider::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.24);
-}
-.slider::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.24);
-}
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -7px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
-}
-.slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 50%;
-  background: #fff;
-}
-.slider:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 4px;
-  border-radius: 4px;
+  --slider-fill: var(--slider-track);
+  --slider-track: rgba(255, 255, 255, 0.24);
+  --slider-track-h-active: 4px;
+  --slider-thumb-size: 18px;
+  --slider-thumb-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 .count {
   flex: none;
@@ -305,24 +273,13 @@
   display: flex;
   gap: 12px;
 }
+/* the opening ring (ui/Spinner), faint on the page */
 .spinner {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 3px solid currentColor;
-  border-right-color: transparent;
+  --spinner-size: 28px;
+  --spinner-width: 3px;
   opacity: 0.45;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
   .bar {
     transition: opacity var(--d-fast) linear;
   }

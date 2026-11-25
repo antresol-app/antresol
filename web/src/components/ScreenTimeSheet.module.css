@@ -27,8 +27,7 @@
   font: var(--t-footnote);
   color: var(--label-2);
 }
-.error,
-.bad {
+.error {
   margin: 0;
   font: var(--t-footnote);
   color: var(--destructive);
@@ -140,23 +139,6 @@
   gap: var(--s-2);
   font: var(--t-footnote);
   color: var(--label-2);
-}
-.time input {
-  min-height: var(--control-h-sm);
-  padding: 0 var(--s-3);
-  border: 0;
-  border-radius: var(--r-control);
-  background: var(--fill-3);
-  font: var(--t-subhead);
-  color: var(--label);
-  color-scheme: dark;
-}
-.time input[type='number'] {
-  width: 96px;
-}
-.time input:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
 }
 .warning {
   margin: 0;

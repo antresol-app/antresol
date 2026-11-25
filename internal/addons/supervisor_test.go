@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -239,7 +240,7 @@ func TestCrash_Restarts(t *testing.T) {
 	first := s.Socket("fakeaddon")
 	sawCrashed, sawRecovered := false, false
 	end := time.Now().Add(4 * time.Second)
-	for time.Now().Before(end) && !(sawRecovered && s.restartCount("fakeaddon") >= 2) {
+	for time.Now().Before(end) && !(sawRecovered && s.mints.Load() >= 3) {
 		switch s.Status("fakeaddon") {
 		case StatusCrashed:
 			sawCrashed = true
@@ -252,9 +253,6 @@ func TestCrash_Restarts(t *testing.T) {
 	}
 	if !sawCrashed || !sawRecovered {
 		t.Fatalf("crashed=%v recovered=%v", sawCrashed, sawRecovered)
-	}
-	if n := s.restartCount("fakeaddon"); n < 2 {
-		t.Fatalf("restarts = %d", n)
 	}
 	if int(s.mints.Load()) < 3 {
 		t.Fatalf("token not minted per restart: %d", s.mints.Load())
@@ -457,6 +455,9 @@ func TestEnv_NoVaultLeak(t *testing.T) {
 		"ANTRESOL_ADDON_TOKEN":    "tok-fakeaddon-1",
 		"ANTRESOL_CONTRACT":       "1",
 		"ANTRESOL_LOCALE":         "en",
+
+		"ANTRESOL_ADDON_USER_KEY":        UserKey(sock),
+		"ANTRESOL_ADDON_ACCEPT_UNSIGNED": "off",
 	}
 	for k, v := range want {
 		if got[k] != v {
@@ -520,6 +521,46 @@ func TestEnvPrefix(t *testing.T) {
 		if got := EnvPrefix(id); got != want {
 			t.Errorf("EnvPrefix(%q) = %q, want %q", id, got, want)
 		}
+	}
+}
+
+// TestEnv_Allowlist: of the server's own environment the addon gets what a
+// process needs (PATH, TZ, proxies, LC_*), not what else the server was
+// started with, such as the passwords of a compose `.env`.
+func TestEnv_Allowlist(t *testing.T) {
+	t.Setenv("POSTGRES_PASSWORD", "hunter2")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+	t.Setenv("TZ", "Asia/Tokyo")
+	t.Setenv("LC_ALL", "C.UTF-8")
+	t.Setenv("HTTPS_PROXY", "http://proxy.example.test:3128")
+	t.Setenv("https_proxy", "http://proxy.example.test:3128")
+	s := newSup(t, "ok")
+	in := install(t, s, "fake", "1.0.0", "")
+	if err := s.Start(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	_, body := get(t, s.Socket("fake"), "/env")
+	var env []string
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	for _, k := range []string{"POSTGRES_PASSWORD", "TELEGRAM_BOT_TOKEN"} {
+		if v, ok := got[k]; ok {
+			t.Errorf("leaked %s=%q", k, v)
+		}
+	}
+	for k, want := range map[string]string{"TZ": "Asia/Tokyo", "LC_ALL": "C.UTF-8", "HTTPS_PROXY": "http://proxy.example.test:3128", "https_proxy": "http://proxy.example.test:3128"} {
+		if got[k] != want {
+			t.Errorf("%s = %q, want %q", k, got[k], want)
+		}
+	}
+	if got["PATH"] == "" {
+		t.Error("PATH not inherited")
 	}
 }
 
@@ -638,14 +679,6 @@ func TestOnStatus_EveryChange(t *testing.T) {
 		defer mu.Unlock()
 		return append([]string(nil), seen...)
 	}
-	has := func(st Status) bool {
-		for _, x := range got() {
-			if x == "fakeaddon "+string(st) {
-				return true
-			}
-		}
-		return false
-	}
 	in := install(t, s, "fakeaddon", "1.0.0", "")
 	if err := s.Start(context.Background(), in); err != nil {
 		t.Fatal(err)
@@ -653,7 +686,11 @@ func TestOnStatus_EveryChange(t *testing.T) {
 	if g := got(); len(g) < 2 || g[0] != "fakeaddon starting" || g[1] != "fakeaddon running" {
 		t.Fatalf("start: %v", g)
 	}
-	waitFor(t, 4*time.Second, "crash and restart", func() bool { return has(StatusCrashed) && s.restartCount("fakeaddon") >= 1 })
+	waitFor(t, 4*time.Second, "crash and restart", func() bool {
+		g := got()
+		i := slices.Index(g, "fakeaddon "+string(StatusCrashed))
+		return i >= 0 && slices.Contains(g[i:], "fakeaddon "+string(StatusRunning))
+	})
 	s.Stop("fakeaddon")
 	g := got()
 	if g[len(g)-1] != "fakeaddon stopped" {

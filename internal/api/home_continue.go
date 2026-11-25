@@ -84,7 +84,7 @@ func (h *lib) addonContinue(ctx context.Context, u auth.User, maxHeight int) []d
 			}
 		}
 		var err error
-		if rated, err = h.itemsByTMDB(ctx, byKind); err != nil {
+		if rated, err = h.Library.ItemsByTMDB(ctx, byKind); err != nil {
 			log.Printf("api: home.continue ratings: %v", err) // the gate cannot be applied: no addon cards
 			return nil
 		}
@@ -113,38 +113,4 @@ func (h *lib) addonContinue(ctx context.Context, u auth.User, maxHeight int) []d
 		out = append(out, datedCard{c.UpdatedAt, card})
 	}
 	return out
-}
-
-// itemsByTMDB finds the library's top-level items of these TMDB ids, per
-// kind (movie, series), in one query per kind and one for the items.
-func (h *lib) itemsByTMDB(ctx context.Context, byKind map[string][]int64) (map[string]map[int64]library.Item, error) {
-	out := map[string]map[int64]library.Item{}
-	idOf := map[string]map[int64]int64{}
-	var ids []int64
-	for kind, tmdb := range byKind {
-		m, err := h.Library.ItemIDsByTMDB(ctx, kind, tmdb)
-		if err != nil {
-			return nil, err
-		}
-		idOf[kind] = m
-		for _, id := range m {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	items, err := h.Library.ItemsByID(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	for kind, m := range idOf {
-		out[kind] = map[int64]library.Item{}
-		for tmdb, id := range m {
-			if it, ok := items[id]; ok {
-				out[kind][tmdb] = it
-			}
-		}
-	}
-	return out, nil
 }

@@ -110,16 +110,23 @@ func (b *Builder) history(ctx context.Context, tx *sql.Tx, id int64) (history, e
 
 // Build extends channel c's schedule to now + Horizon and forgets what
 // ended more than Keep ago. A channel with nothing to play keeps what it
-// has.
-func (b *Builder) Build(ctx context.Context, c Channel) error {
+// has. It reports whether it added programmes.
+func (b *Builder) Build(ctx context.Context, c Channel) (bool, error) {
 	return b.buildWith(ctx, c, nil)
 }
 
 // buildWith is Build with before run in its transaction ahead of the
 // extension (Recut drops the rows to make again there, so a viewer never
 // sees the schedule with the hole).
-func (b *Builder) buildWith(ctx context.Context, c Channel, before func(*sql.Tx, time.Time) error) error {
+func (b *Builder) buildWith(ctx context.Context, c Channel, before func(*sql.Tx, time.Time) error) (bool, error) {
 	now := b.Store.now()
+	if before == nil {
+		// most builds find the schedule as long as it should be: no pool
+		// (the whole library read) for them
+		if done, err := b.settled(ctx, c.ID, now); done || err != nil {
+			return false, err
+		}
+	}
 	var pool Pool
 	var err error
 	if FetchOn(c.Rules) {
@@ -128,28 +135,40 @@ func (b *Builder) buildWith(ctx context.Context, c Channel, before func(*sql.Tx,
 		pool, err = b.withExtras(ctx, c, pool)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	return b.build(ctx, c, pool, now, before)
 }
 
-func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time, before func(*sql.Tx, time.Time) error) error {
+// settled: channel id's schedule reaches the horizon and holds nothing old
+// enough to forget, so a build would change nothing.
+func (b *Builder) settled(ctx context.Context, id int64, now time.Time) (bool, error) {
+	var first, last sql.NullInt64
+	err := b.Store.DB.QueryRowContext(ctx, `SELECT (SELECT end_ms FROM channel_playout WHERE channel_id=? ORDER BY seq LIMIT 1),
+	  (SELECT end_ms FROM channel_playout WHERE channel_id=? ORDER BY seq DESC LIMIT 1)`, id, id).Scan(&first, &last)
+	if err != nil || !last.Valid {
+		return false, err
+	}
+	return last.Int64 >= ms(now.Add(b.horizon())) && first.Int64 >= ms(now.Add(-b.keep())), nil
+}
+
+func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time, before func(*sql.Tx, time.Time) error) (bool, error) {
 	tx, err := b.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 	if err := b.trim(ctx, tx, c.ID, now); err != nil {
-		return err
+		return false, err
 	}
 	if before != nil {
 		if err := before(tx, now); err != nil {
-			return err
+			return false, err
 		}
 	}
 	h, err := b.history(ctx, tx, c.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	start := h.lastEnd
 	if start < ms(now) {
@@ -157,16 +176,16 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 	}
 	until := ms(now.Add(b.horizon()))
 	if start >= until || pool.Empty() {
-		return tx.Commit()
+		return false, tx.Commit()
 	}
 	ins, err := tx.PrepareContext(ctx, `INSERT INTO channel_playout (channel_id, seq, start_ms, end_ms, item_id, file_id, unit_id, extra_id, offset_ms, fetch_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer ins.Close()
 	p := newPicker(c, pool, h)
 	if p.busy, err = b.elsewhere(ctx, tx, c.ID, start, until); err != nil {
-		return err
+		return false, err
 	}
 	seq := h.lastSeq
 	for start < until {
@@ -176,26 +195,19 @@ func (b *Builder) build(ctx context.Context, c Channel, pool Pool, now time.Time
 		}
 		if c.Rules.SkipSegments {
 			if prog, err = skipCut(ctx, tx, prog); err != nil {
-				return err
+				return false, err
 			}
 		}
 		for _, part := range prog.Parts {
 			seq++
 			end := start + part.DurationMs
-			var extra, fetch any
-			if prog.ExtraID != 0 {
-				extra = prog.ExtraID
-			}
-			if prog.FetchID != 0 {
-				fetch = prog.FetchID
-			}
-			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, extra, part.OffsetMs, fetch); err != nil {
-				return err
+			if _, err := ins.ExecContext(ctx, c.ID, seq, start, end, prog.ItemID, part.FileID, prog.UnitID, nullIf0(prog.ExtraID), part.OffsetMs, nullIf0(prog.FetchID)); err != nil {
+				return false, err
 			}
 			start = end
 		}
 	}
-	return tx.Commit()
+	return seq > h.lastSeq, tx.Commit()
 }
 
 // trim forgets programmes that ended more than Keep ago, keeping each
@@ -416,7 +428,7 @@ func (s *Store) CutMissing(ctx context.Context, id int64) (bool, error) {
 	if err != nil || !seq.Valid {
 		return false, err
 	}
-	_, err = s.DB.ExecContext(ctx, `DELETE FROM channel_playout WHERE channel_id=? AND seq >= ?`, id, seq.Int64)
+	err = cutFrom(ctx, s.DB, id, seq.Int64)
 	return err == nil, err
 }
 
@@ -438,7 +450,11 @@ func scanEntry(r rowScanner) (Entry, error) {
 
 // At returns the entry on air at t, else the first one after t.
 func (s *Store) At(ctx context.Context, id int64, t time.Time) (Entry, error) {
-	return scanEntry(s.DB.QueryRowContext(ctx, `SELECT `+entryCols+` FROM channel_playout WHERE channel_id=? AND end_ms > ? ORDER BY seq LIMIT 1`, id, ms(t)))
+	return entryAt(ctx, s.DB, id, t)
+}
+
+func entryAt(ctx context.Context, q dbtx, id int64, t time.Time) (Entry, error) {
+	return scanEntry(q.QueryRowContext(ctx, `SELECT `+entryCols+` FROM channel_playout WHERE channel_id=? AND end_ms > ? ORDER BY seq LIMIT 1`, id, ms(t)))
 }
 
 // Range returns the entries that overlap [from, to), in order.

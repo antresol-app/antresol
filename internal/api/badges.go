@@ -240,11 +240,10 @@ func showFacts(files []library.File) (videoFacts, bool) {
 
 // showCache keeps the facts of each series and season until its files
 // change (library.Repo.ShowFilesKey): a grid of series costs one small
-// aggregate query per card, not every episode's probe.
-type showCache struct {
-	mu sync.Mutex
-	m  map[int64]showEntry
-}
+// aggregate query per card, not every episode's probe. Bounded by
+// showCacheMax, so a long-running server does not keep every series and
+// season it ever drew.
+type showCache = boundedCache[int64, showEntry]
 
 type showEntry struct {
 	key   string
@@ -252,26 +251,7 @@ type showEntry struct {
 	ok    bool
 }
 
-// showCacheMax bounds showCache: past it the cache starts over (like
-// probeCache), so a long-running server does not keep every series and
-// season it ever drew.
 const showCacheMax = 2048
-
-func (c *showCache) get(id int64) (showEntry, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.m[id]
-	return e, ok
-}
-
-func (c *showCache) put(id int64, e showEntry) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.m[id]; !ok && (c.m == nil || len(c.m) >= showCacheMax) {
-		c.m = map[int64]showEntry{}
-	}
-	c.m[id] = e
-}
 
 // showBadges are the badges of a series or a season, from its episodes.
 func (h *lib) showBadges(ctx context.Context, id int64) []string {
@@ -289,7 +269,7 @@ func (h *lib) showBadges(ctx context.Context, id int64) []string {
 		}
 		e = showEntry{key: key}
 		e.facts, e.ok = showFacts(files)
-		h.shows.put(id, e)
+		h.shows.put(id, e, showCacheMax)
 	}
 	if !e.ok {
 		return nil

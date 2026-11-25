@@ -135,6 +135,16 @@ func TestHLSRefusesStartWhenDiskIsFull(t *testing.T) {
 	}
 }
 
+// The sweep lists and stats every file of every session dir: not every second.
+func TestHLSSweepIntervalDefault(t *testing.T) {
+	m := &HLSManager{FFmpeg: fakeFFmpeg(t), WorkDir: t.TempDir(), HW: "none"}
+	defer m.Close()
+	m.init()
+	if m.SweepInterval != 3*time.Second {
+		t.Fatalf("SweepInterval %v", m.SweepInterval)
+	}
+}
+
 func TestHLSPausesFFmpegFarAheadAndResumes(t *testing.T) {
 	m := &HLSManager{FFmpeg: segWriter(t, 10, "0.02"), WorkDir: t.TempDir(), HW: "none",
 		AheadSegments: 6, SweepInterval: 20 * time.Millisecond}

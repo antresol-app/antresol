@@ -18,7 +18,8 @@ import (
 // the poster (an episode's own still), Backdrop and Thumb the backdrop,
 // Logo the logo; anything else, an item without that image or one the
 // profile may not see is 404. maxWidth/maxHeight (fill*, width, height)
-// give a resized copy.
+// give a resized copy (imgcache.Thumb: a step of imgcache.Widths, so the
+// cache keeps a few copies of an image, not one per asked size).
 //
 // The token is optional: Swiftfin loads images with no token at all
 // (jellyfin-sdk-swift client.url(with:) adds no ApiKey, its image session
@@ -97,7 +98,7 @@ func (s *Server) serveItemImage(w http.ResponseWriter, r *http.Request, u *auth.
 		}
 	}
 	if maxW > 0 || maxH > 0 {
-		if p, err = imgcache.Resized(s.ImageDir, p, min(max(maxW, 0), 4096), min(max(maxH, 0), 4096)); err != nil {
+		if p, err = imgcache.Thumb(s.ImageDir, p, maxW, maxH); err != nil {
 			notFound()
 			return
 		}
@@ -114,7 +115,13 @@ func (s *Server) serveItemImage(w http.ResponseWriter, r *http.Request, u *auth.
 		return
 	}
 	h := w.Header()
-	h.Set("Cache-Control", "public, max-age=31536000") // the tag is in the URL
+	// The tag is in the URL. With a token the answer is the profile's (its
+	// rating limit applied): a shared cache must not hand it to others.
+	if u != nil {
+		h.Set("Cache-Control", "private, max-age=31536000")
+	} else {
+		h.Set("Cache-Control", "public, max-age=31536000")
+	}
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox") // SVG logos
 	http.ServeContent(w, r, strings.ToLower(filepath.Base(p)), st.ModTime(), fh)

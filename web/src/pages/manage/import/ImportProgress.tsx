@@ -7,6 +7,7 @@ import { Button } from '../../../ui/Button'
 import { Icon } from '../../../components/Icon'
 import { formatSize } from '../../../state/format'
 import { locale, t as tr, useT, type Key } from '../../../i18n'
+import { Spinner } from '../../../ui/Spinner'
 import m from '../Manage.module.css'
 import styles from './ImportProgress.module.css'
 
@@ -105,7 +106,7 @@ export function ImportProgress({ job, groups, downloads, onRetry, onReview, onCa
     <div className={styles.progress} data-testid="import-progress">
       <div className={`${styles.card} glass`}>
         <p className={styles.phase}>
-          {active && <span className={m.spinner} aria-hidden />}
+          {active && <Spinner track className={m.spinner} />}
           {job.status === 'done' && <Icon name="checkCircle" size={18} className={styles.okIcon} aria-hidden />}
           {phase}
         </p>

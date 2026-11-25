@@ -102,7 +102,7 @@ func TestEnrichUsesNfoTmdbID(t *testing.T) {
 		t.Fatalf("%+v", it)
 	}
 	// aliases are searchable
-	if got, _ := repo.Search(ctx, "Интерстеллар", 5); len(got) != 1 {
+	if got, _ := repo.SearchKinds(ctx, "Интерстеллар", []string{library.KindMovie, library.KindSeries}, 5, ""); len(got) != 1 {
 		t.Fatalf("alias search: %v", got)
 	}
 	// second run does nothing

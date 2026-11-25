@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
+	"slices"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // DeleteSet is what deleting an item from the library covers.
@@ -111,30 +113,13 @@ func (r *Repo) Forget(ctx context.Context, items, files []int64) error {
 			table string
 			ids   []int64
 		}{{"files", files}, {"items", items}} {
-			for part := range chunks(q.ids, 500) {
-				args := []any{ts}
-				for _, id := range part {
-					args = append(args, id)
-				}
-				if _, err := tx.ExecContext(ctx, `UPDATE `+q.table+` SET missing_since=? WHERE missing_since IS NULL AND id IN (?`+
-					strings.Repeat(",?", len(part)-1)+`)`, args...); err != nil {
+			for part := range slices.Chunk(q.ids, 500) {
+				if _, err := tx.ExecContext(ctx, `UPDATE `+q.table+` SET missing_since=? WHERE missing_since IS NULL AND id IN `+db.In(len(part)),
+					append([]any{ts}, db.Args(part)...)...); err != nil {
 					return err
 				}
 			}
 		}
 		return hideEmpty(ctx, tx, ts)
 	})
-}
-
-// chunks yields ids in parts of at most n.
-func chunks(ids []int64, n int) func(func([]int64) bool) {
-	return func(yield func([]int64) bool) {
-		for len(ids) > 0 {
-			k := min(n, len(ids))
-			if !yield(ids[:k]) {
-				return
-			}
-			ids = ids[k:]
-		}
-	}
 }

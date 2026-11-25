@@ -15,6 +15,7 @@ import { forwardRef, isValidElement, useContext, type AnchorHTMLAttributes, type
 import { Link, type LinkProps } from 'react-router'
 import { Icon, type IconName } from '../components/Icon'
 import { GLYPH_STROKE, MaterialContext, materialClass, type Material } from './Button'
+import { Spinner } from './Spinner'
 import styles from './IconButton.module.css'
 
 export type IconButtonSize = 'xs' | 'sm' | 'md' | 'lg'
@@ -51,7 +52,7 @@ function classes({ size = 'md', variant = 'glass', material = 'fill', tone = 'de
 function Inner({ icon, size = 'md', loading, tile, label }: Partial<Common> & { icon: IconName | ReactElement }) {
   return (
     <>
-      {loading ? <span className={styles.spinner} aria-hidden /> : isValidElement(icon) ? icon : <Icon name={icon} size={ICON_GLYPH[size]} strokeWidth={GLYPH_STROKE} />}
+      {loading ? <Spinner /> : isValidElement(icon) ? icon : <Icon name={icon} size={ICON_GLYPH[size]} strokeWidth={GLYPH_STROKE} />}
       {tile && (
         <span className={styles.tileLabel} data-tile-label aria-hidden>
           {typeof tile === 'string' ? tile : label}

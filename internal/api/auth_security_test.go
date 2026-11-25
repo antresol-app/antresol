@@ -135,7 +135,7 @@ func TestSetupOnlyFromHome(t *testing.T) {
 	if !remoteOf(t, g) || !strings.Contains(g.Body.String(), `"needsSetup":true`) {
 		t.Fatalf("get setup: %s", g.Body)
 	}
-	w := e.do("POST", "/api/setup", `{"name":"Хакер","password":"secret"}`, nil)
+	w := e.do("POST", "/api/setup", `{"name":"Хакер","password":"secret-pass"}`, nil)
 	if w.Code != 403 || session(w) != nil || !strings.Contains(w.Body.String(), "только из домашней сети") {
 		t.Fatalf("remote setup: %d %s", w.Code, w.Body)
 	}
@@ -143,14 +143,14 @@ func TestSetupOnlyFromHome(t *testing.T) {
 		t.Fatal("remote setup created a user")
 	}
 	e.peer = "127.0.0.1:9999"
-	if w := e.do("POST", "/api/setup", `{"name":"Папа","password":"secret"}`, nil); w.Code != 200 || remoteOf(t, w) {
+	if w := e.do("POST", "/api/setup", `{"name":"Папа","password":"secret-pass"}`, nil); w.Code != 200 || remoteOf(t, w) {
 		t.Fatalf("home setup: %d %s", w.Code, w.Body)
 	}
 }
 
 func TestSetupAdminPasswordMin6(t *testing.T) {
 	e := newEnv(t)
-	if w := e.do("POST", "/api/setup", `{"name":"Папа","password":"12345"}`, nil); w.Code != 400 || !strings.Contains(w.Body.String(), "не короче 6") {
+	if w := e.do("POST", "/api/setup", `{"name":"Папа","password":"123456789"}`, nil); w.Code != 400 || !strings.Contains(w.Body.String(), "не короче 10") {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
@@ -170,16 +170,16 @@ func TestLoginThrottle(t *testing.T) {
 		t.Fatalf("6th attempt: %d %q %s", w.Code, w.Header().Get("Retry-After"), w.Body)
 	}
 	// locked even with the right password, and from another internet address
-	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil); w.Code != 429 {
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass"}`, nil); w.Code != 429 {
 		t.Fatalf("right password while locked: %d", w.Code)
 	}
 	e.peer = "198.51.100.3:1"
-	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil); w.Code != 429 {
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass"}`, nil); w.Code != 429 {
 		t.Fatalf("profile lock from another address: %d", w.Code)
 	}
 	// the stranger cannot lock the family out at home
 	e.peer = "192.168.1.20:1"
-	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret"}`, nil); w.Code != 200 {
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass"}`, nil); w.Code != 200 {
 		t.Fatalf("home login while remote locked: %d %s", w.Code, w.Body)
 	}
 }
@@ -206,7 +206,7 @@ func TestLoginLongPasswordRejectedCheaply(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
 	start := time.Now()
-	w := e.do("POST", "/api/login", `{"userId":1,"password":"secret`+strings.Repeat("x", 1000)+`"}`, nil)
+	w := e.do("POST", "/api/login", `{"userId":1,"password":"secret-pass`+strings.Repeat("x", 1000)+`"}`, nil)
 	if w.Code != 401 {
 		t.Fatalf("%d", w.Code)
 	}
@@ -241,7 +241,7 @@ func TestRemovePasswordAndRevokeOnSet(t *testing.T) {
 		t.Fatal("admin session revoked")
 	}
 	// an admin's own password change keeps the current session
-	if w := e.do("PATCH", "/api/users/1", `{"password":"newsecret"}`, admin); w.Code != 200 {
+	if w := e.do("PATCH", "/api/users/1", `{"password":"newsecret-pass"}`, admin); w.Code != 200 {
 		t.Fatalf("own: %d %s", w.Code, w.Body)
 	}
 	if e.do("GET", "/api/me", "", admin).Code != 200 {

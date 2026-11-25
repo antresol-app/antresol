@@ -2,7 +2,7 @@
 import { useNotice } from '../state/notice'
 import { Toast } from '../ui/Toast'
 
-export function Notice() {
+export function ToastHost() {
   const n = useNotice()
   // the Toast's live region stays in the DOM, so screen readers announce each text
   return <Toast messageKey={n?.key}>{n?.text}</Toast>

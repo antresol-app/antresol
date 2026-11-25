@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -630,6 +631,19 @@ func (s *Service) AskVariants(ctx context.Context) {
 		log.Printf("iptv: variants: %v", err)
 		return
 	}
+	// The members of every source are read only when a source asks for
+	// variants and a model is there: a tick every 10 minutes must stay cheap.
+	srcs = slices.DeleteFunc(srcs, func(src Source) bool { return !src.PresetVariants })
+	if len(srcs) == 0 {
+		if err := s.pruneVariants(ctx, nil); err != nil { // no playlist asks any more
+			log.Printf("iptv: variants cache: %v", err)
+		}
+		return
+	}
+	l := s.Model(ctx, channels.TierMedium)
+	if l == nil {
+		return
+	}
 	all, err := s.Store.AllMembers(ctx)
 	if err != nil {
 		log.Printf("iptv: variants: %v", err)
@@ -642,9 +656,6 @@ func (s *Service) AskVariants(ctx context.Context) {
 	used := map[string]bool{}
 	var todo []variantCluster
 	for _, src := range srcs {
-		if !src.PresetVariants {
-			continue
-		}
 		p := planVariants(bySrc[src.ID], answers)
 		for _, k := range p.keys {
 			used[k] = true
@@ -660,10 +671,6 @@ func (s *Service) AskVariants(ctx context.Context) {
 		log.Printf("iptv: variants cache: %v", err)
 	}
 	if len(todo) == 0 {
-		return
-	}
-	l := s.Model(ctx, channels.TierMedium)
-	if l == nil {
 		return
 	}
 	got := 0

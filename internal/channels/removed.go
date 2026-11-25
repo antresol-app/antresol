@@ -41,21 +41,29 @@ func CanRestore(rm Removed, v Viewer) bool {
 	return CanEdit(rm.Channel(), v) && (rm.UserID == 0 || rm.UserID == v.ID)
 }
 
+const removedCols = `id, auto_key, name, category, edited, COALESCE(user_id,0), removed_at`
+
+func scanRemoved(r rowScanner) (Removed, error) {
+	var x Removed
+	var at string
+	err := r.Scan(&x.ID, &x.AutoKey, &x.Name, &x.Category, &x.Edited, &x.UserID, &at)
+	x.RemovedAt, _ = time.Parse(time.RFC3339, at)
+	return x, err
+}
+
 // Removed lists the deleted generated channels, the latest deleted first.
 func (s *Store) Removed(ctx context.Context) ([]Removed, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, auto_key, name, category, edited, COALESCE(user_id,0), removed_at FROM channel_removed ORDER BY removed_at DESC, id DESC`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+removedCols+` FROM channel_removed ORDER BY removed_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Removed
 	for rows.Next() {
-		var r Removed
-		var at string
-		if err := rows.Scan(&r.ID, &r.AutoKey, &r.Name, &r.Category, &r.Edited, &r.UserID, &at); err != nil {
+		r, err := scanRemoved(rows)
+		if err != nil {
 			return nil, err
 		}
-		r.RemovedAt, _ = time.Parse(time.RFC3339, at)
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -81,18 +89,11 @@ func (s *Store) RemovedKeys(ctx context.Context) (map[string]bool, error) {
 
 // GetRemoved returns one deleted generated channel.
 func (s *Store) GetRemoved(ctx context.Context, id int64) (Removed, error) {
-	var r Removed
-	var at string
-	err := s.DB.QueryRowContext(ctx, `SELECT id, auto_key, name, category, edited, COALESCE(user_id,0), removed_at FROM channel_removed WHERE id=?`, id).
-		Scan(&r.ID, &r.AutoKey, &r.Name, &r.Category, &r.Edited, &r.UserID, &at)
+	r, err := scanRemoved(s.DB.QueryRowContext(ctx, `SELECT `+removedCols+` FROM channel_removed WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
-	if err != nil {
-		return r, err
-	}
-	r.RemovedAt, _ = time.Parse(time.RFC3339, at)
-	return r, nil
+	return r, err
 }
 
 // Restore lets the generator make a deleted channel again: its key is
@@ -111,12 +112,8 @@ func (s *Store) Restore(ctx context.Context, id int64) error {
 
 // remove records c's key as deleted, inside tx.
 func (s *Store) remove(ctx context.Context, tx *sql.Tx, c Channel) error {
-	var user any
-	if c.UserID != 0 {
-		user = c.UserID
-	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO channel_removed (auto_key, name, category, edited, user_id, removed_at) VALUES (?,?,?,?,?,?)
 	  ON CONFLICT (auto_key) DO UPDATE SET name=excluded.name, category=excluded.category, edited=excluded.edited, user_id=excluded.user_id, removed_at=excluded.removed_at`,
-		c.AutoKey, c.Name, c.Category, c.Edited, user, s.now().UTC().Format(time.RFC3339))
+		c.AutoKey, c.Name, c.Category, c.Edited, nullIf0(c.UserID), s.now().UTC().Format(time.RFC3339))
 	return err
 }

@@ -122,6 +122,8 @@ type FileInput struct {
 	Path  string
 	Size  int64
 	Mtime int64
+
+	sig string // files.scan_sig: what the video scan read for the file
 }
 
 // MovieInput is the scanner/acquire-side description of a movie.
@@ -210,7 +212,14 @@ type ScanStats struct {
 	Files      int
 	Skipped    int // media files that could not be classified
 	Removed    int // files dropped because they disappeared
+	// Changed counts what a scan wrote: items upserted (new or read again),
+	// not the folders and files an unchanged-check skipped.
+	Changed int
 }
+
+// Dirty reports whether the scan wrote or removed anything: when it did not,
+// what follows a scan (workers that look for new work) has nothing to do.
+func (s ScanStats) Dirty() bool { return s.Changed > 0 || s.Removed > 0 }
 
 var ruRatings = []string{"0+", "6+", "12+", "16+", "18+"}
 

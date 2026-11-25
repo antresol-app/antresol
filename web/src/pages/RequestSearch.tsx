@@ -136,9 +136,9 @@ function CandidateSkeleton({ square }: { square: boolean }) {
         <li key={i} className={styles.candidate}>
           <div className={`${styles.poster} ${square ? styles.square : ''} ${styles.skeleton}`} />
           <div className={styles.info}>
-            <div className={styles.skeletonLine} style={{ width: '30%' }} />
-            <div className={styles.skeletonLine} style={{ width: '55%', height: 18 }} />
-            <div className={styles.skeletonLine} style={{ width: '80%' }} />
+            <div className={`${styles.skeletonLine} ${styles.w30}`} />
+            <div className={`${styles.skeletonLine} ${styles.w55} ${styles.lineTall}`} />
+            <div className={`${styles.skeletonLine} ${styles.w80}`} />
           </div>
         </li>
       ))}

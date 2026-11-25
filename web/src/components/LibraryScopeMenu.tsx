@@ -9,6 +9,7 @@ import type { LibraryScope } from '../api/types'
 import { useLibraryScope } from '../state/libraryScope'
 import { useT } from '../i18n'
 import { Button } from '../ui/Button'
+import { EmptyState } from '../ui/EmptyState'
 import { Icon } from './Icon'
 import { MenuItem, Menu } from '../ui/Menu'
 import styles from './LibraryScopeMenu.module.css'
@@ -70,19 +71,26 @@ export function LibraryTools({ children }: { children?: ReactNode }) {
 
 /**
  * What a page shows when «Моя медиатека» has nothing for it: one tap back
- * to the shared library. `className`: the page's own empty-state style.
+ * to the shared library, as the kit's empty state. `inset`: the page has no
+ * gutters of its own. `className`: a page that lays the state out its own way
+ * (Home's, over the whole window) draws it in that class instead.
  */
-export function MineEmpty({ className, heading: H = 'h2' }: { className?: string; heading?: 'h1' | 'h2' }) {
+export function MineEmpty({ className, heading: H = 'h2', inset }: { className?: string; heading?: 'h1' | 'h2'; inset?: boolean }) {
   const t = useT()
   const { setScope } = useLibraryScope()
+  const icon = <Icon name="person" size={48} strokeWidth={1.4} />
+  const action = (
+    <Button variant="secondary" icon="people" onClick={() => setScope('all')}>
+      {t('comp.library.showAll')}
+    </Button>
+  )
+  if (!className) return <EmptyState inset={inset} icon={icon} title={t('comp.library.mineEmpty')} hint={t('comp.library.mineEmptyHint')} actions={action} />
   return (
     <div className={className}>
-      <Icon name="person" size={48} strokeWidth={1.4} />
+      {icon}
       <H>{t('comp.library.mineEmpty')}</H>
       <p>{t('comp.library.mineEmptyHint')}</p>
-      <Button variant="secondary" icon="people" onClick={() => setScope('all')}>
-        {t('comp.library.showAll')}
-      </Button>
+      {action}
     </div>
   )
 }

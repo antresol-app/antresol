@@ -7,10 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -178,27 +179,16 @@ func (s *Service) visibleTo(ctx context.Context, uid int64, kind, rating string)
 	return library.RatingAllowed(u.RatingLimit(), library.Item{Kind: kind, Rating: rating})
 }
 
-// idList is "?,?,…" for the ids of items and the ids as arguments.
+// batchSize is how many items one query takes.
+const batchSize = 400
+
+// idList is "(?,?,…)" for the ids of items and the ids as arguments.
 func idList(items []fresh) (string, []any) {
 	args := make([]any, len(items))
 	for i, f := range items {
 		args[i] = f.id
 	}
-	return "?" + strings.Repeat(",?", len(items)-1), args
-}
-
-// batches splits items into parts small enough for one query.
-func batches(items []fresh) [][]fresh {
-	const n = 400
-	var out [][]fresh
-	for len(items) > n {
-		out = append(out, items[:n])
-		items = items[n:]
-	}
-	if len(items) > 0 {
-		out = append(out, items)
-	}
-	return out
+	return db.In(len(items)), args
 }
 
 type newEpisode struct {
@@ -220,7 +210,7 @@ func (s *Service) collectEpisodes(ctx context.Context, items []fresh) error {
 	}
 	var eps []newEpisode
 	newIDs := map[int64]bool{}
-	for _, part := range batches(items) {
+	for part := range slices.Chunk(items, batchSize) {
 		in, args := idList(part)
 		rows, err := s.DB.QueryContext(ctx, `SELECT e.id, COALESCE(e.season_no, 0), COALESCE(e.episode_no, 0),
 			sr.id, sr.title, sr.year, COALESCE(sr.tmdb_id, 0), `+library.RatingOf("sr")+`, sr.meta_json, e.added_at, e.title,
@@ -228,7 +218,7 @@ func (s *Service) collectEpisodes(ctx context.Context, items []fresh) error {
 			FROM items e
 			JOIN items p ON p.id = e.parent_id
 			JOIN items sr ON sr.id = CASE WHEN p.kind = 'series' THEN p.id ELSE p.parent_id END
-			WHERE e.kind = 'episode' AND e.id IN (`+in+`) AND e.missing_since IS NULL AND sr.kind = 'series'
+			WHERE e.kind = 'episode' AND e.id IN `+in+` AND e.missing_since IS NULL AND sr.kind = 'series'
 			ORDER BY e.added_at, e.id`, args...)
 		if err != nil {
 			return err
@@ -414,10 +404,10 @@ func (s *Service) collectTitles(ctx context.Context, items []fresh) error {
 		year                       int
 	}
 	var ts []title
-	for _, part := range batches(items) {
+	for part := range slices.Chunk(items, batchSize) {
 		in, args := idList(part)
 		rows, err := s.DB.QueryContext(ctx, `SELECT id, kind, title, year, COALESCE(tmdb_id, 0), `+library.RatingOf("items")+`, meta_json, added_at FROM items
-			WHERE id IN (`+in+`) AND kind = 'movie' AND missing_since IS NULL AND COALESCE(tmdb_id, 0) > 0 ORDER BY added_at, id`, args...)
+			WHERE id IN `+in+` AND kind = 'movie' AND missing_since IS NULL AND COALESCE(tmdb_id, 0) > 0 ORDER BY added_at, id`, args...)
 		if err != nil {
 			return err
 		}

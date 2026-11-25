@@ -2,7 +2,9 @@ package library
 
 import (
 	"context"
-	"strings"
+	"slices"
+
+	"github.com/antresol-app/antresol/internal/db"
 )
 
 // «Моя медиатека»: item_owners holds who brought a title into the library
@@ -49,14 +51,12 @@ func (r *Repo) claimWhere(ctx context.Context, userID int64, cond string, args .
 // ClaimPaths makes userID an owner of the titles of these library files (a
 // direct download's book). Paths the scanner has no row for are skipped.
 func (r *Repo) ClaimPaths(ctx context.Context, paths []string, userID int64) error {
-	if len(paths) == 0 {
-		return nil
+	for part := range slices.Chunk(paths, 500) {
+		if err := r.claimWhere(ctx, userID, `f.path IN `+db.In(len(part)), db.Args(part)...); err != nil {
+			return err
+		}
 	}
-	args := make([]any, 0, len(paths))
-	for _, p := range paths {
-		args = append(args, p)
-	}
-	return r.claimWhere(ctx, userID, `f.path IN (?`+strings.Repeat(",?", len(paths)-1)+`)`, args...)
+	return nil
 }
 
 // ClaimItem makes userID an owner of the title of item id (its unit): an

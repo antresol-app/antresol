@@ -12,9 +12,11 @@ import { errorText, getTasks } from '../../api/client'
 import type { LibraryStatus, TaskProgress, TasksView, VocleanStatus } from '../../api/types'
 import { formatPercent, t as tr, useT, type Key } from '../../i18n'
 import { ago } from '../../state/format'
+import { usePolling } from '../../state/usePolling'
 import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
 import { SettingsIcon, type SettingsGlyph, type SettingsTint } from '../../ui/SettingsIcon'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 
 /** How often the progress is read again while the page is open. */
@@ -69,22 +71,18 @@ export function Tasks() {
 
   useEffect(() => {
     document.title = `${tr('manage.section.tasks')} — ${APP_NAME}`
-    const ac = new AbortController()
-    const load = () =>
-      getTasks(ac.signal).then(
+  }, [])
+  usePolling(
+    (signal) =>
+      getTasks(signal).then(
         (v) => {
           setView(v)
           setError('')
         },
-        (e: unknown) => !ac.signal.aborted && setError(errorText(e, tr('tasks.loadFailed'))),
-      )
-    void load()
-    const id = window.setInterval(() => void load(), TASKS_POLL_MS)
-    return () => {
-      ac.abort()
-      window.clearInterval(id)
-    }
-  }, [])
+        (e: unknown) => !signal.aborted && setError(errorText(e, tr('tasks.loadFailed'))),
+      ),
+    TASKS_POLL_MS,
+  )
 
   const row = (key: string, label: string, glyph: SettingsGlyph, tint: SettingsTint, line: string, value: string, to: string) =>
     to ? (
@@ -108,7 +106,7 @@ export function Tasks() {
       {error && <Notice tone="destructive">{error}</Notice>}
       {!view && !error && (
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t('tasks.loading')}
+          <Spinner track className={m.spinner} /> {t('tasks.loading')}
         </div>
       )}
       {view && (

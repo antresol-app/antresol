@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react'
 import { getSongs } from '../../api/client'
 import type { Song } from '../../api/types'
 import { Button } from '../../ui/Button'
+import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../components/Icon'
+import { LoadFailed } from '../../components/LoadFailed'
 import { audio } from '../../player/audio/engine'
 import { songItems } from '../../player/audio/queue'
 import { playShuffled } from './shuffle'
@@ -59,21 +61,10 @@ export function Songs() {
       )}
       {state.status === 'loading' && <div className={styles.skeleton} aria-busy="true" aria-label={t('common.loading')} />}
       {state.status === 'error' && (
-        <div className={styles.empty} role="alert">
-          <Icon name="cloud" size={44} strokeWidth={1.5} />
-          <h2>{t('music.songs.loadFailed')}</h2>
-          <p>{state.message}</p>
-          <Button variant="secondary" onClick={() => load()}>
-            {t('music.retry')}
-          </Button>
-        </div>
+        <LoadFailed title={t('music.songs.loadFailed')} message={state.message} retry={t('music.retry')} onRetry={() => load()} />
       )}
       {state.status === 'ready' && items.length === 0 && (
-        <div className={styles.empty}>
-          <Icon name="music" size={48} strokeWidth={1.4} />
-          <h2>{t('music.songs.empty')}</h2>
-          <p>{t('music.songs.emptyHint')}</p>
-        </div>
+        <EmptyState icon={<Icon name="music" size={48} strokeWidth={1.4} />} title={t('music.songs.empty')} hint={t('music.songs.emptyHint')} />
       )}
       {items.length > 0 && (
         <div className={styles.list}>

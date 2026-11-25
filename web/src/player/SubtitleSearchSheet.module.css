@@ -1,6 +1,6 @@
 .langs {
   display: flex;
-  margin-bottom: 14px;
+  margin-bottom: var(--s-3h);
 }
 .list {
   display: flex;
@@ -12,9 +12,9 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--s-3h);
   min-height: 56px;
-  padding: 10px 0;
+  padding: var(--s-2h) 0;
 }
 .row + .row {
   border-top: 1px solid var(--separator);
@@ -35,7 +35,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
+  gap: var(--s-1) var(--s-2h);
   font: var(--t-footnote);
   font-variant-numeric: tabular-nums;
   color: var(--label-2);
@@ -43,14 +43,14 @@
 .match {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-weight: 600;
+  gap: var(--s-1);
+  font-weight: var(--w-semibold);
   color: var(--green);
 }
 .saved {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-1h);
   flex: none;
   font: 600 13px / 1 var(--font-text);
   color: var(--green);
@@ -58,30 +58,21 @@
 .state {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-2h);
   padding: 18px 0;
   font: var(--t-subhead);
   color: var(--label-2);
 }
+/* the ring (ui/Spinner): its track is the fill, its head the text's colour */
 .spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--fill-1);
-  border-top-color: var(--label-2);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  --spinner-track-art: var(--fill-1);
 }
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 28px 12px 20px;
+  gap: var(--s-2h);
+  padding: 28px var(--s-3) var(--s-5);
   text-align: center;
   font: var(--t-subhead);
   color: var(--label-2);
@@ -90,7 +81,7 @@
   color: var(--label-3);
 }
 .problem {
-  margin-bottom: 8px;
+  margin-bottom: var(--s-2);
   font: var(--t-subhead);
   color: var(--orange);
 }

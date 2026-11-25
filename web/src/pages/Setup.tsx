@@ -25,7 +25,7 @@ export function Setup() {
     const next: typeof errors = {}
     if (!name.trim()) next.name = t('app.setup.nameRequired')
     if (!password) next.password = t('app.setup.passwordRequired')
-    else if ([...password].length < 6) next.password = t('app.setup.passwordShort')
+    else if ([...password].length < 10) next.password = t('app.setup.passwordShort')
     setErrors(next)
     if (next.name || next.password) return
     setBusy(true)
@@ -51,7 +51,7 @@ export function Setup() {
 
         {remote ? (
           <div className={`${styles.card} glass-strong`} role="alert">
-            <p className={styles.lead} style={{ margin: 0 }}>
+            <p className={`${styles.lead} ${styles.flush}`}>
               {t('app.setup.remote')}
             </p>
           </div>
@@ -78,7 +78,7 @@ export function Setup() {
               revealable
             />
             {errors.form && (
-              <p className={styles.inlineError} style={{ margin: 0 }} role="alert">
+              <p className={`${styles.inlineError} ${styles.flush}`} role="alert">
                 {errors.form}
               </p>
             )}

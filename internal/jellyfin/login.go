@@ -6,9 +6,13 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/antresol-app/antresol/internal/auth"
 )
+
+// loginBodyWait is how long the login's body may take (a variable for the tests).
+var loginBodyWait = 30 * time.Second
 
 // authenticateByName is the Jellyfin login: the profile name and its app
 // password (never the login password: Swiftfin and Infuse store what is
@@ -21,6 +25,8 @@ func (s *Server) authenticateByName(w http.ResponseWriter, r *http.Request) {
 		Pw       string
 		Password string // older Emby clients
 	}
+	// open to anyone: a client that drips the body must not hold the connection
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(loginBodyWait))
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&in); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

@@ -10,6 +10,7 @@ import type { Trailer } from '../api/types'
 import { audio } from '../player/audio/engine'
 import { Button } from '../ui/Button'
 import { Sheet } from '../ui/Sheet'
+import { Spinner } from '../ui/Spinner'
 import { useT } from '../i18n'
 import styles from './TrailerSheet.module.css'
 
@@ -105,7 +106,7 @@ export function TrailerSheet({ trailer, onClose }: TrailerSheetProps) {
   } else {
     body = (
       <div className={styles.status} role="status">
-        <span className={styles.spinner} aria-hidden />
+        <Spinner size="lg" track className={styles.spinner} />
         <p className={styles.message}>{t('comp.trailer.preparing')}</p>
       </div>
     )

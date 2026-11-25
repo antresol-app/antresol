@@ -21,6 +21,7 @@ import type { Contribution } from '../../addons/registry'
 import { useT } from '../../i18n'
 import { RequestCard } from '../RequestCard'
 import s from '../Search.module.css'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 
 type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; list: KidRequest[] }
@@ -106,7 +107,7 @@ export function Requests() {
       </header>
       {state.status === 'loading' && (
         <div className={m.spinnerRow} role="status">
-          <span className={m.spinner} aria-hidden /> {t('downloads.loading')}
+          <Spinner track className={m.spinner} /> {t('downloads.loading')}
         </div>
       )}
       {state.status === 'error' && (

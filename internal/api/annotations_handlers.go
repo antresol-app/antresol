@@ -121,20 +121,7 @@ func (h *lib) putAnnotation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var in struct {
-		ID        string  `json:"id"`
-		Kind      string  `json:"kind"`
-		Locator   string  `json:"locator"`
-		Fraction  float64 `json:"fraction"`
-		Label     string  `json:"label"`
-		Excerpt   string  `json:"excerpt"`
-		Note      string  `json:"note"`
-		Color     string  `json:"color"`
-		CreatedAt string  `json:"createdAt"`
-		UpdatedAt string  `json:"updatedAt"`
-		Rev       int64   `json:"rev"`
-		Deleted   bool    `json:"deleted"`
-	}
+	var in annotationJSON
 	if !decode(w, r, &in) {
 		return
 	}

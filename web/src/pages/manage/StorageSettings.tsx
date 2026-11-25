@@ -19,6 +19,7 @@ import { Notice } from '../../ui/Notice'
 import { RemoveConfirm, StorageFolders } from '../../components/storage/StorageFolders'
 import { StoragePerms } from '../../components/storage/StoragePerms'
 import { useStorage } from '../../components/storage/useStorage'
+import { Spinner } from '../../ui/Spinner'
 import m from './Manage.module.css'
 
 export function StorageSection() {
@@ -39,7 +40,7 @@ export function StorageSection() {
             </span>
           ) : (
             <span className={m.spinnerRow} role="status">
-              <span className={m.spinner} aria-hidden />
+              <Spinner track className={m.spinner} />
             </span>
           )}
         </ListRow>

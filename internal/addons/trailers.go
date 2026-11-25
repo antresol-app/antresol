@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -69,12 +70,7 @@ type trailerAt struct {
 
 var _ trailers.Provider = (*Trailers)(nil)
 
-func (t *Trailers) log() *slog.Logger {
-	if t.Log != nil {
-		return t.Log
-	}
-	return slog.Default()
-}
+func (t *Trailers) log() *slog.Logger { return cmp.Or(t.Log, slog.Default()) }
 
 func (t *Trailers) clock() time.Time {
 	if t.now != nil {

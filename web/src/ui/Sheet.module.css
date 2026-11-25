@@ -159,20 +159,11 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+/* the busy ring (ui/Spinner) in a button of the sheet: small, thin, grey */
 .spinner {
-  display: inline-block;
-  width: var(--s-3);
-  height: var(--s-3);
-  border: 1.5px solid var(--label-2);
-  border-top-color: transparent;
-  border-radius: 50%;
-  vertical-align: middle;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  --spinner-size: var(--s-3);
+  --spinner-width: 1.5px;
+  color: var(--label-2);
 }
 
 .large {
@@ -216,7 +207,7 @@
   height: var(--control-h-sm);
   padding: 0 var(--s-4);
   font: var(--t-control-sm);
-  font-weight: 500;
+  font-weight: var(--w-medium);
   border-radius: var(--r-field);
 }
 
@@ -247,7 +238,7 @@
     position: absolute;
     top: 0;
     left: 50%;
-    z-index: 1;
+    z-index: var(--z-raised);
     width: 50%;
     height: var(--s-6);
     transform: translateX(-50%);
@@ -348,7 +339,7 @@
     min-width: 0;
     height: var(--control-h-lg);
     font: var(--t-control);
-    font-weight: 600;
+    font-weight: var(--w-semibold);
     border-radius: var(--r-pill);
   }
   .button:not(.primary):not(.destructive) {

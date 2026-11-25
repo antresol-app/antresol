@@ -228,10 +228,6 @@
   visibility: hidden;
 }
 
-.empty {
-  composes: empty from '../Browse.module.css';
-}
-
 /* the details sheet */
 .sheet {
   display: flex;

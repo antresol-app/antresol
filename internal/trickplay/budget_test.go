@@ -229,3 +229,37 @@ func TestGenerateLinearFFmpeg(t *testing.T) {
 		t.Fatalf("past the end: %d", lum(6))
 	}
 }
+
+// A pass does not measure the previews again: the sizes known from the last
+// pass stay, the viewed time is read from disk, a new directory is measured
+// and a half-made one a stop left behind goes.
+func TestScanUsageKeepsKnownSizes(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(key string, sheet int) {
+		d := filepath.Join(dir, key)
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "index.json"), []byte("{}"), 0o644)
+		os.WriteFile(filepath.Join(d, "0.jpg"), make([]byte, sheet), 0o644)
+	}
+	mk("old", 100)
+	mk("fresh", 40)
+	os.MkdirAll(filepath.Join(dir, "half.tmp"), 0o755)
+	viewed := time.Now().Add(-time.Hour).Truncate(time.Second)
+	os.Chtimes(filepath.Join(dir, "old", "index.json"), viewed, viewed)
+
+	w := &Worker{Dir: dir}
+	w.usage = map[string]used{"old": {bytes: 7777, viewed: viewed.Add(-48 * time.Hour)}, "gone": {bytes: 5}}
+	w.scanUsage()
+	if got := w.usage["old"]; got.bytes != 7777 || !got.viewed.Equal(viewed) {
+		t.Fatalf("old: %+v", got)
+	}
+	if got := w.usage["fresh"].bytes; got != 40+2 { // the sheet and index.json
+		t.Fatalf("fresh: %d", got)
+	}
+	if _, ok := w.usage["gone"]; ok || len(w.usage) != 2 {
+		t.Fatalf("usage %v", w.usage)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "half.tmp")); !os.IsNotExist(err) {
+		t.Fatalf("half-made kept: %v", err)
+	}
+}

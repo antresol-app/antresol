@@ -3,6 +3,7 @@
 // selection, the view and the sheets, and handles the keyboard like Finder.
 import { Button, ButtonLink } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
+import { Spinner } from '../../ui/Spinner'
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
@@ -604,7 +605,11 @@ export function FilesPage() {
       </div>
     )
   } else if (!dir.data) {
-    body = <div className={styles.loading} aria-label={tr('common.loading')} aria-busy="true" />
+    body = (
+      <div className={styles.loading} aria-label={tr('common.loading')} aria-busy="true">
+        <Spinner className={styles.ring} />
+      </div>
+    )
   } else if (view === 'icons') {
     body = <IconView {...handlers} entries={entries} selection={sel} container={container} active={focused} empty={emptyNode} compact={compact} />
   } else if (view === 'list') {
@@ -743,7 +748,13 @@ export function FilesPage() {
       return (
         <div className={styles.phone}>
           <h1 className={styles.largeTitle}>{tr('files.browse')}</h1>
-          {roots ? <Sidebar roots={roots} isAdmin={isAdmin} overview usageRefresh={refresh} /> : rootsError ? body : <div className={styles.loading} />}
+          {roots ? <Sidebar roots={roots} isAdmin={isAdmin} overview usageRefresh={refresh} /> : rootsError ? (
+            body
+          ) : (
+            <div className={styles.loading}>
+              <Spinner className={styles.ring} />
+            </div>
+          )}
         </div>
       )
     }

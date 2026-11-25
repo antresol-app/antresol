@@ -55,14 +55,10 @@ func (x External) logo(base string) string {
 	return fmt.Sprintf("%s/logo/%d.png%s", base, x.ID, LogoQuery(x.Channel))
 }
 
-// WriteM3U writes the extended M3U playlist of chans for IPTV players:
-// base is the absolute URL of the profile's IPTV root (…/iptv/<token>).
-func WriteM3U(w io.Writer, base string, chans []Channel) error {
-	return WriteM3UWith(w, base, chans, nil)
-}
-
-// WriteM3UWith writes own channels and external ones in one list by
-// number. An external entry carries its headers as #EXTVLCOPT lines.
+// WriteM3UWith writes the extended M3U playlist for IPTV players: own
+// channels and external ones in one list by number (nil: no external ones).
+// An external entry carries its headers as #EXTVLCOPT lines. base is the
+// absolute URL of the profile's IPTV root (…/iptv/<token>).
 func WriteM3UWith(w io.Writer, base string, chans []Channel, ext []External) error {
 	bw := bufio.NewWriter(w)
 	epg := base + "/epg.xml"

@@ -218,3 +218,10 @@ func TestComicPageSizes(t *testing.T) {
 		t.Fatalf("sizes %+v", got)
 	}
 }
+
+// len is the number of open volumes held.
+func (c *comicArchives) len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lru.Len()
+}
