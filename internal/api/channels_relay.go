@@ -559,7 +559,7 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 			internalErr(w, r, "relay", sealErr)
 			return
 		}
-		if rl.mends(s) {
+		if mend, _ := rl.mended(s); mend {
 			out = relayFixCodecs(out)
 		}
 		h.Set("Content-Type", "application/vnd.apple.mpegurl")

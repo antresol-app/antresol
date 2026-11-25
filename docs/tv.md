@@ -43,9 +43,10 @@ audio is one of those, the browser plays the channel through the server, which c
 as it is and converts only the audio to AAC stereo: one `ffmpeg` per such channel being watched
 (at most 6 at once), little CPU. A channel with AAC or MP3 audio is never touched. What the
 server found is remembered for 12 hours. The iPhone, iPad and Apple TV apps take the same way for a
-channel the server has marked this way (the first tune-in of a channel the server has not looked at
-yet may still be silent; it is marked from then on). The other apps still play the provider's
-address directly.
+channel the server has marked this way, except when its audio is AC-3 or E-AC-3: those they decode
+themselves and play the provider's stream as it is (the first tune-in of a channel the server has not
+looked at yet may still be silent; it is marked from then on). The other apps still play the
+provider's address directly.
 
 ## Finding a channel
 

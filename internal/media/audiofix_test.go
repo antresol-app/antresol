@@ -66,8 +66,9 @@ func TestProbeTSHeadSeesWhichAudioNeedsFixing(t *testing.T) {
 			if len(p.Audio) != 1 || p.Video == nil || p.Video.Codec != "h264" {
 				t.Fatalf("%+v", p)
 			}
-			if p.NeedsAudioFix() != tc.fix {
-				t.Errorf("audio %q: needs fixing %v, want %v", p.Audio[0].Codec, p.NeedsAudioFix(), tc.fix)
+			codec, fix := p.FirstAudioToFix()
+			if fix != tc.fix || (fix && codec != tc.name) {
+				t.Errorf("audio %q: needs fixing %v (%q), want %v", p.Audio[0].Codec, fix, codec, tc.fix)
 			}
 		})
 	}
@@ -94,7 +95,7 @@ func TestRemuxAudioCopiesTheVideoAndEncodesTheAudio(t *testing.T) {
 			if len(got.Audio) != 1 || got.Audio[0].Codec != "aac" || got.Audio[0].Channels != 2 {
 				t.Fatalf("audio %+v", got.Audio)
 			}
-			if got.NeedsAudioFix() {
+			if _, fix := got.FirstAudioToFix(); fix {
 				t.Error("still needs fixing")
 			}
 			if a, b := videoPackets(t, in), videoPackets(t, out.Bytes()); a != b {

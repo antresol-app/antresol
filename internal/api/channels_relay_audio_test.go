@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antresol-app/antresol/internal/iptv"
 	"github.com/antresol-app/antresol/internal/media"
 )
 
@@ -253,6 +254,58 @@ func TestStreamListSaysWhichAudioIsMended(t *testing.T) {
 	}
 	if m, u := state("TS aac"); m || len(u) != 0 {
 		t.Errorf("aac: %v %v", m, u)
+	}
+}
+
+// The list also says which codec the audio is, so that an app that decodes
+// some of the codecs itself (AC-3) plays such a stream as it is.
+func TestStreamListSaysTheAudioCodec(t *testing.T) {
+	e, _, chans := newAudioEnv(t, nil, "mp2", "ac3", "aac")
+	for _, n := range []string{"TS mp2", "TS ac3", "TS aac"} {
+		e.relayGet(chans[n].Stream.Relay)
+	}
+	want := map[string]string{"TS mp2": "mp2", "TS ac3": "ac3", "TS aac": ""}
+	for _, c := range e.list(e.admin).Channels {
+		if w, ok := want[c.Name]; ok && c.Stream.AudioCodec != w {
+			t.Errorf("%s: audioCodec %q, want %q (remuxAudio %v)", c.Name, c.Stream.AudioCodec, w, c.Stream.RemuxAudio)
+		}
+	}
+}
+
+// What a stream is said to be: the first audio codec the relay converts
+// ("" when the probe could not name it: the flag alone is then the word).
+func TestTheCodecToldIsTheFirstOneConverted(t *testing.T) {
+	tracks := func(codecs ...string) func(context.Context, []byte) (media.ProbeResult, error) {
+		return func(context.Context, []byte) (media.ProbeResult, error) {
+			var p media.ProbeResult
+			for _, c := range codecs {
+				p.Audio = append(p.Audio, media.AudioStream{Codec: c})
+			}
+			return p, nil
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		probe func(context.Context, []byte) (media.ProbeResult, error)
+		mend  bool
+		codec string
+	}{
+		{"one track", tracks("ac3"), true, "ac3"},
+		{"playable first", tracks("aac", "dts"), true, "dts"},
+		{"two converted", tracks("eac3", "mp2"), true, "eac3"},
+		{"all playable", tracks("aac", "mp3"), false, ""},
+		{"unnamed", tracks(""), true, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rl := newExtRelay(nil)
+			rl.probe = c.probe
+			s := iptv.Stream{URL: "http://p.example.test/a"}
+			rl.learn(context.Background(), s, nil)
+			mend, codec := rl.mended(s)
+			if mend != c.mend || codec != c.codec {
+				t.Errorf("mended = %v %q, want %v %q", mend, codec, c.mend, c.codec)
+			}
+		})
 	}
 }
 

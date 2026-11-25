@@ -37,14 +37,15 @@ func LooksLikeTS(b []byte) bool {
 // LATM framing, which only some players read, is encoded.
 func AudioPlayable(codec string) bool { return codec == "aac" || codec == "mp3" }
 
-// NeedsAudioFix: the stream has an audio track clients cannot play.
-func (p ProbeResult) NeedsAudioFix() bool {
+// FirstAudioToFix: the codec of the first audio track clients cannot play
+// ("" when ffprobe named none), and whether there is one.
+func (p ProbeResult) FirstAudioToFix() (codec string, ok bool) {
 	for _, a := range p.Audio {
 		if !AudioPlayable(a.Codec) {
-			return true
+			return a.Codec, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // tsStdinArgs read an MPEG-TS from standard input and nothing else.

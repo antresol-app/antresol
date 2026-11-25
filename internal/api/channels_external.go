@@ -40,6 +40,12 @@ type streamJSON struct {
 	// Unsupported); an app that can send the headers the relay needs may
 	// do the same.
 	RemuxAudio bool `json:"remuxAudio,omitempty"`
+	// AudioCodec: with RemuxAudio, the first audio codec the relay converts
+	// (ffprobe's name: "mp2", "ac3", "eac3", "dts"...; absent when it named
+	// none). An app that decodes that codec itself (AC-3 and E-AC-3 on Apple
+	// devices) plays the provider's stream as it is; one that does not know
+	// it, or has no list of its own, goes by RemuxAudio alone.
+	AudioCodec string `json:"audioCodec,omitempty"`
 	// Format: hls | ts (a raw MPEG-TS stream: the web transmuxes it) | ""
 	// (unknown), by the provider's URL (iptv.StreamFormat); the relay's
 	// answer is the same stream.
@@ -54,6 +60,7 @@ type fallbackJSON struct {
 	URL         string   `json:"url"`
 	Relay       string   `json:"relay,omitempty"`
 	RemuxAudio  bool     `json:"remuxAudio,omitempty"`
+	AudioCodec  string   `json:"audioCodec,omitempty"`
 	Format      string   `json:"format,omitempty"`
 	UserAgent   string   `json:"userAgent,omitempty"`
 	Referrer    string   `json:"referrer,omitempty"`
@@ -133,21 +140,25 @@ func (a *channelsAPI) streamOf(r *http.Request, x iptv.ExtChannel) *streamJSON {
 		return extRelayPath(x.ChannelID, i)
 	}
 	// mend: what a client is told of a stream whose audio gets converted
-	mend := func(s iptv.Stream, unsupported []string) (bool, []string) {
-		if a.relay == nil || !a.relay.mends(s) {
-			return false, unsupported
+	mend := func(s iptv.Stream, unsupported []string) (bool, string, []string) {
+		if a.relay == nil {
+			return false, "", unsupported
+		}
+		mended, codec := a.relay.mended(s)
+		if !mended {
+			return false, "", unsupported
 		}
 		if !slices.Contains(unsupported, "web") {
 			unsupported = append(unsupported, "web")
 		}
-		return true, unsupported
+		return true, codec, unsupported
 	}
 	p := x.Streams[0]
 	j := &streamJSON{URL: url(0, p), Relay: relay(0), Format: iptv.StreamFormat(p.URL), UserAgent: p.UserAgent, Referrer: p.Referrer, Fallbacks: []fallbackJSON{}, Unsupported: unsupportedOf(r, a.network, p)}
-	j.RemuxAudio, j.Unsupported = mend(p, j.Unsupported)
+	j.RemuxAudio, j.AudioCodec, j.Unsupported = mend(p, j.Unsupported)
 	for i, s := range x.Streams[1:] {
 		f := fallbackJSON{URL: url(i+1, s), Relay: relay(i + 1), Format: iptv.StreamFormat(s.URL), UserAgent: s.UserAgent, Referrer: s.Referrer, Unsupported: unsupportedOf(r, a.network, s)}
-		f.RemuxAudio, f.Unsupported = mend(s, f.Unsupported)
+		f.RemuxAudio, f.AudioCodec, f.Unsupported = mend(s, f.Unsupported)
 		j.Fallbacks = append(j.Fallbacks, f)
 	}
 	return j

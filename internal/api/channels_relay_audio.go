@@ -37,9 +37,9 @@ import (
 // The decision is per stream (its provider URL), made once, from the first
 // transport-stream body the relay serves for it or from a look the server
 // takes when a viewer tunes in (warm), and kept relayAudioTTL. A stream
-// marked as mended is told to clients (streamJSON.RemuxAudio, and "web" is
-// then not a platform that plays it directly): the web plays it through the
-// relay.
+// marked as mended is told to clients (streamJSON.RemuxAudio with the codec
+// in AudioCodec, and "web" is then not a platform that plays it directly):
+// the web plays it through the relay.
 
 const (
 	// relayAudioHead: how much of a stream's start is looked at, and
@@ -66,7 +66,10 @@ const (
 var relayMendMax = 6
 
 type audioMemo struct {
-	mend  bool
+	mend bool
+	// codec: with mend, the first audio codec that is converted (ffprobe's
+	// name; "" when it gave none).
+	codec string
 	until time.Time
 }
 
@@ -79,14 +82,14 @@ type relayAudio struct {
 
 func streamKey(s iptv.Stream) [32]byte { return sha256.Sum256([]byte(s.URL)) }
 
-func (c *relayAudio) get(k [32]byte, now time.Time) (mend, known bool) {
+func (c *relayAudio) get(k [32]byte, now time.Time) (mend bool, codec string, known bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	m, ok := c.memo[k]
-	return m.mend, ok && now.Before(m.until)
+	return m.mend, m.codec, ok && now.Before(m.until)
 }
 
-func (c *relayAudio) set(k [32]byte, mend bool, until time.Time) {
+func (c *relayAudio) set(k [32]byte, mend bool, codec string, until time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.memo == nil {
@@ -103,7 +106,7 @@ func (c *relayAudio) set(k [32]byte, mend bool, until time.Time) {
 			clear(c.memo)
 		}
 	}
-	c.memo[k] = audioMemo{mend, until}
+	c.memo[k] = audioMemo{mend, codec, until}
 }
 
 // begin takes the look at k, false when one is going on.
@@ -153,10 +156,11 @@ func (rl *extRelay) ffprobePath() string {
 	return "ffprobe"
 }
 
-// mends: stream s is known to have audio that gets converted.
-func (rl *extRelay) mends(s iptv.Stream) bool {
-	mend, known := rl.audio.get(streamKey(s), rl.now())
-	return known && mend
+// mended: stream s is known to have audio that gets converted, and the first
+// codec of it that is (see media.ProbeResult.FirstAudioToFix).
+func (rl *extRelay) mended(s iptv.Stream) (mend bool, codec string) {
+	mend, codec, known := rl.audio.get(streamKey(s), rl.now())
+	return known && mend, codec
 }
 
 // learn looks at the start of stream s (head) and remembers what it found;
@@ -176,11 +180,11 @@ func (rl *extRelay) learn(ctx context.Context, s iptv.Stream, head []byte) bool 
 		if err != nil && ctx.Err() == nil {
 			log.Printf("channels: relay: the start of a stream could not be looked at: %v", err)
 		}
-		rl.audio.set(k, false, rl.now().Add(relayAudioRetry))
+		rl.audio.set(k, false, "", rl.now().Add(relayAudioRetry))
 		return false
 	}
-	mend := p.NeedsAudioFix()
-	rl.audio.set(k, mend, rl.now().Add(relayAudioTTL))
+	codec, mend := p.FirstAudioToFix()
+	rl.audio.set(k, mend, codec, rl.now().Add(relayAudioTTL))
 	if mend {
 		var names []string
 		for _, a := range p.Audio {
@@ -201,7 +205,7 @@ func (rl *extRelay) audioRoute(ctx context.Context, s iptv.Stream, br *bufio.Rea
 		return
 	}
 	k := streamKey(s)
-	mend, known := rl.audio.get(k, rl.now())
+	mend, _, known := rl.audio.get(k, rl.now())
 	if known && !mend {
 		return
 	}
@@ -223,7 +227,7 @@ func (rl *extRelay) warm(s iptv.Stream, userAgent string) {
 	if !rl.toolsOK() || !rl.audio.begin(k) {
 		return
 	}
-	if _, known := rl.audio.get(k, rl.now()); known {
+	if _, _, known := rl.audio.get(k, rl.now()); known {
 		rl.audio.end(k)
 		return
 	}
@@ -238,8 +242,8 @@ func (rl *extRelay) warm(s iptv.Stream, userAgent string) {
 		ctx, cancel := context.WithTimeout(context.Background(), relayWarmTimeout)
 		defer cancel()
 		rl.lookAt(ctx, s, userAgent)
-		if _, known := rl.audio.get(k, rl.now()); !known { // a look that found nothing is not repeated at once
-			rl.audio.set(k, false, rl.now().Add(relayAudioRetry))
+		if _, _, known := rl.audio.get(k, rl.now()); !known { // a look that found nothing is not repeated at once
+			rl.audio.set(k, false, "", rl.now().Add(relayAudioRetry))
 		}
 	}()
 }
@@ -269,7 +273,7 @@ func (rl *extRelay) lookAt(ctx context.Context, s iptv.Stream, userAgent string)
 			if media.LooksLikeTS(b) {
 				rl.learn(ctx, s, b)
 			} else {
-				rl.audio.set(streamKey(s), false, rl.now().Add(relayAudioRetry))
+				rl.audio.set(streamKey(s), false, "", rl.now().Add(relayAudioRetry))
 			}
 			return
 		}
