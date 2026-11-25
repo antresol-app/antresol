@@ -191,7 +191,7 @@ test('app password sheet shows password', async ({ page, baseURL }) => {
   await page.goto('/settings')
   await page.getByRole('button', { name: /Пароль для приложений/ }).click()
   const sheet = page.getByRole('dialog', { name: 'Пароль для приложений' })
-  await expect(sheet).toContainText(`Сервер — ${new URL(baseURL!).origin}`)
+  await expect(sheet.getByRole('textbox', { name: 'Сервер' })).toHaveValue(new URL(baseURL!).origin)
   await expect(sheet).toContainText(`Каталог книг: ${new URL(baseURL!).origin}/opds`)
   await sheet.getByRole('button', { name: 'Создать пароль' }).click()
   const field = sheet.getByRole('textbox', { name: 'Пароль' })
