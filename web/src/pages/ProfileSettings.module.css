@@ -1,5 +1,11 @@
-/* one readable column, like System Settings' pane */
+/* one readable column, like System Settings' pane: centred on a page of its own */
 .column {
   max-width: 680px;
   margin: 0 auto;
+}
+/* beside «Управление»'s sidebar: the width and the left edge of every server
+   screen there (Settings.module.css .page), not a column centred in the room
+   that is left */
+.pane {
+  max-width: 760px;
 }

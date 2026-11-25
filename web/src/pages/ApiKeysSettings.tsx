@@ -120,7 +120,7 @@ export function ApiKeysSettings() {
   const Frame = user.isAdmin ? AdminFrame : PlainFrame
   return (
     <Frame>
-      <section aria-labelledby="apikeys-title" className={page.column}>
+      <section aria-labelledby="apikeys-title" className={user.isAdmin ? page.pane : page.column}>
         {(compact || !user.isAdmin) && (
           <NavLink to="/settings" className={m.back}>
             <Icon name="chevronLeft" size={18} strokeWidth={2.4} />

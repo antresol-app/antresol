@@ -255,7 +255,7 @@ describe('Import', () => {
   it('an uploaded Takeout is read first while its videos are named', async () => {
     uploadReads = true
     renderImport()
-    await screen.findAllByTestId('import-tile')
+    await screen.findByLabelText('Файл медиатеки')
     const input = screen.getByLabelText('Файл медиатеки') as HTMLInputElement
     fireEvent.change(input, { target: { files: [new File(['PK'], 'takeout-001.zip', { type: 'application/zip' })] } })
     expect(await screen.findByText('Читаем медиатеку…')).toBeTruthy()
@@ -352,7 +352,7 @@ describe('Import with an import source', () => {
     expect(screen.queryByLabelText('Файл медиатеки')).toBeNull()
     act(() => setAddonsLoading(false))
     expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
-    expect(screen.getAllByTestId('import-tile')).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Загрузить файл' })).toHaveLength(1)
     expect(screen.queryByTestId('addon-import')).toBeNull()
   })
 

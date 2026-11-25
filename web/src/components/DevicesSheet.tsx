@@ -161,7 +161,7 @@ export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
                 {g.items.map((d) => (
                   <ListRow
                     key={d.id}
-                    stack
+                    wide
                     label={
                       <span className={styles.name}>
                         {deviceName(d)}
@@ -188,6 +188,7 @@ export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
                     <Button
                       size="small"
                       variant="destructive"
+                      className={styles.signOut}
                       disabled={busy}
                       aria-label={`${t('comp.devices.signOut')}: ${deviceName(d)}`}
                       onClick={() => setConfirm(d)}

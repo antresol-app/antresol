@@ -1,17 +1,20 @@
 // The way in when the server has no sign-in services (the core build, a
-// library-only server): one card, «Загрузить файл» — a CSV, M3U, Library.xml
-// or a Google Takeout archive. The sources build shows ./Services instead.
-import { useRef } from 'react'
+// library-only server): one row, «Загрузить файл» — a CSV, M3U, Library.xml
+// or a Google Takeout archive — with the CSV's columns a «Формат CSV» away.
+// The sources build shows ./Services instead.
+import { useRef, useState } from 'react'
 import { Button } from '../../../ui/Button'
 import { FileInput } from '../../../ui/FileInput'
-import { Icon } from '../../../components/Icon'
+import { GroupedSection, ListRow } from '../../../ui/List'
+import { SettingsIcon } from '../../../ui/SettingsIcon'
+import { Sheet } from '../../../ui/Sheet'
 import { useT } from '../../../i18n'
 import { IMPORT_ACCEPT, serviceName } from './serviceName'
-import styles from './ServiceTiles.module.css'
 
 export function FileImport({ onFiles, busy }: { onFiles: (files: File[]) => void; busy?: boolean }) {
   const t = useT()
   const input = useRef<HTMLInputElement>(null)
+  const [format, setFormat] = useState(false)
   return (
     <>
       <FileInput
@@ -25,22 +28,27 @@ export function FileImport({ onFiles, busy }: { onFiles: (files: File[]) => void
           if (files.length) onFiles(files)
         }}
       />
-      <ul className={styles.tiles} aria-label={t('import.tiles.servicesAria')}>
-        <li className={styles.tile} data-testid="import-tile">
-          <div className={styles.head}>
-            <span className={styles.icon} style={{ background: 'var(--teal)' }} aria-hidden>
-              <Icon name="folder" size={20} strokeWidth={2.2} />
-            </span>
-            <h3 className={styles.name}>{serviceName('file')}</h3>
-          </div>
-          <p className={styles.what}>{t('import.look.file')}</p>
-          <div className={styles.actions}>
-            <Button size="small" icon="folder" loading={busy} disabled={busy} onClick={() => input.current?.click()}>
-              {t('import.tiles.upload')}
-            </Button>
-          </div>
-        </li>
-      </ul>
+      <GroupedSection
+        footer={
+          <Button variant="link" onClick={() => setFormat(true)}>
+            {t('import.csv.title')}
+          </Button>
+        }
+      >
+        <ListRow leading={<SettingsIcon glyph="folder" tint="teal" />} label={serviceName('file')} hint={t('import.file.what')}>
+          <Button size="small" icon="folder" loading={busy} disabled={busy} onClick={() => input.current?.click()}>
+            {t('import.tiles.upload')}
+          </Button>
+        </ListRow>
+      </GroupedSection>
+      {format && (
+        <Sheet
+          title={t('import.csv.title')}
+          message={t('import.csv.text')}
+          onCancel={() => setFormat(false)}
+          actions={[{ label: t('common.done'), kind: 'primary', run: () => setFormat(false) }]}
+        />
+      )}
     </>
   )
 }

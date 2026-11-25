@@ -29,3 +29,28 @@ for (const [width, height] of SIZES) {
     await expect(page).toHaveURL(/\/manage\/settings\/accounts$/)
   })
 }
+
+// On a laptop's window the list is longer than the panel: the section that is
+// open is scrolled into view (it may be the last), an edge with more rows past
+// it fades (so a cut row does not read as the list's end), and the top of the
+// list has no fade.
+test('sidebar on a laptop window: the open section is in view, the fades say where there is more', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 610 })
+  await setupAdmin(page.request)
+  const list = page.locator('aside [class*="_sidebarScroll_"]')
+
+  await page.goto('/manage/profiles')
+  await expect(list).toHaveAttribute('data-fade-end', 'true')
+  await expect(list).not.toHaveAttribute('data-fade-start', /.*/)
+
+  await page.goto('/manage/settings/external')
+  const here = list.getByRole('link', { name: 'Внешние сервисы' })
+  await expect(list).toHaveAttribute('data-fade-start', 'true')
+  await expect(list).not.toHaveAttribute('data-fade-end', /.*/)
+  const box = (await list.boundingBox())!
+  const row = (await here.boundingBox())!
+  expect(row.y).toBeGreaterThanOrEqual(box.y)
+  expect(row.y + row.height).toBeLessThanOrEqual(box.y + box.height + 0.5)
+  // the page itself never scrolled to show it
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+})

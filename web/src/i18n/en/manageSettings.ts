@@ -120,7 +120,6 @@ export default {
   'prefs.hideProgress.hint': 'Your family won’t see what you watch',
   'prefs.favoritesFirst': 'Favorite channels first',
   'prefs.favoritesFirst.failed': 'Couldn’t save',
-  'prefs.notifications': 'Notifications',
   'prefs.notify': 'Notifications',
   'prefs.apps': 'Apps & Devices',
   'prefs.appPassword': 'App Password',

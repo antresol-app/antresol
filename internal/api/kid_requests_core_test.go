@@ -269,3 +269,35 @@ func TestApproveBadID(t *testing.T) {
 		}
 	}
 }
+
+// A server with no catalog (no TMDB key): nothing can be asked for, but the
+// admin's «Запросы» page still reads its lists, which answer empty — a 404
+// there showed «Что-то пошло не так» instead of the page's empty state. A
+// request kept from when there was a catalog is listed, never in the library.
+func TestRequestListsWithoutCatalog(t *testing.T) {
+	e := newCoreRequestsEnv(t, nil, func(d *Deps) { d.RequestsOpen = nil })
+	for path, want := range map[string]string{"/api/requests": "[]", "/api/requests/count": `{"pending":0}`} {
+		w := e.do("GET", path, "", e.admin)
+		if w.Code != 200 || strings.TrimSpace(w.Body.String()) != want {
+			t.Errorf("GET %s: %d %s, want %s", path, w.Code, w.Body, want)
+		}
+	}
+	kid := e.kid("")
+	if _, err := e.db.Exec(`INSERT INTO kid_requests(user_id, kind, title_key, tmdb_id, title, status) VALUES(?, 'movie', 'tmdb:603', 603, 'Матрица', 'pending')`, e.userID("Вася")); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.pending(t); n != 1 {
+		t.Errorf("pending %d, want the kept request", n)
+	}
+	w := e.do("GET", "/api/requests", "", e.admin)
+	if got := decodeJSON[[]coreRequest](t, w.Body.Bytes()); w.Code != 200 || len(got) != 1 || got[0].Status != "pending" || got[0].LibraryItemID != nil {
+		t.Errorf("list: %d %s", w.Code, w.Body)
+	}
+	// the lists are the admin's, and the kids' side stays shut
+	if w := e.do("GET", "/api/requests", "", kid); w.Code != http.StatusForbidden {
+		t.Errorf("kid reads the list: %d", w.Code)
+	}
+	if w := e.do("POST", "/api/requests", `{"kind":"movie","tmdbId":603}`, kid); w.Code != http.StatusNotFound {
+		t.Errorf("kid asks: %d %s", w.Code, w.Body)
+	}
+}

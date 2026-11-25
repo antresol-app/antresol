@@ -140,16 +140,17 @@ export function Profiles() {
                   </Menu>
                 ) : (
                   <>
+                    {/* a kid's two extra buttons go first: the buttons that every row has stay on the right edge, in the same columns */}
+                    {u.isKid && (
+                      <>
+                        <IconButton size="sm" icon="send" label={t('profiles.notifyAria', { name: u.name })} tooltip={t('profiles.notify')} onClick={() => setNotify(u)} />
+                        <IconButton size="sm" icon="clock" label={t('comp.screen.aria', { name: u.name })} tooltip={t('comp.screen.title')} onClick={() => setScreen(u)} />
+                      </>
+                    )}
                     <Button size="small" variant="secondary" icon="pencil" onClick={() => setEdit({ user: u })}>
                       {t('profiles.edit')}
                     </Button>
                     <IconButton size="sm" icon="captions" label={t('profiles.playbackAria', { name: u.name })} tooltip={t('profiles.playback')} onClick={() => setPlayback(u)} />
-                    {u.isKid && (
-                      <IconButton size="sm" icon="send" label={t('profiles.notifyAria', { name: u.name })} tooltip={t('profiles.notify')} onClick={() => setNotify(u)} />
-                    )}
-                    {u.isKid && (
-                      <IconButton size="sm" icon="clock" label={t('comp.screen.aria', { name: u.name })} tooltip={t('comp.screen.title')} onClick={() => setScreen(u)} />
-                    )}
                     <IconButton size="sm" icon="trash" label={t('profiles.deleteAria', { name: u.name })} disabled={u.id === me?.id} onClick={() => setRemoving(u)} />
                   </>
                 )}

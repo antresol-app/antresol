@@ -519,6 +519,9 @@ func mountLibraryRoutes(r chi.Router, deps Deps, guard *auth.Guard, requests *ki
 		mountScreenTime(r, h)
 		if requests != nil {
 			mountKidRequests(r, requests)
+		} else if deps.DB != nil {
+			// no catalog: nothing to ask for, but the admin's page still has its lists (empty)
+			mountRequestLists(r, &kidRequests{db: deps.DB})
 		}
 		mountTitle(r, h)
 		if deps.Channels != nil && deps.DB != nil {

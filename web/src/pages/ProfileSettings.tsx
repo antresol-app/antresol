@@ -101,7 +101,7 @@ export function ProfileSettings() {
   const Frame = user.isAdmin ? AdminFrame : PlainFrame
   return (
     <Frame>
-      <section aria-labelledby="prefs-title" className={styles.column}>
+      <section aria-labelledby="prefs-title" className={user.isAdmin ? styles.pane : styles.column}>
         <header className={m.header}>
           <h1 id="prefs-title" className={m.title}>
             {user.isAdmin ? t('manage.profile') : t('common.settings')}
@@ -154,7 +154,7 @@ export function ProfileSettings() {
         )}
 
         {adult && (
-          <GroupedSection title={t('prefs.notifications')}>
+          <GroupedSection>
             <ListLinkRow icon="bell" tint="red" label={t('prefs.notify')} onOpen={() => setOpen('notify')} />
           </GroupedSection>
         )}

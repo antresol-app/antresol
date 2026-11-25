@@ -71,7 +71,7 @@ export function AccountsSettings() {
   const Frame = user.isAdmin ? AdminFrame : PlainFrame
   return (
     <Frame>
-      <section aria-labelledby="accounts-title" className={styles.column}>
+      <section aria-labelledby="accounts-title" className={user.isAdmin ? styles.pane : styles.column}>
         {/* an admin's wide window has the profile's row in the sidebar; everyone else needs the way back */}
         {(compact || !user.isAdmin) && (
           <NavLink to="/settings" className={m.back}>

@@ -16,18 +16,43 @@
 .sidebar {
   position: sticky;
   top: calc(var(--nav-height) + var(--s-4));
-  /* a short window (a phone on its side): the list scrolls inside, or its
-     last sections were out of reach until the page's very end */
+  /* a short window (a laptop, a phone on its side): the list scrolls inside
+     (.sidebarScroll), or its last sections were out of reach until the page's
+     very end */
   max-height: calc(100dvh - var(--nav-height) - var(--s-4) - max(var(--s-4), env(safe-area-inset-bottom)));
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: var(--s-3h) var(--s-2h) var(--s-2h);
   border-radius: var(--r-sheet);
 }
 .sidebarTitle {
+  flex: none;
   padding: 0 var(--s-2h) var(--s-2h);
   font: 700 15px / 1.2 var(--font-text);
   color: var(--label-2);
+}
+/* the list under the title; an edge with more rows past it fades out */
+.sidebarScroll {
+  --fade: var(--s-8);
+  --fade-t: #000; /* ds-allow: a mask, its alpha only */
+  --fade-b: #000; /* ds-allow: a mask, its alpha only */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, var(--fade-t), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-b)); /* ds-allow: a mask, its alpha only */
+  mask-image: linear-gradient(to bottom, var(--fade-t), #000 var(--fade), #000 calc(100% - var(--fade)), var(--fade-b)); /* ds-allow: a mask, its alpha only */
+}
+.sidebarScroll::-webkit-scrollbar {
+  display: none;
+}
+.sidebarScroll[data-fade-start] {
+  --fade-t: transparent;
+}
+.sidebarScroll[data-fade-end] {
+  --fade-b: transparent;
 }
 .nav {
   min-width: 0;
@@ -138,6 +163,22 @@
   display: none;
   flex: none;
   color: var(--label-3);
+}
+/* a short window (a laptop): the sidebar's rows and groups sit closer, so more
+   of the list shows at once (the rest scrolls, fading at the edge) */
+@media (min-width: 700px) and (max-height: 760px) {
+  .sidebar .navItem {
+    min-height: 34px;
+    padding-block: var(--s-1);
+  }
+  .sidebar .navGroup + .navGroup,
+  .sidebar .navProfile + .navGroup {
+    margin-top: var(--s-3);
+  }
+  .sidebar .navPart + .navPart {
+    margin-top: var(--s-3);
+    padding-top: var(--s-3);
+  }
 }
 .content {
   min-width: 0;

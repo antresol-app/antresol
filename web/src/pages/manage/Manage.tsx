@@ -12,7 +12,7 @@
 // phones the list is its own screen and each section has a back button.
 // Every row's tile is ui/SettingsIcon: one glyph set, one palette colour
 // each; an addon's tile names its glyph, colour and group (`manageTiles`).
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router'
 import { Avatar } from '../../components/Avatar'
 import { Icon } from '../../components/Icon'
@@ -232,6 +232,53 @@ export function Manage() {
 }
 
 /**
+ * The sidebar's list, scrolling inside the panel when the window is shorter
+ * than it: an edge with more rows past it fades (so a cut row reads as «more
+ * below», not as the list's end), and the section on the screen is kept in
+ * view (it may be far down: «Почта и уведомления» on a laptop).
+ */
+function SidebarScroll({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const { pathname } = useLocation()
+  const [fade, setFade] = useState({ start: false, end: false })
+  const measure = () => {
+    const el = ref.current
+    if (!el) return
+    const over = el.scrollHeight - el.clientHeight
+    // a pixel of rounding is not «more»
+    const next = { start: over > 1 && el.scrollTop > 1, end: over > 1 && el.scrollTop < over - 1 }
+    setFade((f) => (f.start === next.start && f.end === next.end ? f : next))
+  }
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    return () => ro.disconnect()
+  }, [])
+  // the current section stays clear of the faded edges (only this panel scrolls, never the page)
+  useLayoutEffect(() => {
+    const el = ref.current
+    const here = el?.querySelector('[aria-current="page"]')
+    if (!el || !here) return
+    const pad = Math.min(48, el.clientHeight / 4)
+    const box = el.getBoundingClientRect()
+    const r = here.getBoundingClientRect()
+    if (r.top < box.top + pad) el.scrollTop -= box.top + pad - r.top
+    else if (r.bottom > box.bottom - pad) el.scrollTop += r.bottom - box.bottom + pad
+    measure()
+  }, [pathname])
+  return (
+    <div ref={ref} className={styles.sidebarScroll} onScroll={measure} data-fade-start={fade.start || undefined} data-fade-end={fade.end || undefined}>
+      {children}
+    </div>
+  )
+}
+
+/**
  * «Управление» around one section: the section list beside it (on phones a
  * back link to the list instead, unless the screen is `nested` and brings
  * its own). The core's sections and the addons' pages its tiles open
@@ -258,7 +305,9 @@ export function ManageFrame({ nested, children }: { nested: boolean; children: R
       <div className={styles.layout}>
         <aside className={`${styles.sidebar} glass`}>
           <h1 className={styles.sidebarTitle}>{t('common.settings')}</h1>
-          <SectionList />
+          <SidebarScroll>
+            <SectionList />
+          </SidebarScroll>
         </aside>
         <div className={styles.content}>{children}</div>
       </div>

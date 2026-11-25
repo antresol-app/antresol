@@ -1,7 +1,7 @@
 // «Импорт» where the server downloads nothing (the core build, a
 // library-only server): files only, no downloads' words, no retry.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ImportGroup, ImportJob } from '../../../api/types'
 import { Import } from '../Import'
@@ -83,9 +83,21 @@ describe('Import without services', () => {
   it('a server that lists no services offers the file input only', async () => {
     renderImport()
     expect(await screen.findByLabelText('Файл медиатеки')).toBeTruthy()
-    expect(screen.getAllByTestId('import-tile')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Загрузить файл' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Загрузить файл' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Подключить' })).toBeNull()
+  })
+
+  it('the file row is a row of the list; the CSV columns are behind «Формат CSV», not in the row', async () => {
+    renderImport()
+    await screen.findByLabelText('Файл медиатеки')
+    const row = screen.getByRole('button', { name: 'Загрузить файл' }).closest('li')!
+    expect(row.textContent).toContain('Google Takeout')
+    expect(row.textContent).not.toContain('isrc')
+    fireEvent.click(screen.getByRole('button', { name: 'Формат CSV' }))
+    const sheet = await screen.findByRole('alertdialog')
+    expect(sheet.textContent).toContain('artist, title, album, isrc, playlist, position, dateAdded')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Готово' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
   it('an uploaded file shows the preview with no space line', async () => {

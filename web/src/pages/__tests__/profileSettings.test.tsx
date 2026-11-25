@@ -111,6 +111,8 @@ describe('ProfileSettings', () => {
     for (const name of ['Звук и субтитры', 'Уведомления', 'Пароль для приложений', 'Устройства', 'О сервере']) {
       expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
     }
+    // «Уведомления» is a row; a heading over it that says the same is not drawn
+    expect(screen.queryByRole('heading', { name: 'Уведомления' })).toBeNull()
     expect(screen.getByRole('switch', { name: 'Скрывать прогресс просмотра' })).toBeInTheDocument()
     // no server-wide settings here (the Kindle address is the profile's own; the mailbox is the server's)
     expect(screen.queryByText(/Качество видео|Мои языки|Почта для отправки/)).toBeNull()

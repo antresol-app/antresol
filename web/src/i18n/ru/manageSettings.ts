@@ -118,7 +118,6 @@ export default {
   'prefs.hideProgress.hint': 'Семья не увидит, что вы смотрите',
   'prefs.favoritesFirst': 'Избранные каналы первыми',
   'prefs.favoritesFirst.failed': 'Не удалось сохранить',
-  'prefs.notifications': 'Уведомления',
   'prefs.notify': 'Уведомления',
   'prefs.apps': 'Приложения и устройства',
   'prefs.appPassword': 'Пароль для приложений',

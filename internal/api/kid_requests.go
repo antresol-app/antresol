@@ -110,12 +110,23 @@ func mountKidRequests(r chi.Router, k *kidRequests) {
 	r.Get("/api/requests/mine", k.mine)
 	r.Get("/api/requests/search", k.search)
 	r.Post("/api/requests", k.ask)
+	mountRequestLists(r, k)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAdmin)
+		r.Post("/api/requests/{id}/approve", k.approve)
+		r.Post("/api/requests/{id}/decline", k.decline)
+	})
+}
+
+// mountRequestLists is the admin's list of requests and its count. A server
+// with no catalog (no TMDB key) mounts these two alone, over a kidRequests
+// without one: nothing can be asked for there, so «Запросы» shows its empty
+// state instead of a 404 (what the web client reads as «Что-то пошло не так»).
+func mountRequestLists(r chi.Router, k *kidRequests) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAdmin)
 		r.Get("/api/requests", k.list)
 		r.Get("/api/requests/count", k.count)
-		r.Post("/api/requests/{id}/approve", k.approve)
-		r.Post("/api/requests/{id}/decline", k.decline)
 	})
 }
 
@@ -570,8 +581,10 @@ func (k *kidRequests) query(ctx context.Context, where string, args ...any) ([]K
 // book (placeholder art), and of a movie or series above its limit now (a
 // lowered limit) neither title nor cover: Hidden.
 func (k *kidRequests) view(ctx context.Context, x KidRequest, viewer auth.User) KidRequest {
-	if id, ok := k.cat.LibraryItemOf(ctx, x.Kind, x.TMDBID, x.Title, x.Subtitle); ok {
-		x.Status, x.LibraryItemID = statusInLibrary, &id
+	if k.cat != nil {
+		if id, ok := k.cat.LibraryItemOf(ctx, x.Kind, x.TMDBID, x.Title, x.Subtitle); ok {
+			x.Status, x.LibraryItemID = statusInLibrary, &id
+		}
 	}
 	if !viewer.IsAdmin {
 		x.User = nil
