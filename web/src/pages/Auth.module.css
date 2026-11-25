@@ -125,7 +125,7 @@
   display: grid;
   place-items: center;
   width: 34%;
-  max-width: 44px;
+  max-width: 44px; /* ds-allow: the lock glyph's cap, not a control */
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--scrim-art-strong);

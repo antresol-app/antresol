@@ -58,6 +58,15 @@
 .round {
   border-radius: var(--r-pill);
 }
+/* a status that stands where a small button stood («Ждёт ответа» in place of
+   «Попросить»): that button's height and type, a glyph before the word */
+.status {
+  gap: var(--s-1);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  font: var(--t-control-sm);
+  letter-spacing: normal;
+}
 /* a fact that does not match what was asked for */
 .warning {
   border-color: var(--warning);

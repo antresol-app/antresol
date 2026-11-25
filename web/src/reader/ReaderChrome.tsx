@@ -6,7 +6,7 @@
 // brings them back first and leaves the book on a second press.
 import { useCallback, useEffect, useRef, useState, type FocusEvent, type FormEvent, type ReactNode } from 'react'
 import { Icon } from '../components/Icon'
-import { MenuHeading, MenuItem, MenuSeparator, Menu } from '../ui/Menu'
+import { MenuHeading, MenuItem, MenuSegments, MenuSeparator, MenuStepper, Menu } from '../ui/Menu'
 import { Sheet } from '../ui/Sheet'
 import { ToolButton } from '../ui/ToolButton'
 import { TextField } from '../ui/TextField'
@@ -392,33 +392,12 @@ export function ReaderSettings({ prefs, onChange, compact }: { prefs: ReaderPref
   const scale = (d: number) => set({ fontScale: clampScale(prefs.fontScale + d) })
   return (
     <div className={styles.panel}>
-      <div className={styles.sizeRow} role="group" aria-label={t('reader.textSize')}>
-        <button
-          type="button"
-          role="menuitem"
-          tabIndex={-1}
-          className={styles.sizeButton}
-          aria-label={t('reader.smallerText')}
-          aria-disabled={prefs.fontScale <= MIN_SCALE || undefined}
-          onClick={() => prefs.fontScale > MIN_SCALE && scale(-SCALE_STEP)}
-        >
-          <span className={styles.smallA}>A−</span>
-        </button>
-        <span className={styles.sizeValue} aria-live="polite">
-          {formatPercent(Math.round(prefs.fontScale * 100))}
-        </span>
-        <button
-          type="button"
-          role="menuitem"
-          tabIndex={-1}
-          className={styles.sizeButton}
-          aria-label={t('reader.largerText')}
-          aria-disabled={prefs.fontScale >= MAX_SCALE || undefined}
-          onClick={() => prefs.fontScale < MAX_SCALE && scale(SCALE_STEP)}
-        >
-          <span className={styles.bigA}>A+</span>
-        </button>
-      </div>
+      <MenuStepper
+        label={t('reader.textSize')}
+        value={formatPercent(Math.round(prefs.fontScale * 100))}
+        less={{ label: t('reader.smallerText'), disabled: prefs.fontScale <= MIN_SCALE, onPress: () => scale(-SCALE_STEP), children: <span className={styles.smallA}>A−</span> }}
+        more={{ label: t('reader.largerText'), disabled: prefs.fontScale >= MAX_SCALE, onPress: () => scale(SCALE_STEP), children: <span className={styles.bigA}>A+</span> }}
+      />
 
       <MenuHeading>{t('reader.theme')}</MenuHeading>
       <div className={styles.swatches} role="group" aria-label={t('reader.theme')}>
@@ -448,40 +427,12 @@ export function ReaderSettings({ prefs, onChange, compact }: { prefs: ReaderPref
 
       <MenuSeparator />
       <MenuHeading>{t('reader.margins')}</MenuHeading>
-      <div className={styles.segments} role="group" aria-label={t('reader.margins')}>
-        {MARGIN_ORDER.map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="menuitemradio"
-            tabIndex={-1}
-            aria-checked={prefs.margin === m}
-            className={styles.segment}
-            onClick={() => set({ margin: m })}
-          >
-            {t(MARGINS[m].label)}
-          </button>
-        ))}
-      </div>
+      <MenuSegments label={t('reader.margins')} value={prefs.margin} options={MARGIN_ORDER.map((m) => ({ value: m, label: t(MARGINS[m].label) }))} onChange={(margin) => set({ margin })} />
 
       {!compact && (
         <>
           <MenuHeading>{t('reader.columns')}</MenuHeading>
-          <div className={styles.segments} role="group" aria-label={t('reader.columns')}>
-            {COLUMNS.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                role="menuitemradio"
-                tabIndex={-1}
-                aria-checked={prefs.columns === c.value}
-                className={styles.segment}
-                onClick={() => set({ columns: c.value })}
-              >
-                {t(c.label)}
-              </button>
-            ))}
-          </div>
+          <MenuSegments label={t('reader.columns')} value={prefs.columns} options={COLUMNS.map((c) => ({ value: c.value, label: t(c.label) }))} onChange={(columns) => set({ columns })} />
         </>
       )}
     </div>

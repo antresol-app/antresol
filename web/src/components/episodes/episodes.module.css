@@ -58,20 +58,3 @@
   margin: 0;
   padding: var(--s-2) var(--s-4) var(--s-1);
 }
-.check {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: var(--icon-xs);
-  color: var(--accent);
-}
-.check > svg {
-  width: var(--icon-xs);
-  height: var(--icon-xs);
-}
-.pick {
-  composes: linkButton from '../../ui/List.module.css';
-}
-.pickRow {
-  composes: row link from '../../ui/List.module.css';
-}

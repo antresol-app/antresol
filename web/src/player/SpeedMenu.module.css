@@ -6,7 +6,7 @@
   justify-content: center;
   gap: var(--s-1h);
   min-width: var(--control-h-md);
-  height: 40px;
+  height: var(--control-h-tool);
   padding: 0 var(--s-3);
   border: 0;
   border-radius: var(--r-pill);
@@ -47,7 +47,7 @@
 }
 .on.page {
   background: var(--accent);
-  color: #fff;
+  color: var(--label-on-tint);
 }
 @media (hover: hover) {
   .player:not(.on):hover {

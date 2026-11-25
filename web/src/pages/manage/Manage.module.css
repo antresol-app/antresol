@@ -44,10 +44,11 @@
   display: flex;
   align-items: center;
   gap: var(--s-2h);
-  min-height: 40px;
+  min-height: var(--control-h-tool);
   padding: var(--s-1h) var(--s-2h);
   border-radius: var(--r-field);
-  font: 500 15px / 1.2 var(--font-text);
+  font: var(--t-field);
+  line-height: 1.2;
   color: var(--label);
   transition: background var(--d-fast) var(--ease-out);
 }
@@ -183,12 +184,15 @@
 /* The System Settings list built by hand (rows with their own markup): the
    classes of ui/List.module.css, the one implementation of its look. New
    code renders GroupedSection / ListRow instead. */
+/* The 32 px above a title that follows something is one class heavier than the
+   title's own `margin: 0 0 …` (ui/List.module.css, another stylesheet): with
+   two single-class rules the one loaded later won, which is the order the
+   page's chunks happened to arrive in. A first child keeps the title's 0. */
 .groupTitle {
   composes: title from '../../ui/List.module.css';
-  margin-top: var(--s-8);
 }
-.groupTitle:first-child {
-  margin-top: 0;
+.groupTitle:not(:first-child) {
+  margin-top: var(--s-8);
 }
 .group {
   composes: group from '../../ui/List.module.css';

@@ -12,6 +12,7 @@ import { loadGoodreads, setGoodreadsState } from '../../state/accounts'
 import { ago } from '../../state/format'
 import { useSession } from '../../state/session'
 import { Button } from '../../ui/Button'
+import { FileInput } from '../../ui/FileInput'
 import { InlineForm } from '../../ui/InlineForm'
 import { GroupedSection, ListRow } from '../../ui/List'
 import { AccountRow } from './AccountRow'
@@ -108,10 +109,8 @@ export function GoodreadsAccount() {
       )}
       <ListRow label={t('acct.goodreads.file')} hint={t('acct.goodreads.file.hint')} status={imported || undefined}>
         {/* no accept: a spreadsheet app may have renamed the file, the server checks the content */}
-        <input
+        <FileInput
           ref={picker}
-          type="file"
-          hidden
           data-testid="goodreads-file"
           onChange={(e) => {
             pick(e.target.files?.[0])

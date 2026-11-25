@@ -10,10 +10,21 @@ import styles from './Badge.module.css'
 
 export type BadgeTone = 'default' | 'strong' | 'outline' | 'warning' | 'accent' | 'success' | 'destructive'
 
-/** One capsule. `round`: a status rather than a fact. */
-export function Badge({ children, tone = 'default', round, title, className }: { children: ReactNode; tone?: BadgeTone; round?: boolean; title?: string; className?: string }) {
+export interface BadgeProps {
+  children: ReactNode
+  tone?: BadgeTone
+  /** A status rather than a fact: a capsule. */
+  round?: boolean
+  /** `status`: a status that stands where a small button stood («Ждёт ответа» in place of «Попросить»): its height, its type, a glyph before the word. */
+  size?: 'default' | 'status'
+  title?: string
+  className?: string
+}
+
+/** One capsule. */
+export function Badge({ children, tone = 'default', round, size = 'default', title, className }: BadgeProps) {
   return (
-    <span className={[styles.badge, tone !== 'default' ? styles[tone] : '', round ? styles.round : '', className].filter(Boolean).join(' ')} title={title}>
+    <span className={[styles.badge, tone !== 'default' ? styles[tone] : '', round ? styles.round : '', size === 'status' ? styles.status : '', className].filter(Boolean).join(' ')} title={title}>
       {children}
     </span>
   )

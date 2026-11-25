@@ -3,6 +3,7 @@
 // or a Google Takeout archive. The sources build shows ./Services instead.
 import { useRef } from 'react'
 import { Button } from '../../../ui/Button'
+import { FileInput } from '../../../ui/FileInput'
 import { Icon } from '../../../components/Icon'
 import { useT } from '../../../i18n'
 import { IMPORT_ACCEPT, serviceName } from './serviceName'
@@ -13,11 +14,9 @@ export function FileImport({ onFiles, busy }: { onFiles: (files: File[]) => void
   const input = useRef<HTMLInputElement>(null)
   return (
     <>
-      <input
+      <FileInput
         ref={input}
-        type="file"
         multiple
-        hidden
         accept={IMPORT_ACCEPT}
         aria-label={t('import.tiles.fileAria')}
         onChange={(e) => {

@@ -96,7 +96,7 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 48px;
+  width: 48px; /* ds-allow: the track number's column */
   font: 400 15px / 1 var(--font-text);
   font-variant-numeric: tabular-nums;
   color: var(--label-3);
@@ -112,8 +112,8 @@
 .thumb {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 40px; /* ds-allow: a track's cover thumbnail */
+  height: 40px; /* ds-allow: a track's cover thumbnail */
   border-radius: var(--r-sm);
   overflow: hidden;
   background: var(--fill-2);
@@ -129,8 +129,8 @@
   position: absolute;
   top: 50%;
   left: 8px;
-  width: 40px;
-  height: 40px;
+  width: 40px; /* ds-allow: a track's cover thumbnail */
+  height: 40px; /* ds-allow: a track's cover thumbnail */
   margin-top: calc(-1 * var(--s-5));
   border-radius: var(--r-sm);
   display: grid;

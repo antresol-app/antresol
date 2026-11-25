@@ -8,7 +8,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s-1h);
-  height: 32px;
+  height: 32px; /* ds-allow: the SDK's accent chip, kept as the addons drew it */
   padding: 0 var(--s-4);
   border-radius: var(--r-pill);
   border: 1px solid var(--glass-border);

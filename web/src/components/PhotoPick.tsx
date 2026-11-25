@@ -5,6 +5,7 @@
 // square is theirs.
 import { useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useT } from '../i18n'
+import { FileInput } from '../ui/FileInput'
 import { PhotoCropSheet } from './PhotoCropSheet'
 import { SOURCE_MAX_BYTES } from './photoCrop'
 
@@ -39,7 +40,7 @@ export function usePhotoPick(onPhoto: (photo: Blob) => void): PhotoPick {
     error,
     element: (
       <>
-        <input ref={input} type="file" accept="image/*" hidden onChange={pick} data-testid="photo-input" aria-label={t('comp.photo.label')} />
+        <FileInput ref={input} accept="image/*" onChange={pick} data-testid="photo-input" aria-label={t('comp.photo.label')} />
         {picked && (
           <PhotoCropSheet
             file={picked}

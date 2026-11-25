@@ -91,7 +91,7 @@
   display: grid;
   grid-template-columns: 52px 1fr 32px;
   align-items: stretch;
-  min-height: 48px;
+  min-height: var(--control-h-field);
   -webkit-tap-highlight-color: transparent;
 }
 .orow:active {

@@ -317,35 +317,6 @@ button.airplay[data-active] {
   margin-top: auto;
   padding-top: 8px;
 }
-.upNextPlay,
-.upNextDismiss,
-.errorPrimary,
-.errorSecondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--r-pill);
-  font: 600 14px / 1 var(--font-text);
-  white-space: nowrap;
-}
-.upNextPlay,
-.errorPrimary {
-  background: #fff;
-  color: #000;
-}
-.upNextDismiss,
-.errorSecondary {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-.upNextDismiss:hover,
-.errorSecondary:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
-
 /* ---------- Overlays ---------- */
 .tapToPlay {
   position: absolute;
@@ -399,12 +370,6 @@ button.airplay[data-active] {
   display: flex;
   gap: 10px;
   margin-top: 10px;
-}
-.errorPrimary,
-.errorSecondary {
-  height: 44px;
-  padding: 0 22px;
-  font-size: 16px;
 }
 
 /* ---------- Phones ---------- */

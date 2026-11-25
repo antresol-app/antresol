@@ -330,9 +330,16 @@
   --track-display: -0.012em;
   --track-text: -0.008em;
   /* a weight set after a type token (`font: var(--t-x); font-weight: var(--w-semibold)`):
-     the names of the numbers, so no module writes 500, 600 or 700 */
+     the names of the numbers, so no module writes 500, 600 or 700 (400 is `normal`) */
   --w-medium: 500;
   --w-semibold: 600;
+  --w-bold: 700;
+  /* a choice drawn inside an opaque dark menu (MenuSegments, MenuStepper): white washes, the
+     reader's «Аа» menu is opaque so the page's text cannot show through it */
+  --menu-wash-track: rgba(255, 255, 255, 0.06);
+  --menu-wash: rgba(255, 255, 255, 0.08);
+  --menu-wash-hover: rgba(255, 255, 255, 0.14);
+  --menu-wash-on: rgba(255, 255, 255, 0.2);
 
   /* ---------- Spacing — 4pt grid, with the half steps HIG layouts use ---------- */
   --s-0: 2px;

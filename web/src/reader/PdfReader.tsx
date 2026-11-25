@@ -8,6 +8,7 @@ import { annotationsExportUrl, downloadUrl, fileUrl } from '../api/client'
 import type { BookDetail } from '../api/types'
 import { Button, ButtonLink } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
+import { ToolButton } from '../ui/ToolButton'
 import { Icon } from '../components/Icon'
 import { ChromeButton, chromeKey, inChrome, ReaderChrome, useAutoHide } from './ReaderChrome'
 import { canvasScale } from './pdfScale'
@@ -256,9 +257,9 @@ export function PdfReader({ book, onExit }: PdfReaderProps) {
       <ChromeButton label={t('reader.zoomIn')} onClick={() => zoomBy(ZOOM_STEP)} disabled={width >= MAX_WIDTH}>
         <span className={styles.zoomGlyph}>+</span>
       </ChromeButton>
-      <button type="button" className={styles.fitButton} aria-pressed={zoom.kind === 'fit'} onClick={() => setZoom({ kind: 'fit' })}>
-        {t('reader.fitWidth')}
-      </button>
+      <ToolButton className={styles.fit} label={t('reader.fitWidth')} toggled={zoom.kind === 'fit'} onClick={() => setZoom({ kind: 'fit' })}>
+        <span className={styles.fitWord}>{t('reader.fitWidth')}</span>
+      </ToolButton>
     </>
   )
 

@@ -431,7 +431,7 @@ function Player({ item: it, onClose, leaving }: { item: QueueItem; onClose: () =
           ) : (
             <div className={styles.bottom}>
               <ToolButton icon="quote" label={t('player.lyrics')} toggled={panel === 'lyrics'} onClick={() => toggle('lyrics')} />
-              <NormalizeMenu tone="player" placement="top-start" />
+              <NormalizeMenu placement="top-start" />
               {airPlay && <ToolButton icon="airplay" label="AirPlay" onClick={showAirPlayPicker} />}
               {outputs.buttons.map((b) => (
                 <OutputTool key={b.key} button={b} on={!!s.output} />

@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon'
 import { IconButton } from '../ui/IconButton'
 import { ToolButton } from '../ui/ToolButton'
 import { Sheet } from '../ui/Sheet'
+import { TextField } from '../ui/TextField'
 import { useAnnotations } from '../reader/useAnnotations'
 import type { Annotation } from '../api/types'
 import { useT } from '../i18n'
@@ -60,12 +61,9 @@ function BookmarksSheet({ bookId, onClose }: { bookId: number; onClose: () => vo
       closeButton
       actions={[{ label: t('player.bookmark.add'), kind: 'primary', run: add }]}
     >
-      <label className={styles.label} htmlFor="audiobook-bookmark-note">
-        {t('player.bookmark.at', { time: clock(at / 1000) })}
-      </label>
-      <input
-        id="audiobook-bookmark-note"
-        className={styles.field}
+      <TextField
+        size="medium"
+        label={t('player.bookmark.at', { time: clock(at / 1000) })}
         value={note}
         maxLength={10000}
         placeholder={t('player.bookmark.note')}

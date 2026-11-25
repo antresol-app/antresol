@@ -9,6 +9,7 @@ import { formatDate, formatShortDate, formatSize, kindLabel, objects } from './m
 import { Glyph } from './glyphs'
 import { Thumb } from './Thumb'
 import { Badge } from '../../ui/Badge'
+import { IconButton } from '../../ui/IconButton'
 import { Spinner } from '../../ui/Spinner'
 import { itemId, type ViewProps } from './views'
 import styles from './ListView.module.css'
@@ -171,17 +172,16 @@ const PhoneRow = memo(function PhoneRow({
         </span>
       </div>
       <div role="gridcell" className={styles.pmore}>
-        <button
-          type="button"
-          className={styles.moreButton}
-          aria-label={t('files.row.actions', { name: e.name })}
+        <IconButton
+          variant="plain"
+          tone="accent"
+          icon={<Glyph name="ellipsisCircle" size={22} strokeWidth={1.6} />}
+          label={t('files.row.actions', { name: e.name })}
           onClick={(ev) => {
             ev.stopPropagation()
             onMore?.(ev, e)
           }}
-        >
-          <Glyph name="ellipsisCircle" size={22} strokeWidth={1.6} />
-        </button>
+        />
       </div>
     </div>
   )

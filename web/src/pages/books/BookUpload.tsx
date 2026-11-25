@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, uploadBook, errorText } from '../../api/client'
 import { Button } from '../../ui/Button'
+import { FileInput } from '../../ui/FileInput'
 import { IconButton } from '../../ui/IconButton'
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
@@ -52,11 +53,9 @@ export function BookUploadButton({ onFiles, busy }: { onFiles: (files: File[]) =
   return (
     <>
       {/* no accept: phones grey out .fb2, the server checks every file */}
-      <input
+      <FileInput
         ref={input}
-        type="file"
         multiple
-        hidden
         data-testid="book-upload-input"
         onChange={(e) => {
           onFiles(Array.from(e.target.files ?? []))

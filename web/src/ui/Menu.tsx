@@ -405,3 +405,61 @@ export function MenuHeading({ children }: { children: ReactNode }) {
 export function MenuSeparator() {
   return <div className={styles.sep} role="separator" />
 }
+
+export interface MenuSegmentsProps<T extends string> {
+  /** The row's name (its group's accessible name). */
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
+}
+
+/** A row of choices inside a menu (the reader's margins and columns): each is a menu item, so the arrows move between them. */
+export function MenuSegments<T extends string>({ label, value, options, onChange }: MenuSegmentsProps<T>) {
+  return (
+    <div className={styles.segments} role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="menuitemradio" tabIndex={-1} aria-checked={o.value === value} className={styles.segment} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+interface StepProps {
+  /** The button's accessible name. */
+  label: string
+  /** What it shows («A−»). */
+  children: ReactNode
+  /** At its end: dimmed and does nothing, but stays in the menu's arrow order. */
+  disabled?: boolean
+  onPress: () => void
+}
+
+export interface MenuStepperProps {
+  /** The row's name (its group's accessible name). */
+  label: string
+  /** The value between the two buttons («100 %»), announced when it changes. */
+  value: ReactNode
+  less: StepProps
+  more: StepProps
+}
+
+/** Less, the value, more: the reader's text size. Both buttons are menu items. */
+export function MenuStepper({ label, value, less, more }: MenuStepperProps) {
+  const step = (p: StepProps) => (
+    <button type="button" role="menuitem" tabIndex={-1} className={styles.step} aria-label={p.label} aria-disabled={p.disabled || undefined} onClick={() => !p.disabled && p.onPress()}>
+      {p.children}
+    </button>
+  )
+  return (
+    <div className={styles.stepper} role="group" aria-label={label}>
+      {step(less)}
+      <span className={styles.stepValue} aria-live="polite">
+        {value}
+      </span>
+      {step(more)}
+    </div>
+  )
+}

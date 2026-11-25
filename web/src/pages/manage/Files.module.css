@@ -44,7 +44,7 @@
   text-overflow: ellipsis;
 }
 .year {
-  font-weight: 400;
+  font-weight: normal;
   color: var(--label-2);
 }
 .meta {

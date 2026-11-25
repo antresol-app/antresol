@@ -600,7 +600,7 @@
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  min-height: 40px;
+  min-height: var(--control-h-tool);
   margin: 0 var(--s-2);
   padding: var(--s-1) var(--s-3);
   border-radius: var(--r-md);

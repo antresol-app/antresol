@@ -10,6 +10,7 @@ import type { KidRequest, KidRequestState } from '../api/types'
 import { useT } from '../i18n'
 import { requestKey, useMyRequests } from '../state/kidRequests'
 import { useSession } from '../state/session'
+import { Badge } from '../ui/Badge'
 import { Button, ButtonLink } from '../ui/Button'
 import { cardHref } from './Card'
 import { Icon } from './Icon'
@@ -40,10 +41,10 @@ export function RequestStatus({ request, className }: { request: KidRequest; cla
     request.status === 'pending' ? t('requests.pending') : request.status === 'declined' ? t('requests.declined') : request.status === 'approved' ? t('requests.approved') : t('requests.inLibrary')
   return (
     <div className={[styles.status, className].filter(Boolean).join(' ')} data-status={request.status}>
-      <span className={styles.pill}>
+      <Badge tone="strong" round size="status" className={styles.pill}>
         <Icon name={icon} size={16} />
         {label}
-      </span>
+      </Badge>
       {request.status === 'declined' && request.reason && <span className={styles.reason}>{t('requests.reasonLine', { reason: request.reason })}</span>}
     </div>
   )

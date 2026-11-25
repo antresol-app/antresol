@@ -1,12 +1,11 @@
 // «Выравнивание громкости» of music: Авто / По альбому / По треку / Выкл,
 // remembered on this device (audio/normalize.ts).
 import { useSyncExternalStore } from 'react'
-import { Icon } from '../components/Icon'
 import { MenuItem, Menu } from '../ui/Menu'
+import { ToolButton } from '../ui/ToolButton'
 import { audio, normalizeSupported } from './audio/engine'
 import { loadNormalize, NORMALIZE_MODES, subscribeNormalize, type NormalizeMode } from './audio/normalize'
 import { useT, type Key } from '../i18n'
-import styles from './SpeedMenu.module.css'
 
 export const NORMALIZE_LABEL: Record<NormalizeMode, Key> = {
   auto: 'player.normalize.auto',
@@ -20,11 +19,10 @@ const NORMALIZE_DETAIL: Partial<Record<NormalizeMode, Key>> = {
 }
 
 export interface NormalizeMenuProps {
-  tone?: 'player' | 'page'
   placement?: 'bottom-start' | 'bottom-end' | 'top-end' | 'top-start'
 }
 
-export function NormalizeMenu({ tone = 'player', placement = 'top-end' }: NormalizeMenuProps) {
+export function NormalizeMenu({ placement = 'top-end' }: NormalizeMenuProps) {
   const t = useT()
   const mode = useSyncExternalStore(subscribeNormalize, loadNormalize, () => 'auto' as NormalizeMode)
   // iPhone and iPad: Safari ignores an element's volume — no pretending
@@ -34,18 +32,7 @@ export function NormalizeMenu({ tone = 'player', placement = 'top-end' }: Normal
     <Menu
       label={t('player.normalize.title')}
       placement={placement}
-      className={styles.menu}
-      trigger={(p) => (
-        <button
-          {...p}
-          type="button"
-          className={`${styles.trigger} ${styles[tone]}`}
-          aria-label={t('player.normalize.aria', { label })}
-          title={t('player.normalize.title')}
-        >
-          <Icon name="sliders" size={18} />
-        </button>
-      )}
+      trigger={(p) => <ToolButton {...p} icon="sliders" label={t('player.normalize.aria', { label })} tooltip={t('player.normalize.title')} />}
     >
       {(close) => (
         <>

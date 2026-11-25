@@ -73,6 +73,10 @@
 .destructive:hover:not(:disabled) {
   color: var(--destructive);
 }
+.accent,
+.accent:hover:not(:disabled) {
+  color: var(--accent);
+}
 
 /* a toggle that is on («Следить», «Хочу посмотреть»): white like «Смотреть».
    .button.on outranks the global .glass, which a production build loads

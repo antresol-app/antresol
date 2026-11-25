@@ -34,8 +34,8 @@
 }
 .thumb {
   flex: none;
-  width: 44px !important;
-  height: 44px;
+  width: 44px !important; /* ds-allow: a playlist's cover thumbnail */
+  height: 44px; /* ds-allow: a playlist's cover thumbnail */
   border-radius: var(--r-sm);
 }
 .plus {

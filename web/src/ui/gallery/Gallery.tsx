@@ -20,7 +20,7 @@ import { Slider } from '../Slider'
 import { Spinner } from '../Spinner'
 import { SETTINGS_GLYPHS, SETTINGS_TINTS, SettingsIcon } from '../SettingsIcon'
 import { ToggleChips } from '../ToggleChips'
-import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../Menu'
+import { Menu, MenuHeading, MenuItem, MenuSegments, MenuSeparator, MenuStepper } from '../Menu'
 import { NumberField } from '../NumberField'
 import { PlayerBar, PlayerBarButton } from '../PlayerBar'
 import { ProgressBar } from '../ProgressBar'
@@ -208,7 +208,7 @@ export function Gallery() {
         </p>
       </Section>
 
-      <Section title="IconButton" note="Every round button. One size = one diameter, one glass, one glyph size and colour; only the tone (red) and the toggled state (white) differ.">
+      <Section title="IconButton" note="Every round button. One size = one diameter, one glass, one glyph size and colour; only the tone (red, or the accent of a row's own «…») and the toggled state (white) differ.">
         {(['lg', 'md', 'sm', 'xs'] as const).map((s) => (
           <div key={s} className={styles.row}>
             <code className={styles.label}>{s}</code>
@@ -222,6 +222,7 @@ export function Gallery() {
             <IconButton size={s} icon="pause" label="Пауза" disabled />
             <IconButton size={s} icon="minusCircle" label="Убрать" variant="plain" />
             <IconButton size={s} icon="grip" label="Переместить" variant="plain" />
+            <IconButton size={s} icon="ellipsis" label="Действия" variant="plain" tone="accent" />
           </div>
         ))}
         <div className={styles.row}>
@@ -447,6 +448,24 @@ export function Gallery() {
               </>
             )}
           </Menu>
+          <Menu label="Вид текста" placement="bottom-end" trigger={(p) => <IconButton {...p} icon="ellipsis" label="Вид текста" />}>
+            {() => (
+              <>
+                <MenuStepper label="Размер" value="100 %" less={{ label: 'Меньше', onPress: () => {}, children: 'A−' }} more={{ label: 'Больше', onPress: () => {}, children: 'A+' }} />
+                <MenuHeading>Поля</MenuHeading>
+                <MenuSegments
+                  label="Поля"
+                  value={seg}
+                  onChange={setSeg}
+                  options={[
+                    { value: '720', label: 'Узкие' },
+                    { value: '1080', label: 'Обычные' },
+                    { value: '2160', label: 'Широкие' },
+                  ]}
+                />
+              </>
+            )}
+          </Menu>
         </div>
       </Section>
 
@@ -478,6 +497,16 @@ export function Gallery() {
           <Badge tone="warning">FLAC</Badge>
           <Badge tone="destructive" round>
             Ошибка
+          </Badge>
+        </div>
+        <div className={styles.row}>
+          <Badge tone="strong" round size="status">
+            <Icon name="clock" size={16} />
+            Ждёт ответа
+          </Badge>
+          <Badge tone="success" round size="status">
+            <Icon name="checkCircle" size={16} />
+            Одобрено
           </Badge>
         </div>
         <div className={styles.row}>

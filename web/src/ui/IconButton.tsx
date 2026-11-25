@@ -5,7 +5,7 @@
 //   size     xs 30 (in a list row) · sm 36 · md 44 (toolbars) · lg 52 (item page)
 //   variant  glass (default: filled) · plain: no fill until hovered (inside a row)
 //   material fill (default, in content) · glass (on a bar) · clear (over artwork, video)
-//   tone     destructive: the glyph in red
+//   tone     destructive: the glyph in red · accent: in the accent (a row's own «…»)
 //   toggled  a toggle (aria-pressed): on, it turns white like «Смотреть»
 // `label` is the accessible name and the tooltip (`tooltip` overrides the
 // tooltip when the state matters: «В списке» / «Добавить»). `tile` shows
@@ -33,7 +33,7 @@ interface Common {
   variant?: 'glass' | 'plain'
   /** What the filled variant is made of: a fill in content (default), glass on a bar, clear glass over artwork or video. */
   material?: Material
-  tone?: 'default' | 'destructive'
+  tone?: 'default' | 'destructive' | 'accent'
   /** A toggle: aria-pressed, white while on. */
   toggled?: boolean
   loading?: boolean
@@ -44,7 +44,7 @@ interface Common {
 
 function classes({ size = 'md', variant = 'glass', material = 'fill', tone = 'default', toggled, className }: Partial<Common>) {
   const surface = variant === 'glass' ? materialClass(material, styles.fill!) : ''
-  return [styles.button, styles[size], styles[variant], surface, surface && material === 'clear' ? styles.clear : '', tone === 'destructive' ? styles.destructive : '', toggled ? styles.on : '', className]
+  return [styles.button, styles[size], styles[variant], surface, surface && material === 'clear' ? styles.clear : '', tone === 'destructive' ? styles.destructive : tone === 'accent' ? styles.accent : '', toggled ? styles.on : '', className]
     .filter(Boolean)
     .join(' ')
 }

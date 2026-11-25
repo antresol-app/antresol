@@ -35,7 +35,7 @@
   /* a fixed length: a bar that stretched made the group start at the
      button's edge and read as left-aligned */
   flex: 0 1 112px;
-  min-width: 48px;
+  min-width: 48px; /* ds-allow: a ring beside the label, not a control */
   /* over the backdrop: a lighter track than on a surface */
   background: var(--label-4);
 }

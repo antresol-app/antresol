@@ -60,8 +60,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 36px; /* ds-allow: a source's icon tile */
+  height: 36px; /* ds-allow: a source's icon tile */
   border-radius: var(--r-md);
   background: var(--fill-3);
   color: var(--label);

@@ -67,7 +67,7 @@ button.main:focus-visible {
   place-items: center;
   width: var(--control-h-md);
   height: var(--control-h-md);
-  border-radius: 7px;
+  border-radius: 7px; /* ds-allow: a cover's own radius, between --r-sm and --r-md */
   overflow: hidden;
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.5);

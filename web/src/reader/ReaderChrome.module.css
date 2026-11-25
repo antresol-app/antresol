@@ -1,7 +1,5 @@
 /* Buttons here draw their own shape. */
-.sizeButton,
 .swatch,
-.segment,
 .tocItem,
 .hit {
   border: 0;
@@ -181,37 +179,13 @@ button.back {
   display: flex;
   flex-direction: column;
 }
-.sizeRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 2px 6px;
-}
-.sizeButton {
-  flex: 1;
-  height: 44px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--label);
-  font-family: var(--font-display);
-}
-.sizeButton:hover,
-.sizeButton:focus-visible,
 .swatch:hover,
-.swatch:focus-visible,
-.segment:hover,
-.segment:focus-visible {
-  background: rgba(255, 255, 255, 0.14);
+.swatch:focus-visible {
+  background: var(--menu-wash-hover);
   outline: none;
 }
-.sizeButton:focus-visible,
-.swatch:focus-visible,
-.segment:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--focus-ring);
-}
-.sizeButton[aria-disabled='true'] {
-  opacity: 0.4;
-  cursor: default;
+.swatch:focus-visible {
+  box-shadow: var(--focus-ring-inset);
 }
 .smallA {
   font-size: 15px;
@@ -220,14 +194,6 @@ button.back {
 .bigA {
   font-size: 22px;
   font-weight: 600;
-}
-.sizeValue {
-  flex: none;
-  min-width: 56px;
-  text-align: center;
-  font: 500 15px / 1 var(--font-text);
-  font-variant-numeric: tabular-nums;
-  color: var(--label-2);
 }
 .swatches {
   display: grid;
@@ -263,27 +229,6 @@ button.back {
     0 0 0 2px var(--bg-elevated),
     0 0 0 4px var(--accent);
 }
-.segments {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 4px;
-  margin: 0 2px 8px;
-  padding: 3px;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.06);
-}
-.segment {
-  height: 34px;
-  border-radius: 8px;
-  color: var(--label-2);
-  font: 500 14px / 1 var(--font-text);
-}
-.segment[aria-checked='true'] {
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--label);
-}
-
 /* Оглавление */
 .toc {
   margin: 0;

@@ -1,6 +1,6 @@
 .me {
   color: var(--label-2);
-  font-weight: 400;
+  font-weight: normal;
 }
 .form {
   display: flex;

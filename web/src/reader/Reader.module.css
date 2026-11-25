@@ -97,23 +97,14 @@
 .zoomGlyph {
   font: 500 22px / 1 var(--font-text);
 }
-.fitButton {
-  border: 0;
-  height: 32px;
-  margin: 0 4px;
-  padding: 0 12px;
-  border-radius: 9px;
+/* the button keeps the room the old pill had (4 pt of margin, 12 pt either side of the word): the
+   bar's title gives way to its buttons, and a few pixels more would leave it a clipped letter on a phone */
+.fit {
+  margin-inline: var(--s-1);
+}
+.fitWord {
+  padding-inline: var(--s-1h);
   font: 500 14px / 1 var(--font-text);
-  color: inherit;
-  background: rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
-}
-.fitButton[aria-pressed='true'] {
-  background: rgba(255, 255, 255, 0.22);
-}
-.fitButton:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 1px;
 }
 
 /* On <body> while the reader is open. */

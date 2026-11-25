@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { Menu, MenuItem } from '../Menu'
+import { Menu, MenuItem, MenuSegments, MenuStepper } from '../Menu'
 import { Sheet } from '../Sheet'
 
 const rect = (top: number, height: number, left = 600, width = 120) =>
@@ -285,5 +285,67 @@ describe('Menu layers', () => {
     act(() => onResize?.())
     // still right above its trigger, not floating where the long list began
     expect(menu.style.top).toBe(`${780 - 8 - 60}px`)
+  })
+})
+
+describe('MenuSegments and MenuStepper', () => {
+  function Rows({ onMargin = () => {}, onStep = () => {}, atEnd = false }: { onMargin?: (v: string) => void; onStep?: (d: number) => void; atEnd?: boolean }) {
+    const [margin, setMargin] = useState('normal')
+    return (
+      <Menu label="Вид" trigger={(p) => <button {...p}>Открыть</button>}>
+        {() => (
+          <>
+            <MenuStepper
+              label="Размер"
+              value="100 %"
+              less={{ label: 'Меньше', disabled: atEnd, onPress: () => onStep(-1), children: 'A−' }}
+              more={{ label: 'Больше', onPress: () => onStep(1), children: 'A+' }}
+            />
+            <MenuSegments
+              label="Поля"
+              value={margin}
+              options={[
+                { value: 'narrow', label: 'Узкие' },
+                { value: 'normal', label: 'Обычные' },
+                { value: 'wide', label: 'Широкие' },
+              ]}
+              onChange={(v) => {
+                setMargin(v)
+                onMargin(v)
+              }}
+            />
+          </>
+        )}
+      </Menu>
+    )
+  }
+
+  it('the segments are radio menu items of a named group; the chosen one is checked and a press chooses', async () => {
+    const onMargin = vi.fn()
+    render(<Rows onMargin={onMargin} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть' }))
+    const group = screen.getByRole('group', { name: 'Поля' })
+    expect(screen.getAllByRole('menuitemradio').map((e) => [e.textContent, e.getAttribute('aria-checked')])).toEqual([
+      ['Узкие', 'false'],
+      ['Обычные', 'true'],
+      ['Широкие', 'false'],
+    ])
+    expect(group).toContainElement(screen.getByRole('menuitemradio', { name: 'Узкие' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Широкие' }))
+    expect(onMargin).toHaveBeenCalledWith('wide')
+    expect(screen.getByRole('menuitemradio', { name: 'Широкие' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('the stepper shows its value between two menu items; one at its end does nothing but stays in the menu', async () => {
+    const onStep = vi.fn()
+    render(<Rows onStep={onStep} atEnd />)
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть' }))
+    expect(screen.getByRole('group', { name: 'Размер' })).toHaveTextContent('A−100 %A+')
+    const less = screen.getByRole('menuitem', { name: 'Меньше' })
+    expect(less).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(less)
+    expect(onStep).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Больше' }))
+    expect(onStep).toHaveBeenCalledWith(1)
   })
 })

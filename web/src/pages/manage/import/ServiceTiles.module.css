@@ -25,8 +25,8 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 36px; /* ds-allow: a service's icon tile */
+  height: 36px; /* ds-allow: a service's icon tile */
   border-radius: var(--r-md);
   color: var(--white);
 }

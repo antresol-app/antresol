@@ -5,9 +5,8 @@ import { useSourceKinds } from '../../addons/slots'
 import { locale, useT } from '../../i18n'
 import type { SourceGroup } from '../../state/pickSource'
 import { Badge } from '../../ui/Badge'
-import { GroupedSection } from '../../ui/List'
+import { GroupedSection, ListSelectRow } from '../../ui/List'
 import { Sheet } from '../../ui/Sheet'
-import { Icon } from '../Icon'
 import { episodeTitle } from '../EpisodeList'
 import styles from './episodes.module.css'
 
@@ -60,21 +59,22 @@ export function SourceSheet({ episode, groups, current, onPick, onOther, onDownl
             ...d.items.map((s) => {
               const on = s === current || (!!current && s.ref === current.ref && s.kind === current.kind)
               const provider = providerOf(s)
+              const facts = s.quality || s.meta.subs?.length
               return (
-                <li key={`${s.kind}:${s.ref}`} className={styles.pickRow}>
-                  <button type="button" className={styles.pick} aria-pressed={on} onClick={() => onPick(s)}>
-                    <span className={styles.text}>
-                      <span className={styles.label}>{provider ? `${provider} · ${kindLabel(s)}` : kindLabel(s)}</span>
-                      <span className={styles.hint}>
+                <ListSelectRow
+                  key={`${s.kind}:${s.ref}`}
+                  label={provider ? `${provider} · ${kindLabel(s)}` : kindLabel(s)}
+                  hint={
+                    facts ? (
+                      <>
                         {s.quality && <Badge>{s.quality}</Badge>}
                         {!!s.meta.subs?.length && <Badge>{t('episodes.sheet.subs')}</Badge>}
-                      </span>
-                    </span>
-                    <span className={styles.check} aria-hidden>
-                      {on && <Icon name="check" size={16} strokeWidth={2.4} />}
-                    </span>
-                  </button>
-                </li>
+                      </>
+                    ) : undefined
+                  }
+                  selected={on}
+                  onSelect={() => onPick(s)}
+                />
               )
             }),
           ])}
@@ -82,33 +82,9 @@ export function SourceSheet({ episode, groups, current, onPick, onOther, onDownl
       ))}
       {(onOther || (onDownload && pinned) || (onDownloadLibrary && library)) && (
         <GroupedSection>
-          {onOther && (
-            <li className={styles.pickRow}>
-              <button type="button" className={styles.pick} onClick={onOther}>
-                <span className={styles.text}>
-                  <span className={styles.label}>{t('episodes.sheet.other')}</span>
-                </span>
-              </button>
-            </li>
-          )}
-          {onDownload && pinned && (
-            <li className={styles.pickRow}>
-              <button type="button" className={styles.pick} onClick={() => onDownload(pinned)}>
-                <span className={styles.text}>
-                  <span className={styles.label}>{t('episodes.sheet.download')}</span>
-                </span>
-              </button>
-            </li>
-          )}
-          {onDownloadLibrary && library && (
-            <li className={styles.pickRow}>
-              <button type="button" className={styles.pick} onClick={() => onDownloadLibrary(library)}>
-                <span className={styles.text}>
-                  <span className={styles.label}>{t('episodes.sheet.toDevice')}</span>
-                </span>
-              </button>
-            </li>
-          )}
+          {onOther && <ListSelectRow label={t('episodes.sheet.other')} onSelect={onOther} />}
+          {onDownload && pinned && <ListSelectRow label={t('episodes.sheet.download')} onSelect={() => onDownload(pinned)} />}
+          {onDownloadLibrary && library && <ListSelectRow label={t('episodes.sheet.toDevice')} onSelect={() => onDownloadLibrary(library)} />}
         </GroupedSection>
       )}
     </Sheet>

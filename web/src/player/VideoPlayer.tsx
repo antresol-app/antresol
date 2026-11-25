@@ -29,6 +29,7 @@ import { VolumeControl } from './VolumeControl'
 import { useVolume } from './useVolume'
 import { SubtitleSearchSheet, tracksNotRefreshed, type SubtitleLang } from './SubtitleSearchSheet'
 import { usePlayerTrackActions } from './trackActions'
+import { Button } from '../ui/Button'
 import { IconButton } from '../ui/IconButton'
 import { SheetContainer } from '../ui/Sheet'
 import { useSession } from '../state/session'
@@ -817,12 +818,12 @@ export function VideoPlayer({
             <span className={styles.upNextEyebrow}>{t('player.video.upNextCode', { code: next.code })}</span>
             <span className={styles.upNextTitle}>{next.title}</span>
             <div className={styles.upNextActions}>
-              <button type="button" className={styles.upNextPlay} onClick={next.play}>
-                <Icon name="play" size={16} /> {t('common.watch')}
-              </button>
-              <button type="button" className={styles.upNextDismiss} onClick={() => setUpNextDismissed(true)}>
+              <Button size="small" icon="play" onClick={next.play}>
+                {t('common.watch')}
+              </Button>
+              <Button size="small" variant="secondary" onClick={() => setUpNextDismissed(true)}>
                 {t('player.video.hide')}
-              </button>
+              </Button>
             </div>
           </div>
         </aside>
@@ -849,9 +850,7 @@ export function VideoPlayer({
             <h2>{t('player.screen.overTitle')}</h2>
             <p>{screenGuard.over}</p>
             <div className={styles.errorActions}>
-              <button type="button" className={styles.errorPrimary} onClick={() => void close()}>
-                {t('common.close')}
-              </button>
+              <Button onClick={() => void close()}>{t('common.close')}</Button>
             </div>
           </div>
         </div>
@@ -865,13 +864,10 @@ export function VideoPlayer({
             <p>{p.error}</p>
             {stream ? (
               <div className={styles.errorActions}>
-                <button type="button" className={styles.errorPrimary} onClick={stream.onOtherSource}>
-                  {t('player.video.otherSource')}
-                </button>
+                <Button onClick={stream.onOtherSource}>{t('player.video.otherSource')}</Button>
                 {p.streamQuality && otherQuality(p.streamQuality.options, p.streamQuality.current) && (
-                  <button
-                    type="button"
-                    className={styles.errorSecondary}
+                  <Button
+                    variant="secondary"
                     onClick={() => {
                       const q = otherQuality(p.streamQuality!.options, p.streamQuality!.current)
                       stream.onQuality?.(q)
@@ -879,17 +875,15 @@ export function VideoPlayer({
                     }}
                   >
                     {t('player.video.otherQuality')}
-                  </button>
+                  </Button>
                 )}
               </div>
             ) : (
               <div className={styles.errorActions}>
-                <button type="button" className={styles.errorPrimary} onClick={p.retry}>
-                  {t('common.retry')}
-                </button>
-                <button type="button" className={styles.errorSecondary} onClick={() => void close()}>
+                <Button onClick={p.retry}>{t('common.retry')}</Button>
+                <Button variant="secondary" onClick={() => void close()}>
                   {t('common.close')}
-                </button>
+                </Button>
               </div>
             )}
           </div>

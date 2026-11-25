@@ -250,7 +250,7 @@
     position: absolute;
     top: var(--s-1h);
     left: 50%;
-    width: 36px;
+    width: 36px; /* ds-allow: the grabber's handle, not a control */
     height: 5px;
     border-radius: var(--r-pill);
     background: var(--label-4);

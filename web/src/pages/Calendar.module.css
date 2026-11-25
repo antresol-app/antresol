@@ -172,7 +172,7 @@
 }
 /* the episode's still: the same height band, its own 16:9 shape */
 .still {
-  width: 40px;
+  width: 40px; /* ds-allow: the day cell's still, a poster crop */
   aspect-ratio: 16 / 9;
 }
 .itemText {
@@ -227,7 +227,7 @@
     width: 20px;
   }
   .still {
-    width: 32px;
+    width: 32px; /* ds-allow: the day cell's still, a poster crop */
   }
   .wideHidden {
     display: flex;

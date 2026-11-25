@@ -14,7 +14,7 @@
 .backdrop {
   position: absolute;
   inset: 0;
-  z-index: -2;
+  z-index: -2; /* ds-allow: one layer under --z-behind, which the scrims take */
 }
 /* a new slide fades in over the one before (Hero.tsx) */
 .fadeIn {

@@ -25,7 +25,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   /* stacked (a phone), each column's title is its first child and so has
-     no margin of its own (Manage .groupTitle:first-child): the row gap is
+     no margin of its own (Manage .groupTitle:not(:first-child)): the row gap is
      the section spacing a title keeps from the group above it */
   gap: var(--s-8) var(--s-6);
 }
@@ -57,7 +57,7 @@
 }
 .hours {
   flex: none;
-  min-width: 52px;
+  min-width: 52px; /* ds-allow: a figure's column, not a control */
   text-align: right;
   font: var(--t-footnote);
   font-variant-numeric: tabular-nums;

@@ -6,7 +6,7 @@
   cursor: default;
 }
 .source {
-  font-weight: 800;
+  font-weight: 800; /* ds-allow: the source's name is a wordmark, heavier than any text weight */
   letter-spacing: 0;
   color: var(--label);
 }

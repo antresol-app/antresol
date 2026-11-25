@@ -182,3 +182,70 @@
   justify-content: center;
   font-weight: var(--w-semibold);
 }
+
+/* MenuSegments and MenuStepper: choices drawn inside the menu, washes of white
+   (--menu-wash-*: the reader's menu is opaque dark). Menu items by role, so
+   the arrows move between them; they draw their own shape. */
+.segment,
+.step {
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+.segments {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--s-1);
+  margin: 0 var(--s-0) var(--s-2);
+  padding: 3px; /* ds-allow: the track's inset round its segments, as SegmentedControl's */
+  border-radius: 11px; /* ds-allow: concentric with the segments' --r-md inside the 3 pt inset */
+  background: var(--menu-wash-track);
+}
+.segment {
+  height: 34px;
+  border-radius: var(--r-md);
+  color: var(--label-2);
+  font: 500 14px / 1 var(--font-text); /* ds-allow: between --t-field (15) and --t-footnote (13), the label of three short choices in a 300 pt menu */
+}
+.step {
+  flex: 1;
+  height: var(--control-h-md);
+  border-radius: var(--r-field);
+  background: var(--menu-wash);
+  color: var(--label);
+  font-family: var(--font-display);
+}
+.segment:hover,
+.segment:focus-visible,
+.step:hover,
+.step:focus-visible {
+  background: var(--menu-wash-hover);
+  outline: none;
+}
+.segment:focus-visible,
+.step:focus-visible {
+  box-shadow: var(--focus-ring-inset);
+}
+.step[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+.segment[aria-checked='true'] {
+  background: var(--menu-wash-on);
+  color: var(--label);
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1h);
+  padding: var(--s-1) var(--s-0) var(--s-1h);
+}
+.stepValue {
+  flex: none;
+  min-width: 56px;
+  text-align: center;
+  font: var(--t-field);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+}

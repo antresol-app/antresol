@@ -23,18 +23,7 @@
   gap: var(--s-1);
 }
 
-/* the state of a request, a quiet capsule the height of a small button */
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  min-height: 32px;
-  padding: 0 var(--s-3);
-  border-radius: var(--r-pill);
-  background: var(--fill-2);
-  color: var(--label);
-  font: 600 14px / 1.2 var(--font-text);
-}
+/* the state of a request: a Badge (status), its word in the state's colour */
 .status[data-status='pending'] .pill {
   color: var(--orange);
 }

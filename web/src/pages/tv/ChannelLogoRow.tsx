@@ -8,6 +8,7 @@ import { deleteChannelLogo, LOGO_MAX_BYTES, LOGO_TYPES, uploadChannelLogo } from
 import { Icon } from '../../components/Icon'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
+import { FileInput } from '../../ui/FileInput'
 import { IconButton } from '../../ui/IconButton'
 import { ListRow } from '../../ui/List'
 import { ChannelLogo } from './ChannelLogo'
@@ -113,9 +114,9 @@ export function ChannelLogoRow({ channelId, url, onChanged, pending, onPending, 
         )
       }
     >
-      <input
+      <FileInput
         ref={input}
-        type="file"
+        hidden={false}
         accept={LOGO_TYPES.join(',')}
         className="visually-hidden"
         tabIndex={-1}
