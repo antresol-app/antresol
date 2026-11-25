@@ -35,6 +35,23 @@ async function itemId(page: Page, kind: 'movie' | 'series', title: string): Prom
   return hit!.id
 }
 
+/**
+ * The server probes new files in the background; the parts' durations lay out
+ * a multi-part movie's timeline (without them the player cannot tell which
+ * part a position is in), so a test that opens one waits for them first.
+ */
+async function probed(page: Page, id: number) {
+  await expect
+    .poll(
+      async () => {
+        const f = ((await (await page.request.get(`/api/items/${id}`)).json()) as { files: { durationMs?: number }[] }).files
+        return f.length > 1 && f.every((x) => (x.durationMs ?? 0) > 0)
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true)
+}
+
 const video = (page: Page) => page.getByTestId('player').locator('video')
 const currentTime = (page: Page) => video(page).evaluate((v: HTMLVideoElement) => v.currentTime)
 
@@ -164,6 +181,7 @@ test('HLS resume from 0:20 saves the real position on close', async ({ page }) =
 test('finishing the last part marks the movie watched', async ({ page }) => {
   await ready(page)
   const id = await itemId(page, 'movie', PLAYBACK.parts.title)
+  await probed(page, id)
   await page.goto(`/watch/${id}?t=${PLAYBACK.parts.seconds * 2 - 3}`)
   await expect(page.getByText('Часть 2 из 2')).toBeVisible({ timeout: 20_000 })
   // The end of the movie closes the player.
@@ -174,6 +192,7 @@ test('finishing the last part marks the movie watched', async ({ page }) => {
 test('multi-part movie continues into part 2', async ({ page }) => {
   await ready(page)
   const id = await itemId(page, 'movie', PLAYBACK.parts.title)
+  await probed(page, id)
   await page.goto(`/item/${id}`)
   await expect(page.getByText('2 части, воспроизводятся подряд')).toBeVisible()
   await page.goto(`/watch/${id}?t=${PLAYBACK.parts.seconds - 3}`)

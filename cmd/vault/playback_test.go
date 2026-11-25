@@ -188,3 +188,55 @@ func TestTrackPlaybackLongResponse(t *testing.T) {
 		t.Fatal("3 min after the end: still reading")
 	}
 }
+
+// The probe pass (a file's duration and streams) waits for playback only: a
+// title that is being browsed is the one whose parts it has to place on a
+// timeline, so page loads must never hold it back (the e2e server answers
+// /api/items polls from the first second, and a probe pass held 5 s per poll
+// left a multi-part film without durations when the player opened it).
+func TestProbeIdle(t *testing.T) {
+	var mu sync.Mutex
+	now := time.Unix(1000, 0)
+	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	advance := func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
+	hls := &media.HLSManager{Now: clock}
+	playing := &media.Activity{Now: clock}
+	browsing := &media.Activity{Now: clock}
+	inside, release := make(chan struct{}), make(chan struct{})
+	h := trackBrowsing(trackPlayback(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/stream/5" {
+			close(inside)
+			<-release
+		}
+	}), playing), browsing)
+	serve := func(path string) { h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", path, nil)) }
+
+	if !probeIdle(hls, playing) {
+		t.Fatal("nothing plays: not idle")
+	}
+	serve("/api/items?kind=movie")
+	serve("/api/items/5")
+	if !browsing.Reading(browseQuiet) {
+		t.Fatal("test setup: the page loads were not counted as browsing")
+	}
+	if !probeIdle(hls, playing) {
+		t.Fatal("a page just loaded: the probe pass is held")
+	}
+
+	done := make(chan struct{})
+	go func() { serve("/api/stream/5"); close(done) }()
+	<-inside
+	advance(time.Hour)
+	if probeIdle(hls, playing) {
+		t.Fatal("a stream read an hour in: idle")
+	}
+	close(release)
+	<-done
+	if probeIdle(hls, playing) {
+		t.Fatal("a stream read just ended: idle at once")
+	}
+	advance(probeQuiet + time.Second)
+	if !probeIdle(hls, playing) {
+		t.Fatal("quiet after the read: still held")
+	}
+}

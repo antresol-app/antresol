@@ -493,8 +493,8 @@ func run() error {
 			fitWorker.Kick() // a video replaced: its voice-overs' fits are stale, fitted again now
 		}
 	}
-	// the probe pass waits while playback reads the media disk
-	jobs.Idle = func() bool { return !segWorker.Busy() }
+	// the probe pass waits while playback reads the media disk (not for browsing)
+	jobs.Idle = func() bool { return probeIdle(hls, playback) }
 	// ongoing tracking: the marked titles' episode lists (TMDB) and where
 	// each episode can be got; new ones go to the profiles that marked them
 	trackStore := &tracking.Store{DB: database}

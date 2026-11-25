@@ -53,6 +53,19 @@ func playbackRequest(r *http.Request) bool {
 // this long after the web app's last page-load request.
 const browseQuiet = 3 * time.Second
 
+// probeQuiet: the library's probe pass waits for a playback's reads and this
+// long after the last one. A probe is short; the 2 min the analysis waits
+// (segments.PlaybackIdle) would leave a title without durations that long.
+const probeQuiet = 3 * time.Second
+
+// probeIdle reports that no playback reads the media disk: what the probe
+// pass waits for (a probe next to a seek delays the first segment). Browsing
+// is not a reason: the title on the page is what the pass has to probe, and
+// a multi-part film without durations has no timeline to play on.
+func probeIdle(hls *media.HLSManager, playback *media.Activity) bool {
+	return !hls.Reading(probeQuiet) && !playback.Reading(probeQuiet)
+}
+
 // browsingRequest reports a request of the web app loading a page: a GET
 // of the API (or an image) that is not playback, nor one of the requests
 // an open tab keeps sending by itself (the event stream, the polls of
