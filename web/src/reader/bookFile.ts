@@ -9,13 +9,15 @@
 // and the native app's reader bundle (reader/native): the name tells FB2
 // from FB2.ZIP and MOBI from AZW3, and an FB2 is unzipped and re-encoded
 // from undeclared Windows-1251 first.
-import type { BookDetail } from '../api/types'
 import { fb2ToUtf8, unzipFb2 } from './fb2text'
 
 const ZIP = [0x50, 0x4b, 0x03, 0x04]
 
 /** The reading file's format (EPUB, FB2, PDF…). */
-export function readFormat(b: BookDetail): string {
+export function readFormat(b: {
+  readFileId?: number | null
+  files: { id: number; format?: string | null }[]
+}): string {
   return (b.files.find((f) => f.id === b.readFileId)?.format ?? '').toUpperCase()
 }
 
