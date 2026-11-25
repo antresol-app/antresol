@@ -33,7 +33,7 @@ describe('Profiles: Служебные', () => {
     show([user({ id: 9, name: 'playback-check', service: true })])
     const group = await screen.findByRole('region', { name: 'Служебные' })
     expect(within(group).getByText('playback-check')).toBeInTheDocument()
-    expect(within(group).getByText(/vault service-profile/)).toBeInTheDocument()
+    expect(within(group).getByText(/Не видны семье/)).toBeInTheDocument()
     expect(within(group).queryByRole('button')).toBeNull()
     // the people's list does not have it
     const people = screen.getAllByRole('list')[0]!
