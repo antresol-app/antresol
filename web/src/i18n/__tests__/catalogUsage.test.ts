@@ -72,6 +72,10 @@ describe('keys named in the code', () => {
   const all = Object.keys(ru)
   // the names of server events and the paths of data fields look like keys and are not
   const notKeys = new Set(['addons.changed', 'import.progress', 'item.id'])
+  // the sources build's keys that core code names: in the public tree their text lives in
+  // that build only, and the stub (full.stub.ts) lists their names as the catalog's type
+  const stub = Object.entries(import.meta.glob('../ru/full.stub.ts', { query: '?raw', import: 'default', eager: true }))[0]?.[1] as string | undefined
+  const sourcesKeys = new Set([...(stub ?? '').matchAll(/\|\s*'([^']+)'/g)].map((m) => m[1]!))
   const literal = /(['"`])([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9-]+)+)\1/g
   const dynamic = /`([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9-]+)*\.)\$\{/g
 
@@ -80,7 +84,7 @@ describe('keys named in the code', () => {
     for (const [path, src] of Object.entries(sources)) {
       for (const m of src.matchAll(literal)) {
         const k = m[2]!
-        if (!namespaces.has(k.split('.')[0]!) || k in ru || notKeys.has(k)) continue
+        if (!namespaces.has(k.split('.')[0]!) || k in ru || notKeys.has(k) || sourcesKeys.has(k)) continue
         // a file name
         if (/\.(tsx?|css|png|jpe?g|svg|json|mjs|js|html|webmanifest|woff2?|m3u8?|mp[34]|txt|csv|xml|zip)$/.test(k)) continue
         missing.add(`${path.replace('../../', '')}: ${k}`)
