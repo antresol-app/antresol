@@ -110,3 +110,39 @@ func TestRequiredFilesMustBeInEveryPlatformArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// minCore, the oldest server a release runs on, is carried into the release
+// manifest as written; a malformed one stops the release.
+func TestMinCoreIsKeptAndChecked(t *testing.T) {
+	write := func(src, extra string) {
+		os.WriteFile(src, []byte(`{"id":"demo","version":"1.2.3","contract":1,`+extra+`"platforms":{}}`), 0o644)
+	}
+	src, dir := setup(t)
+	archive(t, filepath.Join(dir, "demo-linux-amd64.tar.gz"), reg("bin/addon"))
+
+	write(src, `"minCore":"0.8.28",`)
+	if err := run(src, dir, "v1.2.3", addonOnly); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "antresol-addon.json"))
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil || m["minCore"] != "0.8.28" {
+		t.Fatalf("minCore in the release manifest: %v (%v)", m["minCore"], err)
+	}
+
+	write(src, "") // none: none is written
+	if err := run(src, dir, "v1.2.3", addonOnly); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "antresol-addon.json"))
+	if strings.Contains(string(b), "minCore") {
+		t.Fatalf("minCore invented: %s", b)
+	}
+
+	for _, bad := range []string{`"0.8"`, `"v0.8.28"`, `"0.8.28-rc.1"`, `""`, `8`, `null`, `"latest"`} {
+		write(src, `"minCore":`+bad+`,`)
+		if err := run(src, dir, "v1.2.3", addonOnly); err == nil || !strings.Contains(err.Error(), "minCore") {
+			t.Errorf("minCore %s: %v", bad, err)
+		}
+	}
+}

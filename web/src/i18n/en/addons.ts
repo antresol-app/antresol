@@ -20,6 +20,7 @@ export default {
   'addons.recheck': 'Check Again',
   'addons.pinned': 'Pinned by the deployment',
   'addons.webFailed': 'Its part in the app did not load ({reason}): the addon’s pages and settings are not shown. Reload the page; if that does not help, update the addon',
+  'addons.needsCore': 'Server version {version} or newer is needed — update the server',
   'addons.pinFailed': 'The pinned version could not be installed, see the server log',
   'addons.update': 'Update',
   'addons.updateNamed': 'Update “{name}”',

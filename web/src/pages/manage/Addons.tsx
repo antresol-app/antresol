@@ -268,6 +268,12 @@ export function Addons() {
                   )}{" "}
                   · {t(`addons.status.${a.status}` as Key)}
                   {a.enabled && a.status === "running" && <WebFailure id={a.id} />}
+                  {a.status === "incompatible" && a.minCore && (
+                    <>
+                      <br />
+                      <span className={styles.needsCore}>{t("addons.needsCore", { version: a.minCore })}</span>
+                    </>
+                  )}
                   {a.pinned && (
                     <>
                       <br />

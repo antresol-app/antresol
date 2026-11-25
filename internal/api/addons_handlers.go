@@ -135,6 +135,9 @@ type addonsAPI struct {
 	public *publicurl.Address
 	// hooks: the addons' hooks (helpers.status of «Состояние»; nil: none)
 	hooks *addons.Hooks
+	// origin: the scheme and host the request reached the server at, as the
+	// server believes them (auth.Network.Origin); the proxy tells the addon
+	origin func(*http.Request) string
 }
 
 func newAddonsAPI(deps Deps) *addonsAPI {
@@ -144,6 +147,7 @@ func newAddonsAPI(deps Deps) *addonsAPI {
 	a.maxHeight = func(r *http.Request) int { return remoteMaxHeight(&deps, r) }
 	a.public = deps.PublicAddress
 	a.hooks = deps.AddonHooks
+	a.origin = deps.Network.Origin
 	if deps.Tracking != nil && deps.Tracking.Store != nil {
 		a.trackStore, a.trackKick = deps.Tracking.Store, deps.Tracking.Kick
 	}
@@ -476,6 +480,9 @@ type addonItem struct {
 	PinFailed bool `json:"pinFailed"`
 	// Helpers: the helper services its manifest declares ([] when none)
 	Helpers []addonHelper `json:"helpers"`
+	// MinCore: the server version this installed release needs, when this
+	// server is older: the addon does not run (status "incompatible")
+	MinCore string `json:"minCore,omitempty"`
 }
 
 // addonHelper is a declared helper service as the app shows it: where the
@@ -496,9 +503,13 @@ func helperViews(hs []addons.Helper) []addonHelper {
 
 func (a *addonsAPI) item(ctx context.Context, in addons.Installed) addonItem {
 	lang := i18n.FromContext(ctx)
-	return addonItem{ID: in.ID, Name: localText(lang, in.Manifest.Name), Description: localText(lang, in.Manifest.Description),
+	it := addonItem{ID: in.ID, Name: localText(lang, in.Manifest.Name), Description: localText(lang, in.Manifest.Description),
 		Version: in.Version, Source: in.Source, Enabled: in.Enabled, Status: a.rt.Status(in.ID), Pinned: a.rt.Pinned(in.ID), PinFailed: a.rt.PinFailed(in.ID),
 		Helpers: helperViews(in.Manifest.Helpers)}
+	if it.Status == addons.StatusIncompatible && in.Manifest.Contract == addons.ContractVersion {
+		it.MinCore = in.Manifest.MinCore // its contract fits, so the server is older than it asks for
+	}
+	return it
 }
 
 // setUpdate fills the item's update fields from a check.
@@ -800,11 +811,30 @@ func (a *addonsAPI) rewrite(pr *httputil.ProxyRequest) {
 	}
 	h.Del("Cookie")
 	h.Del("Authorization")
+	a.setForwarded(in, h)
 	u := userOf(in)
 	b, _ := json.Marshal(addonUser{ID: u.ID, UID: u.UID, Name: u.Name, IsAdmin: u.IsAdmin, IsKid: u.IsKid, Lang: i18n.FromContext(in.Context()),
 		MaxRating: ratingLimit(u), MaxHeight: a.maxHeight(in), History: addonHistory(in.Context())})
 	sock, _ := in.Context().Value(addonSockKey{}).(string)
 	addons.SetUser(h, sock, addons.ASCIIJSON(b))
+}
+
+// setForwarded tells the addon where the browser reached the server:
+// X-Forwarded-Host and X-Forwarded-Proto, from the request as the server
+// believes it (auth.Network.Origin: the Host header, and the scheme of the
+// connection or of a trusted proxy), never a client's own copy. An addon
+// that writes absolute URLs of the server (a stream address for a speaker)
+// builds them from these; it takes no other host on a client's word.
+func (a *addonsAPI) setForwarded(in *http.Request, h http.Header) {
+	h.Del("X-Forwarded-Host")
+	h.Del("X-Forwarded-Proto")
+	if a.origin == nil {
+		return
+	}
+	if o, err := url.Parse(a.origin(in)); err == nil && o.Host != "" {
+		h.Set("X-Forwarded-Host", o.Host)
+		h.Set("X-Forwarded-Proto", o.Scheme)
+	}
 }
 
 // addonHistory is the separate history of the request for an addon

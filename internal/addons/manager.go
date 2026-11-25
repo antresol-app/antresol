@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -15,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/version"
 )
 
 // Manager installs, updates, enables and removes addons: it ties the
@@ -205,6 +208,9 @@ func (m *Manager) resolve(ctx context.Context, source string) (rel Release, src 
 		if rel.Manifest.ID != name {
 			return Release{}, "", errIDMismatch
 		}
+		if err := m.needsCore(rel.Manifest); err != nil {
+			return Release{}, "", err
+		}
 		return rel, LocalPrefix + name, nil
 	}
 	repo, err := ParseRepoURL(source)
@@ -214,7 +220,20 @@ func (m *Manager) resolve(ctx context.Context, source string) (rel Release, src 
 	if rel, err = m.Resolver.Latest(ctx, repo); err != nil {
 		return Release{}, "", err
 	}
+	if err := m.needsCore(rel.Manifest); err != nil {
+		return Release{}, "", err
+	}
 	return rel, "github.com/" + repo.Owner + "/" + repo.Name, nil
+}
+
+// needsCore is the NeedsCoreError of a release whose minCore is newer than
+// this server (nil when it fits): the install, the preview and the update
+// of it are refused with it, naming the version to update to.
+func (m *Manager) needsCore(man Manifest) error {
+	if min := man.NeedsCore(cmp.Or(m.Sup.Core, version.Version)); min != "" {
+		return NeedsCoreError{Version: man.Version, MinCore: min}
+	}
+	return nil
 }
 
 // Preview reads the manifest of the latest release of url without
@@ -620,7 +639,9 @@ func (m *Manager) CheckUpdate(ctx context.Context, id string, fresh bool) Update
 	} else {
 		var repo Repo
 		if repo, err = ParseRepoURL(in.Source); err == nil {
-			rel, err = m.Resolver.Check(ctx, repo, fresh)
+			if rel, err = m.Resolver.Check(ctx, repo, fresh); err == nil {
+				err = m.needsCore(rel.Manifest)
+			}
 		}
 	}
 	var nc NeedsCoreError

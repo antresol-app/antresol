@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/antresol-app/antresol/internal/version"
 )
 
 // Status of an addon process.
@@ -63,6 +66,9 @@ type Supervisor struct {
 	// addon on a current addonkit refuses one; an addon on an older
 	// addonkit does not check signatures at all.
 	AcceptUnsigned bool
+	// Core is the server's version, for the releases' minCore ("": the
+	// build's version; one that is no X.Y.Z, such as "dev", is never older).
+	Core string
 
 	extraEnv    []string      // test hook: added to the child env
 	backoffUnit time.Duration // test hook: restart backoff unit, default 1s
@@ -103,6 +109,12 @@ type proc struct {
 	done      chan struct{} // closed when the process has exited
 	healthyAt time.Time
 	ready     bool // its /health said ready (set before it becomes cur)
+}
+
+// fits reports whether the release can run here: the contract it speaks,
+// and a server at least as new as its minCore.
+func (s *Supervisor) fits(m Manifest) bool {
+	return m.Contract == ContractVersion && m.NeedsCore(cmp.Or(s.Core, version.Version)) == ""
 }
 
 func (s *Supervisor) logger() *log.Logger {
@@ -249,7 +261,7 @@ func (s *Supervisor) Start(ctx context.Context, in Installed) error {
 		return errShutdown
 	}
 	e := s.entryLocked(id)
-	if in.Manifest.Contract != ContractVersion {
+	if !s.fits(in.Manifest) {
 		if e.cur == nil {
 			s.setStatusLocked(e, StatusIncompatible)
 		}

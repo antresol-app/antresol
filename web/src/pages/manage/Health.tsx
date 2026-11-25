@@ -195,6 +195,12 @@ export function Health() {
                 <>
                   {/* a newer release is already in the version line */}
                   {!a.update && <AddonUpdateStatus a={a} />}
+                  {a.status === 'incompatible' && a.minCore && (
+                    <>
+                      {!a.update && <br />}
+                      <span className={styles.problem}>{t('addons.needsCore', { version: a.minCore })}</span>
+                    </>
+                  )}
                   {webFailed.has(a.id) && (
                     <>
                       {!a.update && <br />}

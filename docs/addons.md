@@ -37,5 +37,10 @@ Russian.
 
 - Extension updates are in **Settings → Server → Health → Versions and Updates** (see
   [Health and updates](updates.html)).
+- An extension can ask for a newer Antresol than yours. Then it is not installed or updated, and
+  the page says "Server version X or newer is needed — update the server". Update the server first
+  (see [Health and updates](updates.html)); the extension you have keeps working until then. If you
+  roll the server back to an older version, an installed extension that needs a newer one stops
+  with the same message, and starts again when the server is new enough.
 - Remove: **Extensions → ⋯ → Remove**. Its data stays unless you tick "Remove its data too".
 - An extension's log: **Extensions → ⋯ → Log**.

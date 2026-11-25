@@ -206,6 +206,18 @@ describe('«Расширения»', () => {
     expect(screen.getByRole('switch', { name: 'Привет' })).toBeEnabled()
   })
 
+  it('an addon for a newer server says which version it needs; a newer release for one says so in place of «Обновить»', async () => {
+    const needy = { ...notes, enabled: true, status: 'incompatible', minCore: '0.8.28' }
+    const later = { ...hello, update: null, updateState: 'needsCore', updateError: 'Нужна версия сервера 0.9.0 или новее — обновите сервер' }
+    serve((c) => (c.url === '/api/addons' && c.method === 'GET' ? json([later, needy]) : undefined))
+    open()
+    expect(await screen.findByText('Заметки')).toBeInTheDocument()
+    expect(screen.getByText(/Не подходит к этой версии Antresol/)).toBeInTheDocument()
+    expect(screen.getByText('Нужна версия сервера 0.8.28 или новее — обновите сервер')).toBeInTheDocument()
+    expect(screen.getByText('Нужна версия сервера 0.9.0 или новее — обновите сервер')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Обновить «Привет»' })).toBeNull()
+  })
+
   it('shows the last lines of the log', async () => {
     const calls = serve()
     open()

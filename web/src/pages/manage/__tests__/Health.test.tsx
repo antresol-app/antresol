@@ -90,6 +90,13 @@ describe('«Обновления»: addons', () => {
     expect(screen.getByRole('button', { name: 'Обновить «Онлайн»' })).toBeInTheDocument()
   })
 
+  it('says which server version an addon that does not fit needs', async () => {
+    serve(() => [{ ...base, id: 'fetcher', name: 'Загрузчик', version: '0.1.0', update: null, status: 'incompatible', updateState: '', minCore: '0.8.28' }])
+    render(<MemoryRouter><Health /></MemoryRouter>)
+    expect(await screen.findByText('Нужна версия сервера 0.8.28 или новее — обновите сервер')).toBeInTheDocument()
+    expect(screen.getByText('Не подходит к этой версии Antresol')).toBeInTheDocument()
+  })
+
   it('shows a running check and asks again until it answers', async () => {
     let n = 0
     serve(() => [

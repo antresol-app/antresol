@@ -2048,6 +2048,9 @@ export interface AddonInfo {
   /** Its pin could not be applied at boot (the server log says why): it
    * stays stopped and cannot be switched on. */
   pinFailed?: boolean
+  /** The server version this installed release needs, when the server is
+   * older (status 'incompatible': it is not running). Missing otherwise. */
+  minCore?: string
 }
 
 /** What an addon's release says about itself, before it is installed. */

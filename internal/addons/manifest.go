@@ -61,6 +61,10 @@ type Manifest struct {
 	Access      string              `json:"access,omitempty"` // "" (= "admins") | "admins" | "adults"
 	Hooks       []string            `json:"hooks,omitempty"`
 	Notify      []NotifyTopic       `json:"notify,omitempty"`
+	// MinCore is the oldest server this release runs on ("X.Y.Z"; "" any).
+	// An addition to contract 1: a server older than the field reads the
+	// manifest as one for a newer server (NeedsCoreError) and refuses it.
+	MinCore string `json:"minCore,omitempty"`
 	// Helpers are the helper services the addon needs beside the server
 	// (compose services without published ports, found by their service
 	// name); an addition to contract 1, absent for most addons.
@@ -76,6 +80,7 @@ var (
 	topicRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,29}$`)
 	scanKindRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,19}$`)
 	shaRe      = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	minCoreRe  = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`)
 
 	// "run" is the supervisor's socket directory next to the addon dirs.
 	reservedIDs = map[string]bool{"web": true, "preview": true, "x": true, "ui": true, "run": true,
@@ -147,6 +152,9 @@ func parseManifest(data []byte, newer bool) (Manifest, error) {
 		}
 		seen[p] = true
 	}
+	if m.MinCore != "" && !minCoreRe.MatchString(m.MinCore) {
+		return Manifest{}, userError("Неверный манифест расширения: неверная минимальная версия сервера")
+	}
 	if m.Access != "" && m.Access != "admins" && m.Access != "adults" {
 		return Manifest{}, userError("Неверный манифест расширения: неверный доступ")
 	}
@@ -198,6 +206,28 @@ func knownHook(h string) bool {
 		}
 	}
 	return false
+}
+
+// coreBase is the X.Y.Z of a server version ("0.8.28", "v0.8.28",
+// "0.8.30-rc.1"); ok is false for what is not one ("dev", a commit).
+func coreBase(v string) (base string, ok bool) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	return v, minCoreRe.MatchString(v)
+}
+
+// NeedsCore is the server version the release asks for (MinCore) when core,
+// the running server's version, is older than it, else "". A server whose
+// version is no X.Y.Z (a development build) is never older: a pre-release
+// of a version counts as that version.
+func (m Manifest) NeedsCore(core string) string {
+	have, ok := coreBase(core)
+	if !ok || m.MinCore == "" || !semverLess(have, m.MinCore) {
+		return ""
+	}
+	return m.MinCore
 }
 
 // ForAdults reports whether the addon's UI is open to adult members, not

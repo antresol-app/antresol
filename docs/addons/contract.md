@@ -26,6 +26,15 @@ this contract (a separate process, the proxy and the core API).
   more manifest fields, more shared names) is an addition: an addon written
   for contract 1 keeps working on every server that speaks 1. A change that
   would break one gets a new contract number.
+- **A field added to the manifest later reaches older servers as a
+  refusal.** A server refuses a manifest with a field it does not know
+  (see [Manifest](#manifest-antresol-addonjson)), and says «Версии X нужен
+  более новый сервер: обновите сервер» (`updateState` `"needsCore"`): it cannot tell
+  whether the release would run on it. A release that sets such a field
+  therefore reaches only servers that know it: ship the server that knows
+  the field first, and set the field in addon releases after it. This is
+  true of `minCore` (since the server release that introduced it), `helpers`
+  and the `helpers[].title` and `limits` keys before it.
 - **Frozen in contract 1:** the manifest, the process environment, the
   proxy, the core API, events, the slots, and the SDK's `registerAddon`,
   `addonApi`, `useAddonT`, `useEvents` and the shared modules' names below.
@@ -85,8 +94,10 @@ fetch per repository, 90 s per try, 3 tries) and keeps the answer for hours
 asks GitHub again. Each item says what a `null` `update` means in
 `updateState`: `""` nothing newer, `"checking"` still fetching (ask again),
 `"failed"` (`updateError` says why) or `"needsCore"` (the latest release's
-manifest is of a later contract, field, permission or hook: `updateError`
-names its version). A download that sends nothing for 60 s is resumed (a
+manifest is of a later contract, field, permission or hook, or its
+[`minCore`](#minimum-server-version-mincore) is newer than this server:
+`updateError` says which server it needs, or names the release's version when
+the manifest cannot be read). A download that sends nothing for 60 s is resumed (a
 `Range` request), up to 5 tries.
 
 ```
@@ -158,6 +169,7 @@ it is not installed), and the app shows it as locked.
   "author": "…",
   "homepage": "https://github.com/…",
   "contract": 1,
+  "minCore": "0.8.28",
   "platforms": {
     "linux/amd64": { "asset": "hello-linux-amd64.tar.gz", "sha256": "<64 hex>" },
     "linux/arm64": { "asset": "hello-linux-arm64.tar.gz", "sha256": "<64 hex>" },
@@ -174,6 +186,7 @@ it is not installed), and the app shows it as locked.
 | `name`, `description` | `{ "ru", "en" }`; the app shows the interface language's, else the other; `name` must not be empty in both |
 | `version` | semver without a leading `v` (`1.2.3`, `1.2.3-beta.1`); updates must be newer |
 | `contract` | `1` |
+| `minCore` | optional: the oldest server version the release runs on, `X.Y.Z` (no `v`, no pre-release part), see [below](#minimum-server-version-mincore); anything else is refused («Неверный манифест расширения: неверная минимальная версия сервера») |
 | `platforms` | `"<GOOS>/<GOARCH>"` → asset, the keys only `linux/amd64`, `linux/arm64`, `darwin/arm64`; a server whose platform is missing refuses the install |
 | `web` | optional; no web part when absent |
 | `permissions` | any of `events`, `library.read`, `library.write`, `files.holds`, `metadata`, `images`, `play`, `notify`, `users.read`, `tracking`, `imports`, `requests`, `voiceover`, `progress`, each at most once; an unknown or repeated one is refused |
@@ -186,6 +199,43 @@ it is not installed), and the app shows it as locked.
 Unknown fields, and anything after the JSON object, are refused. A platform asset name is a bare file name (no
 `/` or `\`). Build `linux/amd64`, `linux/arm64` and `darwin/arm64` so that
 the addon runs wherever the server does.
+
+### Minimum server version: `minCore`
+
+A release may say which server it needs: `"minCore": "0.8.28"` (the
+version of the release image, `GET /api/about`'s `version`). It is for what
+the addon uses of the server that older ones lack: a part of the web SDK's
+`ui`, a hook, a core API call. Set it to the **oldest version you checked**
+the addon on, not to the newest one you built it against.
+
+- **Install, update and preview** of a release whose `minCore` is newer than
+  the server are refused with 400 «Нужна версия сервера 0.8.28 или новее —
+  обновите сервер» (English: "Server version 0.8.28 or newer is needed —
+  update the server"); nothing is downloaded or installed and the running
+  version stays. The same goes for a pin (`VAULT_ADDONS_PIN`) of such a
+  release: it is logged as a failed pin.
+- **The update check** (`GET /api/addons`) lists such a release as no
+  update: `updateState` is `"needsCore"` and `updateError` is that message,
+  which the app shows on the addon's row in place of «Обновить».
+- **An installed release** that needs a newer server than the one running
+  (the server was rolled back to an older image) is not started: its status
+  is `"incompatible"` (as for another contract) and its `GET /api/addons`
+  item carries `"minCore"`, which the app shows as the same message. It
+  is left out of `GET /api/addons/web`, so the apps' discovery
+  (`GET /api/addons/web`, then `GET x/app` of each addon) does not list
+  it, and its proxy answers 503 «Расширение не запущено». Its data and
+  its row stay; a server of the version it needs runs it again.
+- **Which version counts.** The server compares the `X.Y.Z` of its own
+  version (a pre-release such as `0.8.30-rc.1`, or a build suffix, counts as
+  `0.8.30`). A server whose version is not an `X.Y.Z` (a development
+  build) never refuses on `minCore`.
+- **Servers that predate the field** read a manifest with `minCore` as one
+  for a newer server (the rule under [Versioning](#versioning)): they refuse
+  its install and update with «Версии X нужен более новый сервер: обновите
+  сервер» even when they would run it. Set `minCore` in releases made after
+  the server that knows it is out; until then leave it out.
+- `addonkit`'s `cmd/manifest` carries `minCore` from the source manifest
+  into the release manifest and refuses one that is not an `X.Y.Z`.
 
 ### Helper services: `helpers`
 
@@ -370,6 +420,21 @@ streams the answer back.
   sandboxed (see [Trust](#trust-addons-are-not-sandboxed)), so this gives it nothing it could not reach.
 - **No credentials.** The browser's `Cookie` and `Authorization`, and any
   `X-Antresol-*` header the browser sent, are dropped.
+- **Where the browser reached the server.** The proxy sets
+  `X-Forwarded-Host` and `X-Forwarded-Proto` itself: the request's `Host`
+  (with its port) and `https` or `http` (`https` when the connection is TLS,
+  or when a proxy the admin configured as trusted says so in its own
+  `X-Forwarded-Proto`). Whatever the browser sent as `X-Forwarded-*` or
+  `Forwarded` is dropped, so the addon may believe the two as far as it
+  believes the server's own `Host` handling. An addon that writes an
+  absolute URL of the server (a stream address for a speaker) builds it
+  from these (`<proto>://<host>`, after checking it is a plain host) and
+  never from a host a client put in a body or a query, or the profile
+  chooses which machine fetches it. A server before this answer sent
+  neither header: an addon that needs them refuses without them (or asks
+  for a `minCore` that has them). `Host` is the one the client wrote, so
+  an address that must hold whatever a client says is the admin's, in the
+  addon's own setting.
 - **Answers.** `Set-Cookie`, `Clear-Site-Data`, `Service-Worker-Allowed`
   and every `Access-Control-*` header are dropped;
   `X-Content-Type-Options: nosniff` is set, and an answer that is not JSON (`application/json`, `*+json`) or

@@ -22,8 +22,9 @@
 .checkProblem {
   color: var(--warning);
 }
-/* a pin that failed at boot */
-.pinFailed {
+/* a pin that failed at boot; an installed release for a newer server */
+.pinFailed,
+.needsCore {
   color: var(--destructive-text);
 }
 

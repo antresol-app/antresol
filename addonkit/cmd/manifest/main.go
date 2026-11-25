@@ -4,7 +4,9 @@
 // first checks each archive the way the core will unpack it: regular files
 // and directories only (no links, no pax global header, no AppleDouble
 // "._" files), and a platform archive holds bin/addon (and each file named
-// by -require: an addon that ships a pinned tool beside its program).
+// by -require: an addon that ships a pinned tool beside its program). The
+// source's other keys pass through as they are; "minCore", the oldest server
+// the release runs on, must be an X.Y.Z when present.
 //
 //	go run github.com/antresol-app/antresol/addonkit/cmd/manifest \
 //	    -src antresol-addon.json -dir dist [-tag v1.2.3] [-require bin/tool,...]
@@ -27,6 +29,9 @@ import (
 	"sort"
 	"strings"
 )
+
+// minCoreRe is the form of the manifest's minCore (the core checks the same).
+var minCoreRe = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`)
 
 type asset struct {
 	Asset  string `json:"asset"`
@@ -63,6 +68,11 @@ func run(src, dir, tag string, need []string) error {
 	version, _ := m["version"].(string)
 	if id == "" || version == "" {
 		return fmt.Errorf("%s: id and version are required", src)
+	}
+	if v, ok := m["minCore"]; ok {
+		if s, _ := v.(string); !minCoreRe.MatchString(s) {
+			return fmt.Errorf("%s: minCore must be a server version X.Y.Z (like 0.8.28), not %v", src, v)
+		}
 	}
 	if tag != "" && tag != "v"+version {
 		return fmt.Errorf("tag %s does not match version %s (want v%s)", tag, version, version)

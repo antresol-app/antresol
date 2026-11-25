@@ -174,14 +174,23 @@ type fetchError struct {
 func (e *fetchError) Error() string { return string(e.msg) }
 func (e *fetchError) Unwrap() error { return e.msg }
 
-// NeedsCoreError: the latest release's manifest is one this server cannot
-// read (a newer contract, field, permission, hook or platform), while it
-// reads as a release of Version for a newer server.
-type NeedsCoreError struct{ Version string }
+// NeedsCoreError: the latest release needs a newer server than this one,
+// and says which: its manifest is one this server cannot read (a newer
+// contract, field, permission, hook or platform: only the release's Version
+// is known), or it names the server version it needs (MinCore).
+type NeedsCoreError struct{ Version, MinCore string }
 
-const needsCoreMsg = "Версии %s нужен более новый сервер: обновите сервер"
+const (
+	needsCoreMsg    = "Версии %s нужен более новый сервер: обновите сервер"
+	needsMinCoreMsg = "Нужна версия сервера %s или новее — обновите сервер"
+)
 
-func (e NeedsCoreError) Error() string { return fmt.Sprintf(needsCoreMsg, e.Version) }
+func (e NeedsCoreError) Error() string {
+	if e.MinCore != "" {
+		return fmt.Sprintf(needsMinCoreMsg, e.MinCore)
+	}
+	return fmt.Sprintf(needsCoreMsg, e.Version)
+}
 func (e NeedsCoreError) Unwrap() error { return userError(e.Error()) }
 
 // statusError is a non-200 answer.
@@ -384,7 +393,7 @@ func (r *Resolver) fetchLatest(ctx context.Context, repo Repo) (Release, error) 
 	if rel.Manifest, err = ParseManifest(mb); err != nil {
 		// a manifest of a newer contract reads as a release all the same
 		if m, terr := parseManifest(mb, true); terr == nil {
-			nc := NeedsCoreError{m.Version}
+			nc := NeedsCoreError{Version: m.Version}
 			return Release{}, &fetchError{msg: userError(nc.Error()), cause: nc}
 		}
 		ue, _ := err.(userError)

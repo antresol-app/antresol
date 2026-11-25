@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -24,6 +25,7 @@ import (
 	"github.com/antresol-app/antresol/internal/db"
 	"github.com/antresol-app/antresol/internal/events"
 	"github.com/antresol-app/antresol/internal/files"
+	"github.com/antresol-app/antresol/internal/i18n"
 	"github.com/antresol-app/antresol/internal/library"
 )
 
@@ -1274,5 +1276,120 @@ func TestAddonHelpersListed(t *testing.T) {
 	var pv struct{ Helpers []helper }
 	if err := json.Unmarshal(w.Body.Bytes(), &pv); err != nil || len(pv.Helpers) != 1 || pv.Helpers[0].Address != "http://cache-svc:8191" {
 		t.Fatalf("preview: %d %s", w.Code, w.Body)
+	}
+}
+
+// The proxy tells the addon where the browser reached the server, from what
+// the server believes: the request's host, and its scheme (the connection's
+// or a trusted proxy's): never the client's own X-Forwarded-* (ADD-16).
+func TestAddonProxyTellsTheServersOwnAddress(t *testing.T) {
+	e := newAddonEnv(t, func(d *Deps) {
+		d.Network = &auth.Network{Proxies: []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}}
+	})
+	forwarded := func(w *httptest.ResponseRecorder) (host, proto []string) {
+		t.Helper()
+		var got struct{ Headers http.Header }
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != 200 {
+			t.Fatalf("proxy: %d %s", w.Code, w.Body)
+		}
+		return got.Headers.Values("X-Forwarded-Host"), got.Headers.Values("X-Forwarded-Proto")
+	}
+	spoof := []string{"X-Forwarded-Host", "evil.example", "X-Forwarded-Proto", "https", "Forwarded", "host=evil.example"}
+
+	// a client that is no proxy: its own claims are dropped, the host is the request's
+	host, proto := forwarded(e.do("GET", "http://nas.lan:8420/api/addons/hello/x/echo", "", e.admin, spoof...))
+	if !reflect.DeepEqual(host, []string{"nas.lan:8420"}) || !reflect.DeepEqual(proto, []string{"http"}) {
+		t.Fatalf("host %v, proto %v", host, proto)
+	}
+	if w := e.do("GET", "http://nas.lan:8420/api/addons/hello/x/echo", "", e.admin, spoof...); strings.Contains(w.Body.String(), "evil.example") {
+		t.Fatalf("a client's forwarded address reached the addon: %s", w.Body)
+	}
+
+	// a configured proxy's X-Forwarded-Proto counts
+	e.peer = "203.0.113.5:40000"
+	host, proto = forwarded(e.do("GET", "http://home.example/api/addons/hello/x/echo", "", e.admin, "X-Forwarded-Proto", "https"))
+	if !reflect.DeepEqual(host, []string{"home.example"}) || !reflect.DeepEqual(proto, []string{"https"}) {
+		t.Fatalf("behind a proxy: host %v, proto %v", host, proto)
+	}
+}
+
+// A Host that is no host name is not passed on as one.
+func TestAddonSetForwardedOddHost(t *testing.T) {
+	a := &addonsAPI{}
+	h := http.Header{"X-Forwarded-Host": {"client"}, "X-Forwarded-Proto": {"https"}}
+	a.setForwarded(&http.Request{}, h) // no origin known: nothing, and the client's copy gone
+	if len(h.Values("X-Forwarded-Host"))+len(h.Values("X-Forwarded-Proto")) != 0 {
+		t.Fatalf("%v", h)
+	}
+	a.origin = (*auth.Network)(nil).Origin
+	for _, host := range []string{"a b", "a/b", "a\"b", ""} {
+		h = http.Header{}
+		a.setForwarded(&http.Request{Host: host}, h)
+		if got := h.Get("X-Forwarded-Host"); got != "localhost" {
+			t.Errorf("Host %q forwarded as %q", host, got)
+		}
+	}
+}
+
+// An installed release that needs a newer server than this one does not run:
+// the list says which server it needs, the apps' discovery (the web list)
+// leaves it out and its proxy answers «not running».
+func TestAddonNeedingANewerServer(t *testing.T) {
+	e := newAddonEnv(t)
+	needy := e.fake.installed["hello"]
+	needy.ID, needy.Manifest.ID, needy.Manifest.MinCore = "needy", "needy", "0.8.28"
+	older := needy // incompatible for its contract, not for a server version
+	older.ID, older.Manifest.ID, older.Manifest.MinCore, older.Manifest.Contract = "oldc", "oldc", "", addons.ContractVersion+1
+	e.fake.mu.Lock()
+	e.fake.installed["needy"], e.fake.installed["oldc"] = needy, older
+	e.fake.status["needy"], e.fake.status["oldc"] = addons.StatusIncompatible, addons.StatusIncompatible
+	e.fake.mu.Unlock()
+
+	var list []map[string]any
+	w := e.do("GET", "/api/addons", "", e.admin)
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	for _, it := range list {
+		min, has := it["minCore"]
+		switch it["id"] {
+		case "needy":
+			if min != "0.8.28" || it["status"] != "incompatible" {
+				t.Errorf("needy: %v", it)
+			}
+		default:
+			if has {
+				t.Errorf("%v: minCore %v", it["id"], min)
+			}
+		}
+	}
+
+	w = e.do("GET", "/api/addons/web", "", e.admin)
+	if strings.Contains(w.Body.String(), "needy") || !strings.Contains(w.Body.String(), "hello") {
+		t.Fatalf("web list: %s", w.Body)
+	}
+	for _, p := range []string{"/api/addons/needy/x/app", "/api/addons/needy/x/echo"} {
+		if w := e.do("GET", p, "", e.admin); w.Code != 503 {
+			t.Errorf("%s: %d %s", p, w.Code, w.Body)
+		}
+	}
+}
+
+// An install, an update or a preview of a release that needs a newer server
+// is refused with the manager's message, in the language of the request.
+func TestAddonErrNeedsCore(t *testing.T) {
+	for lang, want := range map[string]string{
+		"ru": "Нужна версия сервера 0.8.28 или новее — обновите сервер",
+		"en": "Server version 0.8.28 or newer is needed — update the server",
+	} {
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/api/addons/preview", nil)
+		r.Header.Set("Accept-Language", lang)
+		i18n.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			addonErr(w, r, addons.NeedsCoreError{Version: "1.0.0", MinCore: "0.8.28"})
+		})).ServeHTTP(rec, r)
+		if rec.Code != 400 || !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s: %d %s", lang, rec.Code, rec.Body)
+		}
 	}
 }
