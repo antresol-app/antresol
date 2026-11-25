@@ -34,8 +34,11 @@
   padding-top: var(--s-3);
   border-top: 1px solid var(--separator);
 }
+/* a column of its own that is worth reading: when the card has no room for
+   this and the button together, the button goes under the text (at 1280 pt the
+   sentence was squeezed into three short lines beside it) */
 .text {
-  flex: 1 1 16ch;
+  flex: 1 1 28ch;
   min-width: 0;
   font: var(--t-footnote);
   color: var(--label-2);

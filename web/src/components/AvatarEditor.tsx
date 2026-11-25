@@ -79,7 +79,6 @@ export function AvatarEditor({ name, avatar, onAvatar, photo, change, onChange }
           />
         ))}
       </div>
-      <p className={styles.hint}>{t('comp.photo.hint')}</p>
       {pick.element}
     </div>
   )

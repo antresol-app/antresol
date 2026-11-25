@@ -84,6 +84,68 @@ func TestAISettings(t *testing.T) {
 	}
 }
 
+// The server's own model (VAULT_LLM_*) is the page's «Сервер — модель»: it is
+// listed whatever is chosen, «Проверить» asks it, and «Выключено» really
+// turns AI off for every task even though the environment has it.
+func TestAISettingsOffBeatsServerModel(t *testing.T) {
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": "ok"}}}})
+	}))
+	defer model.Close()
+	t.Setenv("VAULT_LLM_URL", model.URL+"/v1")
+	t.Setenv("VAULT_LLM_MODEL", "server-model")
+	e, _ := newChannelsEnvWithSettings(t)
+
+	put := func(ai map[string]any) {
+		t.Helper()
+		var cur map[string]any
+		_ = json.Unmarshal(e.do("GET", "/api/settings", "", e.admin).Body.Bytes(), &cur)
+		cur["ai"] = ai
+		cur["streamCacheGB"], cur["quality"] = 50, 1080 // this test server has no defaults
+		b, _ := json.Marshal(cur)
+		if w := e.do("PUT", "/api/settings", string(b), e.admin); w.Code != 200 {
+			t.Fatalf("put %v: %d %s", ai, w.Code, w.Body)
+		}
+	}
+	state := func() (fromEnv string, off bool, available bool) {
+		t.Helper()
+		var got struct {
+			AI        struct{ Off bool }
+			AIFromEnv string `json:"aiFromEnv"`
+		}
+		if err := json.Unmarshal(e.do("GET", "/api/settings", "", e.admin).Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		opts := e.do("GET", "/api/channels/options", "", e.admin).Body.String()
+		return got.AIFromEnv, got.AI.Off, strings.Contains(opts, `"aiAvailable":true`)
+	}
+
+	// nothing chosen: the server's model is the choice and the tasks ask it
+	if env, off, on := state(); env != "server-model" || off || !on {
+		t.Fatalf("default: env %q off %v available %v", env, off, on)
+	}
+	// «Проверить» with nothing typed asks the server's model
+	w := e.do("POST", "/api/settings/ai/test", `{}`, e.admin)
+	if !strings.Contains(w.Body.String(), `"ok":true`) || !strings.Contains(w.Body.String(), `"model":"server-model"`) {
+		t.Fatalf("test of the server's model %d %s", w.Code, w.Body)
+	}
+	// «Выключено»: no task asks any model, and the server's one is still listed to come back to
+	put(map[string]any{"url": "", "model": "", "off": true})
+	if env, off, on := state(); env != "server-model" || !off || on {
+		t.Fatalf("off: env %q off %v available %v", env, off, on)
+	}
+	// another provider is a model chosen (its own settings, not the server's), the server's stays listed
+	put(map[string]any{"url": model.URL + "/v1", "model": "mine", "off": true})
+	if env, off, on := state(); env != "server-model" || off || !on {
+		t.Fatalf("own model: env %q off %v available %v", env, off, on)
+	}
+	// «Сервер — модель» again: an empty address and not off
+	put(map[string]any{"url": "", "model": ""})
+	if env, off, on := state(); env != "server-model" || off || !on {
+		t.Fatalf("back to the server's: env %q off %v available %v", env, off, on)
+	}
+}
+
 func newChannelsEnvWithSettings(t *testing.T) (*libEnv, *sql.DB) {
 	var db *sql.DB
 	e := newLibEnvWith(t, func(d *Deps, x *sql.DB) {

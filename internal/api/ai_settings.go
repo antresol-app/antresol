@@ -19,6 +19,8 @@ import (
 // address). One endpoint, three models by weight (Models): each task asks
 // the tier that fits it (channels.Tier).
 // Key never leaves the server: settingsAPI.load drops it from answers.
+// Off is the explicit «Выключено»: no model is asked, not even the server's
+// own (VAULT_LLM_*); without it an empty address means the server's.
 type AISettings struct {
 	URL string `json:"url"`
 	// Model is the medium tier, kept for clients and builds that know one
@@ -26,6 +28,7 @@ type AISettings struct {
 	Model  string   `json:"model"`
 	Models AIModels `json:"models"`
 	Key    string   `json:"key,omitempty"`
+	Off    bool     `json:"off,omitempty"`
 }
 
 // AIModels are the three models of the endpoint: light (quick, cheap,
@@ -110,7 +113,7 @@ func (a AISettings) validate() string {
 
 // merged: what a PUT stores — trimmed, the tiers filled; an empty key
 // keeps the stored one (answers never carry it); no address clears the
-// models and the key.
+// models and the key (and keeps only Off: the server's own model, or none).
 func (a AISettings) merged(stored AISettings) AISettings {
 	a.URL = strings.TrimRight(strings.TrimSpace(a.URL), "/")
 	a.Key = strings.TrimSpace(a.Key)
@@ -118,8 +121,9 @@ func (a AISettings) merged(stored AISettings) AISettings {
 		a.Key = stored.Key
 	}
 	if a.URL == "" {
-		return AISettings{}
+		return AISettings{Off: a.Off}
 	}
+	a.Off = false // an address is a model chosen
 	if a.Models == (AIModels{}) && a.Model != "" && a.Model == stored.Model && a.URL == stored.URL {
 		a.Models = stored.Models // a client of one model that did not change it
 	}
@@ -149,11 +153,15 @@ func (a AISettings) llm(t channels.Tier) *channels.LLM {
 
 // llmSource is the model a task of tier t asks now: the settings' when
 // set, else the server's VAULT_LLM_* (env: one model for every tier; nil:
-// none — «Опишите канал» reads the words alone).
+// none — «Опишите канал» reads the words alone). «Выключено» (Off) is none,
+// whatever the server has in its environment.
 func llmSource(db *sql.DB, defaults AppSettings, env *channels.LLM) func(context.Context, channels.Tier) *channels.LLM {
 	return func(ctx context.Context, t channels.Tier) *channels.LLM {
 		if db != nil {
 			if app, err := LoadAppSettings(ctx, db, defaults); err == nil {
+				if app.AI.Off {
+					return nil
+				}
 				if l := app.AI.llm(t); l != nil {
 					return l
 				}

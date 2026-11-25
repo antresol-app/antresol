@@ -112,7 +112,6 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
       actions={[{ label: t('common.done'), kind: 'primary', run: () => void done() }]}
     >
       <div className={styles.form}>
-        <p className={styles.hint}>{t('comp.playback.intro')}</p>
         {state.status === 'loading' && (
           <p className={styles.hint} role="status">
             {t('common.loading')}
@@ -169,7 +168,6 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
                   onChange={(subMode) => change({ subMode })}
                 />
               </div>
-              <p className={styles.hint}>{t('comp.playback.subModeHint')}</p>
             </section>
             {prefs.subMode !== 'off' && (
               <section className={styles.section} aria-labelledby={`${id}-subs`}>
@@ -220,16 +218,13 @@ export function PlaybackPrefsSheet({ userId, name, onClose }: PlaybackPrefsSheet
               </div>
               <p className={styles.hint}>{t('comp.playback.styleHint')}</p>
             </section>
-            <div className={styles.footer}>
-              <p className={styles.hint} role="status">
-                {autosave.status === 'saving' ? t('settings.saving') : autosave.status === 'saved' ? t('settings.saved') : prefs.custom ? '' : t('comp.playback.household')}
-              </p>
-              {prefs.custom && (
+            {prefs.custom && (
+              <div className={styles.footer}>
                 <Button size="small" variant="secondary" disabled={busy} onClick={() => void reset()}>
                   {t('comp.playback.reset')}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
         {error && (

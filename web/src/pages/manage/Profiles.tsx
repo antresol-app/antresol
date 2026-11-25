@@ -79,12 +79,9 @@ export function Profiles() {
   return (
     <section aria-labelledby="profiles-title">
       <header className={m.header}>
-        <div>
-          <h2 id="profiles-title" className={m.title}>
-            {t('manage.section.profiles')}
-          </h2>
-          <p className={m.subtitle}>{t('profiles.subtitle')}</p>
-        </div>
+        <h2 id="profiles-title" className={m.title}>
+          {t('manage.section.profiles')}
+        </h2>
         <div className={m.headerActions}>
           <Button icon="plus" onClick={() => setEdit({ user: null })}>
             {t('profiles.new')}
@@ -164,7 +161,7 @@ export function Profiles() {
       {list && (
         // the server's list of devices: every profile's (a profile's own «Устройства» are its own)
         <GroupedSection className={styles.devices}>
-          <ListLinkRow icon="devices" tint="blue" label={t('profiles.devices')} hint={t('profiles.devices.hint')} onOpen={() => setDevices(true)} />
+          <ListLinkRow icon="devices" tint="blue" label={t('profiles.devices')} onOpen={() => setDevices(true)} />
         </GroupedSection>
       )}
       {list && service.length > 0 && (
@@ -341,7 +338,7 @@ function ProfileSheet({ user, onClose, onSaved }: { user: User | null; onClose: 
                 ? `${t('profiles.passwordDropped')} ${lanOnlyHint()}`
                 : hasPassword
                   ? t('profiles.keepEmpty')
-                  : `${t('profiles.optional')} ${lanOnlyHint()}`
+                  : lanOnlyHint()
           }
         />
         {user?.hasPassword && !admin && (

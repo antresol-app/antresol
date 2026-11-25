@@ -105,3 +105,11 @@
   color: var(--label-2);
   overflow-wrap: anywhere;
 }
+
+/* «Добавить папку…»: the accent row at the end of a kind's list */
+.addFolder {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--accent);
+}

@@ -69,7 +69,7 @@ describe('MyShowsAccount', () => {
   it('says in one line that it only reads, and shows the status line', async () => {
     state = linked()
     await open()
-    expect(await screen.findByText('Только чтение: список с MyShows попадает в отметки; отправка обратно появится позже.')).toBeInTheDocument()
+    expect(await screen.findByText('Только чтение: список с MyShows попадает в отметки.')).toBeInTheDocument()
     expect(screen.getByText(/Синхронизировано .* · не найдено в TMDB: 3/)).toBeInTheDocument()
   })
 

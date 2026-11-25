@@ -181,7 +181,6 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
       actions={[{ label: t('common.done'), kind: 'primary', run: () => void done() }]}
     >
       <div className={styles.form}>
-        <p className={styles.hint}>{t('comp.notify.intro')}</p>
         {state.status === 'loading' && (
           <p className={styles.hint} role="status">
             {t('common.loading')}
@@ -320,17 +319,11 @@ export function NotifySheet({ userId, name, onClose }: NotifySheetProps) {
                 <li className={styles.item}>
                   <div className={styles.itemText}>
                     <span aria-hidden>{t('comp.notify.quiet')}</span>
-                    <span className={styles.hint} id={`${id}-quiet-hint`}>
-                      {t('comp.notify.quietHint')}
-                    </span>
                   </div>
-                  <Toggle label={t('comp.notify.quiet')} checked={prefs.quietHours} describedBy={`${id}-quiet-hint`} onChange={(quietHours) => flip({ quietHours })} />
+                  <Toggle label={t('comp.notify.quiet')} checked={prefs.quietHours} onChange={(quietHours) => flip({ quietHours })} />
                 </li>
               </ul>
               <p className={styles.hint}>{t('comp.notify.digest')}</p>
-              <p className={styles.hint} role="status">
-                {autosave.status === 'saving' ? t('settings.saving') : autosave.status === 'saved' ? t('settings.saved') : ''}
-              </p>
               {/* a server setting: only the admin can do anything about it */}
               {!prefs.publicLinks && isAdmin && (
                 <p className={styles.hint}>

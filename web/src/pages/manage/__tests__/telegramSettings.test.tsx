@@ -42,7 +42,7 @@ describe('«Бот Telegram» в настройках сервера', () => {
   it('not set up: says so; the token is pasted, checked, kept, and the bot’s name shown', async () => {
     render(<TelegramSection />)
     expect(await screen.findByText('Не подключён')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Настроить бота…' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Бот Telegram/ }))
     const sheet = screen.getByRole('dialog', { name: 'Бот Telegram' })
     // the steps are first, until the bot is set up
     expect(within(sheet).getByText(/@BotFather/, { selector: 'li' })).toBeInTheDocument()
@@ -58,13 +58,13 @@ describe('«Бот Telegram» в настройках сервера', () => {
     expect(within(sheet).getByLabelText('Токен бота')).toHaveValue('')
     expect(document.body.textContent).not.toContain('test-token')
     await userEvent.click(within(sheet).getByRole('button', { name: 'Готово' }))
-    expect(await screen.findByText('Подключён · @home_bot')).toBeInTheDocument()
+    expect(await screen.findByText('@home_bot')).toBeInTheDocument()
   })
 
   it('a token Telegram refuses shows its answer and keeps nothing', async () => {
     putAnswer = () => json({ error: 'Telegram не принял токен — проверьте, что он скопирован целиком и бот не удалён' }, 400)
     render(<TelegramSection />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Настроить бота…' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Бот Telegram/ }))
     const sheet = screen.getByRole('dialog', { name: 'Бот Telegram' })
     await userEvent.type(within(sheet).getByLabelText('Токен бота'), '999:wrong-token')
     await userEvent.click(within(sheet).getByRole('button', { name: 'Проверить' }))
@@ -75,8 +75,8 @@ describe('«Бот Telegram» в настройках сервера', () => {
   it('set up: the row names the bot; «Проверить» asks again without a token; «Отключить бота» forgets it', async () => {
     bot = { set: true, username: 'home_bot', name: 'Home Media', polling: true }
     render(<TelegramSection />)
-    expect(await screen.findByText('Подключён · @home_bot')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Настроить бота…' }))
+    expect(await screen.findByText('@home_bot')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Бот Telegram/ }))
     const sheet = screen.getByRole('dialog', { name: 'Бот Telegram' })
     expect(within(sheet).getByText('Токен сохранён. Вставьте новый, чтобы заменить его.')).toBeInTheDocument()
     // the steps are on demand now
@@ -93,7 +93,7 @@ describe('«Бот Telegram» в настройках сервера', () => {
   it('says what is in the way when the server cannot poll', async () => {
     bot = { set: true, username: 'home_bot', polling: true, problem: 'conflict' }
     render(<TelegramSection />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Настроить бота…' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Бот Telegram/ }))
     expect(await screen.findByText(/уже забирает другая программа/)).toBeInTheDocument()
   })
 })

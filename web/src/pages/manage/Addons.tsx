@@ -193,12 +193,9 @@ export function Addons() {
   return (
     <section aria-labelledby="addons-title">
       <header className={m.header}>
-        <div>
-          <h2 id="addons-title" className={m.title}>
-            {t("addons.title")}
-          </h2>
-          <p className={m.subtitle}>{t("addons.subtitle")}</p>
-        </div>
+        <h2 id="addons-title" className={m.title}>
+          {t("addons.title")}
+        </h2>
         <div className={m.headerActions}>
           {list.some((a) => !a.pinned) && (
             <Button

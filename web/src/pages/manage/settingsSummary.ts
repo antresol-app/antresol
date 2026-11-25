@@ -24,7 +24,8 @@ export function settingsSummary(group: string, v: Values): string {
     case 'processing':
       return v.transcodingName === 'software' ? t('settings.summary.cpu') : (v.transcodingName ?? '')
     case 'ai':
-      return v.ai?.url ? v.ai.model : v.aiFromEnv ? v.aiFromEnv : t('settings.summary.offAI')
+      if (v.ai?.url) return v.ai.model
+      return v.ai?.off || !v.aiFromEnv ? t('settings.summary.offAI') : v.aiFromEnv
     default:
       return ''
   }

@@ -44,12 +44,9 @@ export function Stats() {
   return (
     <section aria-labelledby="stats-title">
       <header className={m.header}>
-        <div>
-          <h2 id="stats-title" className={m.title}>
-            {t('stats.title')}
-          </h2>
-          <p className={m.subtitle}>{t('stats.subtitleLibrary')}</p>
-        </div>
+        <h2 id="stats-title" className={m.title}>
+          {t('stats.title')}
+        </h2>
       </header>
       {error && (
         <div className={m.problem} role="alert">
@@ -107,50 +104,49 @@ export function Stats() {
           )}
           {!user?.libraryOnly && picked && <DiskBreakdownSheet segment={picked} onClose={() => setPicked(null)} />}
 
-          <div className={styles.columns}>
-            <div>
-              <h3 className={m.groupTitle}>{t('stats.byUser')}</h3>
-              {data.watchedByUser.length === 0 ? (
-                <p className={m.groupFoot}>{t('stats.byUser.empty')}</p>
-              ) : (
-                <ul className={m.group}>
-                  {data.watchedByUser.map((u) => (
-                    <li key={u.user} className={`${m.row} ${styles.userRow}`}>
-                      <Avatar name={u.user} avatar={u.avatar} photo={u.photo} size={30} />
-                      <span className={styles.userName}>{u.user}</span>
-                      <span className={styles.barTrack} aria-hidden>
-                        <span className={styles.bar} style={{ width: `${(u.hours30d / maxHours) * 100}%` }} />
-                      </span>
-                      <span className={styles.hours}>{hours(u.hours30d)}</span>
-                    </li>
-                  ))}
-                </ul>
+          {/* a section with nothing in it is not drawn (no title over «ничего») */}
+          {(data.watchedByUser.length > 0 || data.topItems30d.length > 0) && (
+            <div className={styles.columns}>
+              {data.watchedByUser.length > 0 && (
+                <div>
+                  <h3 className={m.groupTitle}>{t('stats.byUser')}</h3>
+                  <ul className={m.group}>
+                    {data.watchedByUser.map((u) => (
+                      <li key={u.user} className={`${m.row} ${styles.userRow}`}>
+                        <Avatar name={u.user} avatar={u.avatar} photo={u.photo} size={30} />
+                        <span className={styles.userName}>{u.user}</span>
+                        <span className={styles.barTrack} aria-hidden>
+                          <span className={styles.bar} style={{ width: `${(u.hours30d / maxHours) * 100}%` }} />
+                        </span>
+                        <span className={styles.hours}>{hours(u.hours30d)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {data.topItems30d.length > 0 && (
+                <div>
+                  <h3 className={m.groupTitle}>{t('stats.top')}</h3>
+                  <ol className={m.group}>
+                    {data.topItems30d.map((it, i) => (
+                      <li key={it.id} className={`${m.row} ${styles.topRow}`}>
+                        <span className={styles.rank}>{i + 1}</span>
+                        <span className={styles.topPoster}>
+                          {it.poster ? <img src={imageUrl(it.poster, 160)} alt="" loading="lazy" /> : <Icon name={it.kind === 'series' ? 'tv' : it.kind === 'audiobook' ? 'headphones' : 'film'} size={16} />}
+                        </span>
+                        <Link to={itemHref(it.kind, it.id)} className={styles.topTitle}>
+                          {it.title}
+                        </Link>
+                        <span className={styles.hours}>
+                          {t('stats.viewers', { count: it.viewers })} · {hours(it.hours)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               )}
             </div>
-            <div>
-              <h3 className={m.groupTitle}>{t('stats.top')}</h3>
-              {data.topItems30d.length === 0 ? (
-                <p className={m.groupFoot}>{t('stats.top.empty')}</p>
-              ) : (
-                <ol className={m.group}>
-                  {data.topItems30d.map((it, i) => (
-                    <li key={it.id} className={`${m.row} ${styles.topRow}`}>
-                      <span className={styles.rank}>{i + 1}</span>
-                      <span className={styles.topPoster}>
-                        {it.poster ? <img src={imageUrl(it.poster, 160)} alt="" loading="lazy" /> : <Icon name={it.kind === 'series' ? 'tv' : it.kind === 'audiobook' ? 'headphones' : 'film'} size={16} />}
-                      </span>
-                      <Link to={itemHref(it.kind, it.id)} className={styles.topTitle}>
-                        {it.title}
-                      </Link>
-                      <span className={styles.hours}>
-                        {t('stats.viewers', { count: it.viewers })} · {hours(it.hours)}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
+          )}
         </>
       )}
     </section>

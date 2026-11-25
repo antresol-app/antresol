@@ -277,7 +277,8 @@ type settingsView struct {
 	// itself is never sent back).
 	MailPasswordSet bool `json:"mailPasswordSet"`
 	// AIKeySet: an API key of «ИИ-помощник» is stored (response only);
-	// AIFromEnv: none is set here but the server has VAULT_LLM_* (its model)
+	// AIFromEnv: the server has VAULT_LLM_* (its model): the choice «Сервер»
+	// of the page, used while no address is set here and AI is not Off
 	AIKeySet  bool   `json:"aiKeySet"`
 	AIFromEnv string `json:"aiFromEnv,omitempty"`
 	// TranscodingName: what transcodes video now («Перекодирование»'s
@@ -334,10 +335,8 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	v.Mail.Password = ""
 	v.AIKeySet = app.AI.Key != ""
 	v.AI.Key = ""
-	if app.AI.URL == "" {
-		if env := channels.LLMFromEnv(); env != nil {
-			v.AIFromEnv = env.Model
-		}
+	if env := channels.LLMFromEnv(); env != nil {
+		v.AIFromEnv = env.Model
 	}
 	if s.accel != nil {
 		v.TranscodingName = media.HWName(s.accel.Mode())

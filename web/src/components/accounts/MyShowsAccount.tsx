@@ -73,7 +73,7 @@ export function MyShowsAccount() {
     <GroupedSection title={t('acct.myshows.title')} footer={error || undefined}>
       <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.myshows')} status={statusLine(s, t)} syncing={s.syncing} busy={busy} onSync={() => void sync()} onUnlink={() => void unlink()} />
       {!s.linked ? (
-        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.myshows.hint')}>
+        <ListRow wide label={<span className="visually-hidden">{t('acct.linkTitle')}</span>} hint={t('acct.myshows.hint')}>
           <InlineForm
             field={{ label: t('acct.myshows.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}

@@ -268,6 +268,16 @@
   color: var(--warning);
   font: var(--t-subhead);
 }
+/* the icon and a retry button keep their size: the sentence wraps instead (a
+   button squeezed by it showed «Повт…») */
+.problem > svg,
+.problem > button,
+.problem > a {
+  flex: none;
+}
+.problem > button {
+  margin-left: auto;
+}
 /* the first thing under a section's title */
 .problemTop {
   margin-top: var(--s-4);
@@ -359,6 +369,45 @@
   }
   .title {
     font: var(--t-large-title);
+  }
+}
+/* A narrow phone (an iPhone SE, 320 pt): a row's value does not fight its label
+   for the line, it goes under it (a value squeezed beside «Почта и
+   уведомления» was cut to «Настро…»; an engine that let the two touch drew the
+   value over the label). The label keeps the whole line, the value the next. */
+@media (max-width: 359px) {
+  .navItem {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'icon label chevron'
+      'icon value chevron';
+    column-gap: var(--s-2h);
+    align-items: center;
+  }
+  .navIcon {
+    grid-area: icon;
+  }
+  .navLabel {
+    grid-area: label;
+    min-width: 0;
+  }
+  .navValue {
+    grid-area: value;
+    max-width: none;
+    font: var(--t-footnote);
+  }
+  .navChevron {
+    grid-area: chevron;
+  }
+  /* «Запросы»' count sits before the chevron, in the label's line */
+  .navBadge {
+    grid-area: chevron;
+    justify-self: end;
+    margin-right: var(--s-6);
+  }
+  .navItem:has(.navBadge) .navLabel {
+    padding-right: var(--s-12);
   }
 }
 /* a finger's 44 pt target (HIG): the hit area grows, the look does not */

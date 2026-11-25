@@ -77,3 +77,13 @@
   gap: var(--s-3);
   width: 100%;
 }
+/* «Проверить»: the row is the button, its answer the line under it */
+.aiAction {
+  color: var(--accent);
+}
+.aiOk {
+  color: var(--success);
+}
+.aiFail {
+  color: var(--warning);
+}

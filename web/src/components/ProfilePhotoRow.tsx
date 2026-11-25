@@ -38,7 +38,7 @@ export function ProfilePhotoRow({ user, onUser }: ProfilePhotoRowProps) {
   const pick = usePhotoPick((blob) => void run(() => setMyPhoto(blob)))
 
   return (
-    <ListRow stack leading={<Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={44} />} label={t('comp.photo.label')} hint={t('comp.photo.rowHint')} status={error || pick.error || undefined}>
+    <ListRow stack leading={<Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={44} />} label={t('comp.photo.label')} status={error || pick.error || undefined}>
       <div className={styles.buttons}>
         <Button size="small" variant="secondary" icon="plus" loading={busy} disabled={busy} onClick={pick.open}>
           {user.photo ? t('comp.photo.replace') : t('comp.photo.upload')}

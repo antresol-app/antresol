@@ -161,6 +161,7 @@ export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
                 {g.items.map((d) => (
                   <ListRow
                     key={d.id}
+                    stack
                     label={
                       <span className={styles.name}>
                         {deviceName(d)}
@@ -172,13 +173,17 @@ export function DevicesSheet({ onClose, all = false }: DevicesSheetProps) {
                       .join(' · ')}
                   >
                     {!kid && (
-                      <Toggle
-                        label={`${t('comp.devices.separate')}: ${deviceName(d)}`}
-                        checked={Boolean(d.history)}
-                        disabled={busy}
-                        size="small"
-                        onChange={(on) => (on ? switchHistory(d, { separate: true }) : setTurnOff(d))}
-                      />
+                      // the switch says what it is (its full name is for the screen reader)
+                      <span className={styles.separate}>
+                        <span aria-hidden>{t('comp.devices.separateShort')}</span>
+                        <Toggle
+                          label={`${t('comp.devices.separate')}: ${deviceName(d)}`}
+                          checked={Boolean(d.history)}
+                          disabled={busy}
+                          size="small"
+                          onChange={(on) => (on ? switchHistory(d, { separate: true }) : setTurnOff(d))}
+                        />
+                      </span>
                     )}
                     <Button
                       size="small"

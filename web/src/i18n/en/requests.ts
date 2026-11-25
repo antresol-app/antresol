@@ -17,7 +17,7 @@ export default {
   'requests.hidden': 'Not available for this profile',
   'requests.mineEmpty': 'What you ask for will show up here. Find a movie, show, music or a book in Search and tap Ask.',
   'requests.title': 'Requests',
-  'requests.lead': 'What the kids ask to add to the library. Approve confirms the request, and the kid sees it when the title arrives in the library.',
+  'requests.lead': 'The kid sees the title when it arrives in the library.',
   'requests.waiting': 'Waiting for an answer',
   'requests.decided': 'Answered in the last 30 days',
   'requests.empty': 'No new requests.',

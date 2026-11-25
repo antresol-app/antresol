@@ -123,7 +123,7 @@ describe('GoodreadsAccount', () => {
   it('shows the books, the read-only line and the status line of a linked profile', async () => {
     state = linked()
     await open()
-    expect(await screen.findByText(/Только чтение: полки с Goodreads попадают в «Книги», а вся история приходит из файла экспорта/)).toBeInTheDocument()
+    expect(await screen.findByText(/Только чтение: полки с Goodreads попадают в «Книги»/)).toBeInTheDocument()
     expect(screen.getByText(/Синхронизировано .*/)).toBeInTheDocument()
     expect(screen.getByText(/Книг с Goodreads: 12 \(прочитано 8, читаю 1, хочу прочитать 3\), в библиотеке нашлось 5/)).toBeInTheDocument()
     // a linked profile has no «Забыть список»: «Отвязать» does it

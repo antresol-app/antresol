@@ -161,8 +161,8 @@ export function AppPasswordSheet({ userName, passwordless, managed, onClose }: A
         message={
           <>
             {managed
-              ? t('comp.appPassword.managedMessage', { origin, name: userName, history: managed.name })
-              : t('comp.appPassword.message', { origin, name: userName })}
+              ? t('comp.appPassword.managedMessage', { history: managed.name })
+              : t('comp.appPassword.message')}
           </>
         }
         onCancel={onClose}
@@ -204,10 +204,6 @@ export function AppPasswordSheet({ userName, passwordless, managed, onClose }: A
               <span className={styles.created}>{createdLabel(ready.createdAt) || t('comp.appPassword.created')}</span>
             </div>
           )}
-          {ready && !ready.shown && ready.exists && (
-            <p className={styles.note}>{t('comp.appPassword.shownOnce')}</p>
-          )}
-          {ready && !ready.exists && <p className={styles.note}>{t('comp.appPassword.none')}</p>}
 
           {ready && (
             <div className={styles.buttons}>

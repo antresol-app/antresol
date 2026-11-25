@@ -134,7 +134,8 @@ export function ManagedAccountsSection({ items, me, onChanged }: ManagedAccounts
             </Menu>
           </ListRow>
         ))}
-        <ListRow wide label={t('comp.managed.create')}>
+        {/* the field's button says it: the row's name is for the screen reader only */}
+        <ListRow wide label={<span className="visually-hidden">{t('comp.managed.create')}</span>}>
           <InlineForm
             field={{
               label: t('comp.managed.name'),

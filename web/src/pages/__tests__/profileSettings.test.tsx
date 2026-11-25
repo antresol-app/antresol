@@ -120,7 +120,7 @@ describe('ProfileSettings', () => {
   it('the Kindle address is the profile’s own: saved on leaving the field, through PATCH /api/me', async () => {
     const calls = await open(adult)
     const field = screen.getByRole('textbox', { name: 'Адрес Kindle' })
-    expect(screen.getByText(/с одной почты сервера на все профили/)).toBeInTheDocument()
+    expect(screen.getByText(/Добавьте почту сервера в одобренные отправители Amazon/)).toBeInTheDocument()
     await userEvent.type(field, 'mama_42@kindle.com')
     fireEvent.blur(field)
     await waitFor(() => expect(calls.some(([u, m, b]) => u.endsWith('/api/me') && m === 'PATCH' && (b as { kindleEmail?: string }).kindleEmail === 'mama_42@kindle.com')).toBe(true))

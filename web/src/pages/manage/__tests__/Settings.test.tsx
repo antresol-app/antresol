@@ -173,7 +173,7 @@ describe('Настройки: любимые озвучки', () => {
     stub({ ...base, languages: ['ru', 'en'] })
     renderSettings('watching')
     expect(await screen.findByText('Любимые озвучки')).toBeInTheDocument()
-    expect(screen.getByText('Очищенные озвучки делаются в этом порядке: первая — главная.')).toBeInTheDocument()
+    expect(screen.getByText('Очищенные озвучки делаются в этом порядке.')).toBeInTheDocument()
     expect(screen.getByText('Пока ни одной.')).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/[Рр]аздач/)
   })
@@ -205,17 +205,17 @@ describe('Настройки: /manage/settings/library#rescan', () => {
   })
 })
 
-// «Почта и уведомления»: one row like the others — its state and «Настроить…»;
-// the steps and the SMTP fields live in a sheet.
+// «Почта и уведомления»: one row like the others — its address as the value;
+// the steps and the SMTP fields live in the sheet it opens.
 describe('Настройки: отправка на Kindle', () => {
   afterEach(() => vi.unstubAllGlobals())
   const mail = { host: 'smtp.gmail.com', port: 587, username: 'me@example.com', from: 'me@example.com' }
 
-  it('a set-up mailbox: one row with its address and «Настроить…», no fields on the page', async () => {
+  it('a set-up mailbox: one row with its address, no fields on the page', async () => {
     stub({ ...base, mail, mailPasswordSet: true })
     renderSettings('kindle')
-    expect(await screen.findByText('Настроена · me@example.com')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Настроить…' })).toBeInTheDocument()
+    expect(await screen.findByText('me@example.com')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Почта для отправки/ })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Сервер SMTP' })).toBeNull()
     expect(screen.queryByText(/Создайте пароль для отправки/)).toBeNull()
   })
@@ -226,11 +226,11 @@ describe('Настройки: отправка на Kindle', () => {
     expect(await screen.findByText('Не настроена')).toBeInTheDocument()
   })
 
-  it('«Настроить…» opens the steps and the fields; a field saves when left; «Готово» closes', async () => {
+  it('the row opens the steps and the fields; a field saves when left; «Готово» closes', async () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
     renderSettings('kindle')
-    await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
-    const sheet = screen.getByRole('dialog', { name: 'Почта и уведомления' })
+    await userEvent.click(await screen.findByRole('button', { name: /^Почта для отправки/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Почта для отправки' })
     // set up already: the fields first, the steps on demand
     expect(within(sheet).queryByText(/Создайте пароль для отправки/)).toBeNull()
     await userEvent.click(within(sheet).getByRole('button', { name: 'Как настроить Gmail и Amazon' }))
@@ -242,14 +242,14 @@ describe('Настройки: отправка на Kindle', () => {
     await waitFor(() => expect(puts.at(-1)?.mail?.host).toBe('smtp.example.org'))
     await userEvent.click(within(sheet).getByRole('button', { name: 'Готово' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(await screen.findByText('Настроена · me@example.com')).toBeInTheDocument()
+    expect(await screen.findByText('me@example.com')).toBeInTheDocument()
   })
 
   it('Enter in a field saves it and closes the sheet', async () => {
     const puts = stub({ ...base, mail, mailPasswordSet: true })
     renderSettings('kindle')
-    await userEvent.click(await screen.findByRole('button', { name: 'Настроить…' }))
-    const from = within(screen.getByRole('dialog', { name: 'Почта и уведомления' })).getByRole('textbox', { name: 'Адрес отправителя' })
+    await userEvent.click(await screen.findByRole('button', { name: /^Почта для отправки/ }))
+    const from = within(screen.getByRole('dialog', { name: 'Почта для отправки' })).getByRole('textbox', { name: 'Адрес отправителя' })
     await userEvent.clear(from)
     await userEvent.type(from, 'books@example.com{Enter}')
     await waitFor(() => expect(puts.at(-1)?.mail?.from).toBe('books@example.com'))

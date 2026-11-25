@@ -2,7 +2,6 @@
 // GitHub link by an admin; their tiles, item actions and pages in the app).
 export default {
   'addons.title': 'Расширения',
-  'addons.subtitle': 'Программы, которые добавляют в Antresol новые возможности',
   'addons.add': 'Добавить расширение',
   'addons.loading': 'Загружаем расширения…',
   'addons.loadFailed': 'Не удалось загрузить расширения',

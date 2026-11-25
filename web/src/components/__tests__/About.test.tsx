@@ -85,14 +85,14 @@ describe('the source offer (AGPL §13)', () => {
     render(<AboutSheet onClose={() => {}} />)
     expect(await screen.findByText('http://antresol-2.local:8420')).toBeInTheDocument()
     expect(screen.getByText('В домашней сети')).toBeInTheDocument()
-    expect(screen.getByText(/IP знать не нужно/)).toBeInTheDocument()
+    expect(screen.getByText(/на любом устройстве дома/)).toBeInTheDocument()
   })
 
   it('«О сервере» says why there is no address in a Docker bridge network', async () => {
     serve(official, admin, { state: 'bridge' })
     render(<AboutSheet onClose={() => {}} />)
     expect(await screen.findByText(/antresol-mdns/)).toBeInTheDocument()
-    expect(screen.queryByText(/IP знать не нужно/)).toBeNull()
+    expect(screen.queryByText(/на любом устройстве дома/)).toBeNull()
   })
 
   it('«О сервере» says why there is no address under Docker Desktop', async () => {

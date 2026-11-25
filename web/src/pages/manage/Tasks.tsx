@@ -96,12 +96,9 @@ export function Tasks() {
   return (
     <section aria-labelledby="tasks-title">
       <header className={m.header}>
-        <div>
-          <h2 id="tasks-title" className={m.title}>
-            {t('manage.section.tasks')}
-          </h2>
-          <p className={m.subtitle}>{t('tasks.subtitle')}</p>
-        </div>
+        <h2 id="tasks-title" className={m.title}>
+          {t('manage.section.tasks')}
+        </h2>
       </header>
       {error && <Notice tone="destructive">{error}</Notice>}
       {!view && !error && (

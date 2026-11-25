@@ -80,12 +80,9 @@ export function AccountsSettings() {
           </NavLink>
         )}
         <header className={m.header}>
-          <div>
-            <h1 id="accounts-title" className={m.title}>
-              {t('acct.section')}
-            </h1>
-            <p className={m.subtitle}>{t('acct.page.intro')}</p>
-          </div>
+          <h1 id="accounts-title" className={m.title}>
+            {t('acct.section')}
+          </h1>
         </header>
         {offered === undefined ? (
           <div className={m.spinnerRow} role="status">

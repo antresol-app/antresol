@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Settings as Values } from '../../../api/types'
-import { providerOf } from '../AISettings'
+import { chosenProvider, providerOf } from '../AISettings'
+import { settingsSummary } from '../settingsSummary'
 import { renderSettings } from './settingsHarness'
 
 const base: Values = {
@@ -67,11 +68,45 @@ describe('«ИИ-помощник»', () => {
     await waitFor(() => expect(puts.at(-1)?.ai?.models?.light).toBe('claude-sonnet-5-5'))
   })
 
-  it('off, the server’s own model is named', async () => {
-    stub({ ...base, aiFromEnv: 'gemini-flash-lite' })
+  it('the server’s own model is the current choice, «Проверить» asks it, «Выключено» saves off', async () => {
+    const { puts, tests } = stub({ ...base, aiFromEnv: 'gemini-flash-lite' })
     renderSettings('ai')
-    expect(await screen.findByText('Сейчас сервер использует свою модель: gemini-flash-lite.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Модель/ })).toHaveTextContent('Сервер — gemini-flash-lite')
     expect(screen.queryByLabelText('Адрес')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    expect(await screen.findByText('Работает: ответ за 480 мс')).toBeInTheDocument()
+    expect(tests.at(-1)).toMatchObject({ url: '' })
+    await userEvent.click(screen.getByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Выключено' }))
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: '', off: true }))
+    expect(screen.queryByRole('button', { name: /^Проверить/ })).toBeNull()
+    // the server’s own stays in the list: back to it saves «not off»
+    await userEvent.click(screen.getByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Сервер — gemini-flash-lite' }))
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: '', off: false }))
+    expect(screen.getByRole('button', { name: 'Проверить' })).toBeInTheDocument()
+  })
+
+  it('a stored «Выключено» opens off although the server has a model; a server without one has no «Сервер» choice', async () => {
+    stub({ ...base, aiFromEnv: 'gemini-flash-lite', ai: { url: '', model: '', off: true } })
+    const first = renderSettings('ai')
+    expect(await screen.findByRole('button', { name: /^Модель/ })).toHaveTextContent('Выключено')
+    expect(screen.queryByRole('button', { name: /^Проверить/ })).toBeNull()
+    first.unmount()
+    stub(base)
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: /^Модель/ }))
+    expect(screen.queryByRole('menuitemradio', { name: /^Сервер/ })).toBeNull()
+  })
+
+  it('the choice and the summary: stored address, off, the server’s', () => {
+    expect(chosenProvider({ url: 'http://127.0.0.1:4000/v1', model: 'm' }, 'env-model')).toBe('litellm')
+    expect(chosenProvider({ url: '', model: '', off: true }, 'env-model')).toBe('off')
+    expect(chosenProvider({ url: '', model: '' }, 'env-model')).toBe('server')
+    expect(chosenProvider(undefined, undefined)).toBe('off')
+    expect(settingsSummary('ai', { ...base, aiFromEnv: 'env-model' })).toBe('env-model')
+    expect(settingsSummary('ai', { ...base, aiFromEnv: 'env-model', ai: { url: '', model: '', off: true } })).toBe('Выключено')
+    expect(settingsSummary('ai', { ...base, ai: { url: 'http://x/v1', model: 'mine' }, aiFromEnv: 'env-model' })).toBe('mine')
   })
 
   it('providerOf', () => {

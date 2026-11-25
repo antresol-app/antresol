@@ -31,7 +31,9 @@ describe('PlaybackPrefsSheet', () => {
   it('shows the household defaults, saves the profile’s own', async () => {
     const onClose = vi.fn()
     render(<PlaybackPrefsSheet onClose={onClose} />)
-    expect(await screen.findByText('Сейчас — языки семьи из настроек.')).toBeInTheDocument()
+    expect(await screen.findByRole('list', { name: 'Язык звука' })).toBeInTheDocument()
+    // the household's defaults are followed: nothing to reset
+    expect(screen.queryByRole('button', { name: 'Как у семьи' })).toBeNull()
     // English first: moved up by its handle
     expect(within(screen.getByRole('list', { name: 'Язык звука' })).getAllByRole('listitem').map((li) => li.dataset.value)).toEqual(['ru', 'en'])
     screen.getByRole('button', { name: 'Переместить: Английский' }).focus()
@@ -63,7 +65,7 @@ describe('PlaybackPrefsSheet', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/me/playback-prefs/prefer-cleaned', method: 'PUT', body: { on: true } }])
     // the household's languages stay followed: closing saves nothing else
-    expect(screen.getByText('Сейчас — языки семьи из настроек.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Как у семьи' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
@@ -86,7 +88,7 @@ describe('PlaybackPrefsSheet', () => {
   it('an administrator edits another profile’s', async () => {
     render(<PlaybackPrefsSheet userId={7} name="Вася" onClose={() => {}} />)
     expect(await screen.findByRole('dialog', { name: 'Звук и субтитры: Вася' })).toBeInTheDocument()
-    await screen.findByText('Сейчас — языки семьи из настроек.')
+    await screen.findByRole('list', { name: 'Язык звука' })
     await userEvent.click(screen.getByRole('radio', { name: 'Крупный' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url === '/api/users/7/playback-prefs')).toBe(true))
   })

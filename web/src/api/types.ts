@@ -831,7 +831,7 @@ export interface Settings {
   /** «ИИ-помощник»: the model «Опишите канал» asks (the key is write-only). */
   ai?: AISettings
   aiKeySet?: boolean
-  /** None set here, but the server has its own (VAULT_LLM_*): its model. */
+  /** The server has its own model (VAULT_LLM_*): «Сервер — модель», used while no address is set here and AI is not off. */
   aiFromEnv?: string
   /** What transcodes video now («Перекодирование»'s summary; response only). */
   transcodingName?: string
@@ -996,6 +996,8 @@ export interface AISettings {
   model: string
   models?: AIModels
   key?: string
+  /** «Выключено»: no model is asked, the server's own (VAULT_LLM_*) included. */
+  off?: boolean
 }
 
 export interface MailSettings {

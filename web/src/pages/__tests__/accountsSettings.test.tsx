@@ -81,14 +81,14 @@ describe('AccountsSettings', () => {
 
     const shiki = await card('Shikimori')
     expect(await shiki.findByText('Связан как tester')).toBeInTheDocument()
-    expect(shiki.getByText(/В обе стороны: список с Shikimori попадает в отметки, а твои отметки уходят на Shikimori/)).toBeInTheDocument()
+    expect(shiki.getByText(/В обе стороны: список с Shikimori попадает в отметки, а ваши отметки уходят на Shikimori/)).toBeInTheDocument()
     expect(shiki.getByText('Синхронизировано 5 мин назад')).toBeInTheDocument()
     expect(shiki.getByRole('button', { name: 'Отвязать' })).toBeInTheDocument()
     expect(shiki.getByRole('button', { name: 'Синхронизировать' })).toBeEnabled()
 
     const myshows = await card('MyShows')
     expect(await myshows.findByText('Не связан')).toBeInTheDocument()
-    expect(myshows.getByText('Только чтение: список с MyShows попадает в отметки; отправка обратно появится позже.')).toBeInTheDocument()
+    expect(myshows.getByText('Только чтение: список с MyShows попадает в отметки.')).toBeInTheDocument()
     expect(myshows.getByRole('button', { name: 'Связать' })).toBeInTheDocument()
     expect(myshows.queryByRole('button', { name: 'Отвязать' })).toBeNull()
     expect(myshows.queryByRole('button', { name: 'Синхронизировать' })).toBeNull() // nothing to sync before linking
@@ -148,7 +148,7 @@ describe('AccountsSettings', () => {
       cleanup()
       session.reset()
       await openAccounts(adult, full, '/settings/accounts?account=shikimori&error=whatever')
-      expect(await screen.findByText('Shikimori не принял вход. Попробуй ещё раз позже.')).toBeInTheDocument()
+      expect(await screen.findByText('Shikimori не принял вход. Попробуйте ещё раз позже.')).toBeInTheDocument()
     })
   })
 })

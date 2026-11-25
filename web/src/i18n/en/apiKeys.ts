@@ -5,8 +5,7 @@ import type ru from '../ru/apiKeys'
 export default {
   'apikeys.title': 'API Keys & AI',
   'apikeys.row.hint': 'For AI assistants and scripts',
-  'apikeys.intro':
-    'A key lets an AI assistant (Claude, ChatGPT and other MCP clients) or your own script use {app} on your behalf. It sees and does only what your profile may and what the key allows.',
+  'apikeys.intro': 'A key lets an AI assistant (Claude, ChatGPT and other MCP clients) or your own script use {app} on your behalf.',
   'apikeys.keys': 'Keys',
   'apikeys.none': 'No keys yet.',
   'apikeys.create': 'Create Key',
@@ -27,7 +26,7 @@ export default {
   'apikeys.revokeTitle': 'Revoke the key “{name}”?',
   'apikeys.revokeMessage': 'Apps using this key lose access at once.',
   'apikeys.shownTitle': 'Key “{name}” created',
-  'apikeys.saveIt': 'Copy the key now: it will not be shown again. Lost it? Revoke it and create a new one.',
+  'apikeys.saveIt': 'Copy the key now: it will not be shown again.',
   'apikeys.key': 'Key',
   'apikeys.connect': 'Connecting',
   'apikeys.connect.claudeCode': 'Claude Code: run in a terminal',
@@ -38,8 +37,7 @@ export default {
   'apikeys.connect.config': 'JSON',
   'apikeys.connect.header': 'Header',
   'apikeys.connect.yourKey': 'YOUR_KEY',
-  'apikeys.connect.footer': 'Put the key shown on creation in place of {placeholder}. The key also works with the server’s regular API: the Authorization: Bearer header.',
+  'apikeys.connect.footer': 'Put the key shown on creation in place of {placeholder}.',
   'apikeys.log': 'Recent Actions',
-  'apikeys.log.none': 'Nothing has been changed with keys yet.',
   'apikeys.log.refused': 'refused',
 } satisfies EnOf<typeof ru>

@@ -12,7 +12,7 @@ import { useT } from '../../i18n'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
-import { GroupedSection, ListRow } from '../../ui/List'
+import { GroupedSection, ListRow, ListSelectRow } from '../../ui/List'
 import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
 import { Notice } from '../../ui/Notice'
 import { Sheet } from '../../ui/Sheet'
@@ -144,11 +144,17 @@ export function StorageFolders({ storage, entries = true }: { storage: Storage; 
             {rows.map((row) => (
               <FolderLine key={row.path} storage={storage} row={row} only={rows.length === 1} />
             ))}
-            <ListRow label={t('storage.addFolder.label', { kind: name })}>
-              <Button size="small" variant="plain" icon="plus" disabled={busy} onClick={() => setBrowsing(kind)}>
-                {t('storage.addFolder')}
-              </Button>
-            </ListRow>
+            {/* the row is the action: the section's title says which folder */}
+            <ListSelectRow
+              label={
+                <span className={styles.addFolder}>
+                  <Icon name="plus" size={16} />
+                  {t('storage.addFolder')}
+                </span>
+              }
+              disabled={busy}
+              onSelect={() => setBrowsing(kind)}
+            />
           </GroupedSection>
         )
       })}

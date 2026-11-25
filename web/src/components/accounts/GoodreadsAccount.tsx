@@ -96,7 +96,7 @@ export function GoodreadsAccount() {
     <GroupedSection title={t('acct.goodreads.title')} footer={error || undefined}>
       <AccountRow linked={s.linked} name={s.nickname} direction={t('acct.dir.goodreads')} status={statusLine(s, t)} syncing={s.syncing} busy={busy} onSync={() => void sync()} onUnlink={() => void forget()} />
       {!s.linked ? (
-        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.goodreads.hint')}>
+        <ListRow wide label={<span className="visually-hidden">{t('acct.linkTitle')}</span>} hint={t('acct.goodreads.hint')}>
           <InlineForm
             field={{ label: t('acct.goodreads.profile'), value: profile, onChange: (e) => setProfile(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}
@@ -107,7 +107,7 @@ export function GoodreadsAccount() {
       ) : (
         s.syncing && !s.lastSync && <ListRow label={t('acct.goodreads.firstRead')} />
       )}
-      <ListRow label={t('acct.goodreads.file')} hint={t('acct.goodreads.file.hint')} status={imported || undefined}>
+      <ListRow stack label={t('acct.goodreads.file')} hint={t('acct.goodreads.file.hint')} status={imported || undefined}>
         {/* no accept: a spreadsheet app may have renamed the file, the server checks the content */}
         <FileInput
           ref={picker}

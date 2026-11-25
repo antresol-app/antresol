@@ -196,9 +196,8 @@ export function ApiKeysSettings() {
               </div>
             </GroupedSection>
 
-            {log && (
+            {log && log.length > 0 && (
               <GroupedSection title={t('apikeys.log')}>
-                {log.length === 0 && <ListRow label={<span className={styles.muted}>{t('apikeys.log.none')}</span>} />}
                 {log.map((e, i) => (
                   <ListRow
                     key={`${e.at}-${i}`}

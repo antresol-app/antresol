@@ -75,7 +75,7 @@ describe('ShikimoriAccount', () => {
   it('says it is not linked, and that it syncs both ways once marks may go back', async () => {
     await open()
     expect(await screen.findByText('Не связан')).toBeInTheDocument()
-    expect(screen.getByText(/В обе стороны: список с Shikimori попадает в отметки, а после одного входа туда/)).toBeInTheDocument()
+    expect(screen.getByText(/В обе стороны: список с Shikimori попадает в отметки, а отметки уходят обратно после одного входа/)).toBeInTheDocument()
     // no unlink, no last sync for a card that has no link
     expect(screen.queryByRole('button', { name: 'Отвязать' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Синхронизировать' })).toBeNull()
@@ -85,12 +85,12 @@ describe('ShikimoriAccount', () => {
   it('is honest about the direction: reading only until marks are allowed to go back', async () => {
     state = linked()
     const { unmount } = await open()
-    expect(await screen.findByText(/Сейчас только чтение: список с Shikimori попадает в отметки, обратно ничего не уходит/)).toBeInTheDocument()
+    expect(await screen.findByText(/Только чтение: список с Shikimori попадает в отметки/)).toBeInTheDocument()
     unmount()
     resetAccounts()
     state = linked({ writeState: 'enabled' })
     await open()
-    expect(await screen.findByText('В обе стороны: список с Shikimori попадает в отметки, а твои отметки уходят на Shikimori.')).toBeInTheDocument()
+    expect(await screen.findByText('В обе стороны: список с Shikimori попадает в отметки, а ваши отметки уходят на Shikimori.')).toBeInTheDocument()
   })
 
   it('shows the last sync and how it went, and unlinks', async () => {

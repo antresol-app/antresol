@@ -1,7 +1,6 @@
 // English strings (addons group: «Расширения» — Extensions).
 export default {
   'addons.title': 'Extensions',
-  'addons.subtitle': 'Programs that add new features to Antresol',
   'addons.add': 'Add Extension',
   'addons.loading': 'Loading extensions…',
   'addons.loadFailed': 'Couldn’t load the extensions',

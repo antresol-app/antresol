@@ -88,7 +88,7 @@ export default {
   'import.tiles.servicesAria': 'Services',
   'sources.loading': 'Loading…',
   'sources.failedRetry': 'Something went wrong. Try again.',
-  'import.introLocal': 'Build playlists and “Favorites” from a file: CSV, M3U, Library.xml or a Google Takeout archive. They get the songs the library already has.',
+  'import.introLocal': 'Playlists and “Favorites” from a file. They get the songs the library already has.',
   'import.keptLocal': 'Playlists and “Favorites” already made stay in the library.',
   'import.conflict.activeLocal': 'Canceling stops the matching still in progress.',
   'import.confirm.messageLocal': 'Songs not matched yet won’t be added to the playlists. {kept}',

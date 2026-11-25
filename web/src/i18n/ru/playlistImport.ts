@@ -87,7 +87,7 @@ export default {
   'import.tiles.servicesAria': 'Сервисы',
   'sources.loading': 'Загружаем…',
   'sources.failedRetry': 'Не получилось. Попробуйте ещё раз.',
-  'import.introLocal': 'Создайте плейлисты и «Избранное» из файла: CSV, M3U, Library.xml или архива Google Takeout. В них попадут песни, которые уже есть в медиатеке.',
+  'import.introLocal': 'Плейлисты и «Избранное» из файла. В них попадут песни, которые уже есть в медиатеке.',
   'import.keptLocal': 'Уже созданные плейлисты и «Избранное» останутся в медиатеке.',
   'import.conflict.activeLocal': 'Отмена остановит разбор, который ещё идёт.',
   'import.confirm.messageLocal': 'Песни, которые ещё не разобраны, в плейлисты не попадут. {kept}',

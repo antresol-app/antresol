@@ -1,5 +1,5 @@
 // «Статистика»: the addons' blocks (statsBlocks) sit under the library's
-// tiles, each in its own boundary; the subtitle is the core's.
+// tiles, each in its own boundary.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -56,12 +56,13 @@ describe('Stats', () => {
     registerAddon('dl', { statsBlocks: [{ element: () => <p>блок статистики</p>, admin: true }] })
     await show()
     expect(await screen.findByText('блок статистики')).toBeInTheDocument()
-    expect(screen.getByText('Медиатека и диск.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('without addons: the core subtitle and no block', async () => {
+  it('without addons: the tiles, no block, and no section with nothing in it', async () => {
     await show()
-    expect(await screen.findByText('Медиатека и диск.')).toBeInTheDocument()
+    expect(await screen.findByText('фильм')).toBeInTheDocument()
+    expect(screen.queryByText('Кто сколько смотрел за 30 дней')).not.toBeInTheDocument()
+    expect(screen.queryByText('Смотрели чаще всего за 30 дней')).not.toBeInTheDocument()
   })
 })

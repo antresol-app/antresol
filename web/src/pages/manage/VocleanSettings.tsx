@@ -74,7 +74,7 @@ export function VocleanSection() {
       {error && (
         <ListRow label={t('settings.voclean.group')} status={<span className={m.problem}>{error}</span>} />
       )}
-      <ListLinkRow label={t('settings.voclean.progress')} hint={t('settings.voclean.progressInTasks')} icon="updates" tint="orange" onOpen={() => navigate('/manage/tasks')} />
+      <ListLinkRow label={t('settings.voclean.progress')} icon="updates" tint="orange" onOpen={() => navigate('/manage/tasks')} />
       <ListRow label={t('settings.voclean.backfill')} hint={t('settings.voclean.backfill.hint')}>
         <Toggle
           label={t('settings.voclean.backfill')}
@@ -86,7 +86,7 @@ export function VocleanSection() {
           }}
         />
       </ListRow>
-      <ListRow label={t('settings.voclean.recheck')} hint={t('settings.voclean.recheck.hint')}>
+      <ListRow label={t('settings.voclean.recheck')}>
         <Button
           size="small"
           variant="secondary"

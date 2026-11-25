@@ -195,12 +195,9 @@ export function Files() {
   return (
     <section aria-labelledby="files-title">
       <header className={m.header}>
-        <div>
-          <h2 id="files-title" className={m.title}>
-            {t('common.files')}
-          </h2>
-          <p className={m.subtitle}>{t('mfiles.subtitle')}</p>
-        </div>
+        <h2 id="files-title" className={m.title}>
+          {t('common.files')}
+        </h2>
         <div className={m.headerActions}>
           <ButtonLink to="/files" variant="secondary" icon="folder">
             {t('mfiles.openAll')}

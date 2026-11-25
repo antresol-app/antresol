@@ -86,7 +86,7 @@ export function ShikimoriAccount() {
     <GroupedSection title={t('acct.shikimori.title')} footer={error || undefined}>
       <AccountRow linked={s.linked} name={s.nickname} direction={t(direction(s))} status={statusLine(s, t)} syncing={s.syncing} busy={busy} onSync={() => void sync()} onUnlink={() => void unlink()} />
       {!s.linked ? (
-        <ListRow wide label={t('acct.linkTitle')} hint={t('acct.hint')}>
+        <ListRow wide label={<span className="visually-hidden">{t('acct.linkTitle')}</span>} hint={t('acct.hint')}>
           <InlineForm
             field={{ label: t('acct.nick'), value: nick, onChange: (e) => setNick(e.target.value), autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }}
             submit={t('acct.link')}

@@ -1,7 +1,7 @@
 // «Настройки сервера → Почта и уведомления → Бот Telegram»: the bot that sends
 // notifications to Telegram, next to the mailbox that sends them by mail.
-// One row like the others (whether the bot is set up, and which) and
-// «Настроить бота…»; the steps and the token field are in a sheet, set up
+// One row like the others (the bot's @name, or «Не подключён», as its
+// value); the steps and the token field are in the sheet it opens, set up
 // once. The token is pasted, checked with Telegram («Проверить» asks getMe and
 // shows the bot's @name) and kept by the server; it never comes back.
 import { useEffect, useState } from 'react'
@@ -9,7 +9,7 @@ import { checkTelegramBot, clearTelegramBot, getTelegramBot, setTelegramToken, e
 import type { TelegramBot } from '../../api/types'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
-import { GroupedSection, ListRow } from '../../ui/List'
+import { GroupedSection, ListLinkRow } from '../../ui/List'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
 import styles from './Settings.module.css'
@@ -28,27 +28,19 @@ export function TelegramSection() {
   const ready = Boolean(bot?.set && bot.username)
   return (
     <GroupedSection>
-      <ListRow
-        label={t('settings.tg')}
-        hint={t('settings.tg.hint')}
-        status={ready ? t('settings.tg.ready', { bot: bot!.username ?? '' }) : t('settings.tg.notReady')}
-      >
-        <Button size="small" variant="secondary" onClick={() => setOpen(true)}>
-          {t('settings.tg.configure')}
-        </Button>
-        {open && (
-          <Sheet
-            title={t('settings.tg.title')}
-            role="dialog"
-            size="wide"
-            onCancel={() => setOpen(false)}
-            closeButton={false}
-            actions={[{ label: t('common.done'), kind: 'primary', run: () => setOpen(false) }]}
-          >
-            <TelegramFields bot={bot} onBot={setBot} />
-          </Sheet>
-        )}
-      </ListRow>
+      <ListLinkRow label={t('settings.tg')} value={ready ? `@${bot!.username}` : t('settings.tg.notReady')} onOpen={() => setOpen(true)} />
+      {open && (
+        <Sheet
+          title={t('settings.tg.title')}
+          role="dialog"
+          size="wide"
+          onCancel={() => setOpen(false)}
+          closeButton={false}
+          actions={[{ label: t('common.done'), kind: 'primary', run: () => setOpen(false) }]}
+        >
+          <TelegramFields bot={bot} onBot={setBot} />
+        </Sheet>
+      )}
     </GroupedSection>
   )
 }

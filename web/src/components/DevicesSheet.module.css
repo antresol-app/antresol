@@ -39,3 +39,11 @@
   align-items: center;
   gap: var(--s-1h);
 }
+/* a device's switch with its name: the switch beside it, the sign-out after */
+.separate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--t-footnote);
+  color: var(--label-2);
+}

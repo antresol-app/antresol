@@ -75,14 +75,15 @@ export function StorageSection() {
       )}
       <GroupedSection title={t('storage.title')} footer={t('storage.settings.footer')}>
         {storage.dirty && (
-          <ListRow label={view.restarts && storage.moves ? t('storage.apply') : t('storage.applyManual')}>
+          // the button says it: the row's name is for the screen reader only
+          <ListRow label={<span className="visually-hidden">{view.restarts && storage.moves ? t('storage.apply') : t('storage.applyManual')}</span>}>
             <Button size="small" loading={storage.busy} disabled={disabled} onClick={() => void apply(false)}>
               {view.restarts && storage.moves ? t('storage.apply') : t('storage.applyManual')}
             </Button>
           </ListRow>
         )}
         {view.custom && !storage.dirty && (
-          <ListRow label={t('storage.reset')}>
+          <ListRow label={<span className="visually-hidden">{t('storage.reset')}</span>}>
             <Button size="small" variant="secondary" disabled={disabled} onClick={() => void apply(true)}>
               {t('storage.reset')}
             </Button>
@@ -90,7 +91,7 @@ export function StorageSection() {
         )}
         {saved && !storage.dirty && !manual && <ListRow label={t('storage.saved')} />}
         {manual && <ListRow label={t('storage.restartManual')} />}
-        <ListRow label={t('storage.perms')} hint={t('storage.perms.hint')}>
+        <ListRow label={t('storage.perms')}>
           <Button size="small" variant="secondary" icon="restart" loading={storage.busy && !storage.restarting} disabled={disabled} onClick={() => void storage.recheck()}>
             {storage.busy && !storage.restarting ? t('storage.checking') : t('storage.check')}
           </Button>

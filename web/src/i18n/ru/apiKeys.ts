@@ -2,8 +2,7 @@
 export default {
   'apikeys.title': 'Ключи API и ИИ',
   'apikeys.row.hint': 'Для ИИ-помощников и скриптов',
-  'apikeys.intro':
-    'Ключ даёт ИИ-помощнику (Claude, ChatGPT и другим клиентам MCP) или своему скрипту доступ к серверу {app} от вашего имени. Он видит и делает только то, что можно вашему профилю и что разрешено ключу.',
+  'apikeys.intro': 'Ключ даёт ИИ-помощнику (Claude, ChatGPT и другим клиентам MCP) или вашему скрипту доступ к {app} от вашего имени.',
   'apikeys.keys': 'Ключи',
   'apikeys.none': 'Ключей пока нет.',
   'apikeys.create': 'Создать ключ',
@@ -24,7 +23,7 @@ export default {
   'apikeys.revokeTitle': 'Отозвать ключ «{name}»?',
   'apikeys.revokeMessage': 'Программы с этим ключом сразу потеряют доступ.',
   'apikeys.shownTitle': 'Ключ «{name}» создан',
-  'apikeys.saveIt': 'Скопируйте ключ сейчас: больше его не покажут. Потеряли — отзовите и создайте новый.',
+  'apikeys.saveIt': 'Скопируйте ключ сейчас: больше его не покажут.',
   'apikeys.key': 'Ключ',
   'apikeys.connect': 'Подключение',
   'apikeys.connect.claudeCode': 'Claude Code: выполните в терминале',
@@ -35,8 +34,7 @@ export default {
   'apikeys.connect.config': 'JSON',
   'apikeys.connect.header': 'Заголовок',
   'apikeys.connect.yourKey': 'ВАШ_КЛЮЧ',
-  'apikeys.connect.footer': 'Вместо {placeholder} — ключ, который показывается при создании. Ключ работает и с обычным API сервера: заголовок Authorization: Bearer.',
+  'apikeys.connect.footer': 'Вместо {placeholder} — ключ, который показывается при создании.',
   'apikeys.log': 'Последние действия',
-  'apikeys.log.none': 'Ключами пока ничего не меняли.',
   'apikeys.log.refused': 'отказано',
 }

@@ -2,7 +2,7 @@
 // group, /manage/settings/<group>, one row per setting; the groups are rows
 // of «Управление»'s list (Manage.tsx), each in its place there. A profile's own settings (the language,
 // sound, notifications) are in pages/ProfileSettings.tsx. Changes save
-// by themselves (like iOS); «Качество вне дома» applies at once on the
+// by themselves (like iOS, which says nothing of it); «Качество вне дома» applies at once on the
 // server. The core build has only the library's settings (docs/build-tags.md).
 // An addon's own settings are its pages.
 import { APP_NAME } from '../../brand'
@@ -170,14 +170,9 @@ export function Settings() {
   return (
     <section aria-labelledby="settings-title" className={styles.page}>
       <header className={m.header}>
-        <div>
-          <h2 id="settings-title" className={m.title}>
-            {t(current.label)}
-          </h2>
-          <p className={m.subtitle} aria-live="polite">
-            {saved === 'saving' ? t('settings.saving') : saved === 'saved' ? t('settings.saved') : t('settings.autosave')}
-          </p>
-        </div>
+        <h2 id="settings-title" className={m.title}>
+          {t(current.label)}
+        </h2>
       </header>
       {error && (
         <div className={m.problem} role="alert">
@@ -276,7 +271,7 @@ export function Settings() {
       <GroupedSection>
         <ListRow
           label={t('settings.autoSubtitles')}
-          hint={values.subtitlesAvailable ? t('settings.autoSubtitles.hint', { app: APP_NAME }) : t('settings.autoSubtitles.noKey')}
+          hint={values.subtitlesAvailable ? undefined : t('settings.autoSubtitles.noKey')}
         >
           <Toggle
             label={t('settings.autoSubtitles')}
@@ -285,7 +280,7 @@ export function Settings() {
             onChange={(on) => change({ autoSubtitles: on })}
           />
         </ListRow>
-        <ListRow stack label={t('settings.subtitleLangs')} hint={t('settings.subtitleLangs.hint', { app: APP_NAME })}>
+        <ListRow stack label={t('settings.subtitleLangs')}>
           <MultiSelect
             label={t('settings.subtitleLangs')}
             placement="bottom-end"
@@ -313,7 +308,7 @@ export function Settings() {
             <Toggle label={t('settings.trickplay')} checked={values.trickplay ?? true} onChange={(on) => change({ trickplay: on })} />
           </ListRow>
           {(values.trickplay ?? true) && (
-            <ListRow stack label={t('settings.trickplayBudget')} hint={t('settings.trickplayBudget.hint')}>
+            <ListRow stack label={t('settings.trickplayBudget')}>
               <SegmentedControl
                 label={t('settings.trickplayBudget')}
                 segments={TRICKPLAY_BUDGETS.map((gb) => ({ value: String(gb), label: t('settings.trickplayBudget.gb', { n: gb }) }))}
@@ -338,7 +333,7 @@ export function Settings() {
       {at('library') && <StorageSection />}
 
       {at('library') && (
-        <GroupedSection title={t('settings.rescanGroup')}>
+        <GroupedSection>
           <Rescan />
         </GroupedSection>
       )}
@@ -358,16 +353,16 @@ function AccountsSection() {
     <>
       <ShikimoriAdmin />
       <GroupedSection>
-        <ListLinkRow icon="link" tint="cyan" label={t('acct.admin.mine')} hint={t('acct.admin.mine.hint')} onOpen={() => navigate('/settings/accounts')} />
+        <ListLinkRow icon="link" tint="cyan" label={t('acct.admin.mine')} onOpen={() => navigate('/settings/accounts')} />
       </GroupedSection>
     </>
   )
 }
 
 /**
- * «Почта для отправки»: one row like the others — whether the mailbox is set
- * up (and which) and «Настроить…»; the steps and the SMTP fields are in a
- * sheet, set up once and rarely seen again.
+ * «Почта для отправки»: one row like the others — the mailbox (or «Не
+ * настроена») as its value; the steps and the SMTP fields are in the sheet
+ * it opens, set up once and rarely seen again.
  */
 function MailRow({ values, saved, error, onChange }: { values: Values; saved: '' | 'saving' | 'saved'; error: string; onChange: (m: MailSettings) => void }) {
   const t = useT()
@@ -383,13 +378,11 @@ function MailRow({ values, saved, error, onChange }: { values: Values; saved: ''
     setOpen(false)
   }
   return (
-    <ListRow label={t('settings.mail')} hint={t('settings.mail.hint')} status={ready ? t('settings.mail.ready', { from: mail!.from }) : t('settings.mail.notReady')}>
-      <Button size="small" variant="secondary" onClick={() => setOpen(true)}>
-        {t('settings.mail.configure')}
-      </Button>
+    <>
+      <ListLinkRow label={t('settings.mail')} value={ready ? mail!.from : t('settings.mail.notReady')} onOpen={() => setOpen(true)} />
       {open && (
         <Sheet
-          title={t('settings.mailGroup')}
+          title={t('settings.mail')}
           role="dialog"
           size="wide"
           onCancel={() => close()}
@@ -409,7 +402,7 @@ function MailRow({ values, saved, error, onChange }: { values: Values; saved: ''
           </div>
         </Sheet>
       )}
-    </ListRow>
+    </>
   )
 }
 
@@ -535,7 +528,7 @@ function Rescan() {
     }
   }
 
-  let hint = t('settings.rescan.hint')
+  let hint: string | undefined
   if (running) hint = t('settings.rescan.running')
   else if (started && status) {
     const counts = [

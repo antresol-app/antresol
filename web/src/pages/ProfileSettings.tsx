@@ -146,7 +146,7 @@ export function ProfileSettings() {
               </ListRow>
             )}
             {favFirst !== null && (
-              <ListRow label={t('prefs.favoritesFirst')} hint={t('prefs.favoritesFirst.hint')} status={favFirstFailed ? t('prefs.favoritesFirst.failed') : undefined}>
+              <ListRow label={t('prefs.favoritesFirst')} status={favFirstFailed ? t('prefs.favoritesFirst.failed') : undefined}>
                 <Toggle label={t('prefs.favoritesFirst')} checked={favFirst} onChange={toggleFavFirst} />
               </ListRow>
             )}
