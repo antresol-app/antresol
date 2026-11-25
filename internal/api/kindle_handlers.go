@@ -2,7 +2,6 @@ package api
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -102,7 +101,7 @@ const kindleMaxBytes = 50 << 20
 // Gmail takes 25 MB in a message, and base64 and its line breaks add 37%.
 var kindleMailTarget = 17 << 20 // a variable for tests
 
-// kindleMaxRead bounds an EPUB read into memory: it may still shrink to fit.
+// kindleMaxRead bounds an EPUB the server takes on: it may still shrink to fit.
 const kindleMaxRead = 256 << 20
 
 // kindleMaxFB2 bounds an FB2 before conversion: its pictures are base64, and
@@ -213,76 +212,150 @@ func (c closers) Close() error {
 	return first
 }
 
-// kindleAttachment is the file as Kindle takes it; its reader is closed by
-// the returned function.
-func kindleAttachment(f library.File, title string) (r io.Reader, size int64, name, ctype string, done func(), err error) {
-	format := bookFormat(f.Path)
-	if format == "FB2" {
-		src, err := fb2Source(f.Path)
-		if err != nil {
-			return nil, 0, "", "", nil, err
-		}
-		defer src.Close()
-		var buf bytes.Buffer
-		if err := fb2epub.Convert(src, &capWriter{w: &buf, left: kindleMaxRead}, fb2epub.Options{Title: title}); err != nil {
-			return nil, 0, "", "", nil, err
-		}
-		book, err := kindleFits(buf.Bytes(), title)
-		if err != nil {
-			return nil, 0, "", "", nil, err
-		}
-		return bytes.NewReader(book), int64(len(book)), kindleName(title, "EPUB"), "application/epub+zip", func() {}, nil
+// kindleBook is a book on disk: read at most size bytes of f. temp: a copy
+// made on the way (converted, cleaned, shrunk), removed when it is let go.
+// Books are never held in memory: a stage reads the file the stage before it
+// wrote, and the mail reads the last one, so the memory of a send does not
+// grow with the book (a picture being shrunk and the FB2 being parsed
+// aside).
+type kindleBook struct {
+	f    *os.File
+	size int64
+	temp bool
+}
+
+func (b kindleBook) release() {
+	b.f.Close()
+	if b.temp {
+		os.Remove(b.f.Name())
 	}
-	file, err := os.Open(f.Path)
+}
+
+// spooled is the book in temp file f (f is let go when it cannot be read).
+func spooled(f *os.File) (kindleBook, error) {
+	b := kindleBook{f: f, temp: true}
+	st, err := f.Stat()
 	if err != nil {
-		return nil, 0, "", "", nil, err
+		b.release()
+		return kindleBook{}, err
+	}
+	b.size = st.Size()
+	return b, nil
+}
+
+// then is b followed by next, the copy a stage made of it (nil: the stage
+// left the book as it was); a copy replaces b.
+func (b kindleBook) then(next *os.File) (kindleBook, error) {
+	if next == nil {
+		return b, nil
+	}
+	n, err := spooled(next)
+	if err != nil {
+		return b, err
+	}
+	b.release()
+	return n, nil
+}
+
+// openKindleBook opens the library's file, refusing one over limit.
+func openKindleBook(path string, limit int64) (kindleBook, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return kindleBook{}, err
 	}
 	st, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, 0, "", "", nil, err
-	}
-	limit := int64(kindleMaxRead)
-	if format == "PDF" {
-		limit = kindleMaxBytes
+		return kindleBook{}, err
 	}
 	if st.Size() > limit {
 		file.Close()
-		return nil, 0, "", "", nil, errKindleTooLarge
+		return kindleBook{}, errKindleTooLarge
+	}
+	return kindleBook{f: file, size: st.Size()}, nil
+}
+
+// convertFB2 is the EPUB of the FB2 at path, in a temp file.
+func convertFB2(path, title string) (kindleBook, error) {
+	src, err := fb2Source(path)
+	if err != nil {
+		return kindleBook{}, err
+	}
+	defer src.Close()
+	tmp, err := os.CreateTemp("", "kindle-*.epub")
+	if err != nil {
+		return kindleBook{}, err
+	}
+	if err := fb2epub.Convert(src, &capWriter{w: tmp, left: kindleMaxRead}, fb2epub.Options{Title: title}); err != nil {
+		kindleBook{f: tmp, temp: true}.release()
+		return kindleBook{}, err
+	}
+	return spooled(tmp)
+}
+
+// kindleBookOf is the book of f as Kindle takes it, on disk.
+func kindleBookOf(f library.File, format, title string) (kindleBook, error) {
+	var book kindleBook
+	var err error
+	switch format {
+	case "PDF":
+		return openKindleBook(f.Path, kindleMaxBytes)
+	case "FB2":
+		book, err = convertFB2(f.Path, title)
+	default:
+		book, err = openKindleBook(f.Path, kindleMaxRead)
+		if err == nil {
+			// a book added before it was cleaned on the way in, or a read-only folder
+			var clean *os.File
+			if clean, err = library.CleanEPUB(book.f, book.size, ""); err == nil {
+				book, err = book.then(clean)
+			}
+			if err != nil {
+				book.release()
+			}
+		}
+	}
+	if err != nil {
+		return kindleBook{}, err
+	}
+	return kindleFits(book, title)
+}
+
+// kindleAttachment is the file as Kindle takes it; its reader is closed by
+// the returned function.
+func kindleAttachment(f library.File, title string) (r io.Reader, size int64, name, ctype string, done func(), err error) {
+	format := bookFormat(f.Path)
+	book, err := kindleBookOf(f, format, title)
+	if err != nil {
+		return nil, 0, "", "", nil, err
 	}
 	if format == "PDF" {
-		return file, st.Size(), kindleName(title, format), "application/pdf", func() { file.Close() }, nil
+		return io.NewSectionReader(book.f, 0, book.size), book.size, kindleName(title, "PDF"), "application/pdf", book.release, nil
 	}
-	defer file.Close()
-	// the size was checked above; the file may have grown since
-	data, err := io.ReadAll(io.LimitReader(file, limit+1))
-	if err != nil {
-		return nil, 0, "", "", nil, err
-	}
-	if int64(len(data)) > limit {
-		return nil, 0, "", "", nil, errKindleTooLarge
-	}
-	// a book added before it was cleaned on the way in, or a read-only folder
-	book, err := kindleFits(library.CleanEPUB(data), title)
-	if err != nil {
-		return nil, 0, "", "", nil, err
-	}
-	return bytes.NewReader(book), int64(len(book)), kindleName(title, format), "application/epub+zip", func() {}, nil
+	return io.NewSectionReader(book.f, 0, book.size), book.size, kindleName(title, "EPUB"), "application/epub+zip", book.release, nil
 }
 
 // kindleFits is the EPUB as mail takes it, its pictures shrunk when it is too
 // large. Only this copy changes: the library keeps the full pictures for
 // reading on other screens. What stays over Gmail's limit still goes, since
-// another provider may take it, and a refusal is then explained.
-func kindleFits(book []byte, title string) ([]byte, error) {
-	if len(book) > kindleMailTarget {
-		before := len(book)
-		small, ok := library.ShrinkEPUB(book, kindleMailTarget)
-		log.Printf("kindle: «%s»: pictures shrunk %d -> %d bytes (fits: %v)", title, before, len(small), ok)
-		book = small
+// another provider may take it, and a refusal is then explained. On an error
+// the book is let go.
+func kindleFits(book kindleBook, title string) (kindleBook, error) {
+	if book.size > int64(kindleMailTarget) {
+		before := book.size
+		small, ok, err := library.ShrinkEPUB(book.f, book.size, int64(kindleMailTarget), "")
+		if err == nil {
+			book, err = book.then(small)
+		}
+		if err != nil {
+			book.release()
+			return kindleBook{}, err
+		}
+		log.Printf("kindle: «%s»: pictures shrunk %d -> %d bytes (fits: %v)", title, before, book.size, ok)
 	}
-	if len(book) > kindleMaxBytes {
-		return nil, errKindleTooLarge
+	if book.size > kindleMaxBytes {
+		book.release()
+		return kindleBook{}, errKindleTooLarge
 	}
 	return book, nil
 }
@@ -303,8 +376,8 @@ func (h *lib) kindleReady(ctx context.Context, address string) (MailSettings, bo
 // kindleSend: a variable for tests.
 var kindleSend = mailer.Send
 
-// kindleSlot: one conversion and upload at a time; books live in memory
-// meanwhile.
+// kindleSlot: one conversion and upload at a time; their temp copies take
+// the disk meanwhile.
 var kindleSlot = make(chan struct{}, 1)
 
 // kindleWait is how long POST waits for its job: a slow upload goes on after

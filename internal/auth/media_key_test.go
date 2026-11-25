@@ -35,7 +35,7 @@ func newKeys(t *testing.T, ss *Sessions) *MediaKeys {
 func TestMediaKeyRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
 	key, exp := mk.Issue(sess, tok, 12*time.Hour)
@@ -54,7 +54,7 @@ func TestMediaKeyRoundTrip(t *testing.T) {
 func TestMediaKeyTampered(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true})
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
@@ -90,7 +90,7 @@ func TestMediaKeyTampered(t *testing.T) {
 func TestMediaKeyExpired(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
 	key, exp := mk.Issue(sess, tok, time.Hour)
@@ -107,7 +107,7 @@ func TestMediaKeyExpired(t *testing.T) {
 func TestMediaKeySessionTTL(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
 	key, _ := mk.Issue(sess, tok, time.Hour)
@@ -125,7 +125,7 @@ func TestMediaKeySessionTTL(t *testing.T) {
 func TestMediaKeyWebSession(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	web, _ := ss.Create(ctx, a.ID)
 	_, sess, _ := ss.LookupSession(ctx, web)
 	mk := newKeys(t, ss)
@@ -145,7 +145,7 @@ func TestMediaKeyWebSession(t *testing.T) {
 func TestMediaKeyRevokedWithDevice(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
 	key, _ := mk.Issue(sess, tok, 12*time.Hour)
@@ -160,7 +160,7 @@ func TestMediaKeyRevokedWithDevice(t *testing.T) {
 func TestMediaKeyRowidReuse(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true})
 	if _, err := ss.Create(ctx, a.ID); err != nil { // an older row below the kid's
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestMediaKeySecretPersists(t *testing.T) {
 func TestGuardMediaKeyRoutes(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, sess := nativeKey(t, ss, a.ID, "phone-0001")
 	mk := newKeys(t, ss)
 	key, _ := mk.Issue(sess, tok, time.Hour)
@@ -298,7 +298,7 @@ func TestMediaKeyRoute_AddonMedia(t *testing.T) {
 func TestGuardMediaKey_AddonMedia(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	kid, err := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true, Password: "kidpass"})
 	if err != nil {
 		t.Fatal(err)

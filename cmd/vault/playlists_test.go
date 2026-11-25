@@ -41,7 +41,7 @@ func TestPlaylistImportWithoutQueueUsesLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	u, err := auth.NewStore(database).CreateFirstAdmin(ctx, "Папа", "secret")
+	u, err := auth.NewStore(database).CreateFirstAdmin(ctx, "Папа", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -75,7 +75,7 @@ func dirtyEPUB(t *testing.T) []byte {
 }
 
 func TestCleanEPUBRemovesWhatMailRefuses(t *testing.T) {
-	got, order := tUnzip(t, CleanEPUB(dirtyEPUB(t)))
+	got, order := tUnzip(t, cleanBytes(t, dirtyEPUB(t)))
 	for _, gone := range []string{"stamp-site.com", "OEBPS/js/app.js", "OEBPS/APP.EXE"} {
 		if _, ok := got[gone]; ok {
 			t.Errorf("%s stayed", gone)
@@ -95,10 +95,10 @@ func TestCleanEPUBRemovesWhatMailRefuses(t *testing.T) {
 
 func TestCleanEPUBLeavesOthersAlone(t *testing.T) {
 	clean := tZip(t, tEntry{"mimetype", "application/epub+zip", true}, tEntry{"OEBPS/a.xhtml", "x", false})
-	if !bytes.Equal(CleanEPUB(clean), clean) {
+	if !bytes.Equal(cleanBytes(t, clean), clean) {
 		t.Error("a clean book was rewritten")
 	}
-	if got := CleanEPUB([]byte("not a zip")); string(got) != "not a zip" {
+	if got := cleanBytes(t, []byte("not a zip")); string(got) != "not a zip" {
 		t.Error("garbage changed")
 	}
 	p := filepath.Join(t.TempDir(), "a.epub")

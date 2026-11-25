@@ -11,7 +11,7 @@ import (
 func TestDeviceLists(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	if _, err := ss.CreateDevice(ctx, a.ID, DeviceInfo{ID: "tv-00001", Name: "Apple TV", Model: "AppleTV11,1"}); err != nil {
 		t.Fatal(err)
 	}

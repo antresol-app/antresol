@@ -20,7 +20,7 @@ func newTestStore(t *testing.T) (*Store, int64) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	u, err := auth.NewStore(d).CreateFirstAdmin(context.Background(), "Папа", "secret")
+	u, err := auth.NewStore(d).CreateFirstAdmin(context.Background(), "Папа", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}

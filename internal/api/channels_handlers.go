@@ -75,6 +75,7 @@ func newChannelsAPI(deps Deps, cards *lib) *channelsAPI {
 	if deps.ExtIPTV != nil && deps.DB != nil {
 		a.relay = newExtRelay(deps.DB)
 		a.relay.sourceLAN = a.sourceOnLAN
+		a.relay.ffmpeg, a.relay.ffprobe = deps.FFmpeg, deps.FFprobe
 	}
 	return a
 }
@@ -1261,6 +1262,11 @@ func (a *channelsAPI) setLast(w http.ResponseWriter, r *http.Request) {
 	if err := a.svc.Store.SetLastChannel(r.Context(), u.ID, c.ID); err != nil {
 		internalErr(w, r, "last channel", err)
 		return
+	}
+	if x, ok := a.sees(r, u, c); ok && a.relay != nil && len(x.Streams) > 0 {
+		// tuned in to an external channel: have a look at its audio, so that
+		// the next time the clients know whether it is silent
+		a.relay.warm(x.Streams[0], r.UserAgent())
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

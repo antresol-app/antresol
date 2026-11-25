@@ -13,7 +13,7 @@ import (
 func TestAppLoginWithAManagedAccountsPassword(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStores(t)
-	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tv, err := s.CreateManaged(ctx, papa.ID, "Гостиная")
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestAppLoginWithAManagedAccountsPassword(t *testing.T) {
 func TestManagedAppPasswordOnlyForItsOwner(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStores(t)
-	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	mama, _ := s.CreateUser(ctx, NewUser{Name: "Mama"})
 	tv, _ := s.CreateManaged(ctx, papa.ID, "Гостиная")
 	if _, err := s.SetManagedAppPassword(ctx, mama.ID, tv.ID); !errors.Is(err, ErrNotFound) {
@@ -94,7 +94,7 @@ func TestAppTokenOfAManagedAccount(t *testing.T) {
 	ctx := context.Background()
 	s, _, d := newStoresDB(t)
 	tokens := NewAppTokens(d)
-	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	papa, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	mama, _ := s.CreateUser(ctx, NewUser{Name: "Mama"})
 	tv, _ := s.CreateManaged(ctx, papa.ID, "Гостиная")
 	mamas, _ := s.CreateManaged(ctx, mama.ID, "Кухня")
@@ -171,7 +171,7 @@ func TestAppTokenOfAManagedAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	tok = issue("tv")
-	pw := "secret2"
+	pw := "secret-pass-2"
 	if err := s.Update(ctx, papa.ID, UserPatch{Password: &pw}); err != nil {
 		t.Fatal(err)
 	}

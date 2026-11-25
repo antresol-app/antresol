@@ -1,9 +1,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/antresol-app/antresol/addonkit"
@@ -47,25 +45,7 @@ func (a *addonsAPI) coreAddInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req addonkit.InputRequest
-	bodyDeadline(w)
-	r.Body = http.MaxBytesReader(w, r.Body, addonInputBody)
-	dec := json.NewDecoder(r.Body)
-	err := dec.Decode(&req)
-	if err == nil {
-		// one JSON value: anything after it but white space is not JSON
-		if err = dec.Decode(&struct{}{}); err == io.EOF {
-			err = nil
-		} else if err == nil {
-			err = errors.New("trailing data")
-		}
-	}
-	if err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeErr(w, r, http.StatusRequestEntityTooLarge, msgAddonInputTooBig)
-			return
-		}
-		badRequest(w, r)
+	if !decodeBody(w, r, &req, addonInputBody, msgAddonInputTooBig, true) {
 		return
 	}
 	if err := addons.ValidateInput(req); err != nil {

@@ -22,7 +22,7 @@ func TestWatchedChangeSkipsManagedAccounts(t *testing.T) {
 	}
 	t.Cleanup(func() { d.Close() })
 	users, repo, prog := auth.NewStore(d), library.NewRepo(d), progress.New(d)
-	person, _ := users.CreateFirstAdmin(ctx, "Papa", "secret")
+	person, _ := users.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tv, err := users.CreateManaged(ctx, person.ID, "Гостиная")
 	if err != nil {
 		t.Fatal(err)

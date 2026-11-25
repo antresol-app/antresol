@@ -12,7 +12,7 @@ import (
 func TestManagedAccountInheritsAndCannotSignIn(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStores(t)
-	admin, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	admin, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	kid, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true, MaxRating: "6+"})
 
 	m, err := s.CreateManaged(ctx, kid.ID, "Детская")
@@ -74,7 +74,7 @@ func TestManagedAccountInheritsAndCannotSignIn(t *testing.T) {
 func TestManagedAccountCRUD(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	b, _ := s.CreateUser(ctx, NewUser{Name: "Mama"})
 
 	m, err := s.CreateManaged(ctx, a.ID, "  Гостиная ")
@@ -140,7 +140,7 @@ func TestManagedAccountCRUD(t *testing.T) {
 func TestDeviceHistorySwitch(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	b, _ := s.CreateUser(ctx, NewUser{Name: "Mama"})
 	tv := DeviceInfo{ID: "tv-000001", Name: "Apple TV"}
 	tok, _ := ss.CreateDevice(ctx, a.ID, tv)
@@ -227,7 +227,7 @@ func TestDeviceHistorySwitch(t *testing.T) {
 func TestManagedNamesAreScopedToTheirOwner(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	b, _ := s.CreateUser(ctx, NewUser{Name: "Mama"})
 
 	m, err := s.CreateManaged(ctx, a.ID, "Гостиная")
@@ -301,7 +301,7 @@ func TestManagedNamesAreScopedToTheirOwner(t *testing.T) {
 func TestManagedAccountHasNoSessionsOrTokens(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	m, err := s.CreateManaged(ctx, a.ID, "Гостиная")
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +401,7 @@ func TestPairingNeverSignsInAManagedAccount(t *testing.T) {
 func TestSwitchOnTwiceAtOnceMakesOneAccount(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, _ := ss.CreateDevice(ctx, a.ID, DeviceInfo{ID: "tv-000001", Name: "Apple TV"})
 	_, sess, err := ss.LookupSession(ctx, tok)
 	if err != nil {
@@ -450,7 +450,7 @@ func TestSwitchOnTwiceAtOnceMakesOneAccount(t *testing.T) {
 func TestDetachManagedSwitchesEveryDeviceOff(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	m, _ := s.CreateManaged(ctx, a.ID, "Гостиная")
 	var toks []string
 	for _, id := range []string{"tv-000001", "tv-000002"} {

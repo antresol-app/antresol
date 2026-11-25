@@ -315,6 +315,8 @@ func rfc2231(s string) string {
 	return b.String()
 }
 
+var crlf = []byte("\r\n")
+
 // lineWriter breaks base64 text into the 76 columns of RFC 2045.
 type lineWriter struct {
 	w io.Writer
@@ -330,7 +332,7 @@ func (l *lineWriter) Write(p []byte) (int, error) {
 		}
 		p, l.n = p[k:], l.n+k
 		if l.n == 76 {
-			if _, err := io.WriteString(l.w, "\r\n"); err != nil {
+			if _, err := l.w.Write(crlf); err != nil {
 				return 0, err
 			}
 			l.n = 0

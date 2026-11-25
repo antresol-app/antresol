@@ -63,7 +63,7 @@ func TestWebAndSubsonicAgreeOnVisibility(t *testing.T) {
 		albums = append(albums, id)
 	}
 	profiles := []auth.NewUser{
-		{Name: "Папа", Password: "secret", IsAdmin: true},
+		{Name: "Папа", Password: "secret-pass", IsAdmin: true},
 		{Name: "Вася", IsKid: true},
 		{Name: "Петя", IsKid: true, MaxRating: "16+"},
 		{Name: "Гость", Password: "1234", MaxRating: "6+"},
@@ -158,7 +158,7 @@ func TestJellyfinVisibility(t *testing.T) {
 		items = append(items, rated{id, rt, "movie"}, rated{season.ParentID, rt, "series"}, rated{season.ID, rt, "season"}, rated{epID, rt, "episode"})
 	}
 	profiles := []auth.NewUser{
-		{Name: "Папа", Password: "secret", IsAdmin: true},
+		{Name: "Папа", Password: "secret-pass", IsAdmin: true},
 		{Name: "Вася", IsKid: true},
 		{Name: "Петя", IsKid: true, MaxRating: "16+"},
 		{Name: "Гость", Password: "1234", MaxRating: "6+"},

@@ -120,28 +120,39 @@ func (s *Store) ClearAppPassword(ctx context.Context, id int64) error {
 }
 
 // ByName finds a profile by name, ignoring case (Unicode: SQLite NOCASE
-// does not fold Cyrillic) and surrounding spaces. Names are unique only
-// byte for byte, so «Саша» and «саша» can both exist: more than one match
-// is ErrNotFound (a Subsonic login cannot tell them apart).
+// and lower() do not fold Cyrillic, so the names are compared here, two
+// columns of each) and surrounding spaces. Names are unique only byte for
+// byte, so «Саша» and «саша» can both exist: more than one match is
+// ErrNotFound (a Subsonic login cannot tell them apart).
 func (s *Store) ByName(ctx context.Context, name string) (User, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return User{}, ErrNotFound
 	}
-	list, err := s.List(ctx)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name FROM users WHERE owner_id IS NULL`)
 	if err != nil {
 		return User{}, err
 	}
-	var found []User
-	for _, u := range list {
-		if strings.EqualFold(strings.TrimSpace(u.Name), name) {
-			found = append(found, u)
+	defer rows.Close()
+	var found []int64
+	for rows.Next() {
+		var id int64
+		var n string
+		if err := rows.Scan(&id, &n); err != nil {
+			return User{}, err
+		}
+		if strings.EqualFold(strings.TrimSpace(n), name) {
+			found = append(found, id)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return User{}, err
+	}
+	rows.Close()
 	if len(found) != 1 {
 		return User{}, ErrNotFound
 	}
-	return found[0], nil
+	return s.Get(ctx, found[0])
 }
 
 // ResetAppPasswords is the administrator's «Сбросить пароль для приложений»:

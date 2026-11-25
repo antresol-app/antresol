@@ -15,7 +15,7 @@ var uidShape = regexp.MustCompile(`^[0-9a-f]{32}$`)
 func TestUserUID(t *testing.T) {
 	ctx := context.Background()
 	s, _, d := newStoresDB(t)
-	a, err := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, err := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -46,7 +46,7 @@ func TestPlaylistsRoundTrip(t *testing.T) {
 	}
 	// someone else's playlist is not found
 	ctx := context.Background()
-	other, _ := e.users.CreateUser(ctx, auth.NewUser{Name: "Мама", Password: "secret"})
+	other, _ := e.users.CreateUser(ctx, auth.NewUser{Name: "Мама", Password: "secret-pass"})
 	app, _ := e.users.SetAppPassword(ctx, other.ID)
 	e.admin, e.app = other, app
 	if code, _ := errCode(e.call("getPlaylist", "id", id)); code != 70 {

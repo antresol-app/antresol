@@ -39,11 +39,11 @@ func TestStoreBasics(t *testing.T) {
 	if _, err := s.CreateUser(ctx, NewUser{Name: "A", IsAdmin: true}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("admin without password: %v", err)
 	}
-	a, err := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, err := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	if err != nil || !a.HasPassword || a.Avatar != "grad-1" {
 		t.Fatalf("%+v %v", a, err)
 	}
-	if _, err := s.CreateFirstAdmin(ctx, "X", "secret"); !errors.Is(err, ErrSetupDone) {
+	if _, err := s.CreateFirstAdmin(ctx, "X", "secret-pass"); !errors.Is(err, ErrSetupDone) {
 		t.Fatal(err)
 	}
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true, MaxRating: "PG"})
@@ -56,7 +56,7 @@ func TestStoreBasics(t *testing.T) {
 	if _, err := s.Verify(ctx, a.ID, "nope"); !errors.Is(err, ErrBadPassword) {
 		t.Fatal(err)
 	}
-	if _, err := s.Verify(ctx, a.ID, "secret"); err != nil {
+	if _, err := s.Verify(ctx, a.ID, "secret-pass"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Delete(ctx, a.ID); !errors.Is(err, ErrLastAdmin) {
@@ -74,7 +74,7 @@ func TestStoreBasics(t *testing.T) {
 func TestSessions(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, err := ss.Create(ctx, u.ID)
 	if err != nil || len(tok) != 43 {
 		t.Fatalf("%q %v", tok, err)
@@ -92,7 +92,7 @@ func TestSessions(t *testing.T) {
 func TestMiddleware(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true})
 	h := Require(ss)(RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })))
 	do := func(uid int64) int {
@@ -127,7 +127,7 @@ func TestPasswordTooLong(t *testing.T) {
 func TestExpiredSession(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, _ := ss.Create(ctx, u.ID)
 	old := time.Now().Add(-sessionTTL - time.Hour).UTC().Format(time.RFC3339)
 	d.Exec(`UPDATE sessions SET last_seen=? WHERE token=?`, old, TokenHash(tok))
@@ -144,7 +144,7 @@ func TestExpiredSession(t *testing.T) {
 func TestLastSeenThrottle(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, _ := ss.Create(ctx, u.ID)
 	seen := func() string {
 		var v string
@@ -185,7 +185,7 @@ func holdWriteLock(t *testing.T, d *sql.DB) func() {
 func TestLastSeenNeverWaitsForWriteLock(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, _ := ss.Create(ctx, u.ID)
 	stale := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	d.Exec(`UPDATE sessions SET last_seen=? WHERE token=?`, stale, TokenHash(tok))
@@ -211,7 +211,7 @@ func TestLastSeenNeverWaitsForWriteLock(t *testing.T) {
 func TestMiddlewareDBErrorIs500(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	tok, _ := ss.Create(ctx, u.ID)
 	d.Close()
 	h := Require(ss)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))

@@ -166,16 +166,40 @@ func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	return ss, nil
 }
 
+// sessionLookupSQL is a session, its profile and the managed account its
+// device's history goes to (the three of withHistory's answer: 0, "", "" for
+// none) in one statement: the one every authenticated request runs. cols
+// has no table prefix, so the history account is read by sub-selects (a
+// second users in the join would make its names ambiguous).
+var sessionLookupSQL = `SELECT ` + sessionColsOf("s") + `, ` + cols + `,
+	COALESCE(d.managed_id, 0),
+	COALESCE((SELECT ` + NameSQL("h") + ` FROM users h WHERE h.id = d.managed_id), ''),
+	COALESCE((SELECT h.uid FROM users h WHERE h.id = d.managed_id), '')
+	FROM sessions s JOIN users ON users.id = s.user_id
+	LEFT JOIN device_history d ON d.user_id = s.user_id AND d.enabled = 1 AND d.device_key = ` + deviceKeySQL + `
+	WHERE s.token = ?`
+
+// scanSessionUser scans a row of sessionColsOf("s"), then cols, then dest.
+func scanSessionUser(row scanner, dest ...any) (Session, User, error) {
+	var u User
+	ss, err := scanSession(scanFn(func(sessionDest ...any) error {
+		var err error
+		u, err = scan(scanFn(func(userDest ...any) error {
+			return row.Scan(append(append(sessionDest, userDest...), dest...)...)
+		}))
+		return err
+	}))
+	return ss, u, err
+}
+
 // LookupSession returns the token's profile and session. Sessions unused
 // for sessionTTL end; last_seen is updated at most every lastSeenThrottle.
 func (s *Sessions) LookupSession(ctx context.Context, token string) (User, Session, error) {
 	if token == "" {
 		return User{}, Session{}, ErrNotFound
 	}
-	ss, err := scanSession(s.db.QueryRowContext(ctx, `SELECT `+sessionCols+` FROM sessions WHERE token=?`, TokenHash(token)))
-	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, Session{}, ErrNotFound
-	}
+	var h Session // the history's three columns
+	ss, u, err := scanSessionUser(s.db.QueryRowContext(ctx, sessionLookupSQL, TokenHash(token)), &h.HistoryUserID, &h.HistoryName, &h.HistoryUID)
 	if err != nil {
 		return User{}, Session{}, err
 	}
@@ -186,16 +210,10 @@ func (s *Sessions) LookupSession(ctx context.Context, token string) (User, Sessi
 		}
 		return User{}, Session{}, ErrNotFound
 	}
-	u, err := scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, ss.UserID))
-	if err != nil {
-		return User{}, Session{}, err
-	}
 	if u.OwnerID != 0 { // a managed account is never signed in
 		return User{}, Session{}, ErrNotFound
 	}
-	if err := s.withHistory(ctx, &ss); err != nil {
-		return User{}, Session{}, err
-	}
+	ss.HistoryUserID, ss.HistoryName, ss.HistoryUID = h.HistoryUserID, h.HistoryName, h.HistoryUID
 	if age > lastSeenThrottle {
 		h := TokenHash(token)
 		s.seen.do(h, func(ctx context.Context) error {

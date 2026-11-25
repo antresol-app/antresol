@@ -322,6 +322,10 @@ func deviceKey(ss Session) string {
 	return "s:" + strconv.FormatInt(ss.ID, 10)
 }
 
+// deviceKeySQL is deviceKey of the sessions row s (the same key: a test
+// holds the two together).
+const deviceKeySQL = `CASE WHEN s.kind = '` + KindNative + `' AND s.device_id <> '' THEN 'app:' || s.device_id ELSE 's:' || s.rowid END`
+
 // withHistory fills ss.HistoryUserID and HistoryName from device_history.
 func (s *Sessions) withHistory(ctx context.Context, ss *Session) error {
 	err := s.db.QueryRowContext(ctx, `SELECT d.managed_id, `+NameSQL("u")+`, COALESCE(u.uid, '') FROM device_history d JOIN users u ON u.id = d.managed_id

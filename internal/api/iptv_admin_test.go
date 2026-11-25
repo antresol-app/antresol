@@ -36,7 +36,10 @@ type tvEnv struct {
 func newTVEnv(t *testing.T) *tvEnv { return newTVEnvLive(t, nil) }
 
 // newTVEnvLive: with a live encoder (nil: none).
-func newTVEnvLive(t *testing.T, live *channels.Live) *tvEnv {
+func newTVEnvLive(t *testing.T, live *channels.Live) *tvEnv { return newTVEnvWith(t, live, nil) }
+
+// newTVEnvWith lets a test adjust the router's Deps as well.
+func newTVEnvWith(t *testing.T, live *channels.Live, opt func(*Deps, *sql.DB)) *tvEnv {
 	p := &tvProvider{files: map[string]string{}}
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
@@ -58,6 +61,9 @@ func newTVEnvLive(t *testing.T, live *channels.Live) *tvEnv {
 		}
 		e.tv = &iptv.Service{Store: &iptv.Store{DB: db}, Channels: e.svc.Store, Fetch: iptv.NewFetcher(), Seal: seal}
 		d.Channels, d.DB, d.IPTV, d.ExtIPTV = e.svc, db, true, e.tv
+		if opt != nil {
+			opt(d, db)
+		}
 	})
 	return e
 }

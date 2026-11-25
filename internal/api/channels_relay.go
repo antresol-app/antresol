@@ -25,6 +25,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/auth"
 	"github.com/antresol-app/antresol/internal/iptv"
+	"github.com/antresol-app/antresol/internal/media"
 	"github.com/antresol-app/antresol/internal/netguard"
 	"github.com/go-chi/chi/v5"
 )
@@ -136,6 +137,17 @@ type extRelay struct {
 
 	perUser, total int
 
+	// The audio mend (channels_relay_audio.go): the tools' paths ("": the
+	// PATH's), what is known of each stream's audio, the conversions
+	// allowed at once, and the look at a stream's start (a variable for the
+	// tests).
+	ffmpeg, ffprobe string
+	toolsOnce       sync.Once
+	tools           bool
+	audio           relayAudio
+	slots, looks    chan struct{}
+	probe           func(ctx context.Context, head []byte) (media.ProbeResult, error)
+
 	mu       sync.Mutex
 	sessions map[relayKey]*relaySession
 	seen     map[relaySeenKey]relaySeen
@@ -144,7 +156,8 @@ type extRelay struct {
 
 func newExtRelay(db *sql.DB) *extRelay {
 	return &extRelay{db: db, now: time.Now, open: relayClient(false), local: relayClient(true),
-		perUser: relayPerUser, total: relayTotal, sessions: map[relayKey]*relaySession{}, seen: map[relaySeenKey]relaySeen{}}
+		perUser: relayPerUser, total: relayTotal, sessions: map[relayKey]*relaySession{}, seen: map[relaySeenKey]relaySeen{},
+		slots: make(chan struct{}, relayMendMax), looks: make(chan struct{}, relayLooks)}
 }
 
 // ---- references ----
@@ -455,31 +468,37 @@ func relayType(ctype string) string {
 
 var playlistTypes = []string{"mpegurl"} // application/vnd.apple.mpegurl, application/x-mpegurl, audio/mpegurl
 
-func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s iptv.Stream, target string, lan bool) {
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
+// fetch asks the provider for target (a stream of s: its address or a URI of
+// its playlist) with the stream's own User-Agent and Referer (ua when it has
+// no User-Agent), under the guard of the source's kind (lan).
+func (rl *extRelay) fetch(ctx context.Context, s iptv.Stream, target, ua, rng string, lan bool) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
-		writeErr(w, r, http.StatusBadGateway, "Источник канала не ответил")
-		return
+		return nil, errRelayRef
 	}
-	ua := s.UserAgent
-	if ua == "" {
-		ua = r.UserAgent() // what the browser itself would have sent
+	if s.UserAgent != "" {
+		ua = s.UserAgent
 	}
 	req.Header.Set("User-Agent", ua)
 	if s.Referrer != "" {
 		req.Header.Set("Referer", s.Referrer)
 	}
 	req.Header.Set("Accept", "*/*")
-	if rg := r.Header.Get("Range"); rg != "" {
-		req.Header.Set("Range", rg)
+	if rng != "" {
+		req.Header.Set("Range", rng)
 	}
 	c := rl.open
 	if lan {
 		c = rl.local
 	}
-	resp, err := c.Do(req)
+	return c.Do(req)
+}
+
+func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s iptv.Stream, target string, lan bool) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	// what the browser itself would have sent, for a stream with no User-Agent of its own
+	resp, err := rl.fetch(ctx, s, target, r.UserAgent(), r.Header.Get("Range"), lan)
 	if err != nil {
 		if errors.Is(err, errRelayDial) {
 			// the admin can tell a source on the internet that streams from the LAN
@@ -533,9 +552,18 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 			internalErr(w, r, "relay", sealErr)
 			return
 		}
+		if rl.mends(s) {
+			out = relayFixCodecs(out)
+		}
 		h.Set("Content-Type", "application/vnd.apple.mpegurl")
 		h.Set("Content-Length", strconv.Itoa(len(out)))
 		w.Write(out)
+		return
+	}
+	// a transport stream whose audio clients cannot play is converted
+	src, mend, stop := rl.audioRoute(ctx, s, br)
+	defer stop()
+	if mend && rl.serveRemux(w, r, ctx, src, stall) {
 		return
 	}
 	// only these of the provider's headers pass (no cookie, no CSP, no
@@ -552,7 +580,7 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 	w.WriteHeader(resp.StatusCode)
 	buf := make([]byte, 32<<10)
 	for {
-		m, err := br.Read(buf)
+		m, err := src.Read(buf)
 		if m > 0 {
 			stall.Reset(relayStall)
 			_ = rc.SetWriteDeadline(time.Now().Add(relayStall))

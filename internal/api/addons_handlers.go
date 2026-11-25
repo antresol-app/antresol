@@ -968,15 +968,7 @@ func (a *addonsAPI) coreEvent(w http.ResponseWriter, r *http.Request) {
 		Name string          `json:"name"`
 		Data json.RawMessage `json:"data"`
 	}
-	bodyDeadline(w)
-	r.Body = http.MaxBytesReader(w, r.Body, addonEventBody)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeErr(w, r, http.StatusRequestEntityTooLarge, msgAddonEventTooBig)
-			return
-		}
-		writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+	if !decodeBody(w, r, &body, addonEventBody, msgAddonEventTooBig, false) {
 		return
 	}
 	typ, err := addons.EventType(in.ID, body.Name)

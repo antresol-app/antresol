@@ -12,7 +12,7 @@ import (
 func newPairingsTest(t *testing.T) (*Pairings, *Sessions, User, *time.Time) {
 	t.Helper()
 	s, ss, d := newStoresDB(t)
-	u, err := s.CreateFirstAdmin(context.Background(), "Papa", "secret")
+	u, err := s.CreateFirstAdmin(context.Background(), "Papa", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}

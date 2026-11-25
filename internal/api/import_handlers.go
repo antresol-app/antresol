@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -189,16 +188,8 @@ func (h *importAPI) writeJob(w http.ResponseWriter, r *http.Request, code int, i
 }
 
 func (h *importAPI) create(w http.ResponseWriter, r *http.Request) {
-	bodyDeadline(w)
-	r.Body = http.MaxBytesReader(w, r.Body, maxSnapshotBody)
 	var snap playlistimport.Snapshot
-	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeErr(w, r, http.StatusRequestEntityTooLarge, "Файл слишком большой")
-			return
-		}
-		writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+	if !decodeBody(w, r, &snap, maxSnapshotBody, "Файл слишком большой", false) {
 		return
 	}
 	id, err := h.svc.Create(r.Context(), userOf(r).ID, snap)

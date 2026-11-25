@@ -22,7 +22,7 @@ func sha256Hex(s string) string {
 func TestSessionTokensStoredHashed(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	web, err := ss.Create(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestMigrationHashesExistingSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewStore(d)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	const web = "webtokenwebtokenwebtokenwebtokenwebtokenweb"
 	const dev = "devtokendevtokendevtokendevtokendevtokendev"
 	if _, err := d.Exec(`INSERT INTO sessions(token, user_id) VALUES(?,?)`, web, a.ID); err != nil {

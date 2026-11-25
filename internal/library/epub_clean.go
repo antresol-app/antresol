@@ -2,7 +2,6 @@ package library
 
 import (
 	"archive/zip"
-	"bytes"
 	"errors"
 	"io"
 	"log"
@@ -104,19 +103,40 @@ func writeCleanEPUB(zr *zip.Reader, w io.Writer) error {
 	return zw.Close()
 }
 
-// CleanEPUB returns the EPUB without the files mail servers refuse. A book
-// with none, or one it cannot rewrite, comes back as it is.
-func CleanEPUB(data []byte) []byte {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+// CleanEPUB writes the EPUB at r (size bytes) without the files mail servers
+// refuse into a new temp file in dir ("": the system's), rewound, which the
+// caller closes and removes. A book with none, or one it cannot rewrite,
+// gives nil: it stays as it is. The book is never held in memory.
+func CleanEPUB(r io.ReaderAt, size int64, dir string) (*os.File, error) {
+	zr, err := zip.NewReader(r, size)
 	if err != nil || !hasRefusedEntry(zr) {
-		return data
+		return nil, nil
 	}
-	var out bytes.Buffer
-	if err := writeCleanEPUB(zr, &out); err != nil {
+	tmp, err := os.CreateTemp(dir, "clean-*.epub")
+	if err != nil {
+		return nil, err
+	}
+	if err := writeCleanEPUB(zr, tmp); err != nil {
 		log.Printf("library: clean EPUB: %v", err)
-		return data
+		discardTemp(tmp)
+		return nil, nil
 	}
-	return out.Bytes()
+	return rewound(tmp)
+}
+
+// discardTemp closes and removes a temp file.
+func discardTemp(f *os.File) {
+	f.Close()
+	os.Remove(f.Name())
+}
+
+// rewound is f at its start (f is discarded when it cannot be).
+func rewound(f *os.File) (*os.File, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		discardTemp(f)
+		return nil, err
+	}
+	return f, nil
 }
 
 // CleanEPUBFile rewrites the EPUB at p without the files mail servers refuse,

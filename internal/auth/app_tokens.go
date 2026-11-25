@@ -92,21 +92,24 @@ func (t *AppTokens) Lookup(ctx context.Context, token string) (User, Device, err
 	return t.lookup(ctx, token, "")
 }
 
+// appTokenLookupSQL is a token, its profile and the managed account its
+// history goes to in one statement (as sessionLookupSQL).
+var appTokenLookupSQL = `SELECT t.device_id, t.device, t.client, t.version, t.last_seen, COALESCE(t.history_id, 0),
+	COALESCE((SELECT h.managed_name FROM users h WHERE h.id = t.history_id), ''),
+	COALESCE((SELECT h.uid FROM users h WHERE h.id = t.history_id), ''), ` + cols + `
+	FROM app_tokens t JOIN users ON users.id = t.user_id WHERE t.token=? AND (?='' OR t.proto=?)`
+
 // lookup is Lookup for a token of proto only ("": of any).
 func (t *AppTokens) lookup(ctx context.Context, token, proto string) (User, Device, error) {
 	if token == "" {
 		return User{}, Device{}, ErrNotFound
 	}
-	var uid int64
-	var seen string
 	var d Device
-	err := t.db.QueryRowContext(ctx, `SELECT t.user_id, t.device_id, t.device, t.client, t.version, t.last_seen,
-		COALESCE(t.history_id, 0), COALESCE(h.managed_name, ''), COALESCE(h.uid, '')
-		FROM app_tokens t LEFT JOIN users h ON h.id = t.history_id WHERE t.token=? AND (?='' OR t.proto=?)`, token, proto, proto).
-		Scan(&uid, &d.ID, &d.Name, &d.Client, &d.Version, &seen, &d.History.ID, &d.History.Name, &d.History.UID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, Device{}, ErrNotFound
-	}
+	var seen string
+	row := t.db.QueryRowContext(ctx, appTokenLookupSQL, token, proto, proto)
+	u, err := scan(scanFn(func(userDest ...any) error {
+		return row.Scan(append([]any{&d.ID, &d.Name, &d.Client, &d.Version, &seen, &d.History.ID, &d.History.Name, &d.History.UID}, userDest...)...)
+	}))
 	if err != nil {
 		return User{}, Device{}, err
 	}
@@ -121,10 +124,6 @@ func (t *AppTokens) lookup(ctx context.Context, token, proto string) (User, Devi
 			return User{}, Device{}, err
 		}
 		return User{}, Device{}, ErrNotFound
-	}
-	u, err := scan(t.db.QueryRowContext(ctx, `SELECT `+cols+` FROM users WHERE id=?`, uid))
-	if err != nil {
-		return User{}, Device{}, err
 	}
 	if u.OwnerID != 0 { // a managed account is never signed in
 		return User{}, Device{}, ErrNotFound

@@ -169,13 +169,13 @@ func TestThrottleBoundedWhenAllLocked(t *testing.T) {
 	}
 }
 
-func TestAdminPasswordMin6(t *testing.T) {
+func TestAdminPasswordMin10(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStores(t)
-	if _, err := s.CreateFirstAdmin(ctx, "Папа", "12345"); !errors.Is(err, ErrAdminPassShort) {
+	if _, err := s.CreateFirstAdmin(ctx, "Папа", "123456789"); !errors.Is(err, ErrAdminPassShort) {
 		t.Fatalf("short first admin: %v", err)
 	}
-	a, err := s.CreateFirstAdmin(ctx, "Папа", "123456")
+	a, err := s.CreateFirstAdmin(ctx, "Папа", "1234567890")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestAdminPasswordMin6(t *testing.T) {
 	if _, err := s.CreateUser(ctx, NewUser{Name: "Х", Password: "123"}); !errors.Is(err, ErrPasswordShort) {
 		t.Fatalf("3 chars: %v", err)
 	}
-	short := "abcde"
+	short := "abcdefghi"
 	if err := s.Update(ctx, a.ID, UserPatch{Password: &short}); !errors.Is(err, ErrAdminPassShort) {
 		t.Fatalf("admin update short: %v", err)
 	}
@@ -195,7 +195,10 @@ func TestAdminPasswordMin6(t *testing.T) {
 		t.Fatalf("promote short: %v", err)
 	}
 	// Cyrillic counts characters, not bytes
-	if _, err := s.CreateUser(ctx, NewUser{Name: "Мама", Password: "пароль", IsAdmin: true}); err != nil {
+	if _, err := s.CreateUser(ctx, NewUser{Name: "Мама", Password: "парольпароль", IsAdmin: true}); err != nil {
+		t.Fatalf("12 cyrillic chars: %v", err)
+	}
+	if _, err := s.CreateUser(ctx, NewUser{Name: "Тётя", Password: "пароль", IsAdmin: true}); !errors.Is(err, ErrAdminPassShort) {
 		t.Fatalf("6 cyrillic chars: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"os"
 	"path"
 	"strings"
 
@@ -29,32 +30,61 @@ const (
 	shrinkMaxPicture = 64 << 20
 )
 
-// ShrinkEPUB returns the EPUB at most target bytes long if recompressing its
-// JPEG and PNG pictures can get it there, reporting whether it did; otherwise
-// the smallest it got. Names, text and everything else stay as they are, so
-// the manifest still holds. A book that already fits comes back unchanged.
-func ShrinkEPUB(data []byte, target int) ([]byte, bool) {
-	if len(data) <= target {
-		return data, true
+// ShrinkEPUB recompresses the JPEG and PNG pictures of the EPUB at r (size
+// bytes) until it is at most target bytes long, reporting whether it got
+// there. Names, text and everything else stay as they are, so the manifest
+// still holds. Nothing is held in memory but the picture being worked on:
+// each try goes to a temp file in dir ("": the system's), and the smallest
+// one is returned, rewound, for the caller to close and remove. nil: no try
+// got smaller than the book itself (ok: it fits already; not ok: it is not a
+// ZIP or no picture would shrink).
+func ShrinkEPUB(r io.ReaderAt, size, target int64, dir string) (best *os.File, ok bool, err error) {
+	if size <= target {
+		return nil, true, nil
 	}
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := zip.NewReader(r, size)
 	if err != nil {
-		return data, false
+		return nil, false, nil
 	}
-	best := data
+	bestSize := size
 	for _, step := range shrinkSteps {
-		var out bytes.Buffer
-		if err := writeShrunk(zr, &out, step); err != nil {
-			return best, false
+		tmp, err := os.CreateTemp(dir, "shrink-*.epub")
+		if err != nil {
+			discardBest(best)
+			return nil, false, err
 		}
-		if out.Len() < len(best) {
-			best = out.Bytes()
+		if err := writeShrunk(zr, tmp, step); err != nil {
+			discardTemp(tmp)
+			break
 		}
-		if out.Len() <= target {
-			return out.Bytes(), true
+		st, err := tmp.Stat()
+		if err != nil {
+			discardTemp(tmp)
+			discardBest(best)
+			return nil, false, err
+		}
+		if st.Size() >= bestSize {
+			discardTemp(tmp)
+			continue
+		}
+		discardBest(best)
+		best, bestSize = tmp, st.Size()
+		if bestSize <= target {
+			ok = true
+			break
 		}
 	}
-	return best, false
+	if best == nil {
+		return nil, false, nil
+	}
+	best, err = rewound(best)
+	return best, ok, err
+}
+
+func discardBest(f *os.File) {
+	if f != nil {
+		discardTemp(f)
+	}
 }
 
 func writeShrunk(zr *zip.Reader, w io.Writer, step shrinkStep) error {

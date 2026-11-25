@@ -110,7 +110,7 @@ func TestPhotoURL(t *testing.T) {
 func TestStorePhoto(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := newStoresDB(t)
-	if _, err := s.CreateFirstAdmin(ctx, "Папа", "secret"); err != nil {
+	if _, err := s.CreateFirstAdmin(ctx, "Папа", "secret-pass"); err != nil {
 		t.Fatal(err)
 	}
 	u, err := s.CreateUser(ctx, NewUser{Name: "Маша"})
@@ -162,7 +162,7 @@ func TestStorePhoto(t *testing.T) {
 func TestDeleteProfileDropsItsPhoto(t *testing.T) {
 	ctx := context.Background()
 	s, _, d := newStoresDB(t)
-	if _, err := s.CreateFirstAdmin(ctx, "Папа", "secret"); err != nil {
+	if _, err := s.CreateFirstAdmin(ctx, "Папа", "secret-pass"); err != nil {
 		t.Fatal(err)
 	}
 	u, _ := s.CreateUser(ctx, NewUser{Name: "Гость"})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -130,10 +131,33 @@ func bodyDeadline(w http.ResponseWriter) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeBody(w, r, v, 1<<16, "", false)
+}
+
+// decodeBody reads the one JSON value of the request's body, at most max
+// bytes of it and within bodyWait; false: the answer is written. A body over
+// max is 413 with tooBig ("": 400 like any unreadable body); single also
+// refuses what follows the value.
+func decodeBody(w http.ResponseWriter, r *http.Request, v any, max int64, tooBig string, single bool) bool {
 	bodyDeadline(w)
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+	dec := json.NewDecoder(r.Body)
+	err := dec.Decode(v)
+	if err == nil && single {
+		// anything after the value but white space is not JSON
+		if err = dec.Decode(&struct{}{}); err == io.EOF {
+			err = nil
+		} else if err == nil {
+			err = errors.New("trailing data")
+		}
+	}
+	if err != nil {
+		var big *http.MaxBytesError
+		if tooBig != "" && errors.As(err, &big) {
+			writeErr(w, r, http.StatusRequestEntityTooLarge, tooBig)
+		} else {
+			writeErr(w, r, http.StatusBadRequest, "Не удалось разобрать запрос")
+		}
 		return false
 	}
 	return true

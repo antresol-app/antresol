@@ -49,7 +49,7 @@ func TestNoAppPasswordCode40WithHint(t *testing.T) {
 	if err := e.users.ClearAppPassword(context.Background(), e.admin.ID); err != nil {
 		t.Fatal(err)
 	}
-	sum := md5.Sum([]byte("secret" + "abc123")) // the login password does not do
+	sum := md5.Sum([]byte("secret-pass" + "abc123")) // the login password does not do
 	p := url.Values{"u": {"Папа"}, "t": {hex.EncodeToString(sum[:])}, "s": {"abc123"}, "f": {"json"}}
 	code, msg := errCode(e.decode(e.req("ping", "", p)))
 	if code != 40 || !strings.Contains(msg, "пароль для приложений") {
@@ -64,7 +64,7 @@ func TestPlainAndEncPassword(t *testing.T) {
 		e.mustOK(e.decode(e.req("ping", "", p)))
 	}
 	// the login password is not an app password (in either form)
-	for _, pass := range []string{"secret", "enc:" + hex.EncodeToString([]byte("secret")), "enc:zz"} {
+	for _, pass := range []string{"secret-pass", "enc:" + hex.EncodeToString([]byte("secret-pass")), "enc:zz"} {
 		p := url.Values{"u": {"Папа"}, "p": {pass}, "f": {"json"}}
 		if code, _ := errCode(e.decode(e.req("ping", "", p))); code != 40 {
 			t.Fatalf("p=%q: code %d", pass, code)
@@ -116,7 +116,7 @@ func TestThrottleAfterFailures(t *testing.T) {
 	}
 	// the web login shares the throttle: same address, same profile
 	web := api.NewRouter(api.Deps{Users: e.users, Sessions: auth.NewSessions(e.db), Throttle: e.srv.Throttle})
-	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"userId":`+itoa(e.admin.ID)+`,"password":"secret"}`))
+	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"userId":`+itoa(e.admin.ID)+`,"password":"secret-pass"}`))
 	r.Header.Set("Content-Type", "application/json")
 	r.RemoteAddr = homeAddr
 	w := httptest.NewRecorder()
@@ -153,7 +153,7 @@ func TestAppLoginSuccessKeepsWebStrikes(t *testing.T) {
 	if code := login("203.0.113.6:4000", "guess"); code != http.StatusUnauthorized {
 		t.Fatalf("6th guess: %d", code)
 	}
-	if code := login("203.0.113.7:4000", "secret"); code != http.StatusTooManyRequests {
+	if code := login("203.0.113.7:4000", "secret-pass"); code != http.StatusTooManyRequests {
 		t.Fatalf("after 6 guesses and an app login the profile must stay locked: %d", code)
 	}
 }

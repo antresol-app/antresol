@@ -11,7 +11,7 @@ import (
 func TestCreateDeviceReplacesSameDevice(t *testing.T) {
 	ctx := context.Background()
 	s, ss, d := newStoresDB(t)
-	u, err := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	u, err := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestCreateDeviceReplacesSameDevice(t *testing.T) {
 func TestDevicesAndRevokeDevice(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret")
+	a, _ := s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true})
 	web, _ := ss.Create(ctx, a.ID)
 	if _, err := ss.CreateDevice(ctx, a.ID, DeviceInfo{ID: "mac-00001", Name: "Mac"}); err != nil {
@@ -88,7 +88,7 @@ func TestDevicesAndRevokeDevice(t *testing.T) {
 func TestGuardRemotePasswordlessNative(t *testing.T) {
 	ctx := context.Background()
 	s, ss := newStores(t)
-	s.CreateFirstAdmin(ctx, "Papa", "secret")
+	s.CreateFirstAdmin(ctx, "Papa", "secret-pass")
 	k, _ := s.CreateUser(ctx, NewUser{Name: "Kid", IsKid: true})
 	tok, _ := ss.CreateDevice(ctx, k.ID, DeviceInfo{ID: "kid-00001"})
 	g := &Guard{Sessions: ss}

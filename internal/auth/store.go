@@ -24,7 +24,6 @@ var (
 	avatarCount        = 8
 	maxNameLen         = 64
 	minPasswordLen     = 4
-	minAdminPassLen    = 6
 	maxPasswordLen     = 72 // bcrypt uses only the first 72 bytes
 	ErrPasswordTooLong = fmt.Errorf("%w: password too long", ErrInvalid)
 	ErrPasswordShort   = fmt.Errorf("%w: password too short", ErrInvalid)
@@ -183,9 +182,9 @@ func validate(name string, admin, kid, hasPass bool) error {
 	return nil
 }
 
-// AdminPasswordMin is the length an administrator's password needs when it
-// is chosen through the API. The store itself refuses only passwords under
-// minAdminPassLen, so existing accounts and internal callers are unaffected.
+// AdminPasswordMin is the length an administrator's password needs, in the
+// store and through the API. A password set before it was raised still signs
+// in: only a new one is checked.
 const AdminPasswordMin = 10
 
 // commonPasswords: passwords of AdminPasswordMin or more characters that
@@ -213,7 +212,7 @@ func CheckAdminPassword(p string) error {
 
 // hashPassword checks the length (admins need a longer one) and hashes p.
 func hashPassword(p string, admin bool) (string, error) {
-	if admin && len([]rune(p)) < minAdminPassLen {
+	if admin && len([]rune(p)) < AdminPasswordMin {
 		return "", ErrAdminPassShort
 	}
 	if len([]rune(p)) < minPasswordLen {

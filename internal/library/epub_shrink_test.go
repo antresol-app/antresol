@@ -46,7 +46,7 @@ func imageBook(t *testing.T, extra ...tEntry) []byte {
 func TestShrinkReachesTheTargetAndKeepsTheBook(t *testing.T) {
 	in := imageBook(t)
 	target := len(in) / 3
-	out, ok := ShrinkEPUB(in, target)
+	out, ok := shrinkBytes(t, in, target)
 	if !ok || len(out) > target {
 		t.Fatalf("ok=%v, %d > %d", ok, len(out), target)
 	}
@@ -73,12 +73,12 @@ func TestShrinkReachesTheTargetAndKeepsTheBook(t *testing.T) {
 
 func TestShrinkTakesTheGentlestStepThatFits(t *testing.T) {
 	in := imageBook(t)
-	gentle, _ := ShrinkEPUB(in, len(in)-1)
+	gentle, _ := shrinkBytes(t, in, len(in)-1)
 	if len(gentle) >= len(in) {
 		t.Fatalf("no smaller: %d", len(gentle))
 	}
 	// just under what the gentlest step gives: the next step has to do it
-	harsh, ok := ShrinkEPUB(in, len(gentle)-1)
+	harsh, ok := shrinkBytes(t, in, len(gentle)-1)
 	if !ok || len(harsh) >= len(gentle) {
 		t.Errorf("ok=%v, gentle %d, harsh %d", ok, len(gentle), len(harsh))
 	}
@@ -86,7 +86,7 @@ func TestShrinkTakesTheGentlestStepThatFits(t *testing.T) {
 
 func TestShrinkOfWhatFitsChangesNothing(t *testing.T) {
 	in := imageBook(t)
-	out, ok := ShrinkEPUB(in, len(in))
+	out, ok := shrinkBytes(t, in, len(in))
 	if !ok || !bytes.Equal(out, in) {
 		t.Errorf("ok=%v, changed=%v", ok, !bytes.Equal(out, in))
 	}
@@ -94,7 +94,7 @@ func TestShrinkOfWhatFitsChangesNothing(t *testing.T) {
 
 func TestShrinkOutOfReachSaysSo(t *testing.T) {
 	in := imageBook(t)
-	out, ok := ShrinkEPUB(in, 100)
+	out, ok := shrinkBytes(t, in, 100)
 	if ok {
 		t.Error("claimed to fit")
 	}
@@ -112,7 +112,7 @@ func TestShrinkPNGStaysPNGWithItsAlpha(t *testing.T) {
 	var b bytes.Buffer
 	png.Encode(&b, img)
 	in := imageBook(t, tEntry{"OEBPS/images/p.png", b.String(), true})
-	out, _ := ShrinkEPUB(in, len(in)-1)
+	out, _ := shrinkBytes(t, in, len(in)-1)
 	got, _ := tUnzip(t, out)
 	dec, err := png.Decode(strings.NewReader(got["OEBPS/images/p.png"]))
 	if err != nil {
@@ -129,7 +129,7 @@ func TestShrinkPNGStaysPNGWithItsAlpha(t *testing.T) {
 func TestShrinkLeavesWhatItCannotImprove(t *testing.T) {
 	small := tJPEG(t, 40, 40)
 	in := imageBook(t, tEntry{"OEBPS/images/s.jpg", small, true}, tEntry{"OEBPS/images/broken.jpg", strings.Repeat("x", 200<<10), true}, tEntry{"OEBPS/images/a.gif", "GIF89a", true})
-	out, _ := ShrinkEPUB(in, len(in)-1)
+	out, _ := shrinkBytes(t, in, len(in)-1)
 	got, _ := tUnzip(t, out)
 	if got["OEBPS/images/s.jpg"] != small {
 		t.Error("a small picture was recompressed")
@@ -148,7 +148,7 @@ func TestShrinkRefusesAPictureBomb(t *testing.T) {
 	png.Encode(&b, image.NewGray(image.Rect(0, 0, 20000, 20000)))
 	bomb := b.String()
 	in := imageBook(t, tEntry{"OEBPS/images/bomb.png", bomb, false})
-	out, _ := ShrinkEPUB(in, len(in)-1)
+	out, _ := shrinkBytes(t, in, len(in)-1)
 	got, _ := tUnzip(t, out)
 	if got["OEBPS/images/bomb.png"] != bomb {
 		t.Error("the bomb was decoded")
@@ -162,7 +162,7 @@ func TestShrinkSkipsAHugePictureEntry(t *testing.T) {
 	allocated := func(book []byte) (out []byte, bytes uint64) {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
-		out, _ = ShrinkEPUB(book, len(book)-1)
+		out, _ = shrinkBytes(t, book, len(book)-1)
 		runtime.ReadMemStats(&after)
 		return out, after.TotalAlloc - before.TotalAlloc
 	}
@@ -183,7 +183,7 @@ func TestShrinkSkipsAHugePictureEntry(t *testing.T) {
 }
 
 func TestShrinkOfGarbageReturnsIt(t *testing.T) {
-	if out, ok := ShrinkEPUB([]byte("not a zip"), 1); ok || string(out) != "not a zip" {
+	if out, ok := shrinkBytes(t, []byte("not a zip"), 1); ok || string(out) != "not a zip" {
 		t.Errorf("%v %q", ok, out)
 	}
 }

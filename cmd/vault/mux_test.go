@@ -34,7 +34,7 @@ func TestRestPOSTFormNotCSRFBlocked(t *testing.T) {
 	}
 	defer d.Close()
 	users, throttle := auth.NewStore(d), auth.NewThrottle()
-	u, err := users.CreateFirstAdmin(context.Background(), "Папа", "secret")
+	u, err := users.CreateFirstAdmin(context.Background(), "Папа", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestRestPOSTFormNotCSRFBlocked(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out["subsonic-response"]["status"] != "ok" {
 		t.Fatalf("ping %s", w.Body)
 	}
-	w = post("/api/login", url.Values{"userId": {"1"}, "password": {"secret"}}.Encode())
+	w = post("/api/login", url.Values{"userId": {"1"}, "password": {"secret-pass"}}.Encode())
 	if w.Code != 403 || !strings.Contains(w.Body.String(), "Запрос с другого сайта отклонён") {
 		t.Fatalf("/api/login form must stay blocked: %d %s", w.Code, w.Body)
 	}
@@ -84,7 +84,7 @@ func TestOPDSNotSPA(t *testing.T) {
 	}
 	defer d.Close()
 	users, throttle := auth.NewStore(d), auth.NewThrottle()
-	u, err := users.CreateFirstAdmin(context.Background(), "Папа", "secret")
+	u, err := users.CreateFirstAdmin(context.Background(), "Папа", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func jellyfinMux(t *testing.T) (*http.ServeMux, *jellyfin.Server, string) {
 	}
 	t.Cleanup(func() { d.Close() })
 	users, throttle, network := auth.NewStore(d), auth.NewThrottle(), &auth.Network{}
-	u, err := users.CreateFirstAdmin(context.Background(), "Аня", "secret")
+	u, err := users.CreateFirstAdmin(context.Background(), "Аня", "secret-pass")
 	if err != nil {
 		t.Fatal(err)
 	}

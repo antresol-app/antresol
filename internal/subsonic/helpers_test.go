@@ -52,7 +52,7 @@ func newEnv(t *testing.T) *env {
 			IsRemote:   func(r *http.Request) bool { return !network.IsTrusted(r) },
 			RemoteKbps: func(context.Context) int { return 256 }}}
 	ctx := context.Background()
-	if e.admin, err = e.users.CreateFirstAdmin(ctx, "Папа", "secret"); err != nil {
+	if e.admin, err = e.users.CreateFirstAdmin(ctx, "Папа", "secret-pass"); err != nil {
 		t.Fatal(err)
 	}
 	if e.app, err = e.users.SetAppPassword(ctx, e.admin.ID); err != nil {
