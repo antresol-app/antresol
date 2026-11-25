@@ -59,9 +59,20 @@ func (e *env) do(method, path, body string, c *http.Cookie, hdr ...string) *http
 	return w
 }
 
+// session is the session cookie a response sets, under either name.
 func session(w *httptest.ResponseRecorder) *http.Cookie {
 	for _, c := range w.Result().Cookies() {
-		if c.Name == auth.CookieName && c.Value != "" {
+		if (c.Name == auth.CookieName || c.Name == auth.HostCookieName) && c.Value != "" {
+			return c
+		}
+	}
+	return nil
+}
+
+// setCookie is the Set-Cookie of the named cookie in w (nil when absent).
+func setCookie(w *httptest.ResponseRecorder, name string) *http.Cookie {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == name {
 			return c
 		}
 	}
@@ -226,6 +237,69 @@ func TestSessionCookieFlags(t *testing.T) {
 		t.Fatalf("expected Secure behind https proxy: %+v", c)
 	}
 	_ = context.Background
+}
+
+// Over HTTPS the cookie takes the __Host- prefix (Secure, Path=/, no
+// Domain: a sibling subdomain cannot plant or replace it); on plain HTTP,
+// where a Secure cookie is dropped by browsers, it keeps the old name.
+func TestSessionCookieHostPrefix(t *testing.T) {
+	e := newEnv(t)
+	plain := e.setup()
+	if plain.Name != auth.CookieName || plain.Secure {
+		t.Fatalf("plain HTTP: %+v", plain)
+	}
+	e.h = NewRouter(Deps{Users: e.store, Sessions: auth.NewSessions(e.db),
+		Network: &auth.Network{Proxies: []netip.Prefix{netip.MustParsePrefix("192.168.1.20/32")}}})
+	https := func(c *http.Cookie, method, path string) *httptest.ResponseRecorder {
+		return e.do(method, path, "", c, "X-Forwarded-Proto", "https")
+	}
+
+	w := e.do("POST", "/api/login", `{"userId":1,"password":"`+adminPass+`"}`, nil, "X-Forwarded-Proto", "https")
+	host := session(w)
+	if host == nil || host.Name != auth.HostCookieName || !host.Secure || !host.HttpOnly || host.Path != "/" || host.Domain != "" {
+		t.Fatalf("login over HTTPS: %+v", host)
+	}
+	if setCookie(w, auth.CookieName) != nil {
+		t.Fatal("a login with no old cookie must not touch the plain one")
+	}
+	if w := https(host, "GET", "/api/me"); w.Code != 200 || setCookie(w, auth.HostCookieName) == nil {
+		t.Fatalf("the prefixed cookie signs in and is renewed: %d %v", w.Code, w.Result().Cookies())
+	}
+	// the same server over plain HTTP still answers with the plain name
+	if w := e.do("POST", "/api/login", `{"userId":1,"password":"`+adminPass+`"}`, nil); session(w).Name != auth.CookieName {
+		t.Fatalf("plain HTTP login: %v", w.Result().Cookies())
+	}
+
+	// a browser that signed in before the prefix: the plain cookie still
+	// works over HTTPS, and the next /api/me swaps it for the prefixed one
+	w = https(plain, "GET", "/api/me")
+	moved, dropped := setCookie(w, auth.HostCookieName), setCookie(w, auth.CookieName)
+	if w.Code != 200 || moved == nil || moved.Value != plain.Value || !moved.Secure || dropped == nil || dropped.MaxAge >= 0 {
+		t.Fatalf("legacy cookie over HTTPS: %d %v", w.Code, w.Result().Cookies())
+	}
+	if w := https(moved, "GET", "/api/me"); w.Code != 200 {
+		t.Fatalf("the swapped cookie alone: %d", w.Code)
+	}
+
+	// a plain cookie that someone else planted does not beat the prefixed one
+	r := httptest.NewRequest("GET", "/api/me", nil)
+	r.RemoteAddr = "192.168.1.20:50000"
+	r.Header.Set("X-Forwarded-Proto", "https")
+	r.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "planted"})
+	r.AddCookie(moved)
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, r)
+	if rec.Code != 200 {
+		t.Fatalf("a planted plain cookie took over from the prefixed one: %d", rec.Code)
+	}
+
+	// logout over HTTPS removes both names
+	w = https(moved, "POST", "/api/logout")
+	for _, name := range []string{auth.HostCookieName, auth.CookieName} {
+		if c := setCookie(w, name); c == nil || c.MaxAge >= 0 || !c.Secure {
+			t.Fatalf("logout leaves %s: %+v", name, c)
+		}
+	}
 }
 
 func TestLogoutRevokeFailure500(t *testing.T) {

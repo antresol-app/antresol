@@ -12,7 +12,7 @@ import (
 // the home network.
 const MsgRemotePasswordless = "Для входа не из дома у профиля должен быть пароль. Попросите администратора задать его в разделе «Настройки → Сервер → Профили»."
 
-// Guard is the one session check of the web API: the vault_session cookie
+// Guard is the one session check of the web API: the session cookie
 // (browsers) or Authorization: Bearer (the native app). A native token of a
 // passwordless profile only works from the home network; web sessions keep
 // their behaviour. A nil Network uses the defaults (see Network).
@@ -93,8 +93,8 @@ func TokenFrom(ctx context.Context) string {
 
 // RequestToken is the session token of r: the cookie, else a Bearer token.
 func RequestToken(r *http.Request) string {
-	if c, err := r.Cookie(CookieName); err == nil && c.Value != "" {
-		return c.Value
+	if t := CookieToken(r); t != "" {
+		return t
 	}
 	h := r.Header.Get("Authorization")
 	if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {

@@ -14,8 +14,14 @@ import (
 )
 
 const (
-	CookieName = "vault_session"
-	sessionTTL = 400 * 24 * time.Hour
+	// CookieName is the session cookie over plain HTTP (a home network
+	// address cannot carry a Secure cookie) and the only name older
+	// servers used; HostCookieName is what an HTTPS request gets: the
+	// browser then refuses to let a sibling subdomain plant or replace it
+	// (Secure, Path=/, no Domain).
+	CookieName     = "vault_session"
+	HostCookieName = "__Host-vault_session"
+	sessionTTL     = 400 * 24 * time.Hour
 
 	lastSeenThrottle = 5 * time.Minute
 )
@@ -319,19 +325,49 @@ func (s *Sessions) RevokeUser(ctx context.Context, userID int64, keep string) er
 	return err
 }
 
-// SetCookie writes the session cookie, Secure when n says the browser came
-// over HTTPS (Network.Secure).
+// CookieToken is the session token r carries in a cookie: the __Host- one
+// when it has one, else the plain one (plain HTTP, and a browser that has
+// not been renewed since the prefix came).
+func CookieToken(r *http.Request) string {
+	for _, name := range [...]string{HostCookieName, CookieName} {
+		if c, err := r.Cookie(name); err == nil && c.Value != "" {
+			return c.Value
+		}
+	}
+	return ""
+}
+
+// SetCookie writes the session cookie: __Host-prefixed and Secure when n
+// says the browser came over HTTPS (Network.Secure), else plain. Over HTTPS
+// the plain cookie of an older session is removed as it is replaced.
 func SetCookie(w http.ResponseWriter, r *http.Request, n *Network, token string) {
+	secure := n.Secure(r)
+	name := CookieName
+	if secure {
+		name = HostCookieName
+		if _, err := r.Cookie(CookieName); err == nil {
+			dropCookie(w, CookieName, true)
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: CookieName, Value: token, Path: "/",
+		Name: name, Value: token, Path: "/",
 		MaxAge: int(sessionTTL / time.Second), HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: n.Secure(r),
+		SameSite: http.SameSiteLaxMode, Secure: secure,
 	})
 }
 
+// ClearCookie ends the browser's session cookie, under both names over HTTPS.
 func ClearCookie(w http.ResponseWriter, r *http.Request, n *Network) {
+	secure := n.Secure(r)
+	dropCookie(w, CookieName, secure)
+	if secure {
+		dropCookie(w, HostCookieName, true)
+	}
+}
+
+func dropCookie(w http.ResponseWriter, name string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
-		Name: CookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: n.Secure(r),
+		Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, Secure: secure,
 	})
 }

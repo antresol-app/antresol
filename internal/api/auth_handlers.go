@@ -187,8 +187,8 @@ func (a *authAPI) startSession(w http.ResponseWriter, r *http.Request, u auth.Us
 	// the browser's earlier session (the profile it switches from) ends
 	// only now that another one has signed in: «Сменить профиль» keeps it
 	// until then
-	if old, err := r.Cookie(auth.CookieName); err == nil && old.Value != "" {
-		if err := a.sessions.Revoke(r.Context(), old.Value); err != nil {
+	if old := auth.CookieToken(r); old != "" {
+		if err := a.sessions.Revoke(r.Context(), old); err != nil {
 			log.Printf("auth: revoke the replaced session: %v", err)
 		}
 	}
@@ -348,8 +348,9 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			u, _ := auth.UserFrom(r.Context())
 			// every start of the web app renews the browser's cookie: a
 			// session used within its TTL never expires in the browser either
-			if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" && c.Value == auth.TokenFrom(r.Context()) {
-				auth.SetCookie(w, r, network, c.Value)
+			// (and a plain cookie over HTTPS becomes the __Host- one)
+			if c := auth.CookieToken(r); c != "" && c == auth.TokenFrom(r.Context()) {
+				auth.SetCookie(w, r, network, c)
 			}
 			writeJSON(w, 200, a.meOf(r, u))
 		})

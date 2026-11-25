@@ -286,3 +286,29 @@ func TestAppPasswordStore(t *testing.T) {
 }
 
 var appPasswordRe = regexp.MustCompile(`^[a-z0-9]{4}(-[a-z0-9]{4}){3}$`)
+
+func TestRequestTokenCookieOrder(t *testing.T) {
+	req := func(cookies ...*http.Cookie) *http.Request {
+		r := httptest.NewRequest("GET", "/", nil)
+		for _, c := range cookies {
+			r.AddCookie(c)
+		}
+		r.Header.Set("Authorization", "Bearer from-header")
+		return r
+	}
+	host, plain := &http.Cookie{Name: HostCookieName, Value: "host"}, &http.Cookie{Name: CookieName, Value: "plain"}
+	for _, c := range []struct {
+		name string
+		r    *http.Request
+		want string
+	}{
+		{"prefixed beats plain, whatever the order", req(plain, host), "host"},
+		{"plain still works (HTTP, or not renewed yet)", req(plain), "plain"},
+		{"empty cookies are skipped", req(&http.Cookie{Name: HostCookieName}, plain), "plain"},
+		{"no cookie: the Bearer token", req(), "from-header"},
+	} {
+		if got := RequestToken(c.r); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

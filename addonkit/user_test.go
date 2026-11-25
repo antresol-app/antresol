@@ -114,3 +114,13 @@ func TestRequireAdminWantsTheSignature(t *testing.T) {
 		}
 	}
 }
+
+// A fixed signature, so a shell tool that signs the header with openssl
+// (`openssl dgst -sha256 -hmac KEY -r` of "<seconds>.<header>") can be
+// checked against what SignUser makes.
+func TestSignUserVector(t *testing.T) {
+	const want = "1700000000.d9293270f867ce9d4371e73173b143767f1e8124c7ff7b3fd8e29ba425010673"
+	if got := SignUser("k3y", `{"id":1,"name":"x","isAdmin":true}`, time.Unix(1700000000, 0)); got != want {
+		t.Fatalf("SignUser = %q, want %q", got, want)
+	}
+}

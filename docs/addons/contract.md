@@ -247,7 +247,10 @@ process group of its own, with the addon's own `ANTRESOL_<ID>_*` variables
 `LANGUAGE`, `LC_*`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`,
 `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY` and their lower-case forms,
 `GOMAXPROCS`, `GOMEMLIMIT`, `GOGC`, `GODEBUG`, `LIBVA_DRIVER_NAME`): no other
-variable of the server's, passwords and keys of its `.env` among them. Plus:
+variable of the server's, passwords and keys of its `.env` among them. This
+list applies since server v0.8.28; earlier servers passed their whole
+environment, minus `VAULT_*` and the other addons' `ANTRESOL_*` variables. An
+addon must not read any other variable of the server's. Plus:
 
 | Variable | Value |
 | --- | --- |

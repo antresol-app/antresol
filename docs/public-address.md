@@ -72,6 +72,12 @@ even from home.
 
 Several addresses or subnets go comma-separated.
 
+Once the proxy is trusted, the sign-in cookie of a browser that came over HTTPS is the
+browser-hardened `__Host-vault_session` (Secure, no domain, so another site on a sibling subdomain
+cannot plant it). A browser on a plain `http://` home address keeps the plain `vault_session`.
+Browsers already signed in stay signed in: the old cookie is swapped for the new one the next time
+the web app opens.
+
 ### 3. Set the address
 
 Put it in **Settings → Server → Server Address**. If you set it in `.env`
