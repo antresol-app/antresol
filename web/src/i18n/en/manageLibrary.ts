@@ -160,6 +160,8 @@ export default {
   'profiles.subtitle': 'Everyone gets their own “Resume” and “Watchlist”.',
   'profiles.devices': 'Devices of All Profiles',
   'profiles.devices.hint': 'Apps and browsers the family’s profiles are signed in on: sign any of them out, turn on a separate history',
+  'profiles.service': 'Service',
+  'profiles.service.hint': 'Profiles for the server’s own checks. They are in no list of profiles or devices and keep no watch history. Made and removed with the vault service-profile command.',
   'profiles.new': 'New Profile',
   'profiles.you': 'you',
   'profiles.actions': 'Actions for {name}',

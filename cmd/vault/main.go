@@ -75,6 +75,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == serviceProfileCommand {
+		if err := runServiceProfile(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "vault "+serviceProfileCommand+":", err)
+			os.Exit(1)
+		}
+		return
+	}
 	err := run()
 	if errors.Is(err, errRestart) {
 		// everything is shut down and the database closed: start again in

@@ -245,6 +245,12 @@ func (s *Store) putAnnotation(ctx context.Context, userID, itemID int64, a Annot
 		return Annotation{}, err
 	}
 	got, _, err := s.annotation(ctx, tx, userID, itemID, a.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// the row was dropped (a service profile keeps no history): the
+		// answer is the write as it would have been stored
+		a.ItemID, a.Rev, a.UpdatedAt = itemID, rev, now
+		return a, tx.Commit()
+	}
 	if err != nil {
 		return Annotation{}, err
 	}

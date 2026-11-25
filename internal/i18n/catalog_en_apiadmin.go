@@ -27,6 +27,7 @@ func init() {
 		"Слишком простой пароль администратора":                       "The administrator password is too easy to guess",
 		"Пароль — не короче 4 символов":                               "The password must be at least 4 characters",
 		"Проверьте имя и пароль (у администратора пароль обязателен)": "Check the name and password (an administrator must have a password)",
+		"Служебный профиль меняется и удаляется только командой vault service-profile": "A service profile is changed and removed only by the vault service-profile command",
 		"%d сек.": "%d sec",
 		"%d мин.": "%d min",
 		"Слишком много неудачных попыток входа. Попробуйте снова через %s": "Too many failed sign-in attempts. Try again in %s",

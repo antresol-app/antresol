@@ -3,9 +3,11 @@
 // set its «Звук и субтитры» and «Экранное время» (a kid's only here), delete
 // (with a confirmation). «Устройства всех профилей»: the server's list of
 // signed-in apps and browsers (a profile's own are in its «Настройки»).
+// «Служебные»: the machines' profiles (the server's own checks), listed
+// without actions: `vault service-profile` makes and removes them.
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useState } from 'react'
-import { createUser, deleteUser, getScreenLimited, getUsers, removeUserPhoto, resetAppPassword, setUserPhoto, updateUser, type UserInput, errorText } from '../../api/client'
+import { createUser, deleteUser, getScreenLimited, getServiceProfiles, getUsers, removeUserPhoto, resetAppPassword, setUserPhoto, updateUser, type UserInput, errorText } from '../../api/client'
 import type { ScreenLimited, User } from '../../api/types'
 import { Avatar } from '../../components/Avatar'
 import { AVATAR_COLORS, AvatarEditor, type PhotoChange } from '../../components/AvatarEditor'
@@ -15,7 +17,7 @@ import { Icon } from '../../components/Icon'
 import { PlaybackPrefsSheet } from '../../components/PlaybackPrefsSheet'
 import { NotifySheet } from '../../components/NotifySheet'
 import { DevicesSheet } from '../../components/DevicesSheet'
-import { GroupedSection, ListLinkRow } from '../../ui/List'
+import { GroupedSection, ListLinkRow, ListRow } from '../../ui/List'
 import { ScreenTimeSheet } from '../../components/ScreenTimeSheet'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
@@ -47,6 +49,8 @@ export function Profiles() {
   const { user: me } = useSession()
   const compact = useIsCompact()
   const [list, setList] = useState<User[] | null>(null)
+  // «Служебные»: machines' profiles, shown here and nowhere else (no actions: the server's command owns them)
+  const [service, setService] = useState<User[]>([])
   const [error, setError] = useState('')
   const [edit, setEdit] = useState<Edit>(null)
   const [removing, setRemoving] = useState<User | null>(null)
@@ -63,6 +67,7 @@ export function Profiles() {
   const load = useCallback(() => {
     getUsers().then(setList, (e: unknown) => setError(errorText(e, t('common.loadFailed'))))
     getScreenLimited().then(setLimited, () => setLimited(null))
+    getServiceProfiles().then(setService, () => setService([]))
   }, [])
   const openTo = (kid: User) =>
     limited?.userIds.includes(kid.id) ? limited.passwordless.filter((p) => p.id !== kid.id).map((p) => p.name) : []
@@ -160,6 +165,13 @@ export function Profiles() {
         // the server's list of devices: every profile's (a profile's own «Устройства» are its own)
         <GroupedSection className={styles.devices}>
           <ListLinkRow icon="devices" tint="blue" label={t('profiles.devices')} hint={t('profiles.devices.hint')} onOpen={() => setDevices(true)} />
+        </GroupedSection>
+      )}
+      {list && service.length > 0 && (
+        <GroupedSection className={styles.service} id="service-profiles-title" title={t('profiles.service')} footer={t('profiles.service.hint')}>
+          {service.map((u) => (
+            <ListRow key={u.id} leading={<Avatar name={u.name} avatar={u.avatar} photo={u.photo} size={32} />} label={u.name} />
+          ))}
         </GroupedSection>
       )}
       {devices && <DevicesSheet all onClose={() => setDevices(false)} />}

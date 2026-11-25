@@ -26,7 +26,7 @@ func readSeen(s string) time.Time {
 // device once, its latest session), the most recently seen first.
 func (s *Sessions) NativeDevices(ctx context.Context) ([]ProfileDevice, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT s.user_id, u.name, s.device_id, s.device_name, s.device_model, s.last_seen
-		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.device_id<>'' ORDER BY s.last_seen DESC`, KindNative)
+		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.device_id<>'' AND u.service=0 ORDER BY s.last_seen DESC`, KindNative)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (s *Sessions) NativeDevices(ctx context.Context) ([]ProfileDevice, error) {
 // first.
 func (s *Sessions) RecentBrowsers(ctx context.Context, since time.Time) ([]ProfileDevice, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT s.user_id, u.name, s.device_name, s.device_model, MAX(s.last_seen)
-		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.last_seen>=?
+		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.kind=? AND s.last_seen>=? AND u.service=0
 		GROUP BY s.user_id, s.device_name, s.device_model ORDER BY MAX(s.last_seen) DESC`, KindWeb, since.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ type ProtoToken struct {
 // ByProto lists the tokens of proto, the most recently seen first.
 func (t *AppTokens) ByProto(ctx context.Context, proto string) ([]ProtoToken, error) {
 	rows, err := t.db.QueryContext(ctx, `SELECT t.token, t.user_id, u.name, t.device, t.last_seen, COALESCE(t.set_id, 0)
-		FROM app_tokens t JOIN users u ON u.id=t.user_id WHERE t.proto=? ORDER BY t.last_seen DESC`, proto)
+		FROM app_tokens t JOIN users u ON u.id=t.user_id WHERE t.proto=? AND u.service=0 ORDER BY t.last_seen DESC`, proto)
 	if err != nil {
 		return nil, err
 	}

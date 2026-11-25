@@ -130,3 +130,32 @@ func TestSessionsAndDisplayPreferences(t *testing.T) {
 		}
 	}
 }
+
+// A service profile is in the profile picker for no one, and no Jellyfin
+// app signs in as one, even with an app password set on it.
+func TestServiceProfileIsNotAJellyfinUser(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	svc, _, err := e.users.CreateService(ctx, "machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := e.users.SetAppPassword(ctx, svc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := e.do("GET", "/Users/Public", nil, nil)
+	var list []struct{ Name string }
+	decode(t, w, &list)
+	if len(list) != 3 {
+		t.Fatalf("the picker lists %d profiles: %s", len(list), w.Body)
+	}
+	for _, u := range list {
+		if u.Name == "machine" {
+			t.Fatalf("the picker lists the service profile: %s", w.Body)
+		}
+	}
+	if w := e.do("POST", "/Users/AuthenticateByName", swiftfinHdr(""), map[string]string{"Username": "machine", "Pw": app}); w.Code != 401 {
+		t.Fatalf("sign-in as the service profile: %d %s", w.Code, w.Body)
+	}
+}

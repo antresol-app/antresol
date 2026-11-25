@@ -21,6 +21,8 @@ export interface User extends Profile {
   hideProgress?: boolean
   /** The profile's Send to Kindle address, set by an admin (empty: none). */
   kindleEmail?: string
+  /** A machine's profile (the server's own checks sign in as one): in no list of people, keeps no history. */
+  service?: boolean
   /** Set by /api/me, login and setup: this device is outside the home network. */
   remote?: boolean
   /** A kid profile may ask for titles here («Попросить»). */

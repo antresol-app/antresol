@@ -266,9 +266,10 @@ func (s *Store) AllManaged(ctx context.Context) ([]User, error) {
 }
 
 // ListAll: the people's profiles and the managed accounts (the family view
-// shows a device's history next to the people).
+// shows a device's history next to the people); service profiles are not
+// among them.
 func (s *Store) ListAll(ctx context.Context) ([]User, error) {
-	return s.listWhere(ctx, `1`)
+	return s.listWhere(ctx, `service=0`)
 }
 
 func (s *Store) listWhere(ctx context.Context, where string, args ...any) ([]User, error) {

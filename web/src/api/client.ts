@@ -421,6 +421,8 @@ export const getLibraryPending = (signal?: AbortSignal, scope?: LibraryScope) =>
 export const getDisk = () => request<DiskUsage>('GET', '/api/disk')
 
 export const getUsers = (signal?: AbortSignal) => request<User[]>('GET', '/api/users', undefined, signal)
+/** «Служебные»: the machines' profiles, an admin's list only (never in the people's). */
+export const getServiceProfiles = () => request<User[]>('GET', '/api/service-profiles')
 export interface UserInput {
   name: string
   avatar: string

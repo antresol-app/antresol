@@ -540,7 +540,8 @@ func (s *Service) wanting(ctx context.Context, topic string) (map[int64]Prefs, e
 	} else if col == "" {
 		return nil, nil
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE ((email<>'' AND email_on=1) OR (telegram_chat<>0 AND telegram_on=1)) AND `+where)
+	rows, err := s.DB.QueryContext(ctx, `SELECT user_id FROM notify_prefs WHERE ((email<>'' AND email_on=1) OR (telegram_chat<>0 AND telegram_on=1))
+		AND user_id NOT IN (SELECT id FROM users WHERE service=1) AND `+where)
 	if err != nil {
 		return nil, err
 	}

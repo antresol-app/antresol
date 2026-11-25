@@ -31,6 +31,9 @@ var (
 	ErrAdminPassCommon = fmt.Errorf("%w: admin password is a common one", ErrInvalid)
 	errAdminNoPass     = fmt.Errorf("%w: admin must have a password", ErrInvalid)
 	errKidAdmin        = fmt.Errorf("%w: kid profile cannot be admin", ErrInvalid)
+	// ErrService: a service profile is changed or removed by `vault
+	// service-profile` only, never through the people's profile API.
+	ErrService = errors.New("auth: service profile")
 )
 
 type User struct {
@@ -65,6 +68,10 @@ type User struct {
 	OwnerID int64 `json:"ownerId,omitempty"`
 	// OwnerName: the owner's name (ManagedOf, AllManaged and ListAll only).
 	OwnerName string `json:"ownerName,omitempty"`
+	// Service: a machine's profile, not a person's (users.service): left
+	// out of List, ListAll and every picker, and its history writes are
+	// dropped by the database. Only ListService lists it.
+	Service bool `json:"service,omitempty"`
 
 	hash sql.NullString
 }
@@ -107,7 +114,7 @@ const cols = `id, CASE WHEN owner_id IS NULL THEN name ELSE COALESCE(managed_nam
 	CASE WHEN owner_id IS NULL THEN max_rating ELSE (SELECT o.max_rating FROM users o WHERE o.id = users.owner_id) END,
 	COALESCE((SELECT o.hide_progress FROM users o WHERE o.id = users.owner_id), hide_progress),
 	COALESCE((SELECT o.library_scope FROM users o WHERE o.id = users.owner_id), library_scope),
-	kindle_email, COALESCE(uid, ''), photo_version, COALESCE(owner_id, 0)`
+	kindle_email, COALESCE(uid, ''), photo_version, COALESCE(owner_id, 0), service`
 
 // NameSQL is the profile's name as an expression over the users table
 // (or its alias a). A managed account keeps its name in managed_name, so
@@ -121,9 +128,9 @@ type scanner interface{ Scan(...any) error }
 
 func scan(s scanner) (User, error) {
 	var u User
-	var admin, kid, hide int
+	var admin, kid, hide, svc int
 	var mr sql.NullString
-	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID, &u.PhotoVersion, &u.OwnerID); err != nil {
+	if err := s.Scan(&u.ID, &u.Name, &u.Avatar, &u.hash, &admin, &kid, &mr, &hide, &u.LibraryScope, &u.KindleEmail, &u.UID, &u.PhotoVersion, &u.OwnerID, &svc); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -131,7 +138,7 @@ func scan(s scanner) (User, error) {
 	}
 	u.HasPassword = u.hash.Valid && u.hash.String != ""
 	u.Photo = PhotoURL(u.ID, u.PhotoVersion)
-	u.IsAdmin, u.IsKid, u.HideProgress = admin != 0, kid != 0, hide != 0
+	u.IsAdmin, u.IsKid, u.HideProgress, u.Service = admin != 0, kid != 0, hide != 0, svc != 0
 	if mr.Valid {
 		u.MaxRating = &mr.String
 	}
@@ -231,15 +238,16 @@ func isUnique(err error) bool {
 
 // CreateUser adds a profile.
 func (s *Store) CreateUser(ctx context.Context, n NewUser) (User, error) {
-	return s.create(ctx, n, false)
+	return s.create(ctx, n, false, false)
 }
 
 // CreateFirstAdmin atomically creates the first user; ErrSetupDone if any exists.
 func (s *Store) CreateFirstAdmin(ctx context.Context, name, password string) (User, error) {
-	return s.create(ctx, NewUser{Name: name, Password: password, IsAdmin: true}, true)
+	return s.create(ctx, NewUser{Name: name, Password: password, IsAdmin: true}, true, false)
 }
 
-func (s *Store) create(ctx context.Context, n NewUser, first bool) (User, error) {
+// create adds a profile; service makes it a service profile (see Service).
+func (s *Store) create(ctx context.Context, n NewUser, first, service bool) (User, error) {
 	n.Name = strings.TrimSpace(n.Name)
 	if err := validate(n.Name, n.IsAdmin, n.IsKid, n.Password != ""); err != nil {
 		return User{}, err
@@ -258,7 +266,9 @@ func (s *Store) create(ctx context.Context, n NewUser, first bool) (User, error)
 	}
 	defer tx.Rollback()
 	var count int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+	// a service profile is no one's account: the first administrator is
+	// still the first person
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE service=0`).Scan(&count); err != nil {
 		return User{}, err
 	}
 	if first && count > 0 {
@@ -276,8 +286,8 @@ func (s *Store) create(ctx context.Context, n NewUser, first bool) (User, error)
 		return User{}, err
 	}
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO users(name, avatar, password_hash, is_admin, is_kid, max_rating, uid) VALUES(?,?,?,?,?,?,?)`,
-		n.Name, n.Avatar, hash, b2i(n.IsAdmin), b2i(n.IsKid), mr, uid)
+		`INSERT INTO users(name, avatar, password_hash, is_admin, is_kid, max_rating, uid, service) VALUES(?,?,?,?,?,?,?,?)`,
+		n.Name, n.Avatar, hash, b2i(n.IsAdmin), b2i(n.IsKid), mr, uid, b2i(service))
 	if err != nil {
 		if isUnique(err) {
 			return User{}, ErrExists
@@ -309,9 +319,10 @@ func b2i(b bool) int {
 }
 
 // List: the people's profiles (managed accounts are left out: they are
-// never signed in to; ManagedOf and AllManaged list them).
+// never signed in to; ManagedOf and AllManaged list them; service profiles
+// are left out too, ListService lists them).
 func (s *Store) List(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM users WHERE owner_id IS NULL ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM users WHERE owner_id IS NULL AND service=0 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +400,9 @@ func (s *Store) Update(ctx context.Context, id int64, p UserPatch) error {
 	}
 	if u.OwnerID != 0 { // a managed account is renamed with RenameManaged only
 		return ErrNotFound
+	}
+	if u.Service {
+		return ErrService
 	}
 	if p.Name != nil {
 		u.Name = strings.TrimSpace(*p.Name)
@@ -486,7 +500,12 @@ func lastAdminCheck(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-func (s *Store) Delete(ctx context.Context, id int64) error {
+// Delete removes a person's profile (ErrService for a service profile:
+// DeleteService removes those).
+func (s *Store) Delete(ctx context.Context, id int64) error { return s.remove(ctx, id, false) }
+
+// remove deletes the profile id; service says which kind it must be.
+func (s *Store) remove(ctx context.Context, id int64, service bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -497,6 +516,15 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 			return ErrNotFound
 		}
 		return err
+	}
+	if !service {
+		var svc int
+		if err := tx.QueryRowContext(ctx, `SELECT service FROM users WHERE id=?`, id).Scan(&svc); err != nil {
+			return err
+		}
+		if svc != 0 {
+			return ErrService
+		}
 	}
 	// the person's managed accounts first (the owner_id cascade covers it
 	// too; explicit as below)
@@ -524,6 +552,6 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) NeedsSetup(ctx context.Context) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE service=0`).Scan(&n)
 	return n == 0, err
 }

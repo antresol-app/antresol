@@ -186,6 +186,8 @@ func storeErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeErr(w, r, http.StatusConflict, "Такое имя уже занято")
 	case errors.Is(err, auth.ErrLastAdmin):
 		writeErr(w, r, http.StatusConflict, "Нужен хотя бы один администратор")
+	case errors.Is(err, auth.ErrService):
+		writeErr(w, r, http.StatusConflict, "Служебный профиль меняется и удаляется только командой vault service-profile")
 	case errors.Is(err, auth.ErrPasswordTooLong):
 		writeErr(w, r, http.StatusBadRequest, "Пароль слишком длинный (не более 72 байт)")
 	case errors.Is(err, auth.ErrAdminPassShort):
@@ -417,6 +419,16 @@ func mountAuth(r chi.Router, users *auth.Store, guard *auth.Guard, throttle *aut
 			r.Use(auth.RequireAdmin)
 			r.Get("/api/users", func(w http.ResponseWriter, r *http.Request) {
 				list, err := users.List(r.Context())
+				if err != nil {
+					storeErr(w, r, err)
+					return
+				}
+				writeJSON(w, 200, list)
+			})
+			// «Служебные»: the profiles of machines (see auth.Store.ListService),
+			// shown on the admin's Profiles page only
+			r.Get("/api/service-profiles", func(w http.ResponseWriter, r *http.Request) {
+				list, err := users.ListService(r.Context())
 				if err != nil {
 					storeErr(w, r, err)
 					return

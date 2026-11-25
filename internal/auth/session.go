@@ -265,7 +265,7 @@ type FamilyDevice struct {
 // AllDevices: every profile's apps and browsers, the most recent first.
 func (s *Sessions) AllDevices(ctx context.Context) ([]FamilyDevice, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT s.rowid, s.user_id, s.kind, s.device_id, s.device_name, s.device_model, s.app_version, s.created_at, s.last_seen, u.name, u.avatar, u.photo_version
-		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.kind IN (?,?) ORDER BY s.last_seen DESC, s.rowid DESC`, KindNative, KindWeb)
+		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.kind IN (?,?) AND u.service=0 ORDER BY s.last_seen DESC, s.rowid DESC`, KindNative, KindWeb)
 	if err != nil {
 		return nil, err
 	}

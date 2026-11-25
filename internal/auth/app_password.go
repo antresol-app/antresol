@@ -129,7 +129,7 @@ func (s *Store) ByName(ctx context.Context, name string) (User, error) {
 	if name == "" {
 		return User{}, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name FROM users WHERE owner_id IS NULL`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name FROM users WHERE owner_id IS NULL AND service=0`)
 	if err != nil {
 		return User{}, err
 	}

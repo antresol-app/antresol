@@ -35,6 +35,11 @@
   color: var(--warning);
 }
 
+/* «Служебные» under the list */
+.service {
+  margin-top: var(--s-5);
+}
+
 /* «Устройства всех профилей» under the list */
 .devices {
   margin-top: var(--s-5);

@@ -2,6 +2,7 @@ package subsonic
 
 import (
 	"context"
+	"net/url"
 	"testing"
 
 	"github.com/antresol-app/antresol/internal/auth"
@@ -138,5 +139,27 @@ func TestKidSeesUnratedHidesRated(t *testing.T) {
 	}
 	if code, _ := errCode(e.call("getUser", "username", "Папа")); code != 50 {
 		t.Fatalf("kid looks up another profile: %d", code)
+	}
+}
+
+// An administrator's lookup of a profile by name never finds a service
+// profile, and it does not sign in with its app password either.
+func TestServiceProfileIsNotASubsonicUser(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	svc, _, err := e.users.CreateService(ctx, "machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := e.users.SetAppPassword(ctx, svc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := errCode(e.call("getUser", "username", "machine")); code != codeNotFound {
+		t.Fatalf("an administrator finds the service profile: %d", code)
+	}
+	p := url.Values{"u": {"machine"}, "p": {app}, "c": {"test"}, "v": {"1.16.1"}, "f": {"json"}}
+	if code, _ := errCode(e.decode(e.req("ping", "", p))); code != codeAuth {
+		t.Fatalf("the service profile signs in: %d", code)
 	}
 }
