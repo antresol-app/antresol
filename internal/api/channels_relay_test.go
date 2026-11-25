@@ -170,6 +170,60 @@ func relayURIs(t *testing.T, body string) []string {
 	return out
 }
 
+// An app's player asks for the relay with a media key and fetches every
+// rendition and segment of the playlist without any header of the app's: each
+// link of the rewritten playlist carries the key, as the own channels' do.
+func TestRelayHLSLinksCarryTheMediaKey(t *testing.T) {
+	e := newTVEnvWith(t, nil, withMediaKeys)
+	up := newRelayUpstream(t)
+	pl := "#EXTM3U\n#EXTINF:-1 tvg-id=\"h\",HLS\n#EXTVLCOPT:http-user-agent=" + relayUA + "\n#EXTVLCOPT:http-referrer=" + relayReferer + "\n" + up.srv.URL + "/hls/entry\n"
+	c := e.addRelaySource(pl, e.p.srv.URL)["HLS"]
+	key := e.mediaKey(e.deviceLogin(1, adminPass, "phone-0001"))
+	esc := url.QueryEscape(key)
+	get := func(path string) string {
+		t.Helper()
+		w := e.do("GET", path, "", nil)
+		if w.Code != 200 {
+			t.Fatalf("GET %s: %d %s", path, w.Code, w.Body)
+		}
+		return w.Body.String()
+	}
+	master := relayURIs(t, get(c.Stream.Relay+"?"+mk(key)))
+	if len(master) != 2 {
+		t.Fatalf("master %v", master)
+	}
+	for _, u := range master {
+		if !strings.HasSuffix(u, "?mk="+esc) {
+			t.Fatalf("a rendition without the key: %q", u)
+		}
+	}
+	// the renditions' own links carry it too, and the segments open with it
+	media := relayURIs(t, get(master[1]))
+	if len(media) != 5 {
+		t.Fatalf("media %v", media)
+	}
+	var got []string
+	for _, u := range media {
+		if !strings.HasSuffix(u, "?mk="+esc) {
+			t.Fatalf("a segment link without the key: %q", u)
+		}
+		got = append(got, get(u))
+	}
+	if strings.Join(got, ",") != "KEY,INIT,SEG1,SEG2,SEG3" {
+		t.Fatalf("media %v", got)
+	}
+	// without the key (the web's cookie) the links stay as they were
+	for _, u := range relayURIs(t, e.do("GET", c.Stream.Relay, "", e.admin).Body.String()) {
+		if strings.Contains(u, "mk=") {
+			t.Fatalf("the cookie's playlist links carry a key: %q", u)
+		}
+	}
+	// a link is no way in for a key that is not the viewer's
+	if w := e.do("GET", media[2][:strings.Index(media[2], "?")]+"?mk=v1.1.1.1.x", "", nil); w.Code != 401 {
+		t.Fatalf("a made-up key: %d", w.Code)
+	}
+}
+
 func TestRelayHLSRewritesAndPassesHeaders(t *testing.T) {
 	e, up, chans := newExtRelayEnv(t)
 	c := chans["HLS"]

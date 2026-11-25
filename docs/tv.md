@@ -42,7 +42,10 @@ E-AC-3, DTS). The first time you tune in, the server looks at the start of the s
 audio is one of those, the browser plays the channel through the server, which copies the video
 as it is and converts only the audio to AAC stereo: one `ffmpeg` per such channel being watched
 (at most 6 at once), little CPU. A channel with AAC or MP3 audio is never touched. What the
-server found is remembered for 12 hours. The apps still play the provider's address directly.
+server found is remembered for 12 hours. The iPhone, iPad and Apple TV apps take the same way for a
+channel the server has marked this way (the first tune-in of a channel the server has not looked at
+yet may still be silent; it is marked from then on). The other apps still play the provider's
+address directly.
 
 ## Finding a channel
 

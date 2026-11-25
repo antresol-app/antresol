@@ -536,6 +536,13 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 			return
 		}
 		var sealErr error
+		// an app's player asks for the renditions and segments without the
+		// app's headers: with a media key in, each link carries it (as the
+		// own channels' playlists do)
+		var keyed string
+		if mk, ok := auth.ViaMediaKey(r.Context()); ok {
+			keyed = "?mk=" + url.QueryEscape(mk)
+		}
 		out := relayRewrite(body, resp.Request.URL, func(abs string, playlist bool) string {
 			ttl := relayMediaTTL
 			if playlist {
@@ -546,7 +553,7 @@ func (rl *extRelay) serve(w http.ResponseWriter, r *http.Request, k relayKey, s 
 				sealErr = err
 				return ""
 			}
-			return extRelayPath(k.channel, k.n) + "/" + ref
+			return extRelayPath(k.channel, k.n) + "/" + ref + keyed
 		})
 		if sealErr != nil {
 			internalErr(w, r, "relay", sealErr)
