@@ -625,6 +625,20 @@ func TestWorkerChaptersModelFails(t *testing.T) {
 	}
 }
 
+// A text model turned off while a pass runs is not asked any more.
+func TestWorkerChaptersModelTurnedOff(t *testing.T) {
+	r := newRig(t)
+	r.book("a", nil, minute)
+	llm := &fakeLLM{answers: []string{`{"chapters":[{"line":1,"title":"Всё"}]}`}}
+	r.llm = llm
+	r.stt.set(func(string) (int, string, []string) { r.llm = nil; return 0, "", nil })
+	w := r.worker()
+	r.pass(w)
+	if len(llm.asked) != 0 {
+		t.Fatalf("asked %d times", len(llm.asked))
+	}
+}
+
 func TestWorkerRunStops(t *testing.T) {
 	r := newRig(t)
 	r.book("a", nil, minute)

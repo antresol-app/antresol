@@ -330,10 +330,7 @@ func (w *Worker) Pass(ctx context.Context) error {
 		return err
 	}
 	_, on := w.speech(ctx)
-	var llm Asker
-	if w.LLM != nil {
-		llm = w.LLM(ctx)
-	}
+	llm := w.model(ctx)
 	books, err := w.books(ctx)
 	if err != nil {
 		return err
@@ -385,8 +382,11 @@ func (w *Worker) Pass(ctx context.Context) error {
 			}
 		}
 		if llm != nil && b.chaptersDue(stamp(w.now())) && !w.held(&w.llmHold) {
-			if err := w.chapters(ctx, llm, b); err != nil {
-				return err
+			// asked again for every book: a long pass follows the settings
+			if m := w.model(ctx); m != nil {
+				if err := w.chapters(ctx, m, b); err != nil {
+					return err
+				}
 			}
 		}
 		if !was && finished(b) {
@@ -394,6 +394,14 @@ func (w *Worker) Pass(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// model is the text model to ask now (nil: none).
+func (w *Worker) model(ctx context.Context) Asker {
+	if w.LLM == nil {
+		return nil
+	}
+	return w.LLM(ctx)
 }
 
 // report says on «Задачи» why the worker waits, or what failed last.
