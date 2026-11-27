@@ -35,3 +35,4 @@ internal/metadata/openlibrary/enrich.go: инична  # Russian patronymic suff
 internal/jellyfin/parts.go  # regex matching part numbers in file names (parser data, the web player's PART_RE)
 internal/voclean/job.go:  (очищено)  # title tag written into the cleaned Russian track file (stream metadata of a Russian track, not UI)
 internal/voclean/job.go: Очищено  # title tag of a cleaned Russian track without a title of its own (stream metadata, not UI)
+internal/library/chapter_words.go  # words matched against chapter titles (parser data)
