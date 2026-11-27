@@ -194,6 +194,10 @@ type Deps struct {
 	External        *extsvc.Switches
 	ExternalChanged func(id extsvc.ID, on bool)
 
+	// Transcripts is the worker that makes the audiobooks' transcripts,
+	// told when the speech or text model of the settings changes; nil: none.
+	Transcripts Transcripts
+
 	// Segments are the recap, intro and credits of the library's videos
 	// (segments: of POST /api/play); nil: none.
 	Segments Segmenter
@@ -331,6 +335,12 @@ type Deps struct {
 	// empty struct in the core build, and in the sources build until it
 	// has one again. Set them by name.
 	fullDeps
+}
+
+// Transcripts is the part of *transcript.Worker the API uses.
+type Transcripts interface {
+	// Reconfigured: the models it asks changed; what failed is tried again.
+	Reconfigured(ctx context.Context) error
 }
 
 // Segmenter is the part of *segments.Worker the API uses.

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -119,6 +120,19 @@ var allTiers = []channels.Tier{channels.TierLight, channels.TierMedium, channels
 
 // isZero: no «ИИ-помощник» in the request (a client that does not know it).
 func (a AISettings) isZero() bool { return !a.sent }
+
+// asksTheSame: a task would ask the same models, in the same order, as with
+// b (what each last answered aside).
+func (a AISettings) asksTheSame(b AISettings) bool {
+	asked := func(s AISettings) []AIModel {
+		list := slices.Clone(s.List)
+		for i := range list {
+			list[i].Status, list[i].KeySet = AIStatus{}, false
+		}
+		return list
+	}
+	return a.Off == b.Off && slices.EqualFunc(asked(a), asked(b), func(x, y AIModel) bool { return reflect.DeepEqual(x, y) })
+}
 
 // sameHost: both addresses name the same host and port.
 func sameHost(a, b string) bool {

@@ -19,6 +19,7 @@ func mountBooks(r chi.Router, h *lib) {
 	r.Get("/api/books/home", h.booksHome)
 	r.Get("/api/books", h.books)
 	r.Get("/api/books/{id}", h.bookDetail)
+	r.Get("/api/books/{id}/transcript", h.bookTranscript)
 	mountKindle(r, h)
 	r.With(noKids).Post("/api/books/upload", h.uploadBook)
 }
@@ -89,8 +90,13 @@ type BookDetail struct {
 	Want         bool          `json:"want"`
 	DurationMs   int64         `json:"durationMs"`
 	Chapters     []BookChapter `json:"chapters"`
-	Volumes      []VolumeCard  `json:"volumes"`
-	Direction    string        `json:"direction"`
+	// ChaptersAuto: the chapters were made from the audiobook's transcript.
+	ChaptersAuto bool `json:"chaptersAuto"`
+	// Transcript of an audiobook: "pending", "ready" (GET
+	// /api/books/{id}/transcript) or "failed"; "" none and none coming.
+	Transcript string       `json:"transcript"`
+	Volumes    []VolumeCard `json:"volumes"`
+	Direction  string       `json:"direction"`
 }
 
 func (h *lib) booksHome(w http.ResponseWriter, r *http.Request) {
@@ -310,6 +316,22 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 				end = off + *c.EndMs
 			}
 			d.Chapters = append(d.Chapters, BookChapter{Idx: c.Idx, Title: library.DisplayChapterTitle(i18n.FromContext(r.Context()), c.Title, c.Idx), FileID: c.FileID, StartMs: off + c.StartMs, EndMs: end})
+		}
+		stored, current, err := h.storedTranscript(ctx, it.ID, files)
+		if err != nil {
+			internalErr(w, r, "book transcript", err)
+			return
+		}
+		d.Transcript = h.transcriptState(ctx, stored, current)
+		if current && stored.Chapters {
+			auto, err := h.autoChapters(ctx, it, files, chs, offsets, d.DurationMs)
+			if err != nil {
+				internalErr(w, r, "book chapters", err)
+				return
+			}
+			if len(auto) > 0 {
+				d.Chapters, d.ChaptersAuto = auto, true
+			}
 		}
 	case library.KindComic:
 		d.Direction = directionOr(m.Direction)

@@ -101,6 +101,24 @@ func (c *Chain) report(id string, took time.Duration, err error) {
 	}
 }
 
+// Patient is l given at least d for an answer, for a task whose answers are
+// long (a book's chapters): the call as a whole and each model of its list
+// get as long. l and its list stay as they are.
+func (l *LLM) Patient(d time.Duration) *LLM {
+	long := *l
+	long.Timeout = max(l.timeout(), d)
+	if l.Chain != nil {
+		c := *l.Chain
+		c.Budget = max(c.Budget, d)
+		c.Members = make([]ChainMember, len(l.Chain.Members))
+		for i, m := range l.Chain.Members {
+			c.Members[i] = ChainMember{ID: m.ID, LLM: m.LLM.Patient(d)}
+		}
+		long.Chain = &c
+	}
+	return &long
+}
+
 // answerJSON: an answer that is meant to be a JSON object but is not is a
 // failure another model may fix.
 func answerJSON(out string) error {

@@ -62,6 +62,7 @@ import (
 	"github.com/antresol-app/antresol/internal/segments"
 	"github.com/antresol-app/antresol/internal/subsonic"
 	"github.com/antresol-app/antresol/internal/tracking"
+	"github.com/antresol-app/antresol/internal/transcript"
 	"github.com/antresol-app/antresol/internal/trickplay"
 	"github.com/antresol-app/antresol/internal/version"
 	"github.com/antresol-app/antresol/internal/voclean"
@@ -473,6 +474,22 @@ func run() error {
 	// in every build, whenever there is a database and ffmpeg: addons
 	// queue the tracks they place (/api/addon-core/v1/voiceover/fit)
 	runFit := fitRuns(database, cfg.FFmpeg)
+	// the audiobooks' transcripts («Распознавание речи») and automatic
+	// chapters (the AI helper's medium model), a piece at a time in the
+	// background, behind the same quiet as the analysis
+	transcripts := &transcript.Worker{DB: database, FFmpeg: cfg.FFmpeg, Log: slog.Default(), Busy: segWorker.Busy,
+		STT: api.SpeechSource(database, settingsDefaults),
+		LLM: func(ctx context.Context) transcript.Asker {
+			l := chans.ModelFor(ctx, channels.TierMedium)
+			if l == nil {
+				return nil // never a typed nil in the interface
+			}
+			return l.Patient(transcript.ChapterTimeout)
+		},
+		Disk: func() bool {
+			f := jobs.Scanner.StorageOffline
+			return f == nil || f() == ""
+		}}
 	// «ТВ-каналы»: one live encoder per watched channel, beside the HLS
 	// sessions on the media disk; schedules kept 48 h ahead
 	var live *channels.Live
@@ -497,8 +514,9 @@ func run() error {
 		chans.Kick()
 		segWorker.Kick() // new episodes and films
 		trickWorker.Kick()
-		loudWorker.Kick() // new tracks, tags read again
-		vocWorker.Kick()  // new films and episodes
+		loudWorker.Kick()  // new tracks, tags read again
+		vocWorker.Kick()   // new films and episodes
+		transcripts.Kick() // new audiobooks, their lengths known
 		if runFit {
 			fitWorker.Kick() // a video replaced: its voice-overs' fits are stale, fitted again now
 		}
@@ -588,11 +606,13 @@ func run() error {
 		IPTV:         cfg.IPTV,
 		Accounts:     accts.routes,
 		Voclean:      vocWorker,
+		Transcripts:  transcripts,
 		// «Задачи»: the background workers' progress
 		Background: []api.BackgroundTask{
 			{ID: "trickplay", Progress: trickWorker.Progress.Snapshot},
 			{ID: "segments", Progress: segWorker.Progress.Snapshot},
 			{ID: "loudness", Progress: loudWorker.Progress.Snapshot},
+			{ID: "transcripts", Progress: transcripts.Progress.Snapshot},
 		},
 		// «Состояние → Сеть»: the services the server reaches out to
 		NetTargets: netTargets(cfg),
@@ -892,6 +912,8 @@ func run() error {
 	go func() { defer wg.Done(); loudWorker.Run(ctx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); vocWorker.Run(ctx) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); transcripts.Run(ctx) }()
 	if runFit {
 		wg.Add(1)
 		go func() { defer wg.Done(); fitWorker.Run(ctx) }()

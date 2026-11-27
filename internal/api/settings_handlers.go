@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/antresol-app/antresol/internal/channels"
+	"log"
 	"net/http"
 	"reflect"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/antresol-app/antresol/internal/publicurl"
 	"github.com/antresol-app/antresol/internal/releaseprefs"
 	"github.com/antresol-app/antresol/internal/subtitles"
+	"github.com/antresol-app/antresol/internal/transcript"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -63,6 +65,10 @@ type AppSettings struct {
 	// medium, powerful) the AI tasks ask; empty: the server's VAULT_LLM_*
 	// or none.
 	AI AISettings `json:"ai"`
+	// STT is «Распознавание речи» of «ИИ-помощник» (stt_settings.go): the
+	// service that makes audiobooks' transcripts; empty: the server's
+	// VAULT_STT_* or none.
+	STT STTSettings `json:"stt"`
 	// PublicURL is «Адрес сервера»: how browsers and the apps reach the
 	// server from outside the home network ("" none); VAULT_PUBLIC_URL wins
 	// over it. The links of letters and Shikimori's redirect URI are on it.
@@ -284,6 +290,11 @@ type settingsView struct {
 	// of the page, used while no address is set here and AI is not Off
 	AIKeySet  bool   `json:"aiKeySet"`
 	AIFromEnv string `json:"aiFromEnv,omitempty"`
+	// STTKeySet: an API key of «Распознавание речи» is stored (response
+	// only); STTFromEnv: the server has VAULT_STT_* (its model): the choice
+	// «Сервер» there, used while no provider is chosen
+	STTKeySet  bool   `json:"sttKeySet"`
+	STTFromEnv string `json:"sttFromEnv,omitempty"`
 	// TranscodingName: what transcodes video now («Перекодирование»'s
 	// summary; response only, the settings are /api/settings/transcoding)
 	TranscodingName string `json:"transcodingName,omitempty"`
@@ -306,12 +317,14 @@ type settingsAPI struct {
 	accel *media.Accel
 	// public: the server's public address (VAULT_PUBLIC_URL; nil: none)
 	public *publicurl.Address
+	// transcripts is told of new models (nil: none)
+	transcripts Transcripts
 }
 
 func newSettingsAPI(deps Deps) *settingsAPI {
 	return &settingsAPI{db: deps.DB, defaults: deps.SettingsDefaults, apply: deps.ApplySettings,
 		subtitles: deps.Subtitles != nil, prefs: releaseprefs.Store{DB: deps.DB}, settingsFull: newSettingsFull(deps), accel: deps.Accel,
-		public: deps.PublicAddress}
+		public: deps.PublicAddress, transcripts: deps.Transcripts}
 }
 
 func mountSettings(r chi.Router, s *settingsAPI) {
@@ -321,6 +334,7 @@ func mountSettings(r chi.Router, s *settingsAPI) {
 		r.Put("/api/settings", s.put)
 		r.Post("/api/settings/ai/test", s.testAI)
 		r.Post("/api/settings/ai/models", s.modelsAI)
+		r.Post("/api/settings/stt/test", s.testSTT)
 	})
 }
 
@@ -344,6 +358,11 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	}
 	if env != nil {
 		v.AIFromEnv = env.Model
+	}
+	v.STTKeySet = app.STT.Key != ""
+	v.STT.Key = ""
+	if env, ok := transcript.ConfigFromEnv(); ok {
+		v.STTFromEnv = env.Model
 	}
 	if s.accel != nil {
 		v.TranscodingName = media.HWName(s.accel.Mode())
@@ -396,6 +415,9 @@ func (v settingsView) validate() string {
 		return "Адрес сервера — ссылка вида https://media.example.org"
 	}
 	if msg := v.Mail.validate(); msg != "" {
+		return msg
+	}
+	if msg := v.STT.validate(); msg != "" {
 		return msg
 	}
 	return v.AI.validate()
@@ -452,6 +474,8 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	} else {
 		v.AI = v.AI.merged(stored.AI, channels.LLMFromEnv())
 	}
+	// the same for the speech recognition key
+	v.STT = v.STT.merged(stored.STT)
 	if msg := v.validate(); msg != "" {
 		writeErr(w, r, http.StatusBadRequest, msg)
 		return
@@ -474,6 +498,13 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.apply != nil {
 		s.apply(v.AppSettings)
+	}
+	if s.transcripts != nil && (v.STT != stored.STT || !v.AI.asksTheSame(stored.AI)) {
+		// what failed with the models before is tried again; the save stands
+		// whatever this says
+		if err := s.transcripts.Reconfigured(ctx); err != nil {
+			log.Printf("settings: transcripts: %v", err)
+		}
 	}
 	out, err := s.load(ctx)
 	if err != nil {
