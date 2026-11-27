@@ -1,6 +1,7 @@
 // «Управление → Задачи» (admin): what the server does in the background, in
 // one place — the library scan, the cleaned voice-overs, the scrub preview
-// frames, the search for intros and credits, the loudness of the music —
+// frames, the search for intros and credits, the loudness of the music, the
+// audiobooks' transcripts —
 // each with how much is done, whether it runs now (or why it stands still)
 // and when it last ran. Updated while the page is open. The settings of
 // each stay where they belong (a row opens them: «Медиатека», «Обработка»);
@@ -29,19 +30,22 @@ const WORKERS: Record<string, { label: Key; glyph: SettingsGlyph; tint: Settings
   trickplay: { label: 'tasks.trickplay', glyph: 'eye', tint: 'teal', to: '/manage/settings/processing' },
   segments: { label: 'tasks.segments', glyph: 'playRect', tint: 'red', to: '/manage/settings/processing' },
   loudness: { label: 'tasks.loudness', glyph: 'note', tint: 'pink', to: '' },
+  transcripts: { label: 'tasks.transcripts', glyph: 'captions', tint: 'orange', to: '/manage/settings/ai' },
 }
 
 const percent = (done: number, total: number) => (total > 0 ? formatPercent(Math.floor((done / total) * 100)) : '')
 
-/** A worker's line: «Готово 120 из 3400 · идёт сейчас». */
+/** A worker's line: «Готово 120 из 3400 · идёт сейчас», with what it is on and what failed. */
 export function workerLine(p: TaskProgress, t: T): string {
   const parts: string[] = []
   if (p.total > 0) parts.push(t('tasks.done', { done: p.done, total: p.total }))
   else if (p.lastRun) parts.push(t('tasks.nothing'))
   if (p.state) parts.push(t(`tasks.state.${p.state}`))
   else if (p.running) parts.push(t('tasks.running'))
+  if (p.now) parts.push(t('tasks.now', { name: p.now, percent: formatPercent(p.nowPercent ?? 0) }))
   if (!p.running && p.lastRun) parts.push(t('tasks.lastRun', { ago: ago(p.lastRun) }))
   if (parts.length === 0) parts.push(t('tasks.notYet'))
+  if (p.error) parts.push(t('tasks.error', { error: p.error }))
   return parts.join(' · ')
 }
 

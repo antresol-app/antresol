@@ -25,6 +25,7 @@ import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
 import { AISettingsSection, aiEditable } from './AISettings'
+import { STTSettingsSection } from './STTSettings'
 import { ExternalServicesSection } from './ExternalServicesSettings'
 import { PublicAddressSection } from './PublicAddressSettings'
 import { StorageSection } from './StorageSettings'
@@ -348,6 +349,7 @@ export function Settings() {
       )}
 
       {at('ai') && <AISettingsSection ai={values.ai} edit={aiEdit && aiEditable(values.ai)} onChange={(ai) => change({ ai })} onSave={saveAI} />}
+      {at('ai') && <STTSettingsSection stt={values.stt} keySet={values.sttKeySet ?? false} fromEnv={values.sttFromEnv} onChange={(stt) => change({ stt })} />}
 
       {at('processing') && <VocleanSection />}
 

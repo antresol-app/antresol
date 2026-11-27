@@ -48,6 +48,28 @@ describe('«Задачи»', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/manage/settings/processing')
   })
 
+  it('says what a long job is on, what it waits for and what failed', () => {
+    const base = { id: 'transcripts', done: 2, total: 12 }
+    expect(workerLine({ ...base, running: true, now: 'Старик и море', nowPercent: 40 }, t)).toBe('Готово 2 из 12 · идёт сейчас · «Старик и море»: 40\u00a0%')
+    expect(workerLine({ ...base, running: false, state: 'waiting', error: 'stt: 429 Too Many Requests', lastRun: new Date().toISOString() }, t)).toMatch(
+      /^Готово 2 из 12 · ждёт сервис · последний проход .+ · Ошибка: stt: 429 Too Many Requests$/,
+    )
+  })
+
+  it('names the transcripts and opens the AI settings', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ workers: [{ id: 'transcripts', running: false, done: 1, total: 2 }] })))
+    render(
+      <MemoryRouter initialEntries={['/manage/tasks']}>
+        <Routes>
+          <Route path="/manage/tasks" element={<Tasks />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await userEvent.click(await screen.findByRole('button', { name: /Расшифровки аудиокниг/ }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/manage/settings/ai')
+  })
+
   it('says a worker that never ran', () => {
     expect(workerLine({ id: 'x', running: false, done: 0, total: 0 }, t)).toBe('Ещё не запускалась')
   })

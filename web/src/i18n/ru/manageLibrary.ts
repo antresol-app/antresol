@@ -38,6 +38,10 @@ export default {
   'tasks.state.off': 'выключено в настройках',
   'tasks.state.full': 'место закончилось',
   'tasks.state.offline': 'медиа-диск недоступен',
+  'tasks.state.waiting': 'ждёт сервис',
+  'tasks.transcripts': 'Расшифровки аудиокниг',
+  'tasks.now': '«{name}»: {percent}',
+  'tasks.error': 'Ошибка: {error}',
   // «Управление → Состояние» (Health.tsx): is everything working
   'health.versions': 'Версии и обновления',
   'health.networkFailed': 'Не удалось проверить сеть',

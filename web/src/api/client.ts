@@ -107,6 +107,7 @@ import type {
   User,
   AICheck,
   AIModel,
+  STTSettings,
 } from './types'
 
 import { getLanguage, t } from '../i18n'
@@ -564,6 +565,9 @@ export const testAIModels = (body: { ids?: string[]; entry?: AIModel }) => reque
 /** The models an endpoint lists (nothing is billed or saved): an empty key is the stored one of entry `id`. */
 export const listAIModels = (body: { url?: string; key?: string; id?: string }, signal?: AbortSignal) =>
   request<{ models: { id: string }[]; error?: string; kind?: string; code?: number }>('POST', '/api/settings/ai/models', body, signal)
+
+/** «Проверить» of «Распознавание речи»: a second of silence sent to be transcribed (nothing is saved; an empty key: the stored one, for its address). */
+export const testSTTSettings = (stt: STTSettings) => request<{ ok: boolean; ms: number; model: string; error?: string }>('POST', '/api/settings/stt/test', stt)
 
 // Subtitles (admin): OpenSubtitles search for one video file.
 export const searchSubtitles = (fileId: number, lang: 'ru' | 'en', signal?: AbortSignal) =>

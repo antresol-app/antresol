@@ -834,6 +834,11 @@ export interface Settings {
   ai?: AISettings
   /** The server has its own model (VAULT_LLM_*): its entry of the list, «Сервер». */
   aiFromEnv?: string
+  /** «Распознавание речи»: the service of the audiobooks' transcripts (the key is write-only; absent on older servers). */
+  stt?: STTSettings
+  sttKeySet?: boolean
+  /** The server has its own speech service (VAULT_STT_*): its model, used while no provider is chosen here. */
+  sttFromEnv?: string
   /** What transcodes video now («Перекодирование»'s summary; response only). */
   transcodingName?: string
   /** «Адрес сервера»: how the server is reached from outside the home network ("" none). */
@@ -930,14 +935,20 @@ export interface VocleanStatus {
 
 /** A background worker's progress (bgtask.Progress), «Задачи». */
 export interface TaskProgress {
-  /** trickplay, segments, loudness (an unknown one is shown by its id) */
+  /** trickplay, segments, loudness, transcripts (an unknown one is shown by its id) */
   id: string
   /** a pass is under way (it may wait for playback to be quiet) */
   running: boolean
   done: number
   total: number
-  /** why it stands still: off (in the settings), full (its space is used up), offline (the media disk is away) */
-  state?: 'off' | 'full' | 'offline'
+  /** why it stands still: off (in the settings), full (its space is used up), offline (the media disk is away),
+   * waiting (a service it asks is limiting or failing; `error` says why) */
+  state?: 'off' | 'full' | 'offline' | 'waiting'
+  /** what went wrong last */
+  error?: string
+  /** what is being worked on, and how far it is, when one unit takes long */
+  now?: string
+  nowPercent?: number
   /** when the last pass ended */
   lastRun?: string
 }
@@ -1040,6 +1051,17 @@ export interface AICheck {
   ms: number
   reply?: string
   status: AIStatus
+}
+
+/** «Распознавание речи» (the server's AI settings). */
+export interface STTSettings {
+  /** groq, openai, gemini, custom, off; '' the server's own (VAULT_STT_*) or none */
+  provider: '' | 'off' | 'groq' | 'openai' | 'gemini' | 'custom'
+  /** custom only: an OpenAI-compatible server's address */
+  url: string
+  /** '' the provider's usual model */
+  model: string
+  key?: string
 }
 
 export interface MailSettings {
@@ -1439,6 +1461,10 @@ export interface BookDetail {
   want: boolean
   durationMs: number
   chapters: BookChapter[]
+  /** The chapters were made from the audiobook's transcript (absent on older servers). */
+  chaptersAuto?: boolean
+  /** An audiobook's transcript (GET /api/books/{id}/transcript when ready); '' none and none coming. */
+  transcript?: '' | 'pending' | 'ready' | 'failed'
   volumes: VolumeCard[]
   direction: string
 }
