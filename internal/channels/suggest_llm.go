@@ -17,7 +17,7 @@ import (
 
 // LLM is a language model that reads a channel request into tags: a local
 // Ollama (VAULT_LLM_URL=http://host:11434, its native /api/chat with a JSON
-// schema), any OpenAI-compatible endpoint (a URL ending in /v1, with
+// schema), any OpenAI-compatible endpoint (a URL ending in /v1 or, Gemini, /openai, with
 // VAULT_LLM_KEY) or Anthropic's Messages API (https://api.anthropic.com). Small models do: the words (suggestWords) are trusted
 // first, the model only fills in.
 type LLM struct {
@@ -65,7 +65,13 @@ func (l *LLM) timeout() time.Duration {
 	return 45 * time.Second
 }
 
-func (l *LLM) openAI() bool { return strings.HasSuffix(l.URL, "/v1") }
+// openAI: an OpenAI-compatible endpoint, its address ending in /v1 (OpenAI,
+// Groq, OpenRouter, a LiteLLM) or /openai (Gemini's
+// https://generativelanguage.googleapis.com/v1beta/openai); else Ollama.
+func (l *LLM) openAI() bool {
+	u := strings.TrimRight(l.URL, "/")
+	return strings.HasSuffix(u, "/v1") || strings.HasSuffix(u, "/openai")
+}
 
 // llmAnswer is what the model is asked to return.
 type llmAnswer struct {

@@ -31,6 +31,13 @@ type AISettings struct {
 	Off    bool     `json:"off,omitempty"`
 }
 
+// sameHost: both addresses name the same host and port.
+func sameHost(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	return errA == nil && errB == nil && ua.Host != "" && strings.EqualFold(ua.Host, ub.Host)
+}
+
 // AIModels are the three models of the endpoint: light (quick, cheap,
 // many small calls: naming channel categories), medium (reading a
 // request: «Опишите канал»), powerful (the hardest tasks).
@@ -112,12 +119,14 @@ func (a AISettings) validate() string {
 }
 
 // merged: what a PUT stores — trimmed, the tiers filled; an empty key
-// keeps the stored one (answers never carry it); no address clears the
-// models and the key (and keeps only Off: the server's own model, or none).
+// keeps the stored one (answers never carry it) while the address stays on
+// the same host: a key belongs to its provider, so moving from Gemini to
+// Groq never sends Gemini's key to Groq. No address clears the models and
+// the key (and keeps only Off: the server's own model, or none).
 func (a AISettings) merged(stored AISettings) AISettings {
 	a.URL = strings.TrimRight(strings.TrimSpace(a.URL), "/")
 	a.Key = strings.TrimSpace(a.Key)
-	if a.Key == "" {
+	if a.Key == "" && sameHost(a.URL, stored.URL) {
 		a.Key = stored.Key
 	}
 	if a.URL == "" {

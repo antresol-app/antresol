@@ -207,3 +207,17 @@ func TestAISettingsTiersFromOneModel(t *testing.T) {
 		}
 	}
 }
+
+// A key belongs to its provider: moving to another host never carries it.
+func TestAISettingsKeyStaysWithItsHost(t *testing.T) {
+	stored := AISettings{URL: "https://generativelanguage.googleapis.com/v1beta/openai", Model: "g", Key: "AIza-old"}
+	if got := (AISettings{URL: "https://generativelanguage.googleapis.com/v1beta/openai", Model: "g2"}).merged(stored); got.Key != "AIza-old" {
+		t.Errorf("same host: key %q, want the stored one", got.Key)
+	}
+	if got := (AISettings{URL: "https://api.groq.com/openai/v1", Model: "q"}).merged(stored); got.Key != "" {
+		t.Errorf("another host: key %q carried over", got.Key)
+	}
+	if got := (AISettings{URL: "https://api.groq.com/openai/v1", Model: "q", Key: " gsk-new "}).merged(stored); got.Key != "gsk-new" {
+		t.Errorf("a typed key: %q", got.Key)
+	}
+}

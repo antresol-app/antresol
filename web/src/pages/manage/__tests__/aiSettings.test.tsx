@@ -38,34 +38,39 @@ function stub(v: Values) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('«ИИ-помощник»', () => {
-  it('a provider fills its address and model; the key is written once; «Проверить» asks', async () => {
+  it('a provider fills its address and model; saved with its key; Enter saves the key and checks it', async () => {
     const { puts, tests } = stub(base)
     renderSettings('ai')
     await userEvent.click(await screen.findByRole('button', { name: /^Модель/ }))
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Google Gemini' }))
-    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite' }))
-    await userEvent.type(screen.getByLabelText('Ключ API'), 'AIza-secret')
-    await userEvent.click(screen.getByLabelText('Средняя модель'))
-    await waitFor(() => expect(puts.at(-1)?.ai?.key).toBe('AIza-secret'))
-    expect(screen.getByLabelText('Ключ API')).toHaveValue('')
-    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    expect(screen.getByLabelText('Адрес')).toHaveValue('https://generativelanguage.googleapis.com/v1beta/openai')
+    // nothing saved before the key: no «needs a key» error on choosing
+    expect(puts).toHaveLength(0)
+    await userEvent.type(screen.getByLabelText('Ключ API'), 'AIza-secret{Enter}')
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite', key: 'AIza-secret' }))
     expect(await screen.findByText('Работает: ответ за 480 мс')).toBeInTheDocument()
-    expect(tests.at(-1)).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite' })
+    expect(tests.at(-1)).toMatchObject({ url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash-lite', key: 'AIza-secret' })
+    expect(screen.getByLabelText('Ключ API')).toHaveValue('')
   })
 
-  it('three tiers: Anthropic picks Haiku, Sonnet, Opus; a server of one model is that model on each', async () => {
-    const { puts } = stub({ ...base, ai: { url: 'http://127.0.0.1:4000/v1', model: 'local' } })
+  it('«Проверить» right after typing a key checks that key, not the stored one', async () => {
+    const { puts, tests } = stub(base)
     renderSettings('ai')
-    expect(await screen.findByLabelText('Лёгкая модель')).toHaveValue('local')
-    expect(screen.getByLabelText('Мощная модель')).toHaveValue('local')
+    await userEvent.click(await screen.findByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Groq' }))
+    await userEvent.type(screen.getByLabelText('Ключ API'), 'gsk-typed')
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tests.at(-1)).toMatchObject({ url: 'https://api.groq.com/openai/v1', key: 'gsk-typed' }))
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://api.groq.com/openai/v1', key: 'gsk-typed' }))
+  })
+
+  it('a stored key shows «сохранён» only for its own provider', async () => {
+    stub({ ...base, ai: { url: 'https://api.groq.com/openai/v1', model: 'm' }, aiKeySet: true })
+    renderSettings('ai')
+    expect(await screen.findByLabelText('Ключ API')).toHaveAttribute('placeholder', 'Сохранён')
     await userEvent.click(screen.getByRole('button', { name: /^Модель/ }))
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Anthropic Claude' }))
-    await waitFor(() =>
-      expect(puts.at(-1)?.ai).toMatchObject({ url: 'https://api.anthropic.com', model: 'claude-sonnet-5-5', models: { light: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', powerful: 'claude-opus-5-5' } }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: /^Лёгкая модель/ }))
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude-sonnet-5-5' }))
-    await waitFor(() => expect(puts.at(-1)?.ai?.models?.light).toBe('claude-sonnet-5-5'))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Google Gemini' }))
+    expect(screen.getByLabelText('Ключ API')).not.toHaveAttribute('placeholder')
   })
 
   it('the server’s own model is the current choice, «Проверить» asks it, «Выключено» saves off', async () => {

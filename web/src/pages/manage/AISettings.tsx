@@ -73,6 +73,19 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
   }
   const field = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
   const setTier = (tier: Tier, model: string) => field({ models: { ...draft.models, [tier]: model } })
+  // the key typed last (it leaves the field once saved): «Проверить» still sends it
+  const typedKey = useRef<{ url: string; key: string }>({ url: '', key: '' })
+  const hostOf = (u: string) => {
+    try {
+      return new URL(u).host.toLowerCase()
+    } catch {
+      return ''
+    }
+  }
+  // a key is stored for this address's provider (the server keeps one only for its host)
+  const keyStored = (u: string) => keySet && hostOf(u) !== '' && hostOf(u) === hostOf(ai?.url ?? '')
+  // a provider that asks for a key is saved with its key, not before (no «needs a key» on choosing it)
+  const needsKey = (p: Provider) => p !== 'off' && p !== 'server' && p !== 'litellm' && p !== 'ollama'
   const choose = (p: Provider) => {
     setProvider(p)
     setTest({ busy: false, text: '' })
@@ -83,12 +96,24 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
           ? { url: draft.url && providerOf(draft.url) === 'litellm' ? draft.url : 'http://127.0.0.1:4000/v1', models: draft.models, key: '', off: false }
           : { url: AI_PROVIDERS[p].url, models: { ...AI_PROVIDERS[p].models }, key: '', off: false }
     setDraft(next)
-    commit(next)
+    if (!needsKey(p) || keyStored(next.url)) commit(next)
   }
-  const run = async () => {
+  // saved once it can work: a provider without a key, or with its key stored or just typed
+  const ready = (d: Draft) => !needsKey(provider) || keyStored(d.url) || typedKey.current.url === d.url
+  const commitIfReady = (d: Draft = draft) => {
+    if (ready(d)) commit(d)
+  }
+  const keyFor = (d: Draft) => d.key || (typedKey.current.url === d.url ? typedKey.current.key : '') || undefined
+  const saveKey = () => {
+    if (!draft.key) return
+    typedKey.current = { url: draft.url, key: draft.key }
+    commit()
+    field({ key: '' })
+  }
+  const run = async (d: Draft = draft) => {
     setTest({ busy: true, text: '' })
     try {
-      const r = await testAISettings({ url: draft.url, model: draft.models.medium, models: draft.models, key: draft.key || undefined })
+      const r = await testAISettings({ url: d.url, model: d.models.medium, models: d.models, key: keyFor(d) })
       const failed = r.tiers?.find((x) => !x.ok)
       setTest({
         busy: false,
@@ -131,7 +156,7 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
       {custom && (
         <ListRow label={t('settings.ai.connection')} wide>
           <div className={styles.aiFields}>
-            <TextField label={t('settings.ai.url')} autoComplete="off" spellCheck={false} inputMode="url" value={draft.url} onChange={(e) => field({ url: e.target.value })} onBlur={() => commit()} />
+            <TextField label={t('settings.ai.url')} autoComplete="off" spellCheck={false} inputMode="url" value={draft.url} onChange={(e) => field({ url: e.target.value })} onBlur={() => commitIfReady()} />
             {!claude &&
               TIERS.map((tier) => (
                 <TextField
@@ -141,22 +166,27 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
                   spellCheck={false}
                   value={draft.models[tier]}
                   onChange={(e) => setTier(tier, e.target.value)}
-                  onBlur={() => commit()}
+                  onBlur={() => commitIfReady()}
                 />
               ))}
             {provider !== 'ollama' && (
               <TextField
                 label={t('settings.ai.key')}
-                placeholder={keySet ? t('settings.ai.keySaved') : undefined}
+                placeholder={keyStored(draft.url) ? t('settings.ai.keySaved') : undefined}
                 type="password"
                 revealable
                 autoComplete="new-password"
+                enterKeyHint="go"
                 value={draft.key ?? ''}
                 onChange={(e) => field({ key: e.target.value })}
-                onBlur={() => {
-                  if (!draft.key) return
-                  commit()
-                  field({ key: '' })
+                onBlur={saveKey}
+                onKeyDown={(e) => {
+                  // Enter: save the key and check it at once
+                  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+                  e.preventDefault()
+                  const d = draft
+                  saveKey()
+                  void run(d)
                 }}
               />
             )}
@@ -175,7 +205,7 @@ export function AISettingsSection({ ai, keySet, fromEnv, onChange }: { ai?: AI; 
               onChange={(m: string) => {
                 const next = { ...draft, models: { ...draft.models, [tier]: m } }
                 setDraft(next)
-                commit(next)
+                commitIfReady(next)
               }}
             />
           </ListRow>
