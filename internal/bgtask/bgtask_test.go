@@ -26,3 +26,24 @@ func TestTracker(t *testing.T) {
 		t.Fatalf("begin: %+v", p)
 	}
 }
+
+// What is worked on now goes with the pass; what went wrong stays until
+// cleared.
+func TestTrackerNowAndError(t *testing.T) {
+	var tr Tracker
+	tr.Begin(0, 2)
+	tr.SetNow("Book", 140)
+	tr.SetError("busy")
+	if p := tr.Snapshot(); p.Now != "Book" || p.NowPercent != 100 || p.Error != "busy" {
+		t.Fatalf("%+v", p)
+	}
+	tr.End(time.Now())
+	if p := tr.Snapshot(); p.Now != "" || p.NowPercent != 0 || p.Error != "busy" {
+		t.Fatalf("end: %+v", p)
+	}
+	tr.SetError("")
+	tr.SetNow("", 50)
+	if p := tr.Snapshot(); p.Error != "" || p.NowPercent != 0 {
+		t.Fatalf("cleared: %+v", p)
+	}
+}

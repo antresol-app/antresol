@@ -18,6 +18,9 @@ const (
 	StateFull = "full"
 	// StateOffline: the media disk is away.
 	StateOffline = "offline"
+	// StateWaiting: a service it asks is limiting or failing; it goes on
+	// later (Error says why).
+	StateWaiting = "waiting"
 )
 
 // Progress is a worker's state as «Задачи» shows it.
@@ -29,9 +32,15 @@ type Progress struct {
 	// (its own unit: files, tracks); Total 0 before the first pass.
 	Done  int `json:"done"`
 	Total int `json:"total"`
-	// State: why it stands still (StateOff, StateFull, StateOffline; ""
-	// none).
+	// State: why it stands still (StateOff, StateFull, StateOffline,
+	// StateWaiting; "" none).
 	State string `json:"state,omitempty"`
+	// Error is what went wrong last ("" nothing).
+	Error string `json:"error,omitempty"`
+	// Now names what is being worked on and NowPercent how far it is, for a
+	// worker whose one unit takes long ("" none).
+	Now        string `json:"now,omitempty"`
+	NowPercent int    `json:"nowPercent,omitempty"`
 	// LastRun: when the last pass ended (zero: none yet).
 	LastRun time.Time `json:"lastRun,omitzero"`
 }
@@ -65,11 +74,29 @@ func (t *Tracker) SetState(s string) {
 	t.p.State = s
 }
 
+// SetError says what went wrong last ("" clears it).
+func (t *Tracker) SetError(s string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.p.Error = s
+}
+
+// SetNow names what is being worked on, percent done ("" clears it).
+func (t *Tracker) SetNow(name string, percent int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if name == "" {
+		percent = 0
+	}
+	t.p.Now, t.p.NowPercent = name, max(0, min(percent, 100))
+}
+
 // End ends a pass at `at`.
 func (t *Tracker) End(at time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.p.Running, t.p.LastRun = false, at.UTC()
+	t.p.Now, t.p.NowPercent = "", 0
 }
 
 // Snapshot is the current Progress.

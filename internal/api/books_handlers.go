@@ -246,41 +246,6 @@ func bookFormat(p string) string {
 // readOrder is the reader's format preference.
 var readOrder = []string{"EPUB", "FB2", "MOBI", "AZW3", "PDF"}
 
-func fileDuration(f library.File) int64 {
-	if f.DurationMs > 0 {
-		return f.DurationMs
-	}
-	if p, ok := cachedProbe(f); ok {
-		return p.DurationMs
-	}
-	return 0
-}
-
-// orderFiles puts an audiobook's files in playback order (meta files_order).
-func orderFiles(files []library.File, order []int64) []library.File {
-	if len(order) == 0 {
-		return files
-	}
-	by := map[int64]library.File{}
-	for _, f := range files {
-		by[f.ID] = f
-	}
-	out := make([]library.File, 0, len(files))
-	used := map[int64]bool{}
-	for _, id := range order {
-		if f, ok := by[id]; ok && !used[id] {
-			out = append(out, f)
-			used[id] = true
-		}
-	}
-	for _, f := range files {
-		if !used[f.ID] {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
 func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 	it, ok := h.kindParam(w, r, "id", library.KindBook, library.KindAudiobook, library.KindComic, library.KindComicVolume)
 	if !ok {
@@ -304,7 +269,7 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 		internalErr(w, r, "book files", err)
 		return
 	}
-	files = orderFiles(files, m.FilesOrder)
+	files = library.OrderFiles(files, m.FilesOrder)
 	if it.Kind == library.KindBook {
 		if _, ok := kindleFile(files); ok {
 			_, d.CanSendToKindle = h.kindleReady(ctx, u.KindleEmail)
@@ -320,7 +285,7 @@ func (h *lib) bookDetail(w http.ResponseWriter, r *http.Request) {
 	durs := map[int64]int64{}
 	rank := len(readOrder)
 	for _, f := range files {
-		dur := fileDuration(f)
+		dur := f.Length()
 		offsets[f.ID], durs[f.ID] = d.DurationMs, dur
 		d.DurationMs += dur
 		bf := BookFile{ID: f.ID, Format: bookFormat(f.Path), Size: f.Size, DurationMs: dur}

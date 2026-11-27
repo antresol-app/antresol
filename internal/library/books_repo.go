@@ -308,6 +308,32 @@ func (r *Repo) UpsertAudiobook(ctx context.Context, a AudiobookInput) (int64, er
 	return id, err
 }
 
+// OrderFiles puts an audiobook's files in playback order (meta
+// files_order); files it does not name follow as they came.
+func OrderFiles(files []File, order []int64) []File {
+	if len(order) == 0 {
+		return files
+	}
+	by := map[int64]File{}
+	for _, f := range files {
+		by[f.ID] = f
+	}
+	out := make([]File, 0, len(files))
+	used := map[int64]bool{}
+	for _, id := range order {
+		if f, ok := by[id]; ok && !used[id] {
+			out = append(out, f)
+			used[id] = true
+		}
+	}
+	for _, f := range files {
+		if !used[f.ID] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // Chapters returns the chapters of an audiobook in order.
 func (r *Repo) Chapters(ctx context.Context, audiobookID int64) ([]Chapter, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT idx, title, file_id, start_ms, end_ms FROM chapters WHERE item_id=? ORDER BY idx`, audiobookID)

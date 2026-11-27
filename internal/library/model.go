@@ -3,6 +3,7 @@
 package library
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -115,6 +116,19 @@ type File struct {
 	Mtime      int64  `json:"mtime"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
 	ProbeJSON  string `json:"probe_json,omitempty"`
+}
+
+// Length is the file's duration in milliseconds, from the stored one or
+// its probe; 0 while unknown.
+func (f File) Length() int64 {
+	if f.DurationMs > 0 {
+		return f.DurationMs
+	}
+	var p struct{ DurationMs int64 }
+	if f.ProbeJSON == "" || json.Unmarshal([]byte(f.ProbeJSON), &p) != nil {
+		return 0
+	}
+	return p.DurationMs
 }
 
 // FileInput describes a media file to attach to an item.
