@@ -107,9 +107,23 @@ bar's sections and the library menu. Numbers that change
   `--column-narrow` 680 (a field and the list under it, centred in that
   column).
 - Radii: `--r-xs` 4 (bars), `--r-sm` 6 (badges, small posters, meters),
-  `--r-md` 8 (menu items, posters in rows), `--r-field` 10 (fields, inset
-  lists), `--r-control` 12, `--r-group` 14 (cards, groups, menus),
-  `--r-sheet` 20, `--r-pill`.
+  `--r-md` 8 (posters in rows), `--r-field` 10 (fields, inset
+  lists), `--r-control` 12, `--r-group` 14 (cards, groups),
+  `--r-sheet` 20, `--r-pill`; `--r-menu` 31 (a menu: concentric with its
+  row's capsule, half a row plus the panel's padding).
+- Menu (`ui/Menu`, an iOS 26 menu measured on the simulator):
+  `--menu-width` 250 (the narrowest; it grows to `--menu-width-max` 420,
+  on a phone `--menu-width-max-phone` 280, before a label wraps, up to three
+  lines, a long word hyphenated), `--menu-pad` 10 (the panel's padding and the capsule's
+  inset), `--menu-row-h` 42 (44 to a finger), `--menu-line` 22 /
+  `--menu-line-2` 20 (17 pt and 15 pt lines), `--menu-inset` 18 (where text
+  starts), `--menu-icon` 24 with a `--menu-icon-glyph` 23 box (a 19 pt glyph,
+  an SF Symbol's) and `--menu-icon-gap` 12 to the label, `--menu-check` 16 (the check
+  column, only in a menu that checks something), `--menu-sep-inset` 14
+  (a group's hairline, 24 from the panel's edge), `--menu-label-2` (a
+  second line, a group's title), `--fill-menu-highlight` (the capsule),
+  `--d-menu` / `--d-menu-close` / `--menu-from-scale` (it grows out of its
+  button and shrinks back into it; none with reduce motion).
 - Control heights: `--control-h-xs` 30 (a round button inside a row),
   `--control-h-sm` 36 (pop-up buttons, number fields, small buttons,
   segments), `--control-h-tool` 40 (a bar's `ToolButton`), `--control-h-md` 44 (buttons, toolbars, round icon buttons),
@@ -165,7 +179,7 @@ bar's sections and the library menu. Numbers that change
 | `TextField`, `TextArea` | a labelled text input in a form or sheet; every search field; a note or a list of lines | the field height; `hint`, `error`, `revealable` passwords; `size="small"` for a toolbar or the top of a menu; `type="search"` is Apple's search field (magnifier, the focus ring when focused) with `onClear` (× and Escape); `type="time"` a time of day in even digits. `TextArea` is the same field for several lines (`rows`, default 4; the corner stretches it down). |
 | `NumberField` | a number with a unit in a row («2 МБ/с», «10 ГБ») | the small height, the number and its unit on one line (one baseline), tabular digits; as wide as the number it shows, `chars` the narrowest (in digits); a press anywhere on it types into it; keeps what is typed, reports valid values (`min`, `max`, `decimals`), restores the saved value when left invalid. |
 | `Select`, `MultiSelect` | choosing one / several of a fixed list | a filled pop-up button with ⌃⌄; the menu is a `Menu`. Put `placement="bottom-end"` on a trigger at a row's trailing edge. |
-| `Menu`, `PointMenu`, `MenuItem`, `MenuHeading`, `MenuSeparator`, `MenuSegments`, `MenuStepper` | actions behind a button («⋯»), sort and filter; `PointMenu` is the same menu at a point (a right click, Files) | floating (rule 3); arrow keys, Home/End, Escape returns focus; radio and checkbox items, a `detail` line, `destructive`, `icon`, a `badge`, a trailing `shortcut` («⌘I»). `maxHeight` for a deliberately tall menu. A Sheet opened from an item gives focus back to the trigger (`menuTrigger`). `MenuSegments`: a row of short choices in a menu (the reader's margins), `MenuStepper`: less · value · more (its text size); both are menu items, so the arrows reach them. |
+| `Menu`, `PointMenu`, `MenuItem`, `MenuHeading`, `MenuSeparator`, `MenuSegments`, `MenuStepper` | actions behind a button («⋯», the avatar), sort and filter; `PointMenu` is the same menu at a point (a right click, Files) | an iOS 26 menu everywhere, phones included (it floats by its button and grows out of it; only a `PointMenu` is an action sheet on a phone): 250 pt of `.glass-strong`, 42 pt rows of 17 pt text, the icon leading (any size the caller draws is shown at 20), a check column only when the menu checks something, a capsule under the row the pointer, the keyboard or a finger is on, `MenuSeparator` a hairline between groups, `MenuHeading` a group's 15 pt title; long labels wrap. A screen adds no styles to it. floating (rule 3); arrow keys, Home/End, Escape returns focus; radio and checkbox items, a `detail` line (several: one each; a profile's role under its name, its avatar as the `icon`), `aside` (a head row reached with the arrows but not focused first), `destructive`, `icon`, a `badge`, a trailing `shortcut` («⌘I»). `maxHeight` for a deliberately tall menu. A Sheet opened from an item gives focus back to the trigger (`menuTrigger`). `MenuSegments`: a row of short choices in a menu (the reader's margins), `MenuStepper`: less · value · more (its text size); both are menu items, so the arrows reach them. |
 | `floating.ts` | the positioning primitive | `placeFloating` (pure, tested), `positionFloating`, `portalHost` (the full-screen element in the player), `revealChosen`. Use it for any new floating thing. |
 | `StatusRing`, `ProgressRing` | circular progress | `StatusRing`: a ring with its percent (a check when done, «!» on an error). `ProgressRing`: the ring alone over a round button (`DownloadButton`, pending cards). |
 | `ProgressBar` | linear progress (a download, the watch progress) | tones `accent`, `paused`, `warning`, `label`; with `label` it is a progressbar for assistive tech. |

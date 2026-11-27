@@ -104,14 +104,23 @@ describe('the profile menu’s addon entries', () => {
     expect(await screen.findByText('История этого устройства: Гостиная')).toBeInTheDocument()
   })
 
-  it('«Сменить профиль» is the round button in the head, reached with the arrows but not focused first', async () => {
+  it('the profile heads the menu as a row (opens «Настройки»), never focused first; «Сменить профиль» is the last row', async () => {
     await openMenu(adult)
-    const sw = screen.getByRole('menuitem', { name: 'Сменить профиль' })
-    // in the head beside the profile's name, not a row among the places
-    expect(sw.closest('[role="menu"]')!.querySelector('[class*="head"]')).toContainElement(sw)
-    // the menu opens on its first place, not on the switch
+    const rows = screen.getAllByRole('menuitem')
+    // the head: the avatar, the name and the role in one row, reached with the arrows
+    expect(rows[0]).toHaveAccessibleName(/Мама.*Профиль/)
+    expect(rows[0]).toHaveAttribute('data-menu-aside')
+    // the menu opens on its first place, not on the head
     expect(document.activeElement).toHaveAccessibleName('Календарь')
+    const sw = screen.getByRole('menuitem', { name: 'Сменить профиль' })
+    expect(rows.at(-1)).toBe(sw)
     fireEvent.click(sw)
     expect(await screen.findByTestId('where')).toHaveTextContent('/profiles')
+  })
+
+  it('the head opens the profile’s settings', async () => {
+    await openMenu(adult)
+    fireEvent.click(screen.getAllByRole('menuitem')[0]!)
+    expect(await screen.findByTestId('where')).toHaveTextContent('/settings')
   })
 })

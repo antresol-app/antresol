@@ -4,6 +4,7 @@
 // headings are plain English, never translated; the components' strings
 // come from the catalogs as everywhere else.
 import { useState, type ReactNode } from 'react'
+import { Avatar } from '../../components/Avatar'
 import { Icon } from '../../components/Icon'
 import { ActionTiles } from '../ActionTiles'
 import { Badge } from '../Badge'
@@ -429,7 +430,10 @@ export function Gallery() {
         </div>
       </Section>
 
-      <Section title="Select · MultiSelect · Menu" note="One floating primitive: a portal, flipped by the room above and below, clamped in the window, the height capped with the chosen item scrolled into view.">
+      <Section
+        title="Select · MultiSelect · Menu"
+        note="One floating primitive: a portal, flipped by the room above and below, clamped in the window, the height capped with the chosen item scrolled into view. It is an iOS 26 menu on every screen: 250 pt of glass, 42 pt rows of 17 pt text, icons leading, a check column only when the menu checks something, a capsule under the highlighted row, hairlines between groups; it grows out of its button and shrinks back into it."
+      >
         <div className={styles.row}>
           <Select label="Размер" value={size} onChange={setSize} options={SIZES.map((v) => ({ value: v, label: v === '0' ? 'Без ограничения' : `До ${v} ГБ` }))} />
           <Select label="Сезон" showLabel value="2" onChange={() => {}} options={[{ value: '1', label: '1' }, { value: '2', label: '2' }]} />
@@ -441,10 +445,30 @@ export function Gallery() {
                 <MenuItem label="По дате добавления" checked onSelect={() => close()} />
                 <MenuItem label="По названию" checked={false} detail="А → Я" onSelect={() => close()} />
                 <MenuSeparator />
-                <MenuItem icon={<Icon name="pause" size={16} />} label="Приостановить загрузку" onSelect={() => close()} />
-                <MenuItem icon={<Icon name="restart" size={16} />} label="Очищено" badge={{ text: 'Новое' }} onSelect={() => close()} />
-                <MenuItem icon={<Icon name="trash" size={16} />} label="Удалить…" destructive onSelect={() => close()} />
+                <MenuItem icon={<Icon name="pause" />} label="Приостановить загрузку" onSelect={() => close()} />
+                <MenuItem icon={<Icon name="restart" />} label="Очищено" badge={{ text: 'Новое' }} onSelect={() => close()} />
+                <MenuItem icon={<Icon name="trash" />} label="Удалить…" destructive onSelect={() => close()} />
                 <MenuItem label="Недоступно" disabled />
+              </>
+            )}
+          </Menu>
+          {/* the profile menu's shape: a head row (avatar, name, role), places, a titled group of choices, a last group */}
+          <Menu label="Профиль" placement="bottom-end" pickList={false} trigger={(p) => <IconButton {...p} icon="person" label="Профиль" />}>
+            {(close) => (
+              <>
+                <MenuItem aside label="Александра Константинопольская" detail="Администратор" icon={<Avatar name="Александра" avatar="grad-3" size={30} />} onSelect={() => close()} />
+                <MenuSeparator />
+                <MenuItem icon={<Icon name="calendar" />} label="Календарь" onSelect={() => close()} />
+                <MenuItem icon={<Icon name="folder" />} label="Файлы" onSelect={() => close()} />
+                <MenuItem icon={<Icon name="sliders" />} label="Настройки" badge={{ text: '3' }} onSelect={() => close()} />
+                <MenuSeparator />
+                <div role="group" aria-label="Медиатека">
+                  <MenuHeading>Медиатека</MenuHeading>
+                  <MenuItem label="Общая медиатека" checked={false} onSelect={() => {}} />
+                  <MenuItem label="Моя медиатека" checked onSelect={() => {}} />
+                </div>
+                <MenuSeparator />
+                <MenuItem icon={<Icon name="switchUser" />} label="Сменить профиль" onSelect={() => close()} />
               </>
             )}
           </Menu>

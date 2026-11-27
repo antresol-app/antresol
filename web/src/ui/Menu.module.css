@@ -5,26 +5,45 @@
   max-width: 100%;
 }
 
-/* In a portal, fixed: floating.ts writes top, left and max-height */
+/* In a portal, fixed: floating.ts writes top, left, max-height and the
+   transform origin (the corner at its trigger). An iOS 26 menu, measured on
+   the simulator (tokens: Menu): a 250 pt glass panel with a large corner,
+   42 pt rows of 17 pt text, icons leading, a check column only when the menu
+   checks something, a capsule under the highlighted row. */
 .menu {
   position: fixed;
   top: 0;
   left: 0;
   z-index: var(--z-menu);
-  min-width: 240px;
-  max-width: min(420px, calc(100vw - 2 * var(--s-4)));
+  min-width: var(--menu-width);
+  max-width: min(var(--menu-width-max), calc(100vw - 2 * var(--s-4)));
   overflow-y: auto;
-  padding: var(--s-1h);
-  border-radius: var(--r-group);
+  padding: var(--menu-pad);
+  border-radius: var(--r-menu);
   --glass-lift: var(--shadow-menu);
   overscroll-behavior: contain;
-  /* it opens with a quick pop and closes at once, as a macOS menu */
-  animation: pop var(--d-fast) var(--ease-out) backwards;
+  /* the check column: only in a menu that checks something (iOS keeps it for every row) */
+  --menu-lead: 0px; /* ds-allow: no column */
+  /* it grows out of its button and shrinks back into it (iOS 26) */
+  animation: grow var(--d-menu) var(--ease-spring-soft) backwards;
 }
-@keyframes pop {
+.menu:has([aria-checked]) {
+  --menu-lead: var(--menu-check);
+}
+.menu[data-leaving] {
+  pointer-events: none;
+  animation: shrink var(--d-menu-close) var(--ease-out) forwards;
+}
+@keyframes grow {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(var(--menu-from-scale));
+  }
+}
+@keyframes shrink {
+  to {
+    opacity: 0;
+    transform: scale(var(--menu-from-scale));
   }
 }
 .menu:global(.glass-strong) {
@@ -32,36 +51,48 @@
   border-color: var(--hairline);
 }
 
+/* a group's title («Медиатека»): 15 pt, dimmer, at the labels' edge */
 .heading {
-  padding: var(--s-2h) var(--s-3) var(--s-1h);
-  font: var(--t-footnote-em);
-  letter-spacing: 0.02em;
-  color: var(--label-2);
+  padding: 0 var(--menu-inset) var(--s-2) calc(var(--menu-inset) + var(--menu-lead));
+  font: var(--t-subhead);
+  line-height: var(--menu-line-2);
+  color: var(--menu-label-2);
 }
+/* groups part with a hairline, inset from the panel's edges */
 .sep {
-  height: 1px;
-  margin: var(--s-1h) var(--s-2h);
+  height: var(--hairline-w);
+  margin: var(--menu-pad) var(--menu-sep-inset);
   background: var(--separator);
+}
+/* the panel's own padding already stands at its top and bottom */
+.sep:first-child,
+.sep:last-child {
+  display: none;
 }
 
 .item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-2h);
+  gap: var(--menu-icon-gap);
   width: 100%;
-  min-height: var(--control-h-sm);
-  padding: var(--s-1h) var(--s-3);
+  min-height: var(--menu-row-h);
+  padding: var(--s-2) var(--menu-inset) var(--s-2) calc(var(--menu-inset) + var(--menu-lead));
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--label);
-  font: var(--t-callout);
+  font: var(--t-body);
+  line-height: var(--menu-line);
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .item:hover,
-.item:focus-visible {
-  background: var(--fill-hover);
+.item:focus-visible,
+.item:active {
+  background: var(--fill-menu-highlight);
   outline: none;
 }
 .item:focus-visible {
@@ -74,24 +105,39 @@
   cursor: default;
   color: var(--label-3);
 }
-.item[aria-disabled='true']:hover {
+.item[aria-disabled='true']:hover,
+.item[aria-disabled='true']:active {
   background: transparent;
 }
+/* the check mark in the leading column, centred in it */
 .check {
-  flex: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--menu-inset) - var(--menu-check) / 2);
   display: grid;
   place-items: center;
-  width: var(--icon-xs);
+  width: var(--menu-check);
   color: var(--label);
 }
 .icon {
   flex: none;
   display: grid;
+  /* one fixed track: a wider image (a profile's 30 pt avatar) stays centred on the column */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  width: var(--icon-md);
-  color: var(--label-2);
+  width: var(--menu-icon);
+  color: var(--label);
+}
+/* one glyph size for every menu, whatever size the caller drew */
+.icon > svg {
+  width: var(--menu-icon-glyph);
+  height: var(--menu-icon-glyph);
 }
 .destructive .icon {
+  color: inherit;
+}
+.item[aria-disabled='true'] .icon {
   color: inherit;
 }
 .text {
@@ -99,10 +145,16 @@
   flex-direction: column;
   min-width: 0;
 }
+/* a long label wraps, up to three lines, as an iOS menu's */
 .label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* a word longer than the line («Константинопольская») is hyphenated, never cut */
+  hyphens: auto;
+  overflow-wrap: break-word;
 }
 /* a label with a capsule after it («Очищено»): the app's badge */
 .labelRow {
@@ -115,12 +167,12 @@
   composes: badge strong round from './Badge.module.css';
   flex: none;
 }
+/* a second line (a profile's role): 15 pt, dimmer */
 .detail {
-  font: var(--t-footnote);
-  color: var(--label-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: var(--t-subhead);
+  line-height: var(--menu-line-2);
+  color: var(--menu-label-2);
+  overflow-wrap: anywhere;
 }
 .item[aria-disabled='true'] .detail {
   color: var(--label-3);
@@ -130,8 +182,8 @@
   flex: none;
   margin-left: auto;
   padding-left: var(--s-4);
-  font: var(--t-footnote);
-  color: var(--label-3);
+  font: var(--t-subhead);
+  color: var(--menu-label-2);
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 599px) {
@@ -146,9 +198,14 @@
   box-shadow: none !important;
 }
 
-/* Phones: a sheet across the bottom that always fits the screen */
+/* Phones: a context menu (PointMenu) is an action sheet across the bottom
+   that always fits the screen; a button's menu floats by its button, as on
+   iOS, 250–280 pt wide, its long labels wrapped */
 @media (max-width: 599px) {
   .menu {
+    --menu-width-max: var(--menu-width-max-phone);
+  }
+  .sheet {
     top: auto;
     left: var(--s-2);
     right: var(--s-2);
@@ -157,29 +214,26 @@
     min-width: 0;
     max-width: none;
     max-height: 70vh;
-    padding: var(--s-2);
     border-radius: var(--r-sheet);
     transform-origin: bottom center;
   }
-  .item {
-    min-height: var(--control-h-md);
-  }
 }
 /* opened with a pointer: the focused item is highlighted like one under
-   the pointer, without the keyboard ring (as a macOS menu) */
+   the pointer, without the keyboard ring (as on iOS) */
 .menu[data-pointer] .item:focus-visible {
   box-shadow: none;
 }
-/* a finger's 44 pt target (HIG): the hit area grows, the look does not */
+/* a finger's 44 pt target (HIG): the row grows by the two points */
 @media (pointer: coarse) {
   .item {
-    min-height: var(--control-h-md);
+    min-height: var(--touch-target);
   }
 }
 
 /* a phone's context menu ends with «Отменить», centred and bold (iOS) */
 .cancel {
   justify-content: center;
+  padding-left: var(--menu-inset);
   font-weight: var(--w-semibold);
 }
 

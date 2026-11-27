@@ -5,11 +5,14 @@
 // the side where it fits, else on the roomier side, shortened to scroll,
 // with the chosen item scrolled into view. It handles the open state,
 // outside clicks, Escape (focus returns to the trigger), arrow keys between
-// items and moving focus into the menu. On phones it is a full-width sheet:
-// next to its trigger when there is room, else standing on the tab bar.
+// items and moving focus into the menu. It looks and moves like an iOS 26
+// menu (Menu.module.css, the Menu tokens): it grows out of its trigger and
+// shrinks back into it, on phones too. A PointMenu (a context menu) is an
+// action sheet across a phone's bottom.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { floatingBand, FLOAT_GAP, FLOAT_MARGIN, pointBox, portalHost, positionFloating, revealChosen, safeInsets, type Placement } from './floating'
+import { pointBox, portalHost, positionFloating, revealChosen, type Placement } from './floating'
+import { usePresence } from './presence'
 import styles from './Menu.module.css'
 import { useT } from '../i18n'
 
@@ -40,7 +43,10 @@ export interface MenuProps {
 
 const ITEMS = '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]'
 
-/** Phones: the menu is a sheet across the window's bottom (Menu.module.css). */
+/** How long a closing menu stays to shrink back (--d-menu-close). */
+const MENU_CLOSE_MS = 180
+
+/** Phones: a PointMenu is a sheet across the window's bottom (Menu.module.css). */
 const PHONE = '(max-width: 599px)'
 const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia(PHONE).matches
 
@@ -58,27 +64,6 @@ let closedFrom: { trigger: HTMLElement; at: number } | null = null
 export function recentMenuTrigger(): HTMLElement | null {
   const c = closedFrom
   return c && performance.now() - c.at < 1000 && c.trigger.isConnected ? c.trigger : null
-}
-
-/** Phones: next to the trigger when it fits above or below, else on the tab bar, shortened. */
-function placeSheet(t: HTMLElement, m: HTMLElement) {
-  const { floor } = floatingBand(t)
-  const r = t.getBoundingClientRect()
-  const h = m.offsetHeight
-  const below = floor - r.bottom - FLOAT_GAP - FLOAT_MARGIN
-  const above = r.top - FLOAT_GAP - FLOAT_MARGIN
-  const s = m.style
-  s.top = s.bottom = s.left = s.maxHeight = ''
-  // no tab bar (only the home indicator's band): CSS stands it on the window's bottom
-  if (floor >= window.innerHeight - safeInsets().bottom) return
-  if (h <= below) {
-    s.top = `${r.bottom + FLOAT_GAP}px`
-    s.bottom = 'auto'
-  } else if (h <= above) s.bottom = `${window.innerHeight - r.top + FLOAT_GAP}px`
-  else {
-    s.bottom = `${window.innerHeight - floor + FLOAT_MARGIN}px`
-    s.maxHeight = `${Math.min(window.innerHeight * 0.7, floor - 2 * FLOAT_MARGIN)}px`
-  }
 }
 
 export function Menu({ label, trigger, children, placement = 'bottom-start', className, onOpenChange, focusItem = true, maxHeight, pickList = true }: MenuProps) {
@@ -130,7 +115,7 @@ export function Menu({ label, trigger, children, placement = 'bottom-start', cla
     const m = menuRef.current
     if (!open || !t || !m) return
     triggers.set(m, t)
-    const place = () => (isPhone() ? placeSheet(t, m) : positionFloating(t, m, placement, maxHeight))
+    const place = () => positionFloating(t, m, placement, maxHeight)
     place()
     if (pickList) revealChosen(m, m.querySelector<HTMLElement>('[aria-checked="true"]'))
     let frame = 0
@@ -164,6 +149,14 @@ export function Menu({ label, trigger, children, placement = 'bottom-start', cla
   }, [open, focusItem, pickList])
 
   const onKey = useMenuKeys(menuRef, close)
+  // kept a moment after it closes, shrinking back into the trigger (not
+  // with «Reduce motion»); meanwhile it is hidden from assistive tech and the pointer
+  const { mounted, leaving } = usePresence(open, MENU_CLOSE_MS)
+  // while it shrinks away its content is the last one drawn, the same
+  // elements, so nothing in it renders again (a panel that focuses itself
+  // on render must not take the focus back from the trigger)
+  const shown = useRef<ReactNode>(null)
+  if (open) shown.current = children(close)
 
   return (
     <div className={styles.root}>
@@ -178,18 +171,21 @@ export function Menu({ label, trigger, children, placement = 'bottom-start', cla
         },
       })}
       {createPortal(
-        open && (
+        mounted && (
             <div
-              ref={menuRef}
-              id={id}
+              ref={open ? menuRef : undefined}
+              id={open ? id : undefined}
               role="menu"
               // opened with a pointer: the focused item is highlighted, without the keyboard ring
               data-pointer={byPointer.current || undefined}
+              data-leaving={leaving || undefined}
+              aria-hidden={leaving || undefined}
+              inert={leaving || undefined}
               aria-label={label}
               className={[styles.menu, 'glass-strong', className].filter(Boolean).join(' ')}
               onKeyDown={onKey}
             >
-              {children(close)}
+              {shown.current}
             </div>
           ),
         portalHost(triggerRef.current),
@@ -286,7 +282,7 @@ export function PointMenu({ x, y, label, onClose, children, className }: PointMe
       role="menu"
       aria-label={label}
       data-pointer
-      className={[styles.menu, 'glass-strong', className].filter(Boolean).join(' ')}
+      className={[styles.menu, phone && styles.sheet, 'glass-strong', className].filter(Boolean).join(' ')}
       onKeyDown={onKey}
       onContextMenu={(e) => e.preventDefault()}
       // an item's own onSelect runs first (the click's target), then the click
@@ -314,7 +310,8 @@ export function PointMenu({ x, y, label, onClose, children, className }: PointMe
 
 export interface MenuItemProps {
   label: string
-  detail?: string
+  /** A second line under the label (a profile's role); several: one line each. */
+  detail?: string | string[]
   checked?: boolean
   disabled?: boolean
   icon?: ReactNode
@@ -333,11 +330,13 @@ export interface MenuItemProps {
   lang?: string
   /** A key that does the same, at the trailing edge (macOS): «⌘I». */
   shortcut?: string
+  /** Reached with the arrows but never focused first (a menu's head: the profile). */
+  aside?: boolean
   onSelect?: () => void
 }
 
 /** One row of a Menu. With `checked` defined it is a radio item (`multi`: a checkbox item) with a check mark. */
-export function MenuItem({ label, detail, checked, disabled, icon, href, download, destructive, ariaLabel, badge, multi, lang, shortcut, onSelect }: MenuItemProps) {
+export function MenuItem({ label, detail, checked, disabled, icon, href, download, destructive, ariaLabel, badge, multi, lang, shortcut, aside, onSelect }: MenuItemProps) {
   const role = checked === undefined ? 'menuitem' : multi ? 'menuitemcheckbox' : 'menuitemradio'
   const content = (
     <>
@@ -366,7 +365,11 @@ export function MenuItem({ label, detail, checked, disabled, icon, href, downloa
           {label}
         </span>
         )}
-        {detail && <span className={styles.detail}>{detail}</span>}
+        {(Array.isArray(detail) ? detail : detail ? [detail] : []).map((d) => (
+          <span key={d} className={styles.detail}>
+            {d}
+          </span>
+        ))}
       </span>
       {shortcut && (
         <span className={styles.shortcut} aria-hidden>
@@ -391,6 +394,7 @@ export function MenuItem({ label, detail, checked, disabled, icon, href, downloa
       aria-checked={checked}
       aria-label={ariaLabel}
       aria-disabled={disabled || undefined}
+      data-menu-aside={aside || undefined}
       onClick={() => !disabled && onSelect?.()}
     >
       {content}

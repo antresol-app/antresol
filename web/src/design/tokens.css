@@ -73,8 +73,11 @@
   --fill-2: rgba(120, 120, 128, 0.24);
   --fill-3: rgba(118, 118, 128, 0.16);
   --fill-4: rgba(118, 118, 128, 0.1);
-  /* a menu item under the pointer or the keyboard */
+  /* a list item under the pointer or the keyboard */
   --fill-hover: rgba(255, 255, 255, 0.1);
+  /* a menu item under the pointer, the keyboard or a finger: the capsule of
+     an iOS 26 menu, brighter than a list's (measured on the simulator) */
+  --fill-menu-highlight: rgba(255, 255, 255, 0.2);
 
   /* ---------- Labels ---------- */
   --label: #f5f5f7;
@@ -473,12 +476,41 @@
   --r-control: 12px; /* square-ish controls, notices */
   --r-card: 12px; /* media posters */
   --r-card-sm: 10px;
-  --r-group: 14px; /* cards, grouped sections, menus */
+  --r-group: 14px; /* cards, grouped sections */
   --r-sheet: 20px;
   --r-pill: 999px;
   --r-playerbar: calc(var(--playerbar-h) / 2);
   /* a window drawn in the page (Files' Finder window) */
   --r-window: 16px;
+
+  /* ---------- Menu (ui/Menu: an iOS 26 menu, measured on the simulator) ----------
+     A 250 pt panel, 10 pt of padding round 42 pt rows; the highlighted row
+     is a capsule inset by that padding, so the panel's corner is concentric
+     with it (21 + 10). Text (17 pt on a 22 pt line, a second line 15 on
+     20) starts 18 pt into a row; a 24 pt icon column leads (the glyph about
+     19 pt, as an SF Symbol's: our icons draw 0.8 of their box), the label
+     12 pt after it. A menu with a check mark anywhere keeps a 16 pt
+     column for it before everything. Groups part with a hairline 24 pt in
+     from the edges, 10 pt above and below. */
+  --menu-width: 250px;
+  /* the widest a menu gets before a label wraps; on a phone a little over
+     iOS's 250, so a Russian row («Сменить профиль» after a check column)
+     stays on one line */
+  --menu-width-max: 420px;
+  --menu-width-max-phone: 280px;
+  --menu-pad: 10px;
+  --menu-row-h: 42px;
+  --r-menu: calc(var(--menu-row-h) / 2 + var(--menu-pad));
+  --menu-inset: 18px;
+  --menu-icon: 24px;
+  --menu-icon-glyph: 23px;
+  --menu-icon-gap: 12px;
+  --menu-line: 22px;
+  --menu-line-2: 20px;
+  --menu-check: 16px;
+  --menu-sep-inset: 14px;
+  /* a row's second line and a group's title: dimmer than --label-2, as measured */
+  --menu-label-2: rgba(235, 235, 245, 0.47);
 
   /* ---------- Controls ----------
      Every control you press or type into has one of three heights: sm
@@ -577,6 +609,11 @@
   --d-sheet: 380ms;
   --d-sheet-close: 240ms;
   --ease-sheet-close: cubic-bezier(0.32, 0.72, 0, 1);
+  /* a menu grows out of its button with a soft spring and shrinks back into
+     it faster (iOS 26); reduce motion: it appears and goes at once */
+  --d-menu: 380ms;
+  --d-menu-close: 180ms;
+  --menu-from-scale: 0.3;
   /* the tab bar's lens sliding to a tab and the bar folding on scroll: a
      spring with a little overshoot (iOS 26); a pressed tab springs back on
      --spring. Reduce motion leaves only the tab bar's crossfade (--d-tabbar-fade). */
@@ -629,6 +666,8 @@
     --d-stagger: 0ms;
     --d-sheet: 0ms;
     --d-sheet-close: 0ms;
+    --d-menu: 0ms;
+    --d-menu-close: 0ms;
     --d-tabbar-spring: 0ms;
     --lift-scale: 1;
     --focus-scale: 1;

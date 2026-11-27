@@ -1,10 +1,12 @@
-// Avatar button in the top-right corner. Opens the app's Menu (a sheet on a
-// phone) with the current profile, its places («Файлы», «Мои запросы», the
-// addons' entries), «Настройки» (the profile's own: pages/ProfileSettings.tsx;
-// an admin's open «Управление», the profile's and the server's in two parts),
-// with «Сменить профиль» as a round button in the head beside the profile; then the profile's
-// library («Общая медиатека / Моя медиатека», as Photos has it in its View
-// menu besides the toolbar picker).
+// Avatar button in the top-right corner. Opens the app's Menu, laid out as
+// the iOS app's native one (an account menu on iOS 26): the profile as its
+// first row (avatar, name, role; it opens «Настройки»), its places
+// («Календарь», «Файлы», «Мои запросы», the addons' entries) and «Настройки»
+// (the profile's own: pages/ProfileSettings.tsx; an admin's open
+// «Управление», the profile's and the server's in two parts); then the
+// profile's library («Общая медиатека / Моя медиатека», as Photos has it in
+// its View menu besides the toolbar picker); «Сменить профиль» last, a group
+// of its own. No styles of its own: Menu draws all of it.
 import { useLocation, useNavigate } from 'react-router'
 import type { User } from '../api/types'
 import { useLibraryScope } from '../state/libraryScope'
@@ -16,7 +18,6 @@ import { Avatar } from './Avatar'
 import { Icon, type IconName } from './Icon'
 import { LIBRARY_OPTIONS } from './LibraryScopeMenu'
 import styles from './ProfileMenu.module.css'
-import { IconButton } from '../ui/IconButton'
 import { Menu, MenuHeading, MenuItem, MenuSeparator } from '../ui/Menu'
 
 interface Item {
@@ -39,15 +40,28 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
   // requests waiting for an admin's answer (none where requests are closed)
   const pending = usePendingRequests(user.id, Boolean(user.requests))
 
-  // «Сменить профиль»: the round button at the head's trailing edge, beside
-  // the profile it leaves (as an account switcher has it), not a row among
-  // the profile's places
+  // «Сменить профиль»: the last group, as an account menu ends with its sign-out
   const switchProfile = () => {
     // the picker opens over the current session: it ends only when another
     // profile signs in, and «Отмена» (Back, Escape) returns here still signed in
     if (onSwitchProfile) onSwitchProfile()
     else navigate('/profiles', { state: { from: location.pathname + location.search, switching: true } })
   }
+
+  const settings: Item = user.isAdmin
+    ? {
+        id: 'settings',
+        label: t('comp.profile.settings'),
+        icon: 'sliders' as const,
+        run: () => navigate(pending > 0 ? '/manage/requests' : '/manage'),
+        badge: pending,
+      }
+    : {
+        id: 'settings',
+        label: t('comp.profile.settings'),
+        icon: 'sliders' as const,
+        run: () => navigate('/settings'),
+      }
 
   const items: Item[] = [
     // what comes out of the titles this profile marked
@@ -89,20 +103,7 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
     // «Настройки»: the profile's own (language, sound, mail, app password,
     // devices); an admin's open «Управление», where they are the first part
     // and the server's the second (with the requests' count)
-    user.isAdmin
-      ? {
-          id: 'settings',
-          label: t('comp.profile.settings'),
-          icon: 'sliders' as const,
-          run: () => navigate(pending > 0 ? '/manage/requests' : '/manage'),
-          badge: pending,
-        }
-      : {
-          id: 'settings',
-          label: t('comp.profile.settings'),
-          icon: 'sliders' as const,
-          run: () => navigate('/settings'),
-        },
+    settings,
   ]
 
   return (
@@ -113,7 +114,6 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
         pickList={false}
         // the profile, its places and the library: taller than a usual menu (still cut to the window)
         maxHeight={720}
-        className={styles.menu}
         trigger={(tp) => (
           <button
             {...tp}
@@ -140,36 +140,28 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
       >
         {(close) => (
           <>
-            <div className={styles.head}>
-              <Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={44} />
-              <div>
-                <div className={styles.name}>{user.name}</div>
-                <div className={styles.role}>{t(user.isAdmin ? 'common.role.admin' : user.isKid ? 'common.role.kid' : 'comp.profile.role')}</div>
-                {/* «Отдельная история на этом устройстве»: where this device's history goes */}
-                {user.deviceHistory && <div className={styles.role}>{t('comp.profile.deviceHistory', { name: user.deviceHistory.name })}</div>}
-              </div>
-              <IconButton
-                // a row of the menu for the arrow keys, as the items below
-                role="menuitem"
-                tabIndex={-1}
-                data-menu-aside
-                icon="switchUser"
-                size="sm"
-                variant="plain"
-                label={t('comp.profile.switch')}
-                className={styles.switch}
-                onClick={() => {
-                  close(false)
-                  switchProfile()
-                }}
-              />
-            </div>
+            {/* the profile: its avatar where a row's icon stands, the role (and
+                this device's own history) under the name; it opens «Настройки».
+                Reached with the arrows, never focused first. */}
+            <MenuItem
+              aside
+              label={user.name}
+              detail={[
+                t(user.isAdmin ? 'common.role.admin' : user.isKid ? 'common.role.kid' : 'comp.profile.role'),
+                ...(user.deviceHistory ? [t('comp.profile.deviceHistory', { name: user.deviceHistory.name })] : []),
+              ]}
+              icon={<Avatar name={user.name} avatar={user.avatar} photo={user.photo} size={30} />}
+              onSelect={() => {
+                close(false)
+                settings.run()
+              }}
+            />
             <MenuSeparator />
             {items.map((it) => (
               <MenuItem
                 key={it.id}
                 label={it.label}
-                icon={<Icon name={it.icon} size={19} />}
+                icon={<Icon name={it.icon} />}
                 badge={it.badge ? { text: it.badge > 99 ? '99+' : String(it.badge) } : undefined}
                 ariaLabel={it.badge ? `${it.label}, ${t('requests.badge', { count: it.badge })}` : undefined}
                 onSelect={() => {
@@ -189,6 +181,15 @@ export function ProfileMenu({ user, onSwitchProfile }: { user: User; onSwitchPro
                 </div>
               </>
             )}
+            <MenuSeparator />
+            <MenuItem
+              label={t('comp.profile.switch')}
+              icon={<Icon name="switchUser" />}
+              onSelect={() => {
+                close(false)
+                switchProfile()
+              }}
+            />
           </>
         )}
       </Menu>

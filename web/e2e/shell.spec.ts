@@ -96,7 +96,7 @@ test('keyboard: menu focus handling and a visible focus ring on cards', async ({
   await menuButton.focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('menu')).toBeVisible()
-  // the first item of the list (the head's «Сменить профиль» is aside, reached by Tab)
+  // the first place of the list (the head, the profile's own row, is aside: reached with the arrows)
   await expect(page.locator('[role="menuitem"]:not([data-menu-aside])').first()).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('menu')).toHaveCount(0)

@@ -154,35 +154,28 @@ describe('Menu placement', () => {
     expect(menu.dataset.side).toBe('bottom')
   })
 
-  describe('phones (the menu is a sheet across the bottom)', () => {
+  describe('phones (it floats by its trigger, as an iOS menu)', () => {
     beforeEach(() => {
       addBar('bottomBar')
       vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {} }))
     })
     afterEach(() => vi.unstubAllGlobals())
 
-    it('room under the trigger: right under it', async () => {
+    it('room under the trigger: right under it, growing from that corner', async () => {
       triggerTop = 100
       render(<Demo />)
       const menu = await open()
+      expect(menu.dataset.side).toBe('bottom')
       expect(menu.style.top).toBe(`${136 + 8}px`)
-      expect(menu.style.bottom).toBe('auto')
+      expect(menu.style.transformOrigin).toMatch(/top$/)
     })
 
-    it('trigger near the tab bar: right over the trigger', async () => {
+    it('trigger near the tab bar: over the trigger, never over the bar', async () => {
       triggerTop = 600
       render(<Demo />)
       const menu = await open()
-      expect(menu.style.bottom).toBe(`${844 - 600 + 8}px`)
-    })
-
-    it('room on neither side: stands on the tab bar, shortened', async () => {
-      menuHeight = 700
-      triggerTop = 400
-      render(<Demo />)
-      const menu = await open()
-      expect(menu.style.bottom).toBe(`${844 - 760 + 8}px`)
-      expect(menu.style.maxHeight).toBe(`${844 * 0.7}px`)
+      expect(menu.dataset.side).toBe('top')
+      expect(menu.style.transformOrigin).toMatch(/bottom$/)
     })
   })
 })
