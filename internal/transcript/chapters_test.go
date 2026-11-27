@@ -62,6 +62,20 @@ func TestSplitChapters(t *testing.T) {
 	}
 }
 
+// A title loses the quotes around the whole of it and a closing full stop,
+// nothing else.
+func TestChapterTitle(t *testing.T) {
+	for in, want := range map[string]string{
+		"  «Начало» ": "Начало", `"The Storm."`: "The Storm", "“Home”": "Home", "Конец.": "Конец",
+		"Письмо «домой»": "Письмо «домой»", "«Море» и «Берег»": "«Море» и «Берег»", `The "Old" Man`: `The "Old" Man`,
+		"И так далее...": "И так далее...", "Что дальше?": "Что дальше?", "«»": "", " . ": "",
+	} {
+		if got := chapterTitle(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
+
 // Phrases of a few seconds make one line, which never spans two files.
 func TestChapterLines(t *testing.T) {
 	segs := []timed{

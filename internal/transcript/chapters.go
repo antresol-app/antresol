@@ -180,7 +180,7 @@ func readPart(raw string, lines []timed, p [2]int, first, only bool) ([]found, e
 	last := p[0] - 1
 	for _, c := range *ans.Chapters {
 		i := c.Line - 1
-		title := strings.TrimSpace(strings.Trim(strings.TrimSpace(c.Title), `"«»“”.`))
+		title := chapterTitle(c.Title)
 		switch {
 		case i < p[0] || i >= p[1]:
 			return bad("line %d is not in the part", c.Line)
@@ -205,6 +205,24 @@ func readPart(raw string, lines []timed, p [2]int, first, only bool) ([]found, e
 		}
 	}
 	return out, nil
+}
+
+// chapterTitle is an answered title as it is shown: without quotes around
+// the whole of it and without a closing full stop.
+func chapterTitle(s string) string {
+	t := strings.TrimSpace(s)
+	for _, q := range [][2]string{{"«", "»"}, {"“", "”"}, {`"`, `"`}} {
+		if in, ok := strings.CutPrefix(t, q[0]); ok {
+			if in, ok = strings.CutSuffix(in, q[1]); ok && !strings.Contains(in, q[0]) && !strings.Contains(in, q[1]) {
+				t = strings.TrimSpace(in)
+				break
+			}
+		}
+	}
+	if !strings.HasSuffix(t, "..") {
+		t = strings.TrimSpace(strings.TrimSuffix(t, "."))
+	}
+	return t
 }
 
 // hms is a time as «1:02:03» or «2:03».
