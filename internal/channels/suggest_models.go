@@ -22,9 +22,32 @@ const maxListedModels = 1000
 // GET /api/tags. The names, the provider's own order for Anthropic (newest
 // first) and alphabetical otherwise. client nil: the default one.
 func ListModels(ctx context.Context, client *http.Client, base, key string) ([]string, error) {
+	return listModels(ctx, client, base, key, false)
+}
+
+// ListSpeechModels is ListModels for speech recognition: of a big provider's
+// list (OpenAI, Groq) only the speech models — Whisper and the transcribe
+// ones; of Gemini's, the Gemini models, which take audio themselves (the
+// speech service asks them through their multimodal API, so the address may
+// be the native /v1beta one: its OpenAI layer is listed); a LiteLLM's or
+// another server's list is its admin's and is listed whole.
+func ListSpeechModels(ctx context.Context, client *http.Client, base, key string) ([]string, error) {
+	return listModels(ctx, client, base, key, true)
+}
+
+// geminiHost: the address is Gemini's.
+func geminiHost(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && strings.EqualFold(u.Hostname(), "generativelanguage.googleapis.com")
+}
+
+func listModels(ctx context.Context, client *http.Client, base, key string, speech bool) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	l := &LLM{URL: strings.TrimRight(strings.TrimSpace(base), "/"), Key: key}
+	if speech && geminiHost(l.URL) && !strings.HasSuffix(l.URL, "/openai") {
+		l.URL += "/openai" // the speech address is the native one; the list is the layer's
+	}
 	var path string
 	switch {
 	case l.anthropic():
@@ -71,9 +94,15 @@ func ListModels(ctx context.Context, client *http.Client, base, key string) ([]s
 	seen := map[string]bool{}
 	var names []string
 	own := ownList(l.URL)
+	// what a big provider's list is cut to: its chat models, or for speech
+	// Whisper and the transcribe ones (Gemini's chat models hear too)
+	keep := chatModelID
+	if speech && !geminiHost(l.URL) {
+		keep = speechModelID
+	}
 	add := func(n string) {
 		n = strings.TrimPrefix(strings.TrimSpace(n), "models/") // Gemini's layer names them so
-		if own && !chatModelID(n) {
+		if own && !keep(n) {
 			return
 		}
 		if n != "" && !seen[n] && len(names) < maxListedModels {
@@ -122,4 +151,12 @@ func chatModelID(id string) bool {
 		}
 	}
 	return true
+}
+
+// speechModelID: a word in a model's id that says it transcribes speech
+// (OpenAI's whisper-1 and gpt-4o-transcribe, Groq's whisper-large-v3 and
+// distil-whisper).
+func speechModelID(id string) bool {
+	l := strings.ToLower(id)
+	return strings.Contains(l, "whisper") || strings.Contains(l, "transcribe")
 }

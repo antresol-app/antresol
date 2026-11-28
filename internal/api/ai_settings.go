@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/antresol-app/antresol/internal/channels"
+	"github.com/antresol-app/antresol/internal/transcript"
 )
 
 // AISettings is «ИИ-помощник»: the language models Antresol's AI tasks ask,
@@ -33,6 +34,17 @@ import (
 // PUT without a list is read as them (merged), and answers carry the first
 // own model in them for one release, so a client that knows no list still
 // reads one model.
+//
+// An entry is of a kind: a language model (the default) or speech recognition
+// (Kind "speech": a speech-to-text service the transcripts of audiobooks ask,
+// transcript.Speech — Groq's, OpenAI's or Gemini's own address, or an
+// OpenAI-compatible /audio/transcriptions of one's own). The two kinds share
+// the list and its rules (order, «Выключена», status, a check) but never each
+// other's work: a text task asks the text entries only, the transcripts the
+// speech ones only, each in its own order. The server's own speech service
+// (VAULT_STT_*) is the speech entry «Сервер» (Env) like the LiteLLM is the
+// text one. The stored «stt» of before is migrated into a speech entry on read
+// (migrateSTT).
 //
 // Features switch what the assistant does, one by one (channels.Features):
 // the id is on unless it is false here (a missing id is on, so a feature
@@ -72,9 +84,11 @@ type AIModel struct {
 	// ID is made by the server (8 hex) and stays with the entry; "env" is the
 	// server's own model.
 	ID string `json:"id"`
-	// Env: the server's own model (VAULT_LLM_*): its address, model and key
-	// are the environment's, so the entry can be reordered and switched off
-	// but not changed or deleted (it comes back).
+	// Kind: "" a language model, "speech" speech recognition.
+	Kind string `json:"kind,omitempty"`
+	// Env: the server's own model (VAULT_LLM_*, of a speech entry VAULT_STT_*):
+	// its address, model and key are the environment's, so the entry can be
+	// reordered and switched off but not changed or deleted (it comes back).
 	Env bool   `json:"env,omitempty"`
 	URL string `json:"url"`
 	// Model: the server's own entry keeps the admin's choice among the
@@ -127,7 +141,10 @@ const (
 	aiByCheck = "check"
 	aiByTask  = "task"
 
-	aiEnvID = "env"
+	aiEnvID       = "env"
+	aiEnvSpeechID = "env-stt"
+
+	kindSpeech = "speech"
 	// maxAIModels: the longest list.
 	maxAIModels = 20
 )
@@ -294,6 +311,59 @@ func normalizeTiers(ts []channels.Tier) []channels.Tier {
 // serves: the entry takes tasks of weight t.
 func (e AIModel) serves(t channels.Tier) bool { return slices.Contains(e.Tiers, t) }
 
+// speech: the entry is speech recognition.
+func (e AIModel) speech() bool { return e.Kind == kindSpeech }
+
+// kindOf: a client's kind, as it is kept.
+func kindOf(k string) string {
+	if k == kindSpeech {
+		return kindSpeech
+	}
+	return ""
+}
+
+// envID is the id of the server's own entry of a kind.
+func envID(kind string) string {
+	if kind == kindSpeech {
+		return aiEnvSpeechID
+	}
+	return aiEnvID
+}
+
+// envOf is the server's own address, usual model and key for an own entry of
+// a kind (ok: it has one — VAULT_LLM_* for a language model, VAULT_STT_* for
+// speech).
+func envOf(kind string, env *channels.LLM) (url, model, key string, ok bool) {
+	if kind == kindSpeech {
+		c, ok := transcript.ConfigFromEnv()
+		return c.URL, c.Model, c.Key, ok
+	}
+	if env == nil {
+		return "", "", "", false
+	}
+	return env.URL, env.Model, env.Key, true
+}
+
+// migrateSTT puts the stored «Распознавание речи» of before the list into a
+// speech entry, last in the list: a provider of its own is that entry, and
+// the server's own entry then stays off (the old setting did not ask it);
+// «Выключено» is the server's own entry off. The written-back row has no
+// «stt» (Load clears it).
+func (a AISettings) migrateSTT(s STTSettings) AISettings {
+	if s.Provider == "" {
+		return a
+	}
+	off := AIModel{ID: aiEnvSpeechID, Kind: kindSpeech, Env: true, Off: true, Tiers: slices.Clone(allTiers)}
+	if s.Provider != sttOff {
+		c := transcript.Config{Provider: s.Provider, URL: s.URL, Model: s.Model, Key: s.Key}.Resolve()
+		a.List = append(slices.Clone(a.List), AIModel{ID: detID("stt|"+c.URL, c.Model), Kind: kindSpeech, URL: c.URL, Model: c.Model, Key: c.Key, Tiers: slices.Clone(allTiers)})
+	}
+	if !slices.ContainsFunc(a.List, func(e AIModel) bool { return e.Env && e.speech() }) {
+		a.List = append(slices.Clone(a.List), off)
+	}
+	return a
+}
+
 // migrated reads a stored row of the old shape (one endpoint, three
 // models) as the list; the written-back row has no old fields. The server's
 // own model is not stored here: resolved adds it.
@@ -310,20 +380,24 @@ func (a AISettings) migrated() AISettings {
 // environment's address, model and key; without VAULT_LLM_* there is none.
 // Never saved (the key is the environment's).
 func (a AISettings) resolved(env *channels.LLM) AISettings {
-	list := make([]AIModel, 0, len(a.List)+1)
-	hasEnv := false
+	list := make([]AIModel, 0, len(a.List)+2)
+	has := map[string]bool{}
 	for _, e := range a.List {
 		if e.Env {
-			if env == nil || hasEnv {
+			e.Kind = kindOf(e.Kind)
+			url, _, key, ok := envOf(e.Kind, env)
+			if !ok || has[e.Kind] {
 				continue
 			}
-			hasEnv = true
-			e.ID, e.URL, e.Model, e.Key = aiEnvID, env.URL, e.modelOf(env), env.Key
+			has[e.Kind] = true
+			e.ID, e.URL, e.Model, e.Key = envID(e.Kind), url, e.modelOf(env), key
 		}
 		list = append(list, e)
 	}
-	if env != nil && !hasEnv {
-		list = append(list, AIModel{ID: aiEnvID, Env: true, URL: env.URL, Model: env.Model, Key: env.Key, Tiers: slices.Clone(allTiers)})
+	for _, kind := range []string{"", kindSpeech} {
+		if url, model, key, ok := envOf(kind, env); ok && !has[kind] {
+			list = append(list, AIModel{ID: envID(kind), Kind: kind, Env: true, URL: url, Model: model, Key: key, Tiers: slices.Clone(allTiers)})
+		}
 	}
 	a.List = list
 	return a
@@ -332,17 +406,19 @@ func (a AISettings) resolved(env *channels.LLM) AISettings {
 // modelOf: the model an own entry asks — the admin's choice, else the
 // environment's.
 func (e AIModel) modelOf(env *channels.LLM) string {
-	if m := strings.TrimSpace(e.Model); m != "" || env == nil {
+	if m := strings.TrimSpace(e.Model); m != "" {
 		return m
 	}
-	return env.Model
+	_, model, _, _ := envOf(e.Kind, env)
+	return model
 }
 
 // key is the key an entry asks with: its own, or the server's (KeyFromEnv,
 // while the address is still the server's).
 func (e AIModel) key(env *channels.LLM) string {
-	if e.Env && env != nil {
-		return env.Key
+	if e.Env {
+		_, _, key, _ := envOf(e.Kind, env)
+		return key
 	}
 	if e.KeyFromEnv && env != nil && sameHost(e.URL, env.URL) {
 		return env.Key
@@ -352,20 +428,23 @@ func (e AIModel) key(env *channels.LLM) string {
 
 // keyMissing: the provider wants a key and the entry has none.
 func (e AIModel) keyMissing(env *channels.LLM) bool {
+	if e.speech() {
+		return !e.Env && transcript.ProviderOf(e.URL) != transcript.ProviderCustom && e.key(env) == ""
+	}
 	return !e.Env && needsKey(e.URL) && e.key(env) == ""
 }
 
 // mirror: the first own model that is on, in the old shape, for a client
 // that knows no list (see AISettings).
 func mirror(list []AIModel) (url, model string, models AIModels) {
-	i := slices.IndexFunc(list, func(e AIModel) bool { return !e.Env && !e.Off })
+	i := slices.IndexFunc(list, func(e AIModel) bool { return !e.Env && !e.Off && !e.speech() })
 	if i < 0 {
 		return "", "", AIModels{}
 	}
 	url = list[i].URL
 	pick := func(t channels.Tier) string {
 		for _, e := range list {
-			if !e.Env && !e.Off && e.URL == url && e.serves(t) {
+			if !e.Env && !e.Off && !e.speech() && e.URL == url && e.serves(t) {
 				return e.Model
 			}
 		}
@@ -411,10 +490,11 @@ func (a AISettings) validate() string {
 // key. A status, a cool-down belongs to one print; an edit starts afresh.
 func entryPrint(e AIModel, env *channels.LLM) string {
 	if e.Env {
-		if env == nil {
+		url, _, key, ok := envOf(e.Kind, env)
+		if !ok {
 			return ""
 		}
-		return env.URL + "|" + e.modelOf(env) + "|" + env.Key
+		return url + "|" + e.modelOf(env) + "|" + key
 	}
 	return e.URL + "|" + e.Model + "|" + e.key(env)
 }
@@ -427,14 +507,20 @@ func entryPrint(e AIModel, env *channels.LLM) string {
 func cleanEntry(e AIModel, stored *AIModel, env *channels.LLM) AIModel {
 	e.Tiers = normalizeTiers(e.Tiers)
 	e.KeySet, e.ModelDefault = false, ""
+	e.Kind = kindOf(e.Kind)
+	if e.speech() {
+		e.Tiers, e.KeyFromEnv = slices.Clone(allTiers), false
+	}
 	if e.Env {
-		out := AIModel{ID: aiEnvID, Env: true, Tiers: e.Tiers, Off: e.Off}
+		out := AIModel{ID: envID(e.Kind), Kind: e.Kind, Env: true, Tiers: e.Tiers, Off: e.Off}
 		// the choice is kept only when it is not the environment's own model
 		// (that one follows the environment)
-		if m := strings.TrimSpace(e.Model); env != nil && m != env.Model {
-			out.Model = m
+		if _, usual, _, ok := envOf(e.Kind, env); ok {
+			if m := strings.TrimSpace(e.Model); m != usual {
+				out.Model = m
+			}
 		}
-		if stored != nil && stored.Env {
+		if stored != nil && stored.Env && stored.Kind == e.Kind {
 			out.Status = stored.Status
 		}
 		return out
@@ -443,7 +529,7 @@ func cleanEntry(e AIModel, stored *AIModel, env *channels.LLM) AIModel {
 	e.Model = strings.TrimSpace(e.Model)
 	e.Key = strings.TrimSpace(e.Key)
 	e.KeyFromEnv = e.KeyFromEnv && e.Key == "" && env != nil && sameHost(e.URL, env.URL)
-	if e.Key == "" && !e.KeyFromEnv && stored != nil && !stored.Env && sameHost(e.URL, stored.URL) {
+	if e.Key == "" && !e.KeyFromEnv && stored != nil && !stored.Env && stored.Kind == e.Kind && sameHost(e.URL, stored.URL) {
 		e.Key = stored.Key
 	}
 	e.Status = AIStatus{}
@@ -506,17 +592,19 @@ func (a AISettings) merged(stored AISettings, env *channels.LLM) AISettings {
 	}
 	seen := map[string]bool{}
 	list := make([]AIModel, 0, len(out.List))
-	hasEnv := false
+	hasEnv := map[string]bool{}
 	for _, e := range out.List {
 		var old *AIModel
 		switch o := byID[e.ID]; {
 		case e.Env:
-			if env == nil || hasEnv {
+			e.Kind = kindOf(e.Kind)
+			if _, _, _, ok := envOf(e.Kind, env); !ok || hasEnv[e.Kind] {
 				continue
 			}
-			hasEnv, e.ID, old = true, aiEnvID, byID[aiEnvID]
+			hasEnv[e.Kind], e.ID, old = true, envID(e.Kind), byID[envID(e.Kind)]
 		case o != nil && !o.Env && !seen[e.ID]:
-			old = o
+			// the kind of an entry is not edited: a language model stays one
+			old, e.Kind = o, o.Kind
 		default:
 			// a new entry: its id is the server's
 			for e.ID = newAIID(); byID[e.ID] != nil || seen[e.ID]; e.ID = newAIID() {

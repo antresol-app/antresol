@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/db"
+	"github.com/antresol-app/antresol/internal/transcript"
 )
 
 // aiRuntime is what the server learns of the list's models as it runs, per
@@ -81,10 +83,28 @@ func outcome(took time.Duration, err error, source string, at time.Time) AIStatu
 	st := AIStatus{State: aiOK, MS: took.Milliseconds(), At: at, Source: source}
 	if err != nil {
 		st.State, st.MS = aiError, 0
-		st.Kind, st.Code = channels.ErrorInfo(err)
-		st.Error = clipText(readableError(strings.TrimPrefix(err.Error(), "llm: ")), 200)
+		st.Kind, st.Code = errInfo(err)
+		st.Error = clipText(readableError(strings.TrimPrefix(strings.TrimPrefix(err.Error(), "llm: "), "stt: ")), 200)
 	}
 	return st
+}
+
+// errInfo sorts a failure of either kind of model: a language model's
+// (channels.ErrorInfo) or a speech service's (transcript.Error).
+func errInfo(err error) (kind string, code int) {
+	var e *transcript.Error
+	if !errors.As(err, &e) {
+		return channels.ErrorInfo(err)
+	}
+	switch {
+	case e.Kind == transcript.KindRateLimit:
+		return channels.ErrHTTP, 429
+	case e.Status > 0:
+		return channels.ErrHTTP, e.Status
+	case strings.Contains(e.Error(), "deadline exceeded") || strings.Contains(e.Error(), "timeout"):
+		return channels.ErrTimeout, 0
+	}
+	return channels.ErrNetwork, 0
 }
 
 // readableError turns a provider's JSON error body into its message:
@@ -141,7 +161,7 @@ func (rt *aiRuntime) record(conn *sql.DB, env *channels.LLM, e AIModel, took tim
 	rt.live[e.ID] = aiLive{print: print, status: st}
 	delete(rt.cool, e.ID)
 	if err != nil {
-		switch kind, code := channels.ErrorInfo(err); {
+		switch kind, code := errInfo(err); {
 		case kind == channels.ErrHTTP && (code == 401 || code == 403 || code == 404), kind == channels.ErrKey:
 			rt.cool[e.ID] = aiCool{print: print}
 		case kind == channels.ErrTimeout, kind == channels.ErrNetwork, kind == channels.ErrHTTP && (code == 429 || code >= 500):
@@ -193,7 +213,14 @@ func persistAIStatuses(ctx context.Context, conn *sql.DB, env *channels.LLM, ups
 		return nil
 	}
 	ai = ai.migrated()
-	changed := false
+	// the speech setting of before the list's speech entries goes into the
+	// list with the statuses (it is written back as an entry, once)
+	var stt STTSettings
+	if row["stt"] != nil && json.Unmarshal(row["stt"], &stt) != nil {
+		stt = STTSettings{}
+	}
+	ai = ai.migrateSTT(stt)
+	changed := stt.Provider != ""
 	for i := range ai.List {
 		for _, u := range ups {
 			if ai.List[i].ID == u.id && entryPrint(ai.List[i], env) == u.print {
@@ -206,6 +233,9 @@ func persistAIStatuses(ctx context.Context, conn *sql.DB, env *channels.LLM, ups
 	}
 	if row["ai"], err = json.Marshal(ai); err != nil {
 		return err
+	}
+	if stt.Provider != "" {
+		row["stt"] = json.RawMessage(`{"provider":"","url":"","model":""}`)
 	}
 	out, err := json.Marshal(row)
 	if err != nil {
@@ -248,8 +278,8 @@ func (rt *aiRuntime) view(a AISettings, env *channels.LLM) AISettings {
 	for i, e := range a.List {
 		st := rt.status(e, env)
 		e.KeySet, e.Key, e.Status = e.key(env) != "", "", st
-		if e.Env && env != nil {
-			e.ModelDefault = env.Model
+		if e.Env {
+			_, e.ModelDefault, _, _ = envOf(e.Kind, env)
 		}
 		out.List[i] = e
 	}
@@ -257,10 +287,21 @@ func (rt *aiRuntime) view(a AISettings, env *channels.LLM) AISettings {
 	return out
 }
 
-// eligible: the entry may be asked for a task of tier t (on, serves it, has
-// the key its provider wants).
+// eligible: the entry may be asked for a text task of tier t (a language
+// model, on, serves it, has the key its provider wants).
 func (e AIModel) eligible(t channels.Tier, env *channels.LLM) bool {
-	return !e.Off && e.serves(t) && e.URL != "" && e.Model != "" && !e.keyMissing(env)
+	return !e.speech() && !e.Off && e.serves(t) && e.URL != "" && e.Model != "" && !e.keyMissing(env)
+}
+
+// eligibleSpeech: the entry may be asked to transcribe (speech, on, has its
+// key).
+func (e AIModel) eligibleSpeech(env *channels.LLM) bool {
+	return e.speech() && !e.Off && e.URL != "" && e.Model != "" && !e.keyMissing(env)
+}
+
+// speechConfig is the speech service an entry is, as it is asked.
+func (e AIModel) speechConfig(env *channels.LLM) transcript.Config {
+	return transcript.Config{Provider: transcript.ProviderOf(e.URL), URL: e.URL, Model: e.modelOf(env), Key: e.key(env)}.Resolve()
 }
 
 // llm of an entry: the server's own as the environment has it (its
@@ -300,4 +341,25 @@ func (rt *aiRuntime) chain(conn *sql.DB, a AISettings, env *channels.LLM, t chan
 		Report:  func(id string, took time.Duration, err error) { rt.record(conn, env, byID[id], took, err, aiByTask) },
 	}
 	return &head
+}
+
+// speechChain is the speech services the transcripts ask: the speech entries
+// that are on and have their key, first to last (transcript.Speech; none:
+// the transcripts are off). Text entries are never in it.
+func (rt *aiRuntime) speechChain(conn *sql.DB, a AISettings, env *channels.LLM) (transcript.Speech, bool) {
+	a = a.resolved(env)
+	var sp transcript.Speech
+	byID := map[string]AIModel{}
+	for _, e := range a.List {
+		if e.eligibleSpeech(env) {
+			sp.Members = append(sp.Members, transcript.Member{ID: e.ID, Config: e.speechConfig(env)})
+			byID[e.ID] = e
+		}
+	}
+	if len(sp.Members) == 0 {
+		return transcript.Speech{}, false
+	}
+	sp.Skip = func(id string) bool { return rt.cooling(id, entryPrint(byID[id], env)) }
+	sp.Report = func(id string, took time.Duration, err error) { rt.record(conn, env, byID[id], took, err, aiByTask) }
+	return sp, true
 }

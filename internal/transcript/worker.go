@@ -96,9 +96,9 @@ func (h *hold) backoff(now time.Time, first, most time.Duration, reason string) 
 type Worker struct {
 	DB     *sql.DB
 	FFmpeg string
-	// STT is the speech-to-text service asked now; false: the feature is
-	// off.
-	STT func(ctx context.Context) (Config, bool)
+	// STT is the speech-to-text services asked now, in order (Speech); false:
+	// the feature is off.
+	STT func(ctx context.Context) (Speech, bool)
 	// LLM is the text model that splits a transcript into chapters now (nil,
 	// or answering nil: none).
 	LLM func(ctx context.Context) Asker
@@ -124,8 +124,9 @@ type Worker struct {
 
 	mu               sync.Mutex
 	sttHold, llmHold hold
-	// service: the speech service the holds and what is known of it are about
-	service Config
+	// service: the speech services the holds and what is known of them are
+	// about (Speech.fingerprint)
+	service string
 	// untimed: its model gives no segment times
 	untimed bool
 	// strikes: the service's errors in a row on a book (speech, text)
@@ -248,20 +249,61 @@ func (w *Worker) wait() time.Duration {
 
 // speech is the service to ask now; a change of it ends what was held
 // against the one before.
-func (w *Worker) speech(ctx context.Context) (Config, bool) {
+func (w *Worker) speech(ctx context.Context) (Speech, bool) {
 	if w.STT == nil {
-		return Config{}, false
+		return Speech{}, false
 	}
-	c, on := w.STT(ctx)
+	sp, on := w.STT(ctx)
+	if on && len(sp.Members) == 0 {
+		on = false
+	}
 	if on {
 		w.mu.Lock()
-		if c != w.service {
-			w.service, w.sttHold, w.untimed = c, hold{}, false
+		if f := sp.fingerprint(); f != w.service {
+			w.service, w.sttHold, w.untimed = f, hold{}, false
 			clear(w.strikes)
 		}
 		w.mu.Unlock()
 	}
-	return c, on
+	return sp, on
+}
+
+// errNoService: every service of the chain sits out (cooling down).
+func errNoService() *Error {
+	return &Error{Kind: KindProvider, msg: "stt: no speech service is available now"}
+}
+
+// askServices asks the services in order: the first that answers wins; the
+// service that failed is left to its cool-down and the next is asked. The
+// audio's own fault ends it at once. cfg is the service that answered.
+func (w *Worker) askServices(ctx context.Context, sp Speech, a Audio) (res Result, cfg Config, err error) {
+	var last error = errNoService()
+	for _, m := range sp.Members {
+		if sp.Skip != nil && sp.Skip(m.ID) {
+			continue
+		}
+		start := time.Now()
+		res, err = (&Client{Config: m.Config, HTTP: w.HTTP}).Transcribe(ctx, a)
+		took := time.Since(start)
+		if err == nil {
+			if sp.Report != nil {
+				sp.Report(m.ID, took, nil)
+			}
+			return res, m.Config, nil
+		}
+		if ctx.Err() != nil {
+			return Result{}, m.Config, ctx.Err()
+		}
+		var e *Error
+		if errors.As(err, &e) && e.Kind == KindInput {
+			return Result{}, m.Config, err
+		}
+		if sp.Report != nil {
+			sp.Report(m.ID, took, err)
+		}
+		last, cfg = err, m.Config
+	}
+	return Result{}, cfg, last
 }
 
 func (w *Worker) held(h *hold) bool {
@@ -648,7 +690,7 @@ func (w *Worker) transcribe(ctx context.Context, b *book) error {
 				return errBusy
 			}
 			// read at every piece: a change of the settings takes effect now
-			cfg, on := w.speech(ctx)
+			sp, on := w.speech(ctx)
 			if !on {
 				return nil
 			}
@@ -679,9 +721,9 @@ func (w *Worker) transcribe(ctx context.Context, b *book) error {
 				return w.failed(ctx, b, err, true)
 			}
 			res := Result{Timed: true}
+			var cfg Config
 			if len(data) >= emptyPiece {
-				client := &Client{Config: cfg, HTTP: w.HTTP}
-				res, err = client.Transcribe(ctx, Audio{Data: data, Name: "piece.mp3", MIME: "audio/mp3", DurationMs: end - at})
+				res, cfg, err = w.askServices(ctx, sp, Audio{Data: data, Name: "piece.mp3", MIME: "audio/mp3", DurationMs: end - at})
 				if err != nil {
 					again, err := w.refused(ctx, b, size, err)
 					if again {

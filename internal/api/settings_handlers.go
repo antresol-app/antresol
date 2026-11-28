@@ -18,7 +18,6 @@ import (
 	"github.com/antresol-app/antresol/internal/publicurl"
 	"github.com/antresol-app/antresol/internal/releaseprefs"
 	"github.com/antresol-app/antresol/internal/subtitles"
-	"github.com/antresol-app/antresol/internal/transcript"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -65,9 +64,10 @@ type AppSettings struct {
 	// medium, powerful) the AI tasks ask; empty: the server's VAULT_LLM_*
 	// or none.
 	AI AISettings `json:"ai"`
-	// STT is «Распознавание речи» of «ИИ-помощник» (stt_settings.go): the
-	// service that makes audiobooks' transcripts; empty: the server's
-	// VAULT_STT_* or none.
+	// STT is «Распознавание речи» as it was stored before it became speech
+	// entries of AI's list (stt_settings.go): migrated into the list on read
+	// and empty from then on; answers carry one made from the entries for a
+	// release.
 	STT STTSettings `json:"stt"`
 	// PublicURL is «Адрес сервера»: how browsers and the apps reach the
 	// server from outside the home network ("" none); VAULT_PUBLIC_URL wins
@@ -178,7 +178,8 @@ func LoadAppSettings(ctx context.Context, conn *sql.DB, defaults AppSettings) (A
 	if !validSubtitleLangs(s.SubtitleLangs) {
 		s.SubtitleLangs = defaults.SubtitleLangs
 	}
-	s.AI = s.AI.migrated() // a row of one endpoint, from before the list
+	s.AI = s.AI.migrated()                              // a row of one endpoint, from before the list
+	s.AI, s.STT = s.AI.migrateSTT(s.STT), STTSettings{} // the speech service of before the list's speech entries
 	return s, nil
 }
 
@@ -334,7 +335,6 @@ func mountSettings(r chi.Router, s *settingsAPI) {
 		r.Put("/api/settings", s.put)
 		r.Post("/api/settings/ai/test", s.testAI)
 		r.Post("/api/settings/ai/models", s.modelsAI)
-		r.Post("/api/settings/stt/test", s.testSTT)
 	})
 }
 
@@ -359,11 +359,7 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	if env != nil {
 		v.AIFromEnv = env.Model
 	}
-	v.STTKeySet = app.STT.Key != ""
-	v.STT.Key = ""
-	if env, ok := transcript.ConfigFromEnv(); ok {
-		v.STTFromEnv = env.Model
-	}
+	v.STT, v.STTKeySet, v.STTFromEnv = legacySTT(v.AI.List)
 	if s.accel != nil {
 		v.TranscodingName = media.HWName(s.accel.Mode())
 	}
@@ -415,9 +411,6 @@ func (v settingsView) validate() string {
 		return "Адрес сервера — ссылка вида https://media.example.org"
 	}
 	if msg := v.Mail.validate(); msg != "" {
-		return msg
-	}
-	if msg := v.STT.validate(); msg != "" {
 		return msg
 	}
 	return v.AI.validate()
@@ -474,8 +467,7 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	} else {
 		v.AI = v.AI.merged(stored.AI, channels.LLMFromEnv())
 	}
-	// the same for the speech recognition key
-	v.STT = v.STT.merged(stored.STT)
+	v.STT = STTSettings{} // the old field is read-only (the list's speech entries are the setting)
 	if msg := v.validate(); msg != "" {
 		writeErr(w, r, http.StatusBadRequest, msg)
 		return
@@ -499,7 +491,7 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	if s.apply != nil {
 		s.apply(v.AppSettings)
 	}
-	if s.transcripts != nil && (v.STT != stored.STT || !v.AI.asksTheSame(stored.AI)) {
+	if s.transcripts != nil && !v.AI.asksTheSame(stored.AI) {
 		// what failed with the models before is tried again; the save stands
 		// whatever this says
 		if err := s.transcripts.Reconfigured(ctx); err != nil {

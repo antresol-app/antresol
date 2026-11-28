@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -35,6 +36,51 @@ var fixed = map[string]struct{ url, model string }{
 	ProviderGroq:   {"https://api.groq.com/openai/v1", "whisper-large-v3-turbo"},
 	ProviderOpenAI: {"https://api.openai.com/v1", "whisper-1"},
 	ProviderGemini: {"https://generativelanguage.googleapis.com/v1beta", "gemini-3.5-flash-lite"},
+}
+
+// ProviderOf is the provider an address belongs to: groq, openai or gemini
+// by their own hosts, else «custom» (any OpenAI-compatible server).
+func ProviderOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ProviderCustom
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "api.groq.com":
+		return ProviderGroq
+	case "api.openai.com":
+		return ProviderOpenAI
+	case "generativelanguage.googleapis.com":
+		return ProviderGemini
+	}
+	return ProviderCustom
+}
+
+// Member is one speech service of a Speech chain.
+type Member struct {
+	ID     string
+	Config Config
+}
+
+// Speech is the speech-to-text services asked now, in order: the first that
+// answers wins and a failure of the service goes on to the next, as the
+// language models do (channels.Chain). The audio's own faults (KindInput) do
+// not: another service would be told the same.
+type Speech struct {
+	Members []Member
+	// Skip says a member sits out now (its cool-down); asked at every piece.
+	Skip func(id string) bool
+	// Report is told each attempt's outcome (nil error: it answered).
+	Report func(id string, took time.Duration, err error)
+}
+
+// fingerprint says whether two Speeches ask the same services in the same order.
+func (s Speech) fingerprint() string {
+	var b strings.Builder
+	for _, m := range s.Members {
+		b.WriteString(m.ID + "|" + m.Config.Provider + "|" + m.Config.URL + "|" + m.Config.Model + "|" + m.Config.Key + "\n")
+	}
+	return b.String()
 }
 
 // Config is the speech-to-text service asked.

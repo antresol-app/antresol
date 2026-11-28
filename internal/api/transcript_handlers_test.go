@@ -107,7 +107,7 @@ func TestBookTranscript(t *testing.T) {
 	if w := e.do("GET", url, "", e.admin); w.Code != 404 {
 		t.Fatalf("no transcript: %d %s", w.Code, w.Body)
 	}
-	e.save(`{"provider":"groq","key":"gsk-secret"}`)
+	e.groqSpeech(false)
 	if b := e.bookPage(id); *b.Transcript != "pending" {
 		t.Fatalf("on: %q", *b.Transcript)
 	}
@@ -151,11 +151,11 @@ func TestBookTranscript(t *testing.T) {
 		t.Fatalf("%s", plain)
 	}
 	// what is stored stays when the feature is turned off
-	e.save(`{"provider":"off"}`)
+	e.groqSpeech(true)
 	if b := e.bookPage(id); *b.Transcript != "ready" || !*b.ChaptersAuto {
 		t.Fatalf("off with a transcript: %q", *b.Transcript)
 	}
-	e.save(`{"provider":"groq","key":"gsk-secret"}`)
+	e.groqSpeech(false)
 
 	// who may not open the book has no transcript either
 	if _, err := e.db.Exec(`UPDATE items SET rating='18+' WHERE id=?`, id); err != nil {

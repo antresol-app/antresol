@@ -140,3 +140,54 @@ func TestListModelsFailures(t *testing.T) {
 		t.Errorf("empty: %v %v", names, err)
 	}
 }
+
+// The list of a speech entry is the speech models only: Whisper and the
+// transcribe ones of OpenAI and Groq, the Gemini models (they hear audio) of
+// Gemini — asked through its OpenAI layer, whatever form the address has —
+// and a server of one's own whole. The chat models stay out.
+func TestListSpeechModels(t *testing.T) {
+	cases := []struct {
+		name, base, path, body string
+		want                   []string
+	}{
+		{
+			name: "openai", base: "https://api.openai.com/v1", path: "/v1/models",
+			body: `{"data":[{"id":"whisper-1"},{"id":"gpt-5"},{"id":"gpt-4o-transcribe"},{"id":"gpt-4o-mini-transcribe"},{"id":"tts-1"},{"id":"text-embedding-3-small"}]}`,
+			want: []string{"gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"},
+		},
+		{
+			name: "groq", base: "https://api.groq.com/openai/v1", path: "/openai/v1/models",
+			body: `{"data":[{"id":"whisper-large-v3-turbo"},{"id":"whisper-large-v3"},{"id":"llama-3.3-70b-versatile"},{"id":"meta-llama/llama-guard-4-12b"},{"id":"distil-whisper-large-v3-en"}]}`,
+			want: []string{"distil-whisper-large-v3-en", "whisper-large-v3", "whisper-large-v3-turbo"},
+		},
+		{
+			name: "gemini, the speech address (native)", base: "https://generativelanguage.googleapis.com/v1beta", path: "/v1beta/openai/models",
+			body: `{"data":[{"id":"models/gemini-3.5-flash-lite"},{"id":"models/gemini-3.5-flash"},{"id":"models/text-embedding-004"},{"id":"models/imagen-4.0-generate-001"},{"id":"models/gemini-3.5-flash-preview-tts"}]}`,
+			want: []string{"gemini-3.5-flash", "gemini-3.5-flash-lite"},
+		},
+		{
+			name: "a server of one's own: its admin's list, whole", base: "http://127.0.0.1:4000/v1", path: "/v1/models",
+			body: `{"data":[{"id":"stt"},{"id":"chat"}]}`,
+			want: []string{"chat", "stt"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got *http.Request
+			client := &http.Client{Transport: fakeRT(func(r *http.Request) *http.Response {
+				got = r
+				if r.URL.Path != c.path {
+					return answer(404, `{"error":"not found"}`)
+				}
+				return answer(200, c.body)
+			})}
+			names, err := ListSpeechModels(context.Background(), client, c.base, "k")
+			if err != nil {
+				t.Fatalf("%v (asked %v)", err, got.URL)
+			}
+			if !reflect.DeepEqual(names, c.want) {
+				t.Errorf("names %v, want %v", names, c.want)
+			}
+		})
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/antresol-app/antresol/internal/channels"
+	"github.com/antresol-app/antresol/internal/transcript"
 )
 
 // llmSource is the model feature f's task of tier t asks now: the list's
@@ -33,6 +34,10 @@ func llmSource(db *sql.DB, defaults AppSettings, env *channels.LLM) func(context
 	}
 }
 
+// sttTestTimeout bounds the check of a speech entry (a slow server of one's
+// own may take a while to load its model).
+const sttTestTimeout = time.Minute
+
 // aiChecked: one entry's check, as the answer has it.
 type aiChecked struct {
 	ID     string   `json:"id"`
@@ -43,7 +48,7 @@ type aiChecked struct {
 }
 
 // POST /api/settings/ai/test {ids?: [], entry?: {…}}: asks the entries a
-// one-word question — {ok, results: [{id, ok, ms, reply?, status}]}; ok:
+// one-word question (a speech entry: a second of silence to transcribe) — {ok, results: [{id, ok, ms, reply?, status}]}; ok:
 // every one answered. ids: those entries (on or off); none: every one that
 // is on, in parallel, 15 s each. A provider that needs a key and has none is
 // not asked (its status is noKey). The statuses are stored, and an entry
@@ -76,13 +81,13 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 	case draft:
 		e := cleanEntry(*body.Entry, byID[body.Entry.ID], env)
 		if e.Env {
-			if byID[aiEnvID] == nil {
+			if byID[envID(e.Kind)] == nil {
 				writeErr(w, r, http.StatusNotFound, "Модель не найдена")
 				return
 			}
 			// the server's address and key, the model as it is being chosen
 			chosen := e.Model
-			e = *byID[aiEnvID]
+			e = *byID[envID(e.Kind)]
 			if chosen != "" {
 				e.Model = chosen
 			}
@@ -131,10 +136,18 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			l := e.llm(env, wait)
-			l.Timeout = wait
 			start := time.Now()
-			reply, err := l.Ping(r.Context())
+			var reply string
+			var err error
+			if e.speech() {
+				// a second of silence, as the transcripts would send a piece
+				client := &transcript.Client{Config: e.speechConfig(env), Timeout: sttTestTimeout}
+				_, err = client.Transcribe(r.Context(), transcript.Silence(time.Second))
+			} else {
+				l := e.llm(env, wait)
+				l.Timeout = wait
+				reply, err = l.Ping(r.Context())
+			}
 			took := time.Since(start)
 			results[i].OK, results[i].MS, results[i].Reply = err == nil, took.Milliseconds(), reply
 			results[i].Status = outcome(took, err, aiByCheck, time.Now())
@@ -151,8 +164,9 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "results": results})
 }
 
-// POST /api/settings/ai/models {url?, key?, id?, serverKey?}: the models an
-// endpoint lists (channels.ListModels; nothing is billed, nothing saved) —
+// POST /api/settings/ai/models {url?, key?, id?, serverKey?, kind?}: the models
+// an endpoint lists (channels.ListModels; nothing is billed, nothing saved;
+// kind "speech": only the speech ones, channels.ListSpeechModels) —
 // {models: [{id}], error?}. An empty key is the stored one of the entry with
 // that id (the server's own: the environment's) while the address stays on
 // the same host; no address is the entry's. serverKey: the server's own key
@@ -166,7 +180,8 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 		Key string `json:"key"`
 		ID  string `json:"id"`
 		// ServerKey: ask with the server's own key (an address on its host).
-		ServerKey bool `json:"serverKey"`
+		ServerKey bool   `json:"serverKey"`
+		Kind      string `json:"kind"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -178,8 +193,9 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 	}
 	base, key := strings.TrimRight(strings.TrimSpace(body.URL), "/"), strings.TrimSpace(body.Key)
 	env := channels.LLMFromEnv()
+	speech := kindOf(body.Kind) == kindSpeech
 	for _, e := range stored.AI.resolved(env).List {
-		if e.ID != body.ID {
+		if e.ID != body.ID || e.speech() != speech {
 			continue
 		}
 		if base == "" || e.Env {
@@ -197,7 +213,11 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "Адрес модели — http:// или https://")
 		return
 	}
-	names, err := channels.ListModels(r.Context(), nil, base, key)
+	list := channels.ListModels
+	if speech {
+		list = channels.ListSpeechModels
+	}
+	names, err := list(r.Context(), nil, base, key)
 	out := map[string]any{"models": []map[string]string{}}
 	if err != nil {
 		st := outcome(0, err, "", time.Time{})

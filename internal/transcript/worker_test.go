@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -113,8 +114,8 @@ func newRig(t *testing.T) *rig {
 // worker is a worker of the rig (a new one: as after a restart).
 func (r *rig) worker() *Worker {
 	return &Worker{DB: r.db,
-		STT: func(context.Context) (Config, bool) {
-			return Config{Provider: ProviderCustom, URL: r.stt.URL + "/v1", Model: "w"}, !r.off
+		STT: func(context.Context) (Speech, bool) {
+			return Speech{Members: []Member{{ID: "a", Config: Config{Provider: ProviderCustom, URL: r.stt.URL + "/v1", Model: "w"}}}}, !r.off
 		},
 		LLM:  func(context.Context) Asker { return r.llm },
 		Busy: func() bool { return r.busy != nil && r.busy() },
@@ -663,4 +664,67 @@ func TestWorkerRunStops(t *testing.T) {
 		t.Fatal("did not stop")
 	}
 	(*Worker)(nil).Kick() // nil-safe
+}
+
+// The speech services are asked in order: one that fails is left for the
+// next (and told of), one that answers ends it, and the audio's own fault
+// is not the service's: it stops the chain.
+func TestAskServicesFallsBack(t *testing.T) {
+	var asked []string
+	serve := func(name string, status int, body string) Member {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked = append(asked, name)
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, body)
+		}))
+		t.Cleanup(s.Close)
+		return Member{ID: name, Config: Config{Provider: ProviderCustom, URL: s.URL + "/v1", Model: name}}
+	}
+	ok := `{"text":"привет","language":"ru"}`
+	reported := map[string]error{}
+	skipped := map[string]bool{}
+	sp := func(ms ...Member) Speech {
+		asked = nil
+		clear(reported)
+		return Speech{Members: ms, Skip: func(id string) bool { return skipped[id] }, Report: func(id string, _ time.Duration, err error) { reported[id] = err }}
+	}
+	w := &Worker{}
+	a := Audio{Data: []byte("x"), Name: "p.mp3", MIME: "audio/mp3", DurationMs: 1000}
+	down, bad401, fine := serve("down", 503, `{"error":{"message":"overloaded"}}`), serve("bad401", 401, `{"error":{"message":"bad key"}}`), serve("fine", 200, ok)
+
+	res, cfg, err := w.askServices(context.Background(), sp(down, bad401, fine), a)
+	if err != nil || cfg.Model != "fine" || len(res.Segments) != 1 || strings.Join(asked, ",") != "down,bad401,fine" {
+		t.Fatalf("%v %+v %v %v", err, cfg, res, asked)
+	}
+	if reported["down"] == nil || reported["bad401"] == nil || reported["fine"] != nil || len(reported) != 3 {
+		t.Fatalf("reported %v", reported)
+	}
+	// the head that answers is the only one asked
+	if _, cfg, err = w.askServices(context.Background(), sp(fine, down), a); err != nil || cfg.Model != "fine" || strings.Join(asked, ",") != "fine" {
+		t.Fatalf("%v %+v %v", err, cfg, asked)
+	}
+	// a service in its cool-down is not asked
+	skipped["down"] = true
+	if _, _, err = w.askServices(context.Background(), sp(down, fine), a); err != nil || strings.Join(asked, ",") != "fine" || len(reported) != 1 {
+		t.Fatalf("%v %v %v", err, asked, reported)
+	}
+	// every one failing: the last one's words; all sitting out: a provider's trouble, nobody asked
+	skipped["down"] = false
+	_, _, err = w.askServices(context.Background(), sp(down, bad401), a)
+	var e *Error
+	if !errors.As(err, &e) || e.Status != 401 || strings.Join(asked, ",") != "down,bad401" {
+		t.Fatalf("%v %v", err, asked)
+	}
+	skipped["down"], skipped["bad401"] = true, true
+	_, _, err = w.askServices(context.Background(), sp(down, bad401), a)
+	if !errors.As(err, &e) || e.Kind != KindProvider || len(asked) != 0 {
+		t.Fatalf("%v %v", err, asked)
+	}
+	// the audio's fault (a refused piece) ends it: another service would say the same
+	skipped["down"], skipped["bad401"] = false, false
+	refused := serve("refused", 413, `{"error":{"message":"file too large"}}`)
+	_, _, err = w.askServices(context.Background(), sp(refused, fine), a)
+	if !errors.As(err, &e) || e.Kind != KindInput || strings.Join(asked, ",") != "refused" || len(reported) != 0 {
+		t.Fatalf("%v %v %v", err, asked, reported)
+	}
 }
