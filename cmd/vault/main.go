@@ -477,15 +477,14 @@ func run() error {
 	// the audiobooks' transcripts («Распознавание речи») and automatic
 	// chapters (the AI helper's medium model), a piece at a time in the
 	// background, behind the same quiet as the analysis
+	// the AI helper's model of a feature, asked when a task needs it (chans is
+	// made below; a feature switched off on its page has none)
+	modelFor := func(ctx context.Context, f channels.Feature, t channels.Tier) *channels.LLM {
+		return chans.ModelFor(ctx, f, t)
+	}
 	transcripts := &transcript.Worker{DB: database, FFmpeg: cfg.FFmpeg, Log: slog.Default(), Busy: segWorker.Busy,
 		STT: api.SpeechSource(database, settingsDefaults),
-		LLM: func(ctx context.Context) transcript.Asker {
-			l := chans.ModelFor(ctx, channels.TierMedium)
-			if l == nil {
-				return nil // never a typed nil in the interface
-			}
-			return l.Patient(transcript.ChapterTimeout)
-		},
+		LLM: chaptersModel(modelFor),
 		Disk: func() bool {
 			f := jobs.Scanner.StorageOffline
 			return f == nil || f() == ""
@@ -532,12 +531,7 @@ func run() error {
 	// watched episodes pushed back) and the anime map they need
 	// the other-language names of books (a Goodreads shelf in English, the
 	// library's Russian editions), the AI helper's light model the last resort
-	names := bookNames(database, metaSrc, func(ctx context.Context) booknames.Asker {
-		if l := chans.ModelFor(ctx, channels.TierLight); l != nil {
-			return l
-		}
-		return nil
-	}, slog.Default())
+	names := bookNames(database, metaSrc, bookNamesModel(modelFor), slog.Default())
 	accts, err := newAccounts(ctx, database, trackStore, trackSvc, metaSrc.TMDB, repo, progStore, names, publicAddr.Get)
 	if err != nil {
 		return err

@@ -224,7 +224,7 @@ func (rt *aiRuntime) status(e AIModel, env *channels.LLM) AIStatus {
 	if e.Off {
 		return AIStatus{State: aiOff}
 	}
-	if !e.Env && needsKey(e.URL) && e.Key == "" {
+	if e.keyMissing(env) {
 		return AIStatus{State: aiNoKey}
 	}
 	st := e.Status
@@ -244,10 +244,13 @@ func (rt *aiRuntime) status(e AIModel, env *channels.LLM) AIStatus {
 // first own model in the old fields.
 func (rt *aiRuntime) view(a AISettings, env *channels.LLM) AISettings {
 	a = a.resolved(env)
-	out := AISettings{Off: a.Off, List: make([]AIModel, len(a.List))}
+	out := AISettings{Off: a.Off, Features: a.Features, List: make([]AIModel, len(a.List))}
 	for i, e := range a.List {
 		st := rt.status(e, env)
-		e.KeySet, e.Key, e.Status = e.Key != "", "", st
+		e.KeySet, e.Key, e.Status = e.key(env) != "", "", st
+		if e.Env && env != nil {
+			e.ModelDefault = env.Model
+		}
 		out.List[i] = e
 	}
 	out.URL, out.Model, out.Models = mirror(a.List)
@@ -256,8 +259,8 @@ func (rt *aiRuntime) view(a AISettings, env *channels.LLM) AISettings {
 
 // eligible: the entry may be asked for a task of tier t (on, serves it, has
 // the key its provider wants).
-func (e AIModel) eligible(t channels.Tier) bool {
-	return !e.Off && e.serves(t) && e.URL != "" && e.Model != "" && (e.Env || !needsKey(e.URL) || e.Key != "")
+func (e AIModel) eligible(t channels.Tier, env *channels.LLM) bool {
+	return !e.Off && e.serves(t) && e.URL != "" && e.Model != "" && !e.keyMissing(env)
 }
 
 // llm of an entry: the server's own as the environment has it (its
@@ -266,9 +269,10 @@ func (e AIModel) llm(env *channels.LLM, timeout time.Duration) *channels.LLM {
 	if e.Env {
 		c := *env
 		c.Chain = nil
+		c.Model = e.modelOf(env)
 		return &c
 	}
-	return &channels.LLM{URL: e.URL, Model: e.Model, Key: e.Key, Timeout: timeout}
+	return &channels.LLM{URL: e.URL, Model: e.Model, Key: e.key(env), Timeout: timeout}
 }
 
 // chain is the model a task of tier t asks: the first eligible entry, with
@@ -280,7 +284,7 @@ func (rt *aiRuntime) chain(conn *sql.DB, a AISettings, env *channels.LLM, t chan
 	var members []channels.ChainMember
 	byID := map[string]AIModel{}
 	for _, e := range a.List {
-		if e.eligible(t) {
+		if e.eligible(t, env) {
 			members = append(members, channels.ChainMember{ID: e.ID, LLM: e.llm(env, 30*time.Second)})
 			byID[e.ID] = e
 		}

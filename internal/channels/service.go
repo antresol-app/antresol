@@ -23,7 +23,7 @@ type Service struct {
 	LLM *LLM
 	// LLMSource, when set, is asked instead of LLM (the admin's «ИИ-помощник»
 	// settings over the environment's), for a task of that tier
-	LLMSource func(context.Context, Tier) *LLM
+	LLMSource func(context.Context, Feature, Tier) *LLM
 	Store     *Store
 	Builder   *Builder
 	Generator *Generator
@@ -85,7 +85,7 @@ func New(db *sql.DB, live *Live) *Service {
 	st := &Store{DB: db}
 	cat := Catalog{DB: db}
 	s := &Service{Store: st, Builder: &Builder{Store: st, Catalog: cat}, Generator: &Generator{Store: st, Catalog: cat}, Live: live, LLM: LLMFromEnv()}
-	s.Franchises = &Franchises{Store: st, Model: s.Model, Changed: s.refreshSoon}
+	s.Franchises = &Franchises{Store: st, Model: func(ctx context.Context) *LLM { return s.ModelFor(ctx, FeatureFranchises, TierMedium) }, Changed: s.refreshSoon}
 	if live != nil && live.Source == nil {
 		live.Source = s
 	}
@@ -101,12 +101,15 @@ func (s *Service) SetRoots(roots []Root) {
 
 // Model is the language model Suggest asks now (nil: none): the medium
 // tier (reading a sentence into filters).
-func (s *Service) Model(ctx context.Context) *LLM { return s.ModelFor(ctx, TierMedium) }
+func (s *Service) Model(ctx context.Context) *LLM {
+	return s.ModelFor(ctx, FeatureDescribe, TierMedium)
+}
 
-// ModelFor is the language model a task of tier t asks now (nil: none).
-func (s *Service) ModelFor(ctx context.Context, t Tier) *LLM {
+// ModelFor is the language model feature f's task of tier t asks now (nil:
+// none, or the feature is turned off).
+func (s *Service) ModelFor(ctx context.Context, f Feature, t Tier) *LLM {
 	if s.LLMSource != nil {
-		return s.LLMSource(ctx, t)
+		return s.LLMSource(ctx, f, t)
 	}
 	return s.LLM
 }

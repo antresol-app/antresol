@@ -46,6 +46,33 @@ const (
 	TierPowerful Tier = "powerful"
 )
 
+// Feature is one thing the admin's «ИИ-помощник» lets the server do with a
+// model (a language model, or the speech model of the transcripts); each is
+// listed on its page with a switch, on unless turned off. A task asks its
+// feature's model (Service.ModelFor): a feature that is off gets none, and
+// goes on as it does without a model.
+type Feature string
+
+const (
+	// FeatureDescribe: «Опишите канал» reads a sentence into a channel's rules.
+	FeatureDescribe Feature = "describe"
+	// FeatureFranchises: the library's franchises (their channels) are told apart.
+	FeatureFranchises Feature = "franchises"
+	// FeatureIPTVCategories: the external channels get categories and languages.
+	FeatureIPTVCategories Feature = "iptvCategories"
+	// FeatureIPTVVariants: look-alike entries of a playlist are judged one channel or two.
+	FeatureIPTVVariants Feature = "iptvVariants"
+	// FeatureBookNames: a book's names in other languages, the model the last resort.
+	FeatureBookNames Feature = "bookNames"
+	// FeatureChapters: an audiobook's chapters made of its transcript.
+	FeatureChapters Feature = "chapters"
+	// FeatureTranscripts: an audiobook's transcript by speech recognition (not a language model).
+	FeatureTranscripts Feature = "transcripts"
+)
+
+// Features are all of them, in the order the page lists them.
+var Features = []Feature{FeatureDescribe, FeatureFranchises, FeatureIPTVCategories, FeatureIPTVVariants, FeatureBookNames, FeatureChapters, FeatureTranscripts}
+
 // LLMFromEnv: VAULT_LLM_URL, VAULT_LLM_MODEL, VAULT_LLM_KEY,
 // VAULT_LLM_THREADS, VAULT_LLM_TIMEOUT (seconds); nil without a URL and model.
 func LLMFromEnv() *LLM {

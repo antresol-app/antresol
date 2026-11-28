@@ -105,7 +105,7 @@ type Service struct {
 	ScreenLimited func(ctx context.Context, userID int64) bool
 	// Model is the AI helper's model of a tier (categories.go: the light
 	// one); nil, or nil answered: no AI categories.
-	Model func(ctx context.Context, t channels.Tier) *channels.LLM
+	Model func(ctx context.Context, f channels.Feature, t channels.Tier) *channels.LLM
 
 	srcMu sync.Mutex // one playlist refresh at a time
 	epgMu sync.Mutex // one guide refresh at a time

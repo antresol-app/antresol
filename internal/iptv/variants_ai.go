@@ -640,7 +640,7 @@ func (s *Service) AskVariants(ctx context.Context) {
 		}
 		return
 	}
-	l := s.Model(ctx, channels.TierMedium)
+	l := s.Model(ctx, channels.FeatureIPTVVariants, channels.TierMedium)
 	if l == nil {
 		return
 	}

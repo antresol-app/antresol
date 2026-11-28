@@ -48,14 +48,18 @@ func TestCategorizeCachesByBaseName(t *testing.T) {
 	var calls atomic.Int32
 	l := fakeModel(t, &calls)
 	var tiers []channels.Tier
-	e.svc.Model = func(_ context.Context, tier channels.Tier) *channels.LLM { tiers = append(tiers, tier); return l }
+	var features []channels.Feature
+	e.svc.Model = func(_ context.Context, f channels.Feature, tier channels.Tier) *channels.LLM {
+		tiers, features = append(tiers, tier), append(features, f)
+		return l
+	}
 	e.p.put("/a.m3u", "#EXTM3U\n#EXTINF:-1 group-title=\"RU | Инфо\",Новости 24 HD\nhttp://a.example.test/1.m3u8\n"+
 		"#EXTINF:-1 group-title=\"Sport\",Sport One\nhttp://a.example.test/2.m3u8\n#EXTINF:-1,Другое\nhttp://a.example.test/3.m3u8\n")
 	src := e.source("A", "/a.m3u", nil)
 	e.refresh(src.ID)
 	e.svc.Categorize(ctx)
-	if calls.Load() != 1 || !slices.Equal(tiers, []channels.Tier{channels.TierLight}) {
-		t.Fatalf("calls %d tiers %v", calls.Load(), tiers)
+	if calls.Load() != 1 || !slices.Equal(tiers, []channels.Tier{channels.TierLight}) || !slices.Equal(features, []channels.Feature{channels.FeatureIPTVCategories}) {
+		t.Fatalf("calls %d tiers %v features %v", calls.Load(), tiers, features)
 	}
 	got := map[string]ExtChannel{}
 	for _, x := range e.visible(channels.Viewer{ID: e.user("v")}, 0) {
@@ -90,7 +94,7 @@ func TestCategorizeSkipsAdultGroups(t *testing.T) {
 	var calls atomic.Int32
 	l := fakeModel(t, &calls)
 	var asked []string
-	e.svc.Model = func(_ context.Context, _ channels.Tier) *channels.LLM { return l }
+	e.svc.Model = func(_ context.Context, _ channels.Feature, _ channels.Tier) *channels.LLM { return l }
 	e.p.put("/a.m3u", "#EXTM3U\n#EXTINF:-1 group-title=\"Взрослые\",Ночной\nhttp://a.example.test/1.m3u8\n"+
 		"#EXTINF:-1 group-title=\"Премиум\",Новости Плюс\nhttp://a.example.test/2.m3u8\n")
 	src := e.source("A", "/a.m3u", func(s *Source) { s.PresetAdult = false })
@@ -126,5 +130,38 @@ func TestCategorizeSkipsAdultGroups(t *testing.T) {
 		if x.Channel.Name == "Ночной" && (x.Adult || !x.NotAdult) || x.Channel.Name == "Новости Плюс" && !x.Adult {
 			t.Errorf("%s: adult %v not %v", x.Channel.Name, x.Adult, x.NotAdult)
 		}
+	}
+}
+
+// With the feature switched off the model source answers none for it: the
+// categories are not asked, the playlist still filters by its own groups.
+func TestCategorizeFeatureOff(t *testing.T) {
+	e := newSvcEnv(t)
+	ctx := context.Background()
+	var calls atomic.Int32
+	l := fakeModel(t, &calls)
+	off := map[channels.Feature]bool{channels.FeatureIPTVCategories: true}
+	e.svc.Model = func(_ context.Context, f channels.Feature, _ channels.Tier) *channels.LLM {
+		if off[f] {
+			return nil
+		}
+		return l
+	}
+	e.p.put("/a.m3u", "#EXTM3U\n#EXTINF:-1 group-title=\"RU | Инфо\",Новости 24 HD\nhttp://a.example.test/1.m3u8\n")
+	src := e.source("A", "/a.m3u", nil)
+	e.refresh(src.ID)
+	e.svc.Categorize(ctx)
+	if calls.Load() != 0 {
+		t.Fatalf("the model was asked %d times with the feature off", calls.Load())
+	}
+	got := e.visible(channels.Viewer{ID: e.user("v")}, 0)
+	x, ok := got[1]
+	if len(got) != 1 || !ok || len(x.AI.Cats) != 0 || !slices.Equal(x.Groups, []string{"RU | Инфо"}) {
+		t.Fatalf("channels %+v", got)
+	}
+	delete(off, channels.FeatureIPTVCategories)
+	e.svc.Categorize(ctx)
+	if calls.Load() != 1 {
+		t.Fatalf("on again: %d calls", calls.Load())
 	}
 }

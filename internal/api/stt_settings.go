@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/transcript"
 )
 
@@ -105,6 +106,11 @@ func SpeechSource(db *sql.DB, defaults AppSettings) func(context.Context) (trans
 			if ctx.Err() == nil {
 				log.Printf("api: speech settings: %v", err)
 			}
+			return transcript.Config{}, false
+		}
+		// the assistant off, or the transcripts switched off on its page: none,
+		// whatever the speech settings or the environment have
+		if app.AI.Off || !app.AI.featureOn(channels.FeatureTranscripts) {
 			return transcript.Config{}, false
 		}
 		switch app.STT.Provider {

@@ -33,9 +33,15 @@ import (
 // PUT without a list is read as them (merged), and answers carry the first
 // own model in them for one release, so a client that knows no list still
 // reads one model.
+//
+// Features switch what the assistant does, one by one (channels.Features):
+// the id is on unless it is false here (a missing id is on, so a feature
+// added later starts on). A feature that is off is never given a model
+// (llmSource, SpeechSource) and goes on as it does with none.
 type AISettings struct {
-	Off  bool      `json:"off,omitempty"`
-	List []AIModel `json:"list"`
+	Off      bool            `json:"off,omitempty"`
+	List     []AIModel       `json:"list"`
+	Features map[string]bool `json:"features,omitempty"`
 
 	// legacy: see above
 	URL    string   `json:"url"`
@@ -69,15 +75,25 @@ type AIModel struct {
 	// Env: the server's own model (VAULT_LLM_*): its address, model and key
 	// are the environment's, so the entry can be reordered and switched off
 	// but not changed or deleted (it comes back).
-	Env   bool   `json:"env,omitempty"`
-	URL   string `json:"url"`
+	Env bool   `json:"env,omitempty"`
+	URL string `json:"url"`
+	// Model: the server's own entry keeps the admin's choice among the
+	// endpoint's models here ("": the environment's VAULT_LLM_MODEL, which is
+	// only its default; answers carry the one in force).
 	Model string `json:"model"`
+	// ModelDefault (answers only, the server's own entry): the environment's
+	// model, the one the entry asks while none is chosen.
+	ModelDefault string `json:"modelDefault,omitempty"`
 	// Key is write-only: a request's empty one keeps the stored key of the
 	// same entry (while its address stays on the same host); answers never
 	// carry it, KeySet says there is one.
-	Key    string          `json:"key,omitempty"`
-	KeySet bool            `json:"keySet"`
-	Tiers  []channels.Tier `json:"tiers"`
+	Key    string `json:"key,omitempty"`
+	KeySet bool   `json:"keySet"`
+	// KeyFromEnv: an entry on the server's own address (a LiteLLM added from
+	// it) asks with the server's key (VAULT_LLM_KEY), which is never copied
+	// here. It holds only while the address stays on the server's host.
+	KeyFromEnv bool            `json:"keyFromEnv,omitempty"`
+	Tiers      []channels.Tier `json:"tiers"`
 	// Off: kept in the list, skipped («Выключена»).
 	Off bool `json:"off,omitempty"`
 	// Status is what the server last learned of the entry, by a check or a
@@ -131,7 +147,7 @@ func (a AISettings) asksTheSame(b AISettings) bool {
 		}
 		return list
 	}
-	return a.Off == b.Off && slices.EqualFunc(asked(a), asked(b), func(x, y AIModel) bool { return reflect.DeepEqual(x, y) })
+	return a.Off == b.Off && a.sameFeatures(b) && slices.EqualFunc(asked(a), asked(b), func(x, y AIModel) bool { return reflect.DeepEqual(x, y) })
 }
 
 // sameHost: both addresses name the same host and port.
@@ -302,7 +318,7 @@ func (a AISettings) resolved(env *channels.LLM) AISettings {
 				continue
 			}
 			hasEnv = true
-			e.ID, e.URL, e.Model, e.Key = aiEnvID, env.URL, env.Model, env.Key
+			e.ID, e.URL, e.Model, e.Key = aiEnvID, env.URL, e.modelOf(env), env.Key
 		}
 		list = append(list, e)
 	}
@@ -311,6 +327,32 @@ func (a AISettings) resolved(env *channels.LLM) AISettings {
 	}
 	a.List = list
 	return a
+}
+
+// modelOf: the model an own entry asks — the admin's choice, else the
+// environment's.
+func (e AIModel) modelOf(env *channels.LLM) string {
+	if m := strings.TrimSpace(e.Model); m != "" || env == nil {
+		return m
+	}
+	return env.Model
+}
+
+// key is the key an entry asks with: its own, or the server's (KeyFromEnv,
+// while the address is still the server's).
+func (e AIModel) key(env *channels.LLM) string {
+	if e.Env && env != nil {
+		return env.Key
+	}
+	if e.KeyFromEnv && env != nil && sameHost(e.URL, env.URL) {
+		return env.Key
+	}
+	return e.Key
+}
+
+// keyMissing: the provider wants a key and the entry has none.
+func (e AIModel) keyMissing(env *channels.LLM) bool {
+	return !e.Env && needsKey(e.URL) && e.key(env) == ""
 }
 
 // mirror: the first own model that is on, in the old shape, for a client
@@ -340,6 +382,9 @@ func (a AISettings) validate() string {
 	}
 	for _, e := range a.List {
 		if e.Env {
+			if utf8.RuneCountInString(e.Model) > 120 || strings.ContainsAny(e.Model, "\r\n") {
+				return "Слишком длинное название модели"
+			}
 			continue
 		}
 		switch {
@@ -369,9 +414,9 @@ func entryPrint(e AIModel, env *channels.LLM) string {
 		if env == nil {
 			return ""
 		}
-		return env.URL + "|" + env.Model + "|" + env.Key
+		return env.URL + "|" + e.modelOf(env) + "|" + env.Key
 	}
-	return e.URL + "|" + e.Model + "|" + e.Key
+	return e.URL + "|" + e.Model + "|" + e.key(env)
 }
 
 // cleanEntry is a client's entry as it is kept: trimmed, the tiers whole;
@@ -381,9 +426,14 @@ func entryPrint(e AIModel, env *channels.LLM) string {
 // stored one while the entry is as it was, and unchecked once it changed.
 func cleanEntry(e AIModel, stored *AIModel, env *channels.LLM) AIModel {
 	e.Tiers = normalizeTiers(e.Tiers)
-	e.KeySet = false
+	e.KeySet, e.ModelDefault = false, ""
 	if e.Env {
 		out := AIModel{ID: aiEnvID, Env: true, Tiers: e.Tiers, Off: e.Off}
+		// the choice is kept only when it is not the environment's own model
+		// (that one follows the environment)
+		if m := strings.TrimSpace(e.Model); env != nil && m != env.Model {
+			out.Model = m
+		}
 		if stored != nil && stored.Env {
 			out.Status = stored.Status
 		}
@@ -392,7 +442,8 @@ func cleanEntry(e AIModel, stored *AIModel, env *channels.LLM) AIModel {
 	e.URL = strings.TrimRight(strings.TrimSpace(e.URL), "/")
 	e.Model = strings.TrimSpace(e.Model)
 	e.Key = strings.TrimSpace(e.Key)
-	if e.Key == "" && stored != nil && !stored.Env && sameHost(e.URL, stored.URL) {
+	e.KeyFromEnv = e.KeyFromEnv && e.Key == "" && env != nil && sameHost(e.URL, env.URL)
+	if e.Key == "" && !e.KeyFromEnv && stored != nil && !stored.Env && sameHost(e.URL, stored.URL) {
 		e.Key = stored.Key
 	}
 	e.Status = AIStatus{}
@@ -414,7 +465,10 @@ func (a AISettings) merged(stored AISettings, env *channels.LLM) AISettings {
 	for i := range stored.List {
 		byID[stored.List[i].ID] = &stored.List[i]
 	}
-	out := AISettings{Off: a.Off}
+	out := AISettings{Off: a.Off, Features: stored.Features}
+	if a.Features != nil {
+		out.Features = cleanFeatures(a.Features)
+	}
 	switch {
 	case a.List != nil:
 		out.List = a.List
@@ -423,6 +477,9 @@ func (a AISettings) merged(stored AISettings, env *channels.LLM) AISettings {
 		a = a.withTiers()
 		if url, _, models := mirror(stored.List); a.URL == url && a.Models == models && strings.TrimSpace(a.Key) == "" {
 			stored.Off = false
+			if a.Features != nil {
+				stored.Features = out.Features
+			}
 			return stored
 		}
 		if a.Key = strings.TrimSpace(a.Key); a.Key == "" {

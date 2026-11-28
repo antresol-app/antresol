@@ -349,11 +349,11 @@ func TestAISettingsServerModel(t *testing.T) {
 		t.Fatalf("own first %+v", ai.List)
 	}
 	// reordered: the server's first
-	if w := putAI(t, e, map[string]any{"list": []any{map[string]any{"id": "env", "env": true, "url": "http://evil", "model": "evil"}, own}}); w.Code != 200 {
+	if w := putAI(t, e, map[string]any{"list": []any{map[string]any{"id": "env", "env": true, "url": "http://evil", "model": "chosen", "key": "evil"}, own}}); w.Code != 200 {
 		t.Fatal(w.Body)
 	}
-	if ai = getAI(t, e); !ai.List[0].Env || ai.List[0].URL != model.URL+"/v1" || ai.List[0].Model != "server-model" {
-		t.Fatalf("env first, still the environment's %+v", ai.List)
+	if ai = getAI(t, e); !ai.List[0].Env || ai.List[0].URL != model.URL+"/v1" || ai.List[0].Model != "chosen" {
+		t.Fatalf("env first: the address is still the environment's, the model is the one chosen %+v", ai.List)
 	}
 	// switched off: not asked, but listed
 	if w := putAI(t, e, map[string]any{"list": []any{map[string]any{"id": "env", "env": true, "off": true}}}); w.Code != 200 {
@@ -377,7 +377,7 @@ func TestAISettingsServerModel(t *testing.T) {
 	if ai = getAI(t, e); !ai.Off || len(ai.List) != 2 || available() {
 		t.Fatalf("off %+v available %v", ai, available())
 	}
-	if l := llmSource(e.db, AppSettings{}, channels.LLMFromEnv())(context.Background(), channels.TierMedium); l != nil {
+	if l := llmSource(e.db, AppSettings{}, channels.LLMFromEnv())(context.Background(), channels.FeatureDescribe, channels.TierMedium); l != nil {
 		t.Fatalf("off, yet a model: %+v", l)
 	}
 	// and the old shape's «Выключено» (a client of before the list)
@@ -415,7 +415,7 @@ func TestAISettingsNoKey(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"noKey"`) || !strings.Contains(w.Body.String(), `"ok":false`) {
 		t.Fatalf("check all %s", w.Body)
 	}
-	if l := llmSource(e.db, AppSettings{}, nil)(context.Background(), channels.TierMedium); l != nil {
+	if l := llmSource(e.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierMedium); l != nil {
 		t.Fatalf("an entry without its key is asked: %+v", l)
 	}
 	if w := putAI(t, e, map[string]any{"list": []any{map[string]any{"id": ai.List[0].ID, "url": "https://api.anthropic.com/v1", "model": "claude-opus-5-5", "key": "sk-ant-test"}}}); w.Code != 200 {
@@ -525,7 +525,7 @@ func (c *chainEnv) set(list ...AIModel) {
 func (c *chainEnv) advance(d time.Duration) { c.mu.Lock(); c.clock = c.clock.Add(d); c.mu.Unlock() }
 
 func (c *chainEnv) ask(tier channels.Tier) (string, error) {
-	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), tier)
+	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, tier)
 	if l == nil {
 		return "", context.Canceled
 	}
@@ -643,7 +643,7 @@ func TestAIChainCoolDown(t *testing.T) {
 		good := newScripted(t, always(200, goodJSON))
 		c := newChainEnv(t, AIModel{ID: "a", URL: slow.URL + "/v1", Model: "m", Tiers: normalizeTiers(nil)}, entry("b", good))
 		// the slow entry's one ask is cut after 50 ms
-		l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.TierMedium)
+		l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierMedium)
 		l.Chain.Members[0].LLM.Timeout = 50 * time.Millisecond
 		if got, err := l.AskJSON(context.Background(), "s", "u"); err != nil || got != goodJSON {
 			t.Fatalf("got %q, %v", got, err)
@@ -703,11 +703,11 @@ func TestAIChainBudgetAndEligibility(t *testing.T) {
 	if off.asked.Load() != 0 {
 		t.Fatal("a switched-off entry was asked")
 	}
-	if l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.TierPowerful); l == nil || l.Model != "m-x" {
+	if l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierPowerful); l == nil || l.Model != "m-x" {
 		t.Fatalf("powerful: %+v", l)
 	}
 	c.set(keyless, disabled)
-	if l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.TierMedium); l != nil {
+	if l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierMedium); l != nil {
 		t.Fatalf("nothing eligible, yet %+v", l)
 	}
 }
@@ -720,7 +720,7 @@ func TestAIChainCallerCancelled(t *testing.T) {
 	c := newChainEnv(t, AIModel{ID: "a", URL: slow.URL + "/v1", Model: "m", Tiers: normalizeTiers(nil)}, entry("b", good))
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.TierMedium)
+	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierMedium)
 	if _, err := l.AskJSON(ctx, "s", "u"); err == nil {
 		t.Fatal("cancelled, yet an answer")
 	}
@@ -776,7 +776,7 @@ func TestAIChainStatusWritesAreThrottled(t *testing.T) {
 func TestAIChainStatusKeepsToItsEntry(t *testing.T) {
 	good := newScripted(t, always(200, goodJSON))
 	c := newChainEnv(t, entry("a", good))
-	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.TierMedium)
+	l := llmSource(c.db, AppSettings{}, nil)(context.Background(), channels.FeatureDescribe, channels.TierMedium)
 	edited := entry("a", good)
 	edited.Model = "changed"
 	c.set(edited)

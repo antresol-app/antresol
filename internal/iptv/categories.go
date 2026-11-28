@@ -136,7 +136,7 @@ func (s *Service) Categorize(ctx context.Context) {
 	c.running = true
 	c.mu.Unlock()
 	defer func() { c.mu.Lock(); c.running = false; c.mu.Unlock() }()
-	l := s.Model(ctx, channels.TierLight)
+	l := s.Model(ctx, channels.FeatureIPTVCategories, channels.TierLight)
 	if l == nil {
 		return
 	}

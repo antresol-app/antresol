@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ func ListModels(ctx context.Context, client *http.Client, base, key string) ([]s
 	var path string
 	switch {
 	case l.anthropic():
-		path = anthropicBase(l.URL) + "/v1/models?limit=100"
+		path = anthropicBase(l.URL) + "/v1/models?limit=1000"
 	case l.openAI():
 		path = l.URL + "/models"
 	default:
@@ -69,8 +70,12 @@ func ListModels(ctx context.Context, client *http.Client, base, key string) ([]s
 	}
 	seen := map[string]bool{}
 	var names []string
+	own := ownList(l.URL)
 	add := func(n string) {
 		n = strings.TrimPrefix(strings.TrimSpace(n), "models/") // Gemini's layer names them so
+		if own && !chatModelID(n) {
+			return
+		}
 		if n != "" && !seen[n] && len(names) < maxListedModels {
 			seen[n] = true
 			names = append(names, n)
@@ -86,4 +91,35 @@ func ListModels(ctx context.Context, client *http.Client, base, key string) ([]s
 		sort.Strings(names)
 	}
 	return names, nil
+}
+
+// ownList: the address is of a big provider whose list holds every kind of
+// model (embeddings, speech, images, moderation) beside the chat ones — the
+// others (a LiteLLM's aliases, an Ollama's tags, OpenRouter's) are what
+// their admin put there and are listed whole.
+func ownList(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "api.openai.com", "api.groq.com", "generativelanguage.googleapis.com":
+		return true
+	}
+	return false
+}
+
+// notChat: a word in a model's id that says it does not answer chat
+// completions (OpenAI's embeddings, Whisper, TTS, DALL·E, moderation; Groq's
+// guard models; Gemini's imagen, veo, embedding and aqa).
+var notChat = []string{"embed", "whisper", "tts", "dall-e", "moderation", "transcribe", "imagen", "veo", "image", "sora", "aqa", "guard", "realtime", "codex", "davinci", "babbage", "search-preview"}
+
+func chatModelID(id string) bool {
+	l := strings.ToLower(id)
+	for _, w := range notChat {
+		if strings.Contains(l, w) {
+			return false
+		}
+	}
+	return true
 }

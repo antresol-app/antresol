@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/antresol-app/antresol/internal/api"
+	"github.com/antresol-app/antresol/internal/channels"
 	"github.com/antresol-app/antresol/internal/config"
 	"github.com/antresol-app/antresol/internal/library"
 	"github.com/antresol-app/antresol/internal/metadata"
@@ -17,6 +18,7 @@ import (
 	"github.com/antresol-app/antresol/internal/metadata/tmdb"
 	"github.com/antresol-app/antresol/internal/metadata/wikidata"
 	"github.com/antresol-app/antresol/internal/subtitles"
+	"github.com/antresol-app/antresol/internal/transcript"
 )
 
 // off disables a metadata source (VAULT_*_BASEURL=off).
@@ -145,4 +147,31 @@ func netTargets(cfg config.Config) []api.NetTarget {
 		out = append(out, api.NetTarget{ID: "opensubtitles", Name: "OpenSubtitles", URL: u})
 	}
 	return out
+}
+
+// modelSource is the AI helper's model of a feature and tier (nil: none, or
+// the feature is switched off on its page).
+type modelSource func(ctx context.Context, f channels.Feature, t channels.Tier) *channels.LLM
+
+// chaptersModel is the text model that makes an audiobook's chapters: the
+// medium tier of the «chapters» feature.
+func chaptersModel(model modelSource) func(context.Context) transcript.Asker {
+	return func(ctx context.Context) transcript.Asker {
+		l := model(ctx, channels.FeatureChapters, channels.TierMedium)
+		if l == nil {
+			return nil // never a typed nil in the interface
+		}
+		return l.Patient(transcript.ChapterTimeout)
+	}
+}
+
+// bookNamesModel is the model that finds a book's other names, the last
+// resort: the light tier of the «bookNames» feature.
+func bookNamesModel(model modelSource) func(context.Context) booknames.Asker {
+	return func(ctx context.Context) booknames.Asker {
+		if l := model(ctx, channels.FeatureBookNames, channels.TierLight); l != nil {
+			return l
+		}
+		return nil
+	}
 }

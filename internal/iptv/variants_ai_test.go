@@ -207,11 +207,27 @@ func TestVariantsAIOnARussianPlaylist(t *testing.T) {
 
 	vm := &variantModel{}
 	l := vm.serve(t)
-	var tiers []channels.Tier
-	e.svc.Model = func(_ context.Context, tier channels.Tier) *channels.LLM { tiers = append(tiers, tier); return l }
+	// the feature switched off: the source gives no model for it, and the
+	// rules stand though another feature's model is there
+	e.svc.Model = func(_ context.Context, f channels.Feature, _ channels.Tier) *channels.LLM {
+		if f == channels.FeatureIPTVVariants {
+			return nil
+		}
+		return l
+	}
 	e.svc.AskVariants(ctx)
-	if vm.calls() != 1 || !slices.Equal(tiers, []channels.Tier{channels.TierMedium}) {
-		t.Fatalf("calls %d tiers %v", vm.calls(), tiers)
+	if vm.calls() != 0 {
+		t.Fatalf("variants asked %d times with the feature off", vm.calls())
+	}
+	var tiers []channels.Tier
+	var features []channels.Feature
+	e.svc.Model = func(_ context.Context, f channels.Feature, tier channels.Tier) *channels.LLM {
+		tiers, features = append(tiers, tier), append(features, f)
+		return l
+	}
+	e.svc.AskVariants(ctx)
+	if vm.calls() != 1 || !slices.Equal(tiers, []channels.Tier{channels.TierMedium}) || !slices.Equal(features, []channels.Feature{channels.FeatureIPTVVariants}) {
+		t.Fatalf("calls %d tiers %v features %v", vm.calls(), tiers, features)
 	}
 	f, _ := json.Marshal(vm.format[0])
 	if !strings.Contains(string(f), `"type":"json_schema"`) || !strings.Contains(string(f), `"strict":true`) {
@@ -315,7 +331,7 @@ func TestVariantsAIFailures(t *testing.T) {
 	e.refresh(src.ID)
 	vm := &variantModel{fail: true}
 	l := vm.serve(t)
-	e.svc.Model = func(context.Context, channels.Tier) *channels.LLM { return l }
+	e.svc.Model = func(context.Context, channels.Feature, channels.Tier) *channels.LLM { return l }
 	e.svc.AskVariants(ctx)
 	e.svc.AskVariants(ctx)
 	if vm.calls() != 1 {
@@ -369,7 +385,7 @@ func TestAskVariantsReadsNoMembersWithoutAWork(t *testing.T) {
 	log.SetOutput(&logs)
 	defer log.SetOutput(os.Stderr)
 	asked := 0
-	e.svc.Model = func(context.Context, channels.Tier) *channels.LLM { asked++; return nil }
+	e.svc.Model = func(context.Context, channels.Feature, channels.Tier) *channels.LLM { asked++; return nil }
 
 	// no source asks for variants: no model asked, no members read, the old answers dropped
 	e.svc.AskVariants(ctx)

@@ -12,17 +12,18 @@ import (
 	"github.com/antresol-app/antresol/internal/channels"
 )
 
-// llmSource is the model a task of tier t asks now: the list's entries that
-// are on, serve the tier and have their key, first to last, as one
-// channels.Chain (nil: none — «Опишите канал» reads the words alone). The
+// llmSource is the model feature f's task of tier t asks now: the list's
+// entries that are on, serve the tier and have their key, first to last, as
+// one channels.Chain (nil: none — «Опишите канал» reads the words alone). The
 // server's own model (VAULT_LLM_*, env) is an entry of the list like the
-// others; «Выключено» (Off) is none, whatever the environment has.
-func llmSource(db *sql.DB, defaults AppSettings, env *channels.LLM) func(context.Context, channels.Tier) *channels.LLM {
+// others; «Выключено» (Off) is none, whatever the environment has, and so is
+// a feature the admin turned off.
+func llmSource(db *sql.DB, defaults AppSettings, env *channels.LLM) func(context.Context, channels.Feature, channels.Tier) *channels.LLM {
 	rt := aiRuntimeFor(db)
-	return func(ctx context.Context, t channels.Tier) *channels.LLM {
+	return func(ctx context.Context, f channels.Feature, t channels.Tier) *channels.LLM {
 		if db != nil {
 			if app, err := LoadAppSettings(ctx, db, defaults); err == nil {
-				if app.AI.Off {
+				if app.AI.Off || !app.AI.featureOn(f) {
 					return nil
 				}
 				return rt.chain(db, app.AI, env, t)
@@ -79,7 +80,12 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, r, http.StatusNotFound, "Модель не найдена")
 				return
 			}
+			// the server's address and key, the model as it is being chosen
+			chosen := e.Model
 			e = *byID[aiEnvID]
+			if chosen != "" {
+				e.Model = chosen
+			}
 		}
 		if msg := (AISettings{List: []AIModel{e}}).validate(); msg != "" {
 			writeErr(w, r, http.StatusBadRequest, msg)
@@ -89,7 +95,7 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, r, http.StatusBadRequest, "Укажите адрес модели")
 			return
 		}
-		if !e.Env && needsKey(e.URL) && e.Key == "" {
+		if e.keyMissing(env) {
 			writeErr(w, r, http.StatusBadRequest, "Нужен ключ API")
 			return
 		}
@@ -145,11 +151,13 @@ func (s *settingsAPI) testAI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "results": results})
 }
 
-// POST /api/settings/ai/models {url?, key?, id?}: the models an endpoint
-// lists (channels.ListModels; nothing is billed, nothing saved) —
+// POST /api/settings/ai/models {url?, key?, id?, serverKey?}: the models an
+// endpoint lists (channels.ListModels; nothing is billed, nothing saved) —
 // {models: [{id}], error?}. An empty key is the stored one of the entry with
 // that id (the server's own: the environment's) while the address stays on
-// the same host; no address is the entry's. A failing endpoint is an
+// the same host; no address is the entry's. serverKey: the server's own key
+// (VAULT_LLM_KEY), for an address on the server's host (a new entry from the
+// server's LiteLLM, which has no stored key to speak of yet). A failing endpoint is an
 // answer too: {models: [], error, kind, code} — the page then offers a
 // free-text name.
 func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +165,8 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 		URL string `json:"url"`
 		Key string `json:"key"`
 		ID  string `json:"id"`
+		// ServerKey: ask with the server's own key (an address on its host).
+		ServerKey bool `json:"serverKey"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -167,7 +177,8 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	base, key := strings.TrimRight(strings.TrimSpace(body.URL), "/"), strings.TrimSpace(body.Key)
-	for _, e := range stored.AI.resolved(channels.LLMFromEnv()).List {
+	env := channels.LLMFromEnv()
+	for _, e := range stored.AI.resolved(env).List {
 		if e.ID != body.ID {
 			continue
 		}
@@ -175,8 +186,11 @@ func (s *settingsAPI) modelsAI(w http.ResponseWriter, r *http.Request) {
 			base = e.URL
 		}
 		if key == "" && sameHost(base, e.URL) {
-			key = e.Key
+			key = e.key(env)
 		}
+	}
+	if key == "" && body.ServerKey && env != nil && sameHost(base, env.URL) {
+		key = env.Key
 	}
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
