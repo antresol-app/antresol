@@ -54,8 +54,13 @@
 .text + .control {
   margin-left: var(--s-3);
 }
-.row + .row {
+.row + .row,
+.row + .live + .row {
   border-top: 1px solid var(--separator);
+}
+/* a list's live region (SortableList flush) between two rows keeps them one group */
+.live {
+  list-style: none;
 }
 .leading {
   flex: none;
@@ -152,6 +157,9 @@
 .linkButton .label,
 .linkButton .hint {
   display: block;
+  /* a long host or model name breaks anywhere rather than take the room of
+     the value (a status) beside it */
+  overflow-wrap: anywhere;
 }
 /* The choice gives way: it is the last to have room, so a long one is cut
    by its ellipsis (never past the chevron), and the label beside it keeps
@@ -169,9 +177,42 @@
   font: var(--t-callout);
   color: var(--label-2);
 }
+/* A status value (valueTone): a dot in the tone before the words; only a
+   problem is coloured, as iOS does (Battery Health, Software Update) */
+.value[data-tone]::before {
+  content: '';
+  display: inline-block;
+  width: var(--s-2);
+  height: var(--s-2);
+  margin-right: var(--s-1h);
+  border-radius: var(--r-pill);
+  background: var(--status-dot);
+  vertical-align: 0.05em;
+}
+.value[data-tone='success'] {
+  --status-dot: var(--success);
+}
+.value[data-tone='neutral'] {
+  --status-dot: var(--label-3);
+}
+.value[data-tone='warning'] {
+  --status-dot: var(--warning);
+  color: var(--warning);
+}
+.value[data-tone='destructive'] {
+  --status-dot: var(--destructive);
+  color: var(--destructive-text);
+}
 .chevron {
   flex: none;
   color: var(--label-3);
+}
+/* ListSelectRow's tone: the action's word (not its hint) in the accent or the destructive red */
+.accent .linkButton .label {
+  color: var(--accent);
+}
+.destructive .linkButton .label {
+  color: var(--destructive-text);
 }
 /* ListSelectRow's check: the accent, as the glyph of the choice made */
 .check {

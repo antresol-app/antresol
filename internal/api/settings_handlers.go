@@ -172,9 +172,7 @@ func LoadAppSettings(ctx context.Context, conn *sql.DB, defaults AppSettings) (A
 	if !validSubtitleLangs(s.SubtitleLangs) {
 		s.SubtitleLangs = defaults.SubtitleLangs
 	}
-	if s.AI.URL != "" {
-		s.AI = s.AI.withTiers() // a row of one model, from before the tiers
-	}
+	s.AI = s.AI.migrated() // a row of one endpoint, from before the list
 	return s, nil
 }
 
@@ -322,6 +320,7 @@ func mountSettings(r chi.Router, s *settingsAPI) {
 		r.Get("/api/settings", s.get)
 		r.Put("/api/settings", s.put)
 		r.Post("/api/settings/ai/test", s.testAI)
+		r.Post("/api/settings/ai/models", s.modelsAI)
 	})
 }
 
@@ -338,9 +337,12 @@ func (s *settingsAPI) load(ctx context.Context) (settingsView, error) {
 	v.MailPasswordSet = app.Mail.Password != ""
 	v.Mail = app.Mail.normalized()
 	v.Mail.Password = ""
-	v.AIKeySet = app.AI.Key != ""
-	v.AI.Key = ""
-	if env := channels.LLMFromEnv(); env != nil {
+	env := channels.LLMFromEnv()
+	v.AI = aiRuntimeFor(s.db).view(app.AI, env)
+	for _, e := range v.AI.List {
+		v.AIKeySet = v.AIKeySet || (e.KeySet && !e.Env)
+	}
+	if env != nil {
 		v.AIFromEnv = env.Model
 	}
 	if s.accel != nil {
@@ -429,6 +431,7 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	v.Languages = stored.LanguagesOrDefault()
 	v.Studios = cur.Studios
 	v.keepFull(cur)
+	v.AI = AISettings{} // a PUT without «ИИ-помощник» keeps the stored one (below)
 	if !decode(w, r, &v) {
 		return
 	}
@@ -442,8 +445,13 @@ func (s *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	if v.Mail.Username == "" {
 		v.Mail.Password = ""
 	}
-	// the same for the AI key; no address means no model, and no key left
-	v.AI = v.AI.merged(stored.AI)
+	// the list as the client sent it, each entry's key kept (the same entry,
+	// the same host) when the field came empty
+	if v.AI.isZero() {
+		v.AI = stored.AI
+	} else {
+		v.AI = v.AI.merged(stored.AI, channels.LLMFromEnv())
+	}
 	if msg := v.validate(); msg != "" {
 		writeErr(w, r, http.StatusBadRequest, msg)
 		return

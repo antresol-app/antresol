@@ -327,6 +327,12 @@ export function Gallery() {
           <ListLinkRow label="Избранное" value="12" to="/dev/gallery" />
           <ListLinkRow label="Без иконки" value="Включены" onOpen={() => {}} />
         </GroupedSection>
+        <GroupedSection title="valueTone" footer="A status as the value: a dot in the tone before the words; only a problem's words are coloured, as iOS does.">
+          <ListLinkRow label="gemini-flash-lite" hint="LiteLLM · litellm:4000" value="420 мс" valueTone="success" onOpen={() => {}} />
+          <ListLinkRow label="claude-haiku-5-5" hint="Anthropic · api.anthropic.com" value="Нет ключа" valueTone="warning" onOpen={() => {}} />
+          <ListLinkRow label="openai/gpt-oss-120b" hint="Groq · api.groq.com" value="Ошибка 401" valueTone="destructive" onOpen={() => {}} />
+          <ListLinkRow label="local-gemma" hint="Ollama · localhost:11434" value="Не проверена" valueTone="neutral" onOpen={() => {}} />
+        </GroupedSection>
       </Section>
 
       <Section title="GroupedSection · ListRow" note="The System Settings list. Every control sits on the trailing edge of its row; stack/wide put it under the text.">
@@ -412,6 +418,20 @@ export function Gallery() {
               empty="Пусто — добавьте что-нибудь"
             />
           </ListRow>
+        </GroupedSection>
+        <GroupedSection title="flush" footer="The rows of the group itself, as iOS's edit mode turns a settings list into edit rows: the red − leads, ≡ ends the row. No inset list, no wrapper; a row that cannot go (canRemove) has no −. The group's other rows stay as they are.">
+          <SortableList
+            flush
+            label="Модели"
+            items={sorted}
+            getKey={(x) => x.key}
+            itemLabel={(x) => x.title}
+            renderItem={(x) => <SortableRowText title={x.title} detail={x.detail} />}
+            onChange={setSorted}
+            removable
+            canRemove={(x) => x.key !== sorted[0]?.key}
+          />
+          <ListSelectRow tone="accent" label="Добавить…" onSelect={() => {}} />
         </GroupedSection>
       </Section>
 
@@ -819,6 +839,10 @@ export function Gallery() {
             <ListSelectRow key={v} label={label} hint={hint} selected={source === v} disabled={v === 'off'} onSelect={() => setSource(v!)} />
           ))}
           <ListSelectRow label="Другой источник…" onSelect={() => setToast('Другой источник')} />
+        </GroupedSection>
+        <GroupedSection title="tone" footer="An action's word in the accent (Add, Check) or the destructive red (Delete); the hint keeps its colour.">
+          <ListSelectRow tone="accent" label="Проверить все" hint="Каждой включённой модели задаётся короткий вопрос." onSelect={() => {}} />
+          <ListSelectRow tone="destructive" label="Удалить" onSelect={() => {}} />
         </GroupedSection>
       </Section>
 

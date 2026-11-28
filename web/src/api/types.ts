@@ -830,10 +830,9 @@ export interface Settings {
   mail?: MailSettings
   /** A mail password is stored (response only). */
   mailPasswordSet?: boolean
-  /** «ИИ-помощник»: the model «Опишите канал» asks (the key is write-only). */
+  /** «ИИ-помощник»: the models the AI tasks ask (the keys are write-only). */
   ai?: AISettings
-  aiKeySet?: boolean
-  /** The server has its own model (VAULT_LLM_*): «Сервер — модель», used while no address is set here and AI is not off. */
+  /** The server has its own model (VAULT_LLM_*): its entry of the list, «Сервер». */
   aiFromEnv?: string
   /** What transcodes video now («Перекодирование»'s summary; response only). */
   transcodingName?: string
@@ -982,7 +981,7 @@ export interface NetCheck {
   error?: string
 }
 
-/** «ИИ-помощник»'s models by weight: each AI task asks the tier that fits it. */
+/** «ИИ-помощник»'s models by weight (the one-endpoint shape of before the list: a provider's defaults). */
 export interface AIModels {
   /** Quick and cheap, many small calls (naming channel categories). */
   light: string
@@ -992,14 +991,55 @@ export interface AIModels {
   powerful: string
 }
 
-export interface AISettings {
+/** The weights of task a model may serve. */
+export type AITier = 'light' | 'medium' | 'powerful'
+
+/** The last outcome of asking a model, by a check or a real task. */
+export interface AIStatus {
+  /** noKey, off: computed by the server. */
+  state: 'ok' | 'error' | 'noKey' | 'unchecked' | 'off'
+  ms?: number
+  /** An error's sort (timeout, network, http, answer, key, other) and, for http, the code. */
+  kind?: string
+  code?: number
+  /** The provider's own words. */
+  error?: string
+  at?: string
+  source?: 'check' | 'task'
+}
+
+/** One entry of «ИИ-помощник»'s list: the first that answers wins, a failure goes on to the next. */
+export interface AIModel {
+  /** The server's: empty for a new entry. */
+  id: string
+  /** The server's own model (VAULT_LLM_*): its address, model and key are the environment's. */
+  env?: boolean
   url: string
-  /** The medium tier (for a server that knows one model only). */
   model: string
-  models?: AIModels
+  /** Write-only: empty keeps the stored one of this entry (on the same host). */
   key?: string
+  /** A key is stored (response only). */
+  keySet?: boolean
+  tiers: AITier[]
+  /** Kept in the list, skipped. */
+  off?: boolean
+  status?: AIStatus
+}
+
+export interface AISettings {
   /** «Выключено»: no model is asked, the server's own (VAULT_LLM_*) included. */
   off?: boolean
+  /** The models, in priority order. */
+  list: AIModel[]
+}
+
+/** POST /api/settings/ai/test: one entry's check. */
+export interface AICheck {
+  id: string
+  ok: boolean
+  ms: number
+  reply?: string
+  status: AIStatus
 }
 
 export interface MailSettings {

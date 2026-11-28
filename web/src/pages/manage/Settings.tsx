@@ -8,7 +8,7 @@
 import { APP_NAME } from '../../brand'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getLibraryStatus, getSettings, saveSettings, scanLibrary, errorText } from '../../api/client'
-import type { LangCode, LibraryStatus, MailSettings, Settings as Values } from '../../api/types'
+import type { AISettings as AI, LangCode, LibraryStatus, MailSettings, Settings as Values } from '../../api/types'
 import { Button } from '../../ui/Button'
 import { Sheet } from '../../ui/Sheet'
 import { langChoices, langLabel } from '../../components/langs'
@@ -24,7 +24,7 @@ import { Navigate, useNavigate, useParams } from 'react-router'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
-import { AISettingsSection } from './AISettings'
+import { AISettingsSection, aiEditable } from './AISettings'
 import { ExternalServicesSection } from './ExternalServicesSettings'
 import { PublicAddressSection } from './PublicAddressSettings'
 import { StorageSection } from './StorageSettings'
@@ -80,8 +80,11 @@ export function Settings() {
   const timer = useRef<number | undefined>(undefined)
   const latest = useRef<Values | null>(null)
   const pending = useRef(false)
+  // «ИИ-помощник»'s «Изменить»: its rows are edit rows
+  const [aiEdit, setAIEdit] = useState(false)
   const t = useT()
   const group = useParams().group as SettingsGroup | undefined
+  useEffect(() => setAIEdit(false), [group])
   const compact = useIsCompact()
 
   useEffect(() => {
@@ -97,9 +100,10 @@ export function Settings() {
     return () => ac.abort()
   }, [])
 
-  const flush = useCallback(async () => {
+  /** Saves what `latest` holds; the server's answer, or undefined (the error is shown). */
+  const flush = useCallback(async (): Promise<Values | undefined> => {
     const v = latest.current
-    if (!v) return
+    if (!v) return undefined
     setSaved('saving')
     try {
       const out = await saveSettings(v)
@@ -110,9 +114,11 @@ export function Settings() {
         latest.current = out
         setValues(out)
       }
+      return out
     } catch (e) {
       setSaved('')
       setError(errorText(e, t('settings.saveFailed')))
+      return undefined
     }
   }, [])
 
@@ -127,6 +133,20 @@ export function Settings() {
       pending.current = false
       void flush()
     }, wait)
+  }
+  /** «ИИ-помощник» changed by a sheet that waits for the answer: saved now, the server's «ИИ-помощник» back (new entries have their ids); throws when refused. */
+  const saveAI = async (ai: AI): Promise<AI> => {
+    if (!latest.current) throw new Error(t('settings.saveFailed'))
+    latest.current = { ...latest.current, ai }
+    window.clearTimeout(timer.current)
+    pending.current = false
+    const out = await saveSettings(latest.current)
+    setError('')
+    setSaved('saved')
+    latest.current = { ...out }
+    setValues(out)
+    if (!out.ai) throw new Error(t('settings.saveFailed'))
+    return out.ai
   }
   // leaving with a change still waiting (a number field's pause): send it
   useEffect(
@@ -173,6 +193,13 @@ export function Settings() {
         <h2 id="settings-title" className={m.title}>
           {t(current.label)}
         </h2>
+        {at('ai') && aiEditable(values.ai) && (
+          <div className={m.headerActions}>
+            <Button variant="plain" size="small" onClick={() => setAIEdit(!aiEdit)}>
+              {aiEdit ? t('common.done') : t('settings.ai.edit')}
+            </Button>
+          </div>
+        )}
       </header>
       {error && (
         <div className={m.problem} role="alert">
@@ -320,7 +347,7 @@ export function Settings() {
         </GroupedSection>
       )}
 
-      {at('ai') && <AISettingsSection ai={values.ai} keySet={values.aiKeySet ?? false} fromEnv={values.aiFromEnv} onChange={(ai) => change({ ai })} />}
+      {at('ai') && <AISettingsSection ai={values.ai} edit={aiEdit && aiEditable(values.ai)} onChange={(ai) => change({ ai })} onSave={saveAI} />}
 
       {at('processing') && <VocleanSection />}
 

@@ -105,8 +105,8 @@ import type {
   SubtitleResult,
   TitleEpisodes,
   User,
-  AISettings,
-  AIModels,
+  AICheck,
+  AIModel,
 } from './types'
 
 import { getLanguage, t } from '../i18n'
@@ -559,7 +559,11 @@ export const getNetworkHealth = (signal?: AbortSignal) => request<NetCheck[]>('G
 export const getVoclean = (signal?: AbortSignal) => request<VocleanStatus>('GET', '/api/admin/voclean', undefined, signal)
 export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => request<VocleanStatus>('POST', '/api/admin/voclean/backfill', b)
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
-export const testAISettings = (ai: AISettings) => request<{ ok: boolean; ms: number; reply?: string; error?: string; tiers?: { tier: keyof AIModels; model: string; ok: boolean; ms: number; reply?: string; error?: string }[] }>('POST', '/api/settings/ai/test', ai)
+/** Asks the entries (ids; none: every one that is on) or a draft one that is not saved; the statuses are stored. */
+export const testAIModels = (body: { ids?: string[]; entry?: AIModel }) => request<{ ok: boolean; results: AICheck[] }>('POST', '/api/settings/ai/test', body)
+/** The models an endpoint lists (nothing is billed or saved): an empty key is the stored one of entry `id`. */
+export const listAIModels = (body: { url?: string; key?: string; id?: string }, signal?: AbortSignal) =>
+  request<{ models: { id: string }[]; error?: string; kind?: string; code?: number }>('POST', '/api/settings/ai/models', body, signal)
 
 // Subtitles (admin): OpenSubtitles search for one video file.
 export const searchSubtitles = (fileId: number, lang: 'ru' | 'en', signal?: AbortSignal) =>

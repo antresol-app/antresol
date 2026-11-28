@@ -12,12 +12,18 @@
 //     row's «⋯», so the content keeps the width.
 // RankedList (languages, studios) and the channel editor's «Состав канала»
 // are built on it.
+//   - `flush`: no list of its own — the rows are the rows of the
+//     GroupedSection around it, as iOS's edit mode turns a settings list
+//     into edit rows: the red − at the leading edge, the content, ≡ at the
+//     trailing edge (the other rows of the group stay as they are; a row
+//     that cannot go keeps the − slot empty, so the texts stay in one column).
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Icon } from '../components/Icon'
 import { useT } from '../i18n'
 import { useIsCompact } from '../state/useMediaQuery'
 import { IconButton } from './IconButton'
 import { Menu, MenuItem, MenuSeparator } from './Menu'
+import list from './List.module.css'
 import styles from './SortableList.module.css'
 
 export interface SortableListProps<T> {
@@ -37,12 +43,16 @@ export interface SortableListProps<T> {
   removable?: boolean
   /** These many rows always stay (their remove button is off). */
   min?: number
+  /** An item that cannot be removed (the server's own model): its remove button is off. */
+  canRemove?: (item: T) => boolean
   /** «Выше» / «Ниже» buttons in each row (in its «⋯» on a phone). */
   moveButtons?: boolean
   /** Shown in place of an empty list. */
   empty?: ReactNode
   /** Where the focus goes when the last row is removed. */
   focusWhenEmpty?: () => HTMLElement | null
+  /** The rows are the surrounding GroupedSection's own (no inset list, no wrapper): iOS's edit rows. */
+  flush?: boolean
   className?: string
 }
 
@@ -113,15 +123,18 @@ export function SortableList<T>({
   labelledBy,
   removable,
   min = 0,
+  canRemove: removableItem,
   moveButtons,
   empty,
   focusWhenEmpty,
+  flush,
   className,
 }: SortableListProps<T>) {
   const t = useT()
   const id = useId()
   const compact = useIsCompact()
-  const listRef = useRef<HTMLOListElement>(null)
+  // the list (flush: the group the rows sit in)
+  const listRef = useRef<HTMLElement | null>(null)
   const [drag, setDragState] = useState<Drag | null>(null)
   const dragRef = useRef<Drag | null>(null)
   const setDrag = (d: Drag | null) => {
@@ -205,7 +218,7 @@ export function SortableList<T>({
     if (e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    const rects = [...(listRef.current?.querySelectorAll<HTMLLIElement>(':scope > li') ?? [])].map((li) => li.getBoundingClientRect())
+    const rects = [...(listRef.current?.querySelectorAll<HTMLLIElement>(':scope > li[data-value]') ?? [])].map((li) => li.getBoundingClientRect())
     const s = scrollerOf(listRef.current)
     scroller.current = s
     lastY.current = e.clientY
@@ -260,117 +273,146 @@ export function SortableList<T>({
 
   const inMenu = moveButtons && compact
 
+  const rows = items.map((item, i) => {
+    const k = keys[i]!
+    const n = itemLabel(item)
+    const dy = drag ? slide(drag, i) : 0
+    const canRemove = items.length > min && (removableItem?.(item) ?? true)
+    // flush rows: the remove button leads, as iOS's edit mode; a row that cannot go has none
+    const removeButton = removable && !inMenu && (!flush || canRemove) && (
+      <IconButton
+        variant="plain"
+        size="xs"
+        icon="minusCircle"
+        className={styles.remove}
+        data-role="remove"
+        label={t('comp.sortable.remove', { name: n })}
+        disabled={!canRemove}
+        onClick={() => remove(i)}
+      />
+    )
+    return (
+      <li
+        key={k}
+        className={flush ? styles.flushRow : styles.row}
+        ref={(el) => {
+          if (flush && el) listRef.current = el.parentElement
+        }}
+        data-value={k}
+        data-dragging={drag?.key === k || undefined}
+        data-sliding={(drag && drag.key !== k) || undefined}
+        style={dy ? { transform: `translateY(${dy}px)` } : undefined}
+      >
+        {flush && removable && !inMenu && (removeButton || <span className={styles.removeSlot} aria-hidden />)}
+        <div className={styles.content}>{renderItem(item, i)}</div>
+        <span id={`${id}-${i}`} className="visually-hidden">
+          {t('comp.sortable.position', { n: i + 1, count: items.length })}
+        </span>
+        {moveButtons && !inMenu && (
+          <>
+            <IconButton
+              variant="plain"
+              size="xs"
+              icon="chevronUp"
+              data-role="up"
+              label={t('comp.sortable.up', { name: n })}
+              tooltip={t('comp.sortable.upShort')}
+              disabled={i === 0}
+              onClick={() => move(i, i - 1, 'up')}
+            />
+            <IconButton
+              variant="plain"
+              size="xs"
+              icon="chevronDown"
+              data-role="down"
+              label={t('comp.sortable.down', { name: n })}
+              tooltip={t('comp.sortable.downShort')}
+              disabled={i === items.length - 1}
+              onClick={() => move(i, i + 1, 'down')}
+            />
+          </>
+        )}
+        {!flush && removeButton}
+        {inMenu && (
+          <Menu
+            label={n}
+            placement="bottom-end"
+            trigger={(p) => <IconButton {...p} variant="plain" size="xs" icon="ellipsis" data-role="remove" label={t('comp.sortable.actions', { name: n })} />}
+          >
+            {(close) => (
+              <>
+                <MenuItem icon={<Icon name="arrowUp" size={16} />} label={t('comp.sortable.upShort')} disabled={i === 0} onSelect={() => (close(false), move(i, i - 1, 'remove'))} />
+                <MenuItem
+                  icon={<Icon name="arrowDown" size={16} />}
+                  label={t('comp.sortable.downShort')}
+                  disabled={i === items.length - 1}
+                  onSelect={() => (close(false), move(i, i + 1, 'remove'))}
+                />
+                {removable && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem destructive icon={<Icon name="trash" size={16} />} label={t('comp.sortable.removeShort')} disabled={!canRemove} onSelect={() => (close(false), remove(i))} />
+                  </>
+                )}
+              </>
+            )}
+          </Menu>
+        )}
+        <IconButton
+          variant="plain"
+          size="xs"
+          icon="grip"
+          className={styles.handle}
+          data-role="move"
+          label={t('comp.sortable.move', { name: n })}
+          aria-describedby={`${id}-${i}`}
+          tooltip={t('comp.sortable.moveHint')}
+          onKeyDown={(e) => onHandleKey(e, i)}
+          onPointerDown={(e) => onPointerDown(e, i)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={cancel}
+          // the capture lost some other way (the node went away, the
+          // browser took the gesture): no drop, the row goes back
+          onLostPointerCapture={cancel}
+        />
+      </li>
+    )
+  })
+
+  const status = (
+    <span role="status" className="visually-hidden">
+      {said}
+    </span>
+  )
+
+  if (flush) {
+    // the group's own rows; the live region is a row too (a list holds nothing else)
+    return (
+      <>
+        <li className={`visually-hidden ${list.live}`}>{status}</li>
+        {rows}
+      </>
+    )
+  }
   return (
     <div className={[styles.box, className].filter(Boolean).join(' ')}>
       {items.length > 0 ? (
-        <ol className={styles.list} aria-label={label} aria-labelledby={labelledBy} ref={listRef} data-dragging={dragging || undefined}>
-          {items.map((item, i) => {
-            const k = keys[i]!
-            const n = itemLabel(item)
-            const dy = drag ? slide(drag, i) : 0
-            const canRemove = items.length > min
-            return (
-              <li
-                key={k}
-                className={styles.row}
-                data-value={k}
-                data-dragging={drag?.key === k || undefined}
-                data-sliding={(drag && drag.key !== k) || undefined}
-                style={dy ? { transform: `translateY(${dy}px)` } : undefined}
-              >
-                <div className={styles.content}>{renderItem(item, i)}</div>
-                <span id={`${id}-${i}`} className="visually-hidden">
-                  {t('comp.sortable.position', { n: i + 1, count: items.length })}
-                </span>
-                {moveButtons && !inMenu && (
-                  <>
-                    <IconButton
-                      variant="plain"
-                      size="xs"
-                      icon="chevronUp"
-                      data-role="up"
-                      label={t('comp.sortable.up', { name: n })}
-                      tooltip={t('comp.sortable.upShort')}
-                      disabled={i === 0}
-                      onClick={() => move(i, i - 1, 'up')}
-                    />
-                    <IconButton
-                      variant="plain"
-                      size="xs"
-                      icon="chevronDown"
-                      data-role="down"
-                      label={t('comp.sortable.down', { name: n })}
-                      tooltip={t('comp.sortable.downShort')}
-                      disabled={i === items.length - 1}
-                      onClick={() => move(i, i + 1, 'down')}
-                    />
-                  </>
-                )}
-                {removable && !inMenu && (
-                  <IconButton
-                    variant="plain"
-                    size="xs"
-                    icon="minusCircle"
-                    className={styles.remove}
-                    data-role="remove"
-                    label={t('comp.sortable.remove', { name: n })}
-                    disabled={!canRemove}
-                    onClick={() => remove(i)}
-                  />
-                )}
-                {inMenu && (
-                  <Menu
-                    label={n}
-                    placement="bottom-end"
-                    trigger={(p) => <IconButton {...p} variant="plain" size="xs" icon="ellipsis" data-role="remove" label={t('comp.sortable.actions', { name: n })} />}
-                  >
-                    {(close) => (
-                      <>
-                        <MenuItem icon={<Icon name="arrowUp" size={16} />} label={t('comp.sortable.upShort')} disabled={i === 0} onSelect={() => (close(false), move(i, i - 1, 'remove'))} />
-                        <MenuItem
-                          icon={<Icon name="arrowDown" size={16} />}
-                          label={t('comp.sortable.downShort')}
-                          disabled={i === items.length - 1}
-                          onSelect={() => (close(false), move(i, i + 1, 'remove'))}
-                        />
-                        {removable && (
-                          <>
-                            <MenuSeparator />
-                            <MenuItem destructive icon={<Icon name="trash" size={16} />} label={t('comp.sortable.removeShort')} disabled={!canRemove} onSelect={() => (close(false), remove(i))} />
-                          </>
-                        )}
-                      </>
-                    )}
-                  </Menu>
-                )}
-                <IconButton
-                  variant="plain"
-                  size="xs"
-                  icon="grip"
-                  className={styles.handle}
-                  data-role="move"
-                  label={t('comp.sortable.move', { name: n })}
-                  aria-describedby={`${id}-${i}`}
-                  tooltip={t('comp.sortable.moveHint')}
-                  onKeyDown={(e) => onHandleKey(e, i)}
-                  onPointerDown={(e) => onPointerDown(e, i)}
-                  onPointerMove={onPointerMove}
-                  onPointerUp={onPointerUp}
-                  onPointerCancel={cancel}
-                  // the capture lost some other way (the node went away, the
-                  // browser took the gesture): no drop, the row goes back
-                  onLostPointerCapture={cancel}
-                />
-              </li>
-            )
-          })}
+        <ol
+          className={styles.list}
+          aria-label={label}
+          aria-labelledby={labelledBy}
+          ref={(el) => {
+            listRef.current = el
+          }}
+          data-dragging={dragging || undefined}
+        >
+          {rows}
         </ol>
       ) : (
         empty && <div className={styles.empty}>{empty}</div>
       )}
-      <span role="status" className="visually-hidden">
-        {said}
-      </span>
+      {status}
     </div>
   )
 }

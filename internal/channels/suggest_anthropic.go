@@ -52,7 +52,7 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string, schem
 	// ANTHROPIC_CUSTOM_HEADERS and ANTHROPIC_BASE_URL of the environment.
 	key := strings.TrimSpace(l.Key)
 	if key == "" {
-		return "", errors.New("llm: an API key is required for the Anthropic API")
+		return "", errNoKey
 	}
 	opts := []option.RequestOption{option.WithoutEnvironmentDefaults(), option.WithAPIKey(key), option.WithBaseURL(anthropicBase(l.URL))}
 	if l.Client != nil {
@@ -91,7 +91,7 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string, schem
 			if json.Unmarshal([]byte(detail), &body) == nil && body.Error.Message != "" {
 				detail = body.Error.Message // the provider's own words, not its JSON
 			}
-			return "", fmt.Errorf("llm: %d %s", apiErr.StatusCode, clipRunes(detail, 200, "…"))
+			return "", httpStatusErr{code: apiErr.StatusCode, text: fmt.Sprintf("llm: %d %s", apiErr.StatusCode, clipRunes(detail, 200, "…"))}
 		}
 		return "", fmt.Errorf("llm: %w", err)
 	}
@@ -108,7 +108,7 @@ func (l *LLM) chatAnthropic(ctx context.Context, msgs []map[string]string, schem
 		}
 	}
 	if strings.TrimSpace(text.String()) == "" {
-		return "", errors.New("llm: empty answer")
+		return "", errEmptyAnswer
 	}
 	return text.String(), nil
 }

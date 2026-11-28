@@ -8,6 +8,12 @@ import { t } from '../../i18n'
 /** The languages a server has before its admin chooses. */
 export const DEFAULT_LANGS = ['ru', 'en'] as const
 
+/** «ИИ-помощник»: the first model that is on, or «Выключено» (the assistant off, or no model to ask). */
+function aiSummary(v: Values): string {
+  const first = v.ai?.off ? undefined : v.ai?.list.find((e) => !e.off && e.status?.state !== 'noKey')
+  return first ? first.model : t('settings.summary.offAI')
+}
+
 /** `group`: a screen's id (library, watching, …); '' for one without a summary. */
 export function settingsSummary(group: string, v: Values): string {
   switch (group) {
@@ -24,8 +30,7 @@ export function settingsSummary(group: string, v: Values): string {
     case 'processing':
       return v.transcodingName === 'software' ? t('settings.summary.cpu') : (v.transcodingName ?? '')
     case 'ai':
-      if (v.ai?.url) return v.ai.model
-      return v.ai?.off || !v.aiFromEnv ? t('settings.summary.offAI') : v.aiFromEnv
+      return aiSummary(v)
     default:
       return ''
   }

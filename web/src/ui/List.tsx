@@ -78,6 +78,9 @@ export interface ListLinkRowProps {
   hint?: ReactNode
   /** The current choice, dimmed before the chevron («Включены», «2»). */
   value?: ReactNode
+  /** The value is a status: a dot in the tone before it, and the tone for a problem's words
+   * (success: a dot and the dimmed word; neutral: a grey dot; warning, destructive: the dot and the word). */
+  valueTone?: 'success' | 'neutral' | 'warning' | 'destructive'
   /** A white glyph on a coloured tile before the text, as System Settings has (ui/SettingsIcon). */
   icon?: SettingsGlyph
   /** The tile's colour, a palette name. */
@@ -90,7 +93,7 @@ export interface ListLinkRowProps {
   className?: string
 }
 
-export function ListLinkRow({ label, hint, value, icon, tint, leading, onOpen, to, className }: ListLinkRowProps) {
+export function ListLinkRow({ label, hint, value, valueTone, icon, tint, leading, onOpen, to, className }: ListLinkRowProps) {
   const inner = (
     <>
       {icon ? <SettingsIcon glyph={icon} tint={tint ?? 'gray'} /> : leading}
@@ -98,7 +101,11 @@ export function ListLinkRow({ label, hint, value, icon, tint, leading, onOpen, t
         <span className={styles.label}>{label}</span>
         {hint && <span className={styles.hint}>{hint}</span>}
       </span>
-      {value != null && value !== '' && <span className={styles.value}>{value}</span>}
+      {value != null && value !== '' && (
+        <span className={styles.value} data-tone={valueTone}>
+          {value}
+        </span>
+      )}
       <Icon name="chevronRight" size={16} className={styles.chevron} />
     </>
   )
@@ -127,13 +134,15 @@ export interface ListSelectRowProps {
    * Leave it out for a row that only acts («Другой источник…»), which has no check. */
   selected?: boolean
   disabled?: boolean
+  /** An action row's word, as Settings has them: «Добавить модель…», «Проверить» (accent), «Удалить» (destructive). */
+  tone?: 'accent' | 'destructive'
   onSelect: () => void
   className?: string
 }
 
-export function ListSelectRow({ label, hint, leading, selected, disabled, onSelect, className }: ListSelectRowProps) {
+export function ListSelectRow({ label, hint, leading, selected, disabled, tone, onSelect, className }: ListSelectRowProps) {
   return (
-    <li className={[styles.row, styles.link, className].filter(Boolean).join(' ')}>
+    <li className={[styles.row, styles.link, tone ? styles[tone] : '', className].filter(Boolean).join(' ')}>
       <button type="button" className={styles.linkButton} aria-pressed={selected} disabled={disabled} onClick={onSelect}>
         {leading}
         <span className={styles.text}>

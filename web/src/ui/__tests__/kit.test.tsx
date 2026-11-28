@@ -10,7 +10,7 @@ import { Chips } from '../Chips'
 import { EmptyState } from '../EmptyState'
 import { FilterChips } from '../FilterChips'
 import { IconButton } from '../IconButton'
-import { GroupedSection, ListSelectRow } from '../List'
+import { GroupedSection, ListLinkRow, ListSelectRow } from '../List'
 import { Sheet } from '../Sheet'
 import { Skeleton } from '../Skeleton'
 import { Slider } from '../Slider'
@@ -241,5 +241,24 @@ describe('the addon SDK’s ui', () => {
     for (const name of ['Spinner', 'EmptyState', 'Skeleton', 'Slider', 'ListSelectRow', 'Checkbox', 'TextArea', 'Chips', 'FilterChips', 'ToggleChips', 'RankedList']) {
       expect(sdkUi, name).toHaveProperty(name)
     }
+  })
+})
+
+describe('ListLinkRow valueTone', () => {
+  it('marks the value as a status: the tone is data on it, the dot and the colours are the stylesheet’s', () => {
+    render(
+      <GroupedSection>
+        <ListLinkRow label="a" value="420 мс" valueTone="success" onOpen={() => {}} />
+        <ListLinkRow label="b" value="Ошибка 401" valueTone="destructive" onOpen={() => {}} />
+        <ListLinkRow label="c" value="12" onOpen={() => {}} />
+      </GroupedSection>,
+    )
+    expect(screen.getByText('420 мс')).toHaveAttribute('data-tone', 'success')
+    expect(screen.getByText('Ошибка 401')).toHaveAttribute('data-tone', 'destructive')
+    expect(screen.getByText('12')).not.toHaveAttribute('data-tone')
+    const file = 'ui/List.module.css'
+    expect(rule(file, ".value[data-tone='destructive']")).toContain('--destructive-text')
+    expect(rule(file, ".value[data-tone='warning']")).toContain('color: var(--warning)')
+    expect(rule(file, ".value[data-tone='success']")).not.toMatch(/(^|[^-])color:/)
   })
 })

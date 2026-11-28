@@ -30,6 +30,9 @@ type LLM struct {
 	// Timeout of one answer (0: 45 s).
 	Timeout time.Duration
 	Client  *http.Client
+	// Chain: the models behind this one, in the admin's order (nil: this
+	// model alone). See Chain.
+	Chain *Chain
 }
 
 // Tier is how heavy a model an AI task needs: the admin sets one model of
@@ -133,6 +136,15 @@ func (l *LLM) chat(ctx context.Context, msgs []map[string]string, asJSON bool) (
 // structured outputs) is asked again for a plain JSON object; the caller
 // validates the answer either way.
 func (l *LLM) chatFormat(ctx context.Context, msgs []map[string]string, asJSON bool, schema map[string]any) (string, error) {
+	if l.Chain != nil {
+		return l.Chain.run(ctx, func(ctx context.Context, m *LLM) (string, error) {
+			out, err := m.chatFormat(ctx, msgs, asJSON, schema)
+			if err == nil && (asJSON || schema != nil) {
+				err = answerJSON(out)
+			}
+			return out, err
+		})
+	}
 	if l.anthropic() {
 		return l.chatAnthropic(ctx, msgs, schema)
 	}
@@ -221,7 +233,7 @@ func (l *LLM) chatHTTP(ctx context.Context, msgs []map[string]string, asJSON boo
 		return out.Choices[0].Message.Content, nil
 	}
 	if out.Message.Content == "" {
-		return "", errors.New("llm: empty answer")
+		return "", errEmptyAnswer
 	}
 	return out.Message.Content, nil
 }

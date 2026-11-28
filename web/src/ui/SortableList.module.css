@@ -61,6 +61,40 @@
   font: var(--t-callout);
   color: var(--label);
 }
+/* flush (the rows of the surrounding GroupedSection, as iOS's edit mode): the row is a settings row
+   (ui/List.module.css: its height, its padding, its hairlines), with the − before the content and ≡ after */
+.flushRow {
+  composes: row from './List.module.css';
+  gap: var(--s-2h);
+  background: transparent;
+  transition:
+    background-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out);
+}
+.flushRow[data-sliding] {
+  transition: transform var(--d-base) var(--ease-out);
+}
+.flushRow[data-dragging] {
+  position: relative;
+  z-index: var(--z-raised);
+  border-top-color: transparent;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lift);
+}
+.flushRow[data-dragging] + .flushRow {
+  border-top-color: transparent;
+}
+.removeSlot {
+  flex: none;
+  width: var(--control-h-xs);
+}
+.flushRow .remove {
+  color: var(--destructive);
+}
+.flushRow[data-dragging] .handle {
+  cursor: grabbing;
+  color: var(--label);
+}
 /* the remove control turns red under the pointer, as in iOS's edit mode */
 .remove:hover:not(:disabled) {
   color: var(--destructive);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
+import { GroupedSection, ListSelectRow } from '../List'
 import { SortableList, landing, moveItem } from '../SortableList'
 
 type Pick = { key: string; title: string }
@@ -138,5 +139,75 @@ describe('SortableList', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Действия: Матрица' }))
     await userEvent.click(within(await screen.findByRole('menu', { name: 'Матрица' })).getByRole('menuitem', { name: 'Убрать' }))
     expect(order()).toEqual(['i:7', 't:1', 'f:a'])
+  })
+
+  describe('flush', () => {
+    function Flush({ onChange }: { onChange?: (v: Pick[]) => void }) {
+      const [items, setItems] = useState(START)
+      return (
+        <GroupedSection title="Модели">
+          <SortableList
+            flush
+            items={items}
+            getKey={(p) => p.key}
+            itemLabel={(p) => p.title}
+            renderItem={(p) => <span>{p.title}</span>}
+            removable
+            canRemove={(p) => p.key !== 'i:7'}
+            onChange={(v) => {
+              setItems(v)
+              onChange?.(v)
+            }}
+          />
+          <ListSelectRow label="Добавить…" onSelect={() => {}} />
+        </GroupedSection>
+      )
+    }
+    const group = () => screen.getByRole('list')
+    const rows = () => [...group().querySelectorAll<HTMLElement>(':scope > li[data-value]')]
+
+    it('the rows are the group’s own: no list inside it, − first, ≡ last, the other rows stay', () => {
+      phone(false)
+      render(<Flush />)
+      expect(rows().map((li) => li.dataset.value)).toEqual(['t:1', 'i:7', 'f:a', 't:2'])
+      expect(group().querySelector('ol')).toBeNull()
+      expect(screen.getAllByRole('list')).toHaveLength(1)
+      const first = rows()[0]!
+      expect(first.firstElementChild).toBe(within(first).getByRole('button', { name: 'Убрать: Друзья' }))
+      expect(first.lastElementChild).toBe(within(first).getByRole('button', { name: 'Переместить: Друзья' }))
+      expect(within(group()).getByRole('button', { name: 'Добавить…' })).toBeInTheDocument()
+    })
+
+    it('a row that cannot go has no −; the others remove', async () => {
+      phone(false)
+      const onChange = vi.fn()
+      render(<Flush onChange={onChange} />)
+      expect(screen.queryByRole('button', { name: 'Убрать: Серия 7' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Переместить: Серия 7' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Убрать: Папка А' }))
+      expect(onChange).toHaveBeenLastCalledWith([START[0], START[1], START[3]])
+      expect(rows()).toHaveLength(3)
+    })
+
+    it('drags and moves by keyboard as the inset list does', async () => {
+      phone(false)
+      const onChange = vi.fn()
+      render(<Flush onChange={onChange} />)
+      rows().forEach((li, i) => {
+        li.getBoundingClientRect = () => ({ top: i * 50, bottom: i * 50 + 50, height: 50, left: 0, right: 320, width: 320, x: 0, y: i * 50, toJSON: () => ({}) })
+      })
+      const handle = screen.getByRole('button', { name: 'Переместить: Друзья' })
+      fireEvent.pointerDown(handle, { pointerId: 1, pointerType: 'mouse', clientY: 25, button: 0 })
+      fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', clientY: 130 })
+      expect(rows()[0]).toHaveAttribute('data-dragging')
+      expect(rows()[1]!.style.transform).toBe('translateY(-50px)')
+      fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse', clientY: 130 })
+      expect(onChange).toHaveBeenLastCalledWith([START[1], START[2], START[0], START[3]])
+      screen.getByRole('button', { name: 'Переместить: Матрица' }).focus()
+      await userEvent.keyboard('{ArrowUp}')
+      expect(rows().map((li) => li.dataset.value)).toEqual(['i:7', 'f:a', 't:2', 't:1'])
+      expect(screen.getByRole('button', { name: 'Переместить: Матрица' })).toHaveFocus()
+      expect(screen.getByRole('status')).toHaveTextContent('Матрица: 3 из 4')
+    })
   })
 })
