@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AICheck, AIModel, AISettings, Settings as Values } from '../../../api/types'
 import { providerOf } from '../AISettings'
-import { entryHint, statusDetail, statusView, tiersLine } from '../aiModels'
+import { byKind, entryHint, needsKey, statusDetail, statusView, tiersLine } from '../aiModels'
 import { settingsSummary } from '../settingsSummary'
 import { t } from '../../../i18n'
 import { renderSettings } from './settingsHarness'
@@ -22,6 +22,9 @@ const claude: AIModel = { id: 'c3', url: 'https://api.anthropic.com', model: 'cl
 const gemma: AIModel = { id: 'd4', url: 'http://localhost:11434', model: 'local-gemma', keySet: false, tiers: ['light'], status: { state: 'unchecked' } }
 const server: AIModel = { id: 'env', env: true, url: 'http://litellm:4000/v1', model: 'srv-model', modelDefault: 'srv-model', keySet: true, tiers: [...ALL], status: { state: 'unchecked' } }
 
+const whisper: AIModel = { id: 's1', kind: 'speech', url: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3', keySet: true, tiers: [...ALL], status: { state: 'ok', ms: 900, at, source: 'check' } }
+const speechServer: AIModel = { id: 'env-stt', kind: 'speech', env: true, url: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3-turbo', modelDefault: 'whisper-large-v3-turbo', keySet: true, tiers: [...ALL], status: { state: 'unchecked' } }
+
 const withAI = (ai: AISettings, extra: Partial<Values> = {}): Values => ({ ...base, ai, ...extra })
 
 /** The server as a test double: it keeps the list, gives new entries ids, drops keys. */
@@ -29,7 +32,7 @@ function stub(start: Values, checks: Record<string, AICheck['status']> = {}) {
   let cur = start
   const puts: Values[] = []
   const tests: { ids?: string[]; entry?: AIModel }[] = []
-  const lists: { url?: string; key?: string; id?: string; serverKey?: boolean }[] = []
+  const lists: { url?: string; key?: string; id?: string; serverKey?: boolean; kind?: string }[] = []
   let models: { models: { id: string }[]; error?: string } = { models: [] }
   let n = 0
   vi.stubGlobal(
@@ -450,5 +453,169 @@ describe('«ИИ-помощник»: the words', () => {
     expect(entryHint(t, gemma)).toBe('Ollama\u00A0·\u00A0localhost:11434')
     expect(tiersLine(t, { ...gemma, tiers: ['light', 'powerful'] })).toBe('Задачи: лёгкие, сложные')
     expect(tiersLine(t, lite)).toBe('')
+  })
+})
+
+describe('«ИИ-помощник»: speech recognition in the list', () => {
+  it('the text models, then the speech ones; a speech row says so, the server’s own is «Groq · с сервера»', async () => {
+    stub(withAI({ list: [whisper, lite, speechServer, groq] }))
+    renderSettings('ai')
+    await screen.findByRole('switch', { name: 'ИИ-помощник' })
+    // one group, the kinds in blocks (the list is stored in any order)
+    expect(rows().map((b) => b.textContent?.split('Распознавание')[0]?.slice(0, 12))).toEqual(['gemini-flash', 'openai/gpt-o', 'whisper-larg', 'whisper-larg'])
+    const row = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}(?![-\\w])`) })
+    expect(row('whisper-large-v3')).toHaveTextContent('Распознавание речи · Groq · api.groq.com')
+    expect(row('whisper-large-v3')).not.toHaveTextContent('Задачи')
+    expect(row('whisper-large-v3-turbo')).toHaveTextContent('Распознавание речи · Groq · с сервера')
+    expect(within(row('whisper-large-v3')).getByText('900 мс')).toHaveAttribute('data-tone', 'success')
+    // the old section is gone
+    expect(screen.queryByRole('heading', { name: 'Распознавание речи' })).toBeNull()
+    // the first model of «Управление»'s summary is a text one
+    expect(settingsSummary('ai', withAI({ list: [whisper, lite] }))).toBe('gemini-flash-lite')
+  })
+
+  it('«Расшифровка аудиокниг» warns while there is no speech model that can be asked', async () => {
+    const { puts } = stub(withAI({ list: [lite, { ...speechServer, off: true, status: { state: 'off' } }] }))
+    renderSettings('ai')
+    const warn = 'Нет модели распознавания речи — добавьте её в «Модели»'
+    const unusable = 'Ни одна модель распознавания речи не может работать: включите её или добавьте ключ в «Модели»'
+    // some, but all off: it says what to do
+    const note = await screen.findByText(unusable)
+    expect(note).toHaveAttribute('role', 'status')
+    expect(note.closest('li')).toHaveTextContent('Расшифровка аудиокниг')
+    // a model without its key cannot be asked either
+    cleanup()
+    stub(withAI({ list: [lite, { ...whisper, keySet: false, status: { state: 'noKey' } }] }))
+    renderSettings('ai')
+    expect(await screen.findByText(unusable)).toBeInTheDocument()
+    // a text model is no speech model
+    cleanup()
+    stub(withAI({ list: [lite] }))
+    renderSettings('ai')
+    expect(await screen.findByText(warn)).toBeInTheDocument()
+    // one that works, or one not checked yet: no warning
+    cleanup()
+    stub(withAI({ list: [lite, whisper] }))
+    renderSettings('ai')
+    await screen.findByRole('switch', { name: 'Расшифровка аудиокниг' })
+    expect(screen.queryByText(warn)).toBeNull()
+    expect(screen.queryByText(unusable)).toBeNull()
+    cleanup()
+    // the feature switched off: nothing to warn about
+    stub(withAI({ list: [lite], features: { transcripts: false } }))
+    renderSettings('ai')
+    await screen.findByRole('switch', { name: 'Расшифровка аудиокниг' })
+    expect(screen.queryByText(warn)).toBeNull()
+    expect(puts).toHaveLength(0)
+  })
+
+  it('the assistant off: the models are dimmed and disabled like the features', async () => {
+    stub(withAI({ off: true, list: [lite, whisper] }))
+    renderSettings('ai')
+    await screen.findByRole('switch', { name: 'ИИ-помощник' })
+    for (const name of [/^gemini-flash-lite/, /^whisper-large-v3/]) expect(screen.getByRole('button', { name })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Добавить модель…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Проверить все/ })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Расшифровка аудиокниг' })).toBeDisabled()
+    expect(screen.getByText(/Пока ИИ-помощник выключен, ни одна функция/)).toBeInTheDocument()
+    // dimmed: the group of the models and the features' own
+    expect(screen.getByRole('button', { name: /^gemini-flash-lite/ }).closest('section')?.className).toMatch(/dimmed/)
+    expect(screen.getByRole('switch', { name: 'Расшифровка аудиокниг' }).closest('section')?.className).toMatch(/dimmed/)
+    // no warning while everything is off, and no «Изменить»
+    expect(screen.queryByText(/Нет модели распознавания речи|Ни одна модель распознавания/)).toBeNull()
+    // «Изменить» stays in its place, disabled
+    expect(screen.getByRole('button', { name: 'Изменить' })).toBeDisabled()
+  })
+
+  it('«Добавить модель…» asks the kind first; speech starts from Groq, has no tasks and lists speech models only', async () => {
+    const { puts, lists, setModels } = stub(withAI({ list: [lite] }))
+    setModels({ models: [{ id: 'whisper-large-v3' }, { id: 'whisper-large-v3-turbo' }] })
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    const kind = within(sheet).getByRole('radiogroup', { name: 'Тип' })
+    expect(within(kind).getByRole('radio', { name: /Текст/ })).toBeChecked()
+    expect(within(sheet).getByRole('switch', { name: 'Сложные задачи' })).toBeInTheDocument()
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('http://litellm:4000/v1')
+    await userEvent.click(within(kind).getByRole('radio', { name: /Речь|Распознавание речи/ }))
+    expect(within(sheet).queryByRole('switch', { name: 'Сложные задачи' })).toBeNull()
+    expect(within(sheet).getByText(/Расшифровывает аудиокниги/)).toBeInTheDocument()
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('https://api.groq.com/openai/v1')
+    await userEvent.type(within(sheet).getByLabelText('Ключ API'), 'gsk-1{Tab}')
+    await waitFor(() => expect(lists.at(-1)).toMatchObject({ url: 'https://api.groq.com/openai/v1', key: 'gsk-1', kind: 'speech' }), { timeout: 3000 })
+    expect(await within(sheet).findByRole('button', { name: /^Модель/ })).toHaveTextContent('whisper-large-v3-turbo')
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list.map((e) => [e.model, e.kind])).toEqual([['gemini-flash-lite', undefined], ['whisper-large-v3-turbo', 'speech']]))
+    expect(puts.at(-1)?.ai?.list[1]).toMatchObject({ url: 'https://api.groq.com/openai/v1', key: 'gsk-1' })
+    // the new entry lands among the speech ones, marked
+    expect(await screen.findByRole('button', { name: /^whisper-large-v3-turbo/ })).toHaveTextContent('Распознавание речи · Groq')
+  })
+
+  it('a text entry is added from the same sheet without a kind; switching the kind starts the provider afresh', async () => {
+    const { puts, lists } = stub(withAI({ list: [] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    const kind = within(sheet).getByRole('radiogroup', { name: 'Тип' })
+    await userEvent.click(within(kind).getByRole('radio', { name: /Речь|Распознавание речи/ }))
+    await userEvent.click(within(kind).getByRole('radio', { name: /Текст/ }))
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('http://127.0.0.1:4000/v1')
+    await userEvent.type(within(sheet).getByLabelText('Название модели'), 'auto')
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list).toHaveLength(1))
+    expect(puts.at(-1)?.ai?.list[0]).not.toHaveProperty('kind', 'speech')
+    expect(lists.every((l) => l.kind === undefined)).toBe(true)
+  })
+
+  it('the server’s own speech entry: Groq, address and key read-only, its model chosen from Groq’s speech list and stored', async () => {
+    const { puts, lists, setModels } = stub(withAI({ list: [lite, speechServer] }))
+    setModels({ models: [{ id: 'whisper-large-v3' }, { id: 'whisper-large-v3-turbo' }] })
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: /^whisper-large-v3-turbo/ }))
+    const sheet = await screen.findByRole('dialog', { name: 'whisper-large-v3-turbo' })
+    expect(within(sheet).getByText('Groq')).toBeInTheDocument()
+    expect(within(sheet).getByText('Распознавание речи')).toBeInTheDocument()
+    expect(within(sheet).queryByLabelText('Ключ API')).toBeNull()
+    expect(within(sheet).queryByRole('button', { name: 'Удалить' })).toBeNull()
+    expect(within(sheet).queryByRole('switch', { name: 'Сложные задачи' })).toBeNull()
+    expect(within(sheet).getByText(/VAULT_STT_\*/)).toHaveTextContent('по умолчанию — whisper-large-v3-turbo')
+    await userEvent.click(await within(sheet).findByRole('button', { name: /^Модель/ }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'whisper-large-v3' }))
+    expect(lists.at(-1)).toMatchObject({ id: 'env-stt', kind: 'speech' })
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list.find((e) => e.id === 'env-stt')).toMatchObject({ env: true, kind: 'speech', model: 'whisper-large-v3' }))
+  })
+
+  it('«Проверить» of a speech entry asks it by its id; «Изменить» keeps the kinds in blocks', async () => {
+    const { puts, tests } = stub(withAI({ list: [lite, groq, whisper, speechServer] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: /^whisper-large-v3(?!-)/ }))
+    const sheet = await screen.findByRole('dialog', { name: 'whisper-large-v3' })
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Проверить' }))
+    await waitFor(() => expect(tests.at(-1)).toEqual({ ids: ['s1'] }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Готово' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Изменить' }))
+    // the first speech row cannot go above the text ones: it stays at the border
+    screen.getByRole('button', { name: 'Переместить: whisper-large-v3' }).focus()
+    await userEvent.keyboard('{ArrowUp}')
+    await waitFor(() => expect(puts.length).toBeGreaterThan(0))
+    expect(puts.at(-1)?.ai?.list.map((e) => e.id)).toEqual(['a1', 'b2', 's1', 'env-stt'])
+    // within its kind it moves
+    screen.getByRole('button', { name: 'Переместить: whisper-large-v3-turbo' }).focus()
+    await userEvent.keyboard('{ArrowUp}')
+    await waitFor(() => expect(puts.at(-1)?.ai?.list.map((e) => e.id)).toEqual(['a1', 'b2', 'env-stt', 's1']))
+    expect(screen.queryByRole('button', { name: 'Убрать: whisper-large-v3-turbo' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Убрать: whisper-large-v3' })).toBeInTheDocument()
+  })
+
+  it('the words: the speech mark, the key a speech provider wants', () => {
+    expect(entryHint(t, whisper)).toBe('Распознавание\u00A0речи\u00A0· Groq\u00A0·\u00A0api.groq.com')
+    expect(entryHint(t, speechServer)).toBe('Распознавание\u00A0речи\u00A0· Groq\u00A0·\u00A0с\u00A0сервера')
+    expect(tiersLine(t, { ...whisper, tiers: ['light'] })).toBe('')
+    expect(providerOf('https://generativelanguage.googleapis.com/v1beta')).toBe('gemini')
+    expect(needsKey('https://api.openai.com/v1', 'speech')).toBe(true)
+    expect(needsKey('https://openrouter.ai/api/v1', 'speech')).toBe(false)
+    expect(needsKey('https://openrouter.ai/api/v1')).toBe(true)
+    expect(byKind([whisper, lite, speechServer, groq]).map((e) => e.id)).toEqual(['a1', 'b2', 's1', 'env-stt'])
   })
 })

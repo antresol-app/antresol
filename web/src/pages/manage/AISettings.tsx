@@ -13,6 +13,15 @@
 // The server's own model (VAULT_LLM_*) is a provider like the others («LiteLLM ·
 // с сервера») and its model is chosen in its sheet. «Функции ИИ» lists what the
 // server does with a model, a switch each (AIFeatures.tsx).
+// Speech recognition is in the same list: entries of kind `speech`, marked in
+// the row's line («Распознавание речи · Groq · api.groq.com»), asked by the
+// audiobooks' transcripts only, as the text ones are never asked to listen.
+// The list shows the text models first, then the speech ones: the order is the
+// priority only among entries of a kind, so the two blocks do not interleave
+// (a drag past the border lands at the border). VAULT_STT_* is its entry
+// («Groq · с сервера»), like the LiteLLM's.
+// While «ИИ-помощник» is off the models list is dimmed and its rows disabled,
+// as the features below it are.
 import { useMemo, useState } from 'react'
 import { errorText, testAIModels } from '../../api/client'
 import type { AISettings as AI, AIModel, AIStatus } from '../../api/types'
@@ -24,15 +33,17 @@ import { SortableList, SortableRowText } from '../../ui/SortableList'
 import { Toggle } from '../../ui/Toggle'
 import { AIFeaturesSection } from './AIFeatures'
 import { AIModelSheet } from './AIModelSheet'
-import { entryHint, nb, providerOf, statusView, tiersLine } from './aiModels'
+import { byKind, entryHint, nb, providerOf, statusView, tiersLine } from './aiModels'
 
 export { providerOf, AI_PROVIDERS } from './aiModels'
 
 /** The sheet open: an entry's id, or a new one. */
 type Open = { id: string } | 'new' | null
 
-/** What the header's «Изменить» needs to know. */
-export const aiEditable = (ai?: AI) => (ai?.list.length ?? 0) > 0
+/** What the header's «Изменить» needs to know: there is something to edit, and the assistant is on. */
+export const aiEditable = (ai?: AI) => (ai?.list.length ?? 0) > 0 && !ai?.off
+/** The header's «Изменить» is there (disabled while the assistant is off, so the header does not jump). */
+export const aiHasList = (ai?: AI) => (ai?.list.length ?? 0) > 0
 
 export function AISettingsSection({
   ai,
@@ -49,7 +60,9 @@ export function AISettingsSection({
   onSave: (ai: AI) => Promise<AI>
 }) {
   const t = useT()
-  const list = useMemo(() => ai?.list ?? [], [ai])
+  // text models first, speech ones after: each kind in its own order
+  const list = useMemo(() => byKind(ai?.list ?? []), [ai])
+  const off = !!ai?.off
   const [open, setOpen] = useState<Open>(null)
   const [removing, setRemoving] = useState<AIModel | null>(null)
   const [checking, setChecking] = useState(false)
@@ -66,15 +79,22 @@ export function AISettingsSection({
   const remember = (rs: { id: string; status: AIStatus }[]) => setSeen((m) => ({ ...m, ...Object.fromEntries(rs.map((r) => [r.id, r.status])) }))
 
   const current = ai ?? { list: [] }
+  const speechEntries = list.filter((e) => e.kind === 'speech')
+  const speechState = speechEntries.some((e) => statusOf(e)?.state !== 'off' && statusOf(e)?.state !== 'noKey') ? 'ready' : speechEntries.length > 0 ? 'unusable' : 'none'
   const entry = open && open !== 'new' ? list.find((e) => e.id === open.id) : undefined
+  // the list is saved as shown: the kinds in blocks
+  const withList = (next: AIModel[]): AI => ({ ...current, list: byKind(next) })
 
   /** Saves the list with `draft` in it (a new one when its id is not in the list); the entry as the server keeps it. */
   const saveEntry = async (draft: AIModel): Promise<AIModel | undefined> => {
     const at = list.findIndex((e) => e.id === draft.id)
     const next = at < 0 ? [...list, draft] : list.map((e, i) => (i === at ? draft : e))
     setSeen((m) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== draft.id))) // an edited entry starts afresh
-    const out = await onSave({ ...current, list: next })
-    return out.list[at < 0 ? next.length - 1 : at]
+    const out = await onSave(withList(next))
+    if (at >= 0) return out.list.find((e) => e.id === draft.id)
+    // a new entry has no id yet: it is the last of its kind (the kinds are in blocks)
+    const ofKind = out.list.filter((e) => (e.kind === 'speech') === (draft.kind === 'speech'))
+    return ofKind[ofKind.length - 1]
   }
   /** Asks one saved entry; its status (the sheet shows it, the list too). */
   const check = async (id: string): Promise<AIStatus | undefined> => {
@@ -96,7 +116,7 @@ export function AISettingsSection({
   const remove = (e: AIModel) => {
     setRemoving(null)
     setOpen(null)
-    onChange({ ...current, list: list.filter((x) => x.id !== e.id) })
+    onChange(withList(list.filter((x) => x.id !== e.id)))
   }
 
   // «Проверено 5 мин назад: 2 работают, 1 с ошибкой» — over the models that are on
@@ -122,7 +142,7 @@ export function AISettingsSection({
         </ListRow>
       </GroupedSection>
 
-      <GroupedSection title={t('settings.ai.models')} footer={edit ? t('settings.ai.priorityEdit') : t('settings.ai.priority')}>
+      <GroupedSection title={t('settings.ai.models')} footer={edit ? t('settings.ai.priorityEdit') : t('settings.ai.priority')} dimmed={off}>
         {edit ? (
           <SortableList
             flush
@@ -137,7 +157,7 @@ export function AISettingsSection({
               // a removal asks first (the key goes with it); the order applies at once
               const gone = list.find((e) => !next.some((x) => x.id === e.id))
               if (gone) setRemoving(gone)
-              else onChange({ ...current, list: next })
+              else onChange(withList(next))
             }}
           />
         ) : (
@@ -156,25 +176,25 @@ export function AISettingsSection({
                 )}
               </>
             )
-            return <ListLinkRow key={e.id} label={e.model} hint={hint} value={sv.text} valueTone={sv.tone} onOpen={() => setOpen({ id: e.id })} />
+            return <ListLinkRow key={e.id} label={e.model} hint={hint} value={sv.text} valueTone={sv.tone} disabled={off} onOpen={() => setOpen({ id: e.id })} />
           })
         )}
-        <ListSelectRow tone="accent" label={t('settings.ai.add')} onSelect={() => setOpen('new')} />
+        <ListSelectRow tone="accent" label={t('settings.ai.add')} disabled={off} onSelect={() => setOpen('new')} />
       </GroupedSection>
 
       {list.length > 0 && (
-        <GroupedSection>
+        <GroupedSection dimmed={off}>
           <ListSelectRow
             tone="accent"
             label={checking ? t('settings.ai.checking') : t('settings.ai.checkAll')}
             hint={problem ? <span role="alert">{problem}</span> : <span role="status">{summary}</span>}
-            disabled={checking}
+            disabled={checking || off}
             onSelect={() => void checkAll()}
           />
         </GroupedSection>
       )}
 
-      <AIFeaturesSection ai={current} onChange={onChange} />
+      <AIFeaturesSection ai={current} speech={speechState} onChange={onChange} />
 
       {open && (open === 'new' || entry) && (
         <AIModelSheet

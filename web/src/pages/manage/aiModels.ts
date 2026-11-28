@@ -17,6 +17,24 @@ export const AI_PROVIDERS: Record<Exclude<Provider, 'litellm'>, { url: string; m
   ollama: { url: 'http://localhost:11434', models: same('qwen3.5:2b') },
 }
 
+/** What a new speech entry of each provider starts from (the speech service's own addresses: Gemini's is the native one). */
+export const SPEECH_PROVIDERS: Record<'groq' | 'openai' | 'gemini', { url: string; model: string }> = {
+  groq: { url: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3-turbo' },
+  openai: { url: 'https://api.openai.com/v1', model: 'whisper-1' },
+  gemini: { url: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-3.5-flash-lite' },
+}
+
+/** The providers a speech entry is made for, in the pop-up's order. */
+export const SPEECH_PROVIDER_LIST: Provider[] = ['groq', 'openai', 'gemini', 'litellm']
+
+/** What an entry does. */
+export type Kind = 'text' | 'speech'
+
+export const kindOf = (e: Pick<AIModel, 'kind'>): Kind => (e.kind === 'speech' ? 'speech' : 'text')
+
+/** The list as the page shows it: the language models, then the speech ones (each kind keeps its own order — the order is the priority only among its own kind). */
+export const byKind = <T extends Pick<AIModel, 'kind'>>(list: T[]): T[] => [...list.filter((e) => kindOf(e) === 'text'), ...list.filter((e) => kindOf(e) === 'speech')]
+
 /** What «LiteLLM или свой сервер» starts from. */
 export const LITELLM_URL = 'http://127.0.0.1:4000/v1'
 
@@ -34,13 +52,18 @@ export const TIERS: AITier[] = ['light', 'medium', 'powerful']
 
 /** The provider an address is of (a LiteLLM or any other server: «litellm»). */
 export function providerOf(url: string): Provider {
+  // Gemini's speech address is the native one, not the OpenAI layer's
+  if (hostOf(url) === 'generativelanguage.googleapis.com') return 'gemini'
   for (const [p, v] of Object.entries(AI_PROVIDERS)) if (p !== 'ollama' && url.startsWith(v.url)) return p as Provider
   if (/:11434(\/|$)/.test(url)) return 'ollama'
   return 'litellm'
 }
 
 /** A provider that asks for a key (the others — a LiteLLM, an own server, an Ollama — may have none). */
-export const needsKey = (url: string) => providerOf(url) !== 'litellm' && providerOf(url) !== 'ollama'
+export const needsKey = (url: string, kind: Kind = 'text') => {
+  const p = providerOf(url)
+  return kind === 'speech' ? p === 'groq' || p === 'openai' || p === 'gemini' : p !== 'litellm' && p !== 'ollama'
+}
 
 export function hostOf(url: string): string {
   try {
@@ -107,12 +130,15 @@ export function statusDetail(t: TFunction, st: AIStatus | undefined): string {
  * The server's own: «LiteLLM · с сервера» — its provider like any other, and where it comes from in place of the address. */
 export function entryHint(t: TFunction, e: AIModel, withHost = true): string {
   const provider = PROVIDER_NAMES[providerOf(e.url)]
-  // no-break around the dot: a line never ends on it
-  return [provider, e.env ? t('settings.ai.fromServer') : withHost && hostOf(e.url)].filter(Boolean).join('\u00A0·\u00A0')
+  const rest = [provider, e.env ? t('settings.ai.fromServer').replace(/ /g, '\u00A0') : withHost && hostOf(e.url)].filter(Boolean).join('\u00A0·\u00A0')
+  // a speech entry says so first: «Распознавание речи · Groq · api.groq.com». The mark stays whole and
+  // the line may break after its dot, so a phone's narrow column never splits «Распознавание / речи»
+  return kindOf(e) === 'speech' ? `${t('settings.ai.kind.speech.mark').replace(/ /g, '\u00A0')}\u00A0· ${rest}` : rest
 }
 
 /** «Задачи: лёгкие, сложные» for a model that serves some of the weights only; else ''. */
 export function tiersLine(t: TFunction, e: AIModel): string {
+  if (kindOf(e) === 'speech') return '' // speech does not have the weights of tasks
   const tiers = TIERS.filter((x) => e.tiers.includes(x))
   return tiers.length > 0 && tiers.length < TIERS.length ? t('settings.ai.tiersOnly', { list: tiers.map((x) => t(`settings.ai.tierWord.${x}`)).join(', ') }) : ''
 }

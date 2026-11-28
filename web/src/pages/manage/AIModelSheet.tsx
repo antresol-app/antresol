@@ -2,7 +2,10 @@
 // модель…»: the provider, then its address, the key and the model — the
 // pop-up of what the endpoint lists, «Другая…» for a name it does not) or an
 // existing one (its status in full, the key, the tasks it serves, «Проверить»,
-// «Удалить»). The server's own model (VAULT_LLM_*) is a provider like the
+// «Удалить»). A new one starts with its kind, a segmented control as iOS puts at
+// the top of an «Add…» sheet: a language model, or speech recognition (the
+// audiobooks' transcripts: Groq, OpenAI, Gemini or a server of one's own, no
+// tasks to choose, its list is the speech models only). The server's own model (VAULT_LLM_*) is a provider like the
 // others: its address and key stay the environment's (read-only), its model is
 // chosen from what the endpoint lists. A LiteLLM added while the server has one
 // starts from its address and asks with the server's key, which this page never
@@ -19,15 +22,17 @@ import { Badge } from '../../ui/Badge'
 import { GroupedSection, ListRow, ListSelectRow } from '../../ui/List'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
+import { SegmentedControl } from '../../ui/SegmentedControl'
 import { Sheet } from '../../ui/Sheet'
 import { TextField } from '../../ui/TextField'
 import { Toggle } from '../../ui/Toggle'
-import { AI_PROVIDERS, LITELLM_URL, PROVIDER_NAMES, TIERS, hostOf, nb, needsKey, providerOf, statusDetail, statusView, validUrl, type Provider } from './aiModels'
+import { AI_PROVIDERS, LITELLM_URL, PROVIDER_NAMES, SPEECH_PROVIDERS, SPEECH_PROVIDER_LIST, TIERS, hostOf, kindOf, nb, needsKey, providerOf, statusDetail, statusView, validUrl, type Kind, type Provider } from './aiModels'
 import styles from './Settings.module.css'
 
 const OTHER = '\u0000other'
 
 interface Draft {
+  kind: Kind
   provider: Provider
   url: string
   model: string
@@ -39,18 +44,25 @@ interface Draft {
   serverKey: boolean
 }
 
-/** A new entry of `provider`; a LiteLLM starts from the server's own address (and key) when it has one, else the last one used. */
-const startOf = (provider: Provider, defaultUrl?: string, serverUrl?: string): Draft => ({
-  provider,
-  url: provider === 'litellm' ? (serverUrl ?? defaultUrl ?? LITELLM_URL) : AI_PROVIDERS[provider].url,
-  model: provider === 'litellm' ? '' : AI_PROVIDERS[provider].models.medium,
-  key: '',
-  tiers: [...TIERS],
-  off: false,
-  serverKey: provider === 'litellm' && !!serverUrl,
-})
+/** A new entry of `kind` and `provider`; a LiteLLM starts from the server's own address (and key) when it has one, else the last one used (a text model's only). */
+const startOf = (kind: Kind, provider: Provider, defaultUrl?: string, serverUrl?: string): Draft => {
+  if (kind === 'speech') {
+    const own = provider === 'groq' || provider === 'openai' || provider === 'gemini' ? SPEECH_PROVIDERS[provider] : undefined
+    return { kind, provider, url: own?.url ?? LITELLM_URL, model: own?.model ?? '', key: '', tiers: [...TIERS], off: false, serverKey: false }
+  }
+  return {
+    kind,
+    provider,
+    url: provider === 'litellm' ? (serverUrl ?? defaultUrl ?? LITELLM_URL) : AI_PROVIDERS[provider].url,
+    model: provider === 'litellm' ? '' : AI_PROVIDERS[provider].models.medium,
+    key: '',
+    tiers: [...TIERS],
+    off: false,
+    serverKey: provider === 'litellm' && !!serverUrl,
+  }
+}
 
-const fromEntry = (e: AIModel): Draft => ({ provider: providerOf(e.url), url: e.url, model: e.model, key: '', tiers: [...e.tiers], off: !!e.off, serverKey: !!e.keyFromEnv })
+const fromEntry = (e: AIModel): Draft => ({ kind: kindOf(e), provider: providerOf(e.url), url: e.url, model: e.model, key: '', tiers: [...e.tiers], off: !!e.off, serverKey: !!e.keyFromEnv })
 
 const sameTiers = (a: AITier[], b: AITier[]) => TIERS.every((x) => a.includes(x) === b.includes(x))
 
@@ -84,7 +96,8 @@ export function AIModelSheet({
   const serverLiteLLM = serverUrl && providerOf(serverUrl) === 'litellm' ? serverUrl : undefined
   // the model as the server keeps it: the entry opened, or the one this sheet saved
   const [saved, setSaved] = useState<AIModel | undefined>(entry)
-  const [draft, setDraft] = useState<Draft>(entry ? fromEntry(entry) : startOf('litellm', defaultUrl, serverLiteLLM))
+  const [draft, setDraft] = useState<Draft>(entry ? fromEntry(entry) : startOf('text', 'litellm', defaultUrl, serverLiteLLM))
+  const speech = draft.kind === 'speech'
   const [busy, setBusy] = useState<'save' | 'check' | null>(null)
   const [error, setError] = useState('')
   // what a check of this sheet found, until the model is saved again
@@ -96,7 +109,7 @@ export function AIModelSheet({
   // the server's own key: asked with while the address is the server's host, and there is no key field then
   const viaServer = !env && draft.serverKey && !!serverUrl && hostOf(draft.url) !== '' && hostOf(draft.url) === hostOf(serverUrl)
   const keyStored = !env && !!saved?.keySet && sameHost && !saved.keyFromEnv
-  const keyReady = env || viaServer || !needsKey(draft.url) || draft.key !== '' || keyStored
+  const keyReady = env || viaServer || !needsKey(draft.url, draft.kind) || draft.key !== '' || keyStored
   const complete = validUrl(draft.url) && draft.model.trim() !== '' && keyReady
   const dirty =
     !saved ||
@@ -127,7 +140,7 @@ export function AIModelSheet({
     if (!validUrl(draft.url) || !keyReady) return
     const ac = new AbortController()
     const timer = setTimeout(() => {
-      listAIModels({ url: draft.url, key: typed.current || undefined, id: saved?.id, serverKey: viaServer || undefined }, ac.signal).then(
+      listAIModels({ url: draft.url, key: typed.current || undefined, id: saved?.id, serverKey: viaServer || undefined, kind: speech ? 'speech' : undefined }, ac.signal).then(
         (r) => {
           if (ac.signal.aborted) return
           setNames(r.models.length > 0 ? r.models.map((m) => m.id) : null)
@@ -141,7 +154,7 @@ export function AIModelSheet({
       ac.abort()
     }
     // keyReady changes with the key's first letter: the stamp, not the letters, asks again
-  }, [draft.url, keyStamp, env, saved?.id, keyStored, viaServer])
+  }, [draft.url, keyStamp, env, saved?.id, keyStored, viaServer, speech])
   // a key typed or pasted asks once the typing pauses (blur and Enter ask at once)
   useEffect(() => {
     if (!draft.key) return
@@ -149,16 +162,18 @@ export function AIModelSheet({
     return () => clearTimeout(timer)
   }, [draft.key])
 
-  const choose = (p: Provider) => {
-    setDraft(startOf(p, defaultUrl, serverLiteLLM))
+  const choose = (p: Provider, kind: Kind = draft.kind) => {
+    setDraft(startOf(kind, p, defaultUrl, serverLiteLLM))
     setCustom(false)
     setFound(undefined)
     setError('')
   }
+  const chooseKind = (kind: Kind) => choose(kind === 'speech' ? 'groq' : 'litellm', kind)
   const toggleTier = (x: AITier, on: boolean) => field({ tiers: TIERS.filter((y) => (y === x ? on : draft.tiers.includes(y))) })
 
   const toEntry = (): AIModel => ({
     id: saved?.id ?? '',
+    kind: speech ? 'speech' : undefined,
     env: saved?.env,
     url: draft.url.trim(),
     model: draft.model.trim(),
@@ -289,22 +304,39 @@ export function AIModelSheet({
           </GroupedSection>
         )}
 
+        {!saved && (
+          <GroupedSection footer={t(speech ? 'settings.ai.kind.speech.hint' : 'settings.ai.kind.text.hint')}>
+            <ListRow label={t('settings.ai.kind')} stack>
+              <SegmentedControl
+                label={t('settings.ai.kind')}
+                value={draft.kind}
+                onChange={chooseKind}
+                fill
+                segments={[
+                  { value: 'text', label: t('settings.ai.kind.text') },
+                  { value: 'speech', label: t('settings.ai.kind.speech') },
+                ]}
+              />
+            </ListRow>
+          </GroupedSection>
+        )}
+
         {env ? (
-          <GroupedSection footer={t('settings.ai.envNote', { model: saved?.modelDefault ?? '' })}>
+          <GroupedSection title={saved && speech ? t('settings.ai.kind.speech') : undefined} footer={t(speech ? 'settings.ai.envNoteSpeech' : 'settings.ai.envNote', { model: saved?.modelDefault ?? '' })}>
             <ListRow label={t('settings.ai.provider')}>{PROVIDER_NAMES[providerOf(saved?.url ?? '')]}</ListRow>
             <ListRow label={t('settings.ai.url')}>{saved?.url}</ListRow>
             {modelRow}
           </GroupedSection>
         ) : (
-          <GroupedSection footer={viaServer ? t('settings.ai.serverKeyNote') : undefined}>
+          <GroupedSection title={saved && speech ? t('settings.ai.kind.speech') : undefined} footer={viaServer ? t('settings.ai.serverKeyNote') : undefined}>
             {!saved && (
               <ListRow label={t('settings.ai.provider')}>
                 <Select
                   label={t('settings.ai.provider')}
                   placement="bottom-end"
                   value={draft.provider}
-                  options={(Object.keys(PROVIDER_NAMES) as Provider[]).map((p) => ({ value: p, label: p === 'litellm' ? t('settings.ai.litellm') : PROVIDER_NAMES[p] }))}
-                  onChange={choose}
+                  options={(speech ? SPEECH_PROVIDER_LIST : (Object.keys(PROVIDER_NAMES) as Provider[])).map((p) => ({ value: p, label: p === 'litellm' ? t('settings.ai.litellm') : PROVIDER_NAMES[p] }))}
+                  onChange={(p) => choose(p)}
                 />
               </ListRow>
             )}
@@ -346,13 +378,15 @@ export function AIModelSheet({
           </GroupedSection>
         )}
 
-        <GroupedSection title={t('settings.ai.tasks')} footer={t('settings.ai.tasksFooter')}>
-          {TIERS.map((x) => (
-            <ListRow key={x} label={t(`settings.ai.tier.${x}`)} hint={t(`settings.ai.tier.${x}.hint`)}>
-              <Toggle label={t(`settings.ai.tier.${x}`)} checked={draft.tiers.includes(x)} disabled={draft.tiers.length === 1 && draft.tiers.includes(x)} onChange={(on) => toggleTier(x, on)} />
-            </ListRow>
-          ))}
-        </GroupedSection>
+        {!speech && (
+          <GroupedSection title={t('settings.ai.tasks')} footer={t('settings.ai.tasksFooter')}>
+            {TIERS.map((x) => (
+              <ListRow key={x} label={t(`settings.ai.tier.${x}`)} hint={t(`settings.ai.tier.${x}.hint`)}>
+                <Toggle label={t(`settings.ai.tier.${x}`)} checked={draft.tiers.includes(x)} disabled={draft.tiers.length === 1 && draft.tiers.includes(x)} onChange={(on) => toggleTier(x, on)} />
+              </ListRow>
+            ))}
+          </GroupedSection>
+        )}
 
         {saved && !env && (
           <GroupedSection>

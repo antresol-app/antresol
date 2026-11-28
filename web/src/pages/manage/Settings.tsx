@@ -24,8 +24,7 @@ import { Navigate, useNavigate, useParams } from 'react-router'
 import { useIsCompact } from '../../state/useMediaQuery'
 import { useT } from '../../i18n'
 import { ShikimoriAdmin } from '../../components/accounts/ShikimoriAdmin'
-import { AISettingsSection, aiEditable } from './AISettings'
-import { STTSettingsSection } from './STTSettings'
+import { AISettingsSection, aiEditable, aiHasList } from './AISettings'
 import { ExternalServicesSection } from './ExternalServicesSettings'
 import { PublicAddressSection } from './PublicAddressSettings'
 import { StorageSection } from './StorageSettings'
@@ -194,9 +193,9 @@ export function Settings() {
         <h2 id="settings-title" className={m.title}>
           {t(current.label)}
         </h2>
-        {at('ai') && aiEditable(values.ai) && (
+        {at('ai') && aiHasList(values.ai) && (
           <div className={m.headerActions}>
-            <Button variant="plain" size="small" onClick={() => setAIEdit(!aiEdit)}>
+            <Button variant="plain" size="small" disabled={!aiEditable(values.ai)} onClick={() => setAIEdit(!aiEdit)}>
               {aiEdit ? t('common.done') : t('settings.ai.edit')}
             </Button>
           </div>
@@ -349,7 +348,6 @@ export function Settings() {
       )}
 
       {at('ai') && <AISettingsSection ai={values.ai} edit={aiEdit && aiEditable(values.ai)} onChange={(ai) => change({ ai })} onSave={saveAI} />}
-      {at('ai') && <STTSettingsSection stt={values.stt} keySet={values.sttKeySet ?? false} fromEnv={values.sttFromEnv} onChange={(stt) => change({ stt })} />}
 
       {at('processing') && <VocleanSection />}
 

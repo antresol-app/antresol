@@ -14,6 +14,10 @@
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button — or, with `to`,
 // a link to an address of the app (a list's level: Back returns to it).
+// ListLinkRow `disabled`: the row does nothing now (its group is dimmed with
+// `dimmed`, as the models list is while «ИИ-помощник» is off).
+// ListRow `statusTone="warning"`: the live line under the hint is a warning
+// (a setting that is on but has nothing to work with).
 // ListSelectRow: a row that chooses (a source, a device, a playlist to add
 // to): the link row's button with the choice's check at the trailing edge.
 import type { ReactNode } from 'react'
@@ -56,6 +60,8 @@ export interface ListRowProps {
   hint?: ReactNode
   /** A live line under the hint («Сохранено», a scan's result). */
   status?: ReactNode
+  /** The live line is a warning (the warning tint): the setting is on but cannot work yet. */
+  statusTone?: 'warning'
   /** A poster, an avatar or an icon before the text. */
   leading?: ReactNode
   /** The control, or the trailing actions. */
@@ -69,7 +75,7 @@ export interface ListRowProps {
   className?: string
 }
 
-export function ListRow({ label, hint, status, leading, children, id, stack, wide, shrink, className }: ListRowProps) {
+export function ListRow({ label, hint, status, statusTone, leading, children, id, stack, wide, shrink, className }: ListRowProps) {
   return (
     <li className={[styles.row, stack ? styles.stack : '', wide ? styles.wide : '', shrink ? styles.shrink : '', className].filter(Boolean).join(' ')}>
       {leading && <div className={styles.leading}>{leading}</div>}
@@ -79,7 +85,7 @@ export function ListRow({ label, hint, status, leading, children, id, stack, wid
         </div>
         {hint && <p className={styles.hint}>{hint}</p>}
         {status && (
-          <p className={styles.hint} role="status">
+          <p className={[styles.hint, statusTone === 'warning' ? styles.warn : ''].filter(Boolean).join(' ')} role="status">
             {status}
           </p>
         )}
@@ -105,12 +111,14 @@ export interface ListLinkRowProps {
   /** Something else before the text in place of the tile (a channel's logo). */
   leading?: ReactNode
   onOpen?: () => void
+  /** The row does nothing now and steps back (a button only: a link row is never disabled). */
+  disabled?: boolean
   /** The row is a link to this address of the app (no onOpen needed). */
   to?: string
   className?: string
 }
 
-export function ListLinkRow({ label, hint, value, valueTone, icon, tint, leading, onOpen, to, className }: ListLinkRowProps) {
+export function ListLinkRow({ label, hint, value, valueTone, icon, tint, leading, onOpen, disabled, to, className }: ListLinkRowProps) {
   const inner = (
     <>
       {icon ? <SettingsIcon glyph={icon} tint={tint ?? 'gray'} /> : leading}
@@ -133,7 +141,7 @@ export function ListLinkRow({ label, hint, value, valueTone, icon, tint, leading
           {inner}
         </Link>
       ) : (
-        <button type="button" className={styles.linkButton} onClick={onOpen}>
+        <button type="button" className={styles.linkButton} disabled={disabled} onClick={onOpen}>
           {inner}
         </button>
       )}

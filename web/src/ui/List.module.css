@@ -35,6 +35,14 @@
 .dimmed .hint {
   color: var(--label-3);
 }
+/* a disabled row of a dimmed group stays readable: its text is already stepped back */
+.dimmed .linkButton:disabled {
+  opacity: 0.65;
+}
+/* a warning line under a row's hint */
+.hint.warn {
+  color: var(--warning);
+}
 .foot {
   margin: var(--s-2) 0 0;
   padding: 0;

@@ -333,6 +333,16 @@ export function Gallery() {
           <ListLinkRow label="openai/gpt-oss-120b" hint="Groq · api.groq.com" value="Ошибка 401" valueTone="destructive" onOpen={() => {}} />
           <ListLinkRow label="local-gemma" hint="Ollama · localhost:11434" value="Не проверена" valueTone="neutral" onOpen={() => {}} />
         </GroupedSection>
+        <GroupedSection dimmed title="disabled" footer="A group under a master switch that is off: dimmed (GroupedSection dimmed) and its rows do nothing (ListLinkRow disabled).">
+          <ListLinkRow label="gemini-flash-lite" hint="LiteLLM · litellm:4000" value="420 мс" valueTone="success" disabled onOpen={() => {}} />
+          <ListLinkRow label="whisper-large-v3-turbo" hint="Распознавание речи · Groq · api.groq.com" value="Не проверена" valueTone="neutral" disabled onOpen={() => {}} />
+          <ListSelectRow tone="accent" label="Добавить модель…" disabled onSelect={() => {}} />
+        </GroupedSection>
+        <GroupedSection title="ListRow statusTone" footer="The live line under a row's hint in the warning tint: the setting is on but cannot work yet.">
+          <ListRow label="Расшифровка аудиокниг" hint="Распознаёт речь аудиокниг." status="Нет модели распознавания речи — добавьте её в «Модели»" statusTone="warning">
+            <Toggle label="Расшифровка аудиокниг" checked onChange={() => {}} />
+          </ListRow>
+        </GroupedSection>
       </Section>
 
       <Section title="GroupedSection · ListRow" note="The System Settings list. Every control sits on the trailing edge of its row; stack/wide put it under the text.">
@@ -579,6 +589,9 @@ export function Gallery() {
               { value: 'music', label: 'Музыка' },
             ]}
           />
+          <div style={{ width: '100%' }}>
+            <SegmentedControl label="Тип модели (fill)" value={seg} onChange={setSeg} fill segments={[{ value: 'all', label: 'Текст' }, { value: '720', label: 'Распознавание речи' }]} />
+          </div>
           <Toggle label="Вкл." checked={on} onChange={setOn} />
           <Toggle label="Выкл." checked={false} onChange={() => {}} />
           <Toggle label="Недоступно" checked disabled onChange={() => {}} />

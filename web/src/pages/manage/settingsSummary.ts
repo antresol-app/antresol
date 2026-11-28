@@ -10,7 +10,7 @@ export const DEFAULT_LANGS = ['ru', 'en'] as const
 
 /** «ИИ-помощник»: the first model that is on, or «Выключено» (the assistant off, or no model to ask). */
 function aiSummary(v: Values): string {
-  const first = v.ai?.off ? undefined : v.ai?.list.find((e) => !e.off && e.status?.state !== 'noKey')
+  const first = v.ai?.off ? undefined : v.ai?.list.find((e) => e.kind !== 'speech' && !e.off && e.status?.state !== 'noKey')
   return first ? first.model : t('settings.summary.offAI')
 }
 

@@ -834,10 +834,9 @@ export interface Settings {
   ai?: AISettings
   /** The server has its own model (VAULT_LLM_*): its entry of the list, «Сервер». */
   aiFromEnv?: string
-  /** «Распознавание речи»: the service of the audiobooks' transcripts (the key is write-only; absent on older servers). */
+  /** The old «Распознавание речи» (read-only, for one release): speech models are `ai.list` entries with kind 'speech' now. */
   stt?: STTSettings
   sttKeySet?: boolean
-  /** The server has its own speech service (VAULT_STT_*): its model, used while no provider is chosen here. */
   sttFromEnv?: string
   /** What transcodes video now («Перекодирование»'s summary; response only). */
   transcodingName?: string
@@ -1023,7 +1022,9 @@ export interface AIStatus {
 export interface AIModel {
   /** The server's: empty for a new entry. */
   id: string
-  /** The server's own model (VAULT_LLM_*): its address, model and key are the environment's. */
+  /** What the entry does: a language model (absent) or speech recognition ('speech': the audiobooks' transcripts ask it). */
+  kind?: 'speech'
+  /** The server's own model (VAULT_LLM_*, of a speech entry VAULT_STT_*): its address, model and key are the environment's. */
   env?: boolean
   url: string
   /** The model asked; the server's own entry sends the one chosen among the endpoint's (an answer carries the one in force). */
@@ -1060,7 +1061,7 @@ export interface AICheck {
   status: AIStatus
 }
 
-/** «Распознавание речи» (the server's AI settings). */
+/** «Распознавание речи» as the server stored it before it became speech entries of the model list; answers still carry it for one release (read-only: the page uses the list). */
 export interface STTSettings {
   /** groq, openai, gemini, custom, off; '' the server's own (VAULT_STT_*) or none */
   provider: '' | 'off' | 'groq' | 'openai' | 'gemini' | 'custom'

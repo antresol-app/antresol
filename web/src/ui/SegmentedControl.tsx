@@ -30,6 +30,8 @@ export interface SegmentedControlProps<T extends string> {
   size?: 'regular' | 'small'
   /** Show every segment's `short` label at every width (a narrow place: a sheet); the full label is its name and tooltip. */
   shortLabels?: boolean
+  /** The track takes its container's whole width and the segments share it equally (the first control of a sheet, as iOS has one under a title). */
+  fill?: boolean
 }
 
 /** Which edges of a sideways scroller have content past them. */
@@ -56,7 +58,7 @@ function useEdgeFades(ref: RefObject<HTMLDivElement | null>, on: boolean) {
   return { fade, measure }
 }
 
-export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false, align = 'center', size = 'regular', shortLabels = false }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ label, segments, value, onChange, row = false, align = 'center', size = 'regular', shortLabels = false, fill = false }: SegmentedControlProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const trackRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -95,7 +97,7 @@ export function SegmentedControl<T extends string>({ label, segments, value, onC
   }
 
   const control = (
-    <div ref={trackRef} className={[styles.track, row ? styles.inRow : '', size === 'small' ? styles.small : ''].filter(Boolean).join(' ')} role="radiogroup" aria-label={label} onKeyDown={onKey}>
+    <div ref={trackRef} className={[styles.track, row ? styles.inRow : '', size === 'small' ? styles.small : '', fill ? styles.fill : ''].filter(Boolean).join(' ')} role="radiogroup" aria-label={label} onKeyDown={onKey}>
       {thumb && <span className={styles.thumb} style={thumb.style} data-slide={thumb.slide || undefined} aria-hidden />}
       {segments.map((s, k) => {
         const on = k === i

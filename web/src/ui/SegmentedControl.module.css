@@ -19,6 +19,13 @@
 .track::-webkit-scrollbar {
   display: none;
 }
+.fill {
+  display: flex;
+  width: 100%;
+}
+.fill .segment {
+  flex: 1 1 0;
+}
 .segment {
   position: relative;
   flex: none;

@@ -107,7 +107,6 @@ import type {
   User,
   AICheck,
   AIModel,
-  STTSettings,
 } from './types'
 
 import { getLanguage, t } from '../i18n'
@@ -562,12 +561,9 @@ export const setVocleanBackfill = (b: { on: boolean; recheck?: boolean }) => req
 export const probeTranscoding = () => request<TranscodingView>('POST', '/api/settings/transcoding/probe')
 /** Asks the entries (ids; none: every one that is on) or a draft one that is not saved; the statuses are stored. */
 export const testAIModels = (body: { ids?: string[]; entry?: AIModel }) => request<{ ok: boolean; results: AICheck[] }>('POST', '/api/settings/ai/test', body)
-/** The models an endpoint lists (nothing is billed or saved): an empty key is the stored one of entry `id`; serverKey: the server's own key, for an address on its host. */
-export const listAIModels = (body: { url?: string; key?: string; id?: string; serverKey?: boolean }, signal?: AbortSignal) =>
+/** The models an endpoint lists (nothing is billed or saved; kind 'speech': the speech ones only): an empty key is the stored one of entry `id`; serverKey: the server's own key, for an address on its host. */
+export const listAIModels = (body: { url?: string; key?: string; id?: string; serverKey?: boolean; kind?: 'speech' }, signal?: AbortSignal) =>
   request<{ models: { id: string }[]; error?: string; kind?: string; code?: number }>('POST', '/api/settings/ai/models', body, signal)
-
-/** «Проверить» of «Распознавание речи»: a second of silence sent to be transcribed (nothing is saved; an empty key: the stored one, for its address). */
-export const testSTTSettings = (stt: STTSettings) => request<{ ok: boolean; ms: number; model: string; error?: string }>('POST', '/api/settings/stt/test', stt)
 
 // Subtitles (admin): OpenSubtitles search for one video file.
 export const searchSubtitles = (fileId: number, lang: 'ru' | 'en', signal?: AbortSignal) =>
