@@ -398,6 +398,14 @@ export function Gallery() {
             <IconButton size="sm" icon="ellipsis" label="Ещё" />
           </ListRow>
         </GroupedSection>
+        <GroupedSection dimmed title="dimmed" footer="Its switch is off: the rows' text steps back (label-2, label-3) and the caller disables their controls («Функции ИИ» while the assistant is off).">
+          <ListRow label="Описание канала" hint="Turns a phrase into a channel's rules.">
+            <Toggle label="Описание канала" checked disabled onChange={() => {}} />
+          </ListRow>
+          <ListRow label="Главы аудиокниг" hint="Splits a transcript into chapters.">
+            <Toggle label="Главы аудиокниг" checked={false} disabled onChange={() => {}} />
+          </ListRow>
+        </GroupedSection>
       </Section>
 
       <Section

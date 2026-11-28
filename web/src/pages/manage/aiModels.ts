@@ -103,11 +103,12 @@ export function statusDetail(t: TFunction, st: AIStatus | undefined): string {
   }
 }
 
-/** «Anthropic · api.anthropic.com» — what an entry is, under its name (the tasks it serves are `tiersLine`, on a line of their own). */
+/** «Anthropic · api.anthropic.com» — what an entry is, under its name (the tasks it serves are `tiersLine`, on a line of their own).
+ * The server's own: «LiteLLM · с сервера» — its provider like any other, and where it comes from in place of the address. */
 export function entryHint(t: TFunction, e: AIModel, withHost = true): string {
-  const provider = e.env ? t('settings.ai.server') : PROVIDER_NAMES[providerOf(e.url)]
+  const provider = PROVIDER_NAMES[providerOf(e.url)]
   // no-break around the dot: a line never ends on it
-  return [provider, withHost && hostOf(e.url)].filter(Boolean).join('\u00A0·\u00A0')
+  return [provider, e.env ? t('settings.ai.fromServer') : withHost && hostOf(e.url)].filter(Boolean).join('\u00A0·\u00A0')
 }
 
 /** «Задачи: лёгкие, сложные» for a model that serves some of the weights only; else ''. */

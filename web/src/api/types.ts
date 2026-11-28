@@ -1026,9 +1026,14 @@ export interface AIModel {
   /** The server's own model (VAULT_LLM_*): its address, model and key are the environment's. */
   env?: boolean
   url: string
+  /** The model asked; the server's own entry sends the one chosen among the endpoint's (an answer carries the one in force). */
   model: string
+  /** The server's own entry (response only): the environment's model, the default of the choice. */
+  modelDefault?: string
   /** Write-only: empty keeps the stored one of this entry (on the same host). */
   key?: string
+  /** Asks with the server's own key (VAULT_LLM_KEY), never copied here; only while the address is the server's host. */
+  keyFromEnv?: boolean
   /** A key is stored (response only). */
   keySet?: boolean
   tiers: AITier[]
@@ -1042,6 +1047,8 @@ export interface AISettings {
   off?: boolean
   /** The models, in priority order. */
   list: AIModel[]
+  /** Which AI features are switched off (false); a missing one is on. */
+  features?: Record<string, boolean>
 }
 
 /** POST /api/settings/ai/test: one entry's check. */

@@ -2,8 +2,11 @@
 // модель…»: the provider, then its address, the key and the model — the
 // pop-up of what the endpoint lists, «Другая…» for a name it does not) or an
 // existing one (its status in full, the key, the tasks it serves, «Проверить»,
-// «Удалить»). The server's own model (VAULT_LLM_*) is read-only: it can be
-// switched off or told which tasks it serves, nothing else.
+// «Удалить»). The server's own model (VAULT_LLM_*) is a provider like the
+// others: its address and key stay the environment's (read-only), its model is
+// chosen from what the endpoint lists. A LiteLLM added while the server has one
+// starts from its address and asks with the server's key, which this page never
+// sees (no key field, a note).
 // The key field keeps today's behaviour: Enter saves the model and checks it
 // at once (the sheet stays, the answer is in its status), a provider that asks
 // for a key is not saved without one, and a stored key shows «Сохранён».
@@ -32,18 +35,22 @@ interface Draft {
   key: string
   tiers: AITier[]
   off: boolean
+  /** Asks with the server's own key (holds only while the address is the server's host). */
+  serverKey: boolean
 }
 
-const startOf = (provider: Provider, defaultUrl?: string): Draft => ({
+/** A new entry of `provider`; a LiteLLM starts from the server's own address (and key) when it has one, else the last one used. */
+const startOf = (provider: Provider, defaultUrl?: string, serverUrl?: string): Draft => ({
   provider,
-  url: provider === 'litellm' ? (defaultUrl ?? LITELLM_URL) : AI_PROVIDERS[provider].url,
+  url: provider === 'litellm' ? (serverUrl ?? defaultUrl ?? LITELLM_URL) : AI_PROVIDERS[provider].url,
   model: provider === 'litellm' ? '' : AI_PROVIDERS[provider].models.medium,
   key: '',
   tiers: [...TIERS],
   off: false,
+  serverKey: provider === 'litellm' && !!serverUrl,
 })
 
-const fromEntry = (e: AIModel): Draft => ({ provider: providerOf(e.url), url: e.url, model: e.model, key: '', tiers: [...e.tiers], off: !!e.off })
+const fromEntry = (e: AIModel): Draft => ({ provider: providerOf(e.url), url: e.url, model: e.model, key: '', tiers: [...e.tiers], off: !!e.off, serverKey: !!e.keyFromEnv })
 
 const sameTiers = (a: AITier[], b: AITier[]) => TIERS.every((x) => a.includes(x) === b.includes(x))
 
@@ -51,6 +58,7 @@ export function AIModelSheet({
   entry,
   status,
   defaultUrl,
+  serverUrl,
   onSave,
   onCheck,
   onDelete,
@@ -60,8 +68,10 @@ export function AIModelSheet({
   entry?: AIModel
   /** Its status as the page has it (a check of the page's or the server's). */
   status?: AIStatus
-  /** The address a new LiteLLM starts from (the last one used). */
+  /** The address a new LiteLLM starts from when the server has no LiteLLM of its own (the last one used). */
   defaultUrl?: string
+  /** The server's own address (VAULT_LLM_URL), when it has one: a LiteLLM there asks with the server's key. */
+  serverUrl?: string
   /** Saves it (the server's list, with it); the entry as the server keeps it. Throws when refused. */
   onSave: (e: AIModel) => Promise<AIModel | undefined>
   /** Asks the saved model; its status. */
@@ -70,9 +80,11 @@ export function AIModelSheet({
   onClose: () => void
 }) {
   const t = useT()
+  // a new LiteLLM may take the server's own address and key only if that is one
+  const serverLiteLLM = serverUrl && providerOf(serverUrl) === 'litellm' ? serverUrl : undefined
   // the model as the server keeps it: the entry opened, or the one this sheet saved
   const [saved, setSaved] = useState<AIModel | undefined>(entry)
-  const [draft, setDraft] = useState<Draft>(entry ? fromEntry(entry) : startOf('litellm', defaultUrl))
+  const [draft, setDraft] = useState<Draft>(entry ? fromEntry(entry) : startOf('litellm', defaultUrl, serverLiteLLM))
   const [busy, setBusy] = useState<'save' | 'check' | null>(null)
   const [error, setError] = useState('')
   // what a check of this sheet found, until the model is saved again
@@ -81,14 +93,17 @@ export function AIModelSheet({
   const field = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
 
   const sameHost = hostOf(draft.url) !== '' && hostOf(draft.url) === hostOf(saved?.url ?? '')
-  const keyStored = !env && !!saved?.keySet && sameHost
-  const keyReady = env || !needsKey(draft.url) || draft.key !== '' || keyStored
-  const complete = env || (validUrl(draft.url) && draft.model.trim() !== '' && keyReady)
+  // the server's own key: asked with while the address is the server's host, and there is no key field then
+  const viaServer = !env && draft.serverKey && !!serverUrl && hostOf(draft.url) !== '' && hostOf(draft.url) === hostOf(serverUrl)
+  const keyStored = !env && !!saved?.keySet && sameHost && !saved.keyFromEnv
+  const keyReady = env || viaServer || !needsKey(draft.url) || draft.key !== '' || keyStored
+  const complete = validUrl(draft.url) && draft.model.trim() !== '' && keyReady
   const dirty =
     !saved ||
     draft.off !== !!saved.off ||
     !sameTiers(draft.tiers, saved.tiers) ||
-    (!env && (draft.url.trim().replace(/\/+$/, '') !== saved.url || draft.model.trim() !== saved.model || draft.key !== ''))
+    draft.model.trim() !== saved.model ||
+    (!env && (draft.url.trim().replace(/\/+$/, '') !== saved.url || draft.key !== '' || viaServer !== !!saved.keyFromEnv))
 
   // ---- the models the endpoint lists (nothing billed) ----
   const [names, setNames] = useState<string[] | null>(null)
@@ -99,13 +114,20 @@ export function AIModelSheet({
   const [keyStamp, setKeyStamp] = useState(0)
   const typed = useRef(draft.key)
   typed.current = draft.key
+  // the key the models were last asked with (a pause in typing asks again only for a new one)
+  const asked = useRef('')
+  /** Asks the endpoint again if the key is not the one it was asked with. */
+  const askAgain = () => {
+    if (typed.current !== asked.current) setKeyStamp((n) => n + 1)
+  }
   useEffect(() => {
+    asked.current = typed.current
     setNames(null)
     setTried(false)
-    if (env || !validUrl(draft.url) || !keyReady) return
+    if (!validUrl(draft.url) || !keyReady) return
     const ac = new AbortController()
     const timer = setTimeout(() => {
-      listAIModels({ url: draft.url, key: typed.current || undefined, id: saved?.id }, ac.signal).then(
+      listAIModels({ url: draft.url, key: typed.current || undefined, id: saved?.id, serverKey: viaServer || undefined }, ac.signal).then(
         (r) => {
           if (ac.signal.aborted) return
           setNames(r.models.length > 0 ? r.models.map((m) => m.id) : null)
@@ -119,10 +141,16 @@ export function AIModelSheet({
       ac.abort()
     }
     // keyReady changes with the key's first letter: the stamp, not the letters, asks again
-  }, [draft.url, keyStamp, env, saved?.id, keyStored])
+  }, [draft.url, keyStamp, env, saved?.id, keyStored, viaServer])
+  // a key typed or pasted asks once the typing pauses (blur and Enter ask at once)
+  useEffect(() => {
+    if (!draft.key) return
+    const timer = setTimeout(askAgain, 800)
+    return () => clearTimeout(timer)
+  }, [draft.key])
 
   const choose = (p: Provider) => {
-    setDraft(startOf(p, defaultUrl))
+    setDraft(startOf(p, defaultUrl, serverLiteLLM))
     setCustom(false)
     setFound(undefined)
     setError('')
@@ -135,6 +163,7 @@ export function AIModelSheet({
     url: draft.url.trim(),
     model: draft.model.trim(),
     key: draft.key || undefined,
+    keyFromEnv: viaServer || undefined,
     tiers: draft.tiers,
     off: draft.off || undefined,
   })
@@ -199,6 +228,37 @@ export function AIModelSheet({
   const title = saved ? saved.model : t('settings.ai.sheet.add')
   const options = names && (!draft.model || names.includes(draft.model) ? names : [draft.model, ...names])
 
+  // the model: typed (the endpoint lists nothing, or «Другая…») or chosen from what it lists
+  const modelField = (
+    <TextField
+      label={t('settings.ai.modelName')}
+      hint={saved || !tried || !validUrl(draft.url) || !keyReady ? undefined : t('settings.ai.modelNone')}
+      autoComplete="off"
+      spellCheck={false}
+      value={draft.model}
+      onChange={(e) => field({ model: e.target.value })}
+    />
+  )
+  const modelSelect = options && (
+    <ListRow label={t('settings.ai.model')}>
+      <Select
+        label={t('settings.ai.model')}
+        placement="bottom-end"
+        value={draft.model}
+        options={[...options.map((m) => ({ value: m, label: m, lang: 'zxx' })), { value: OTHER, label: t('settings.ai.modelOther') }]}
+        onChange={(m) => (m === OTHER ? setCustom(true) : field({ model: m }))}
+      />
+    </ListRow>
+  )
+  const modelRow =
+    names && !custom && options ? (
+      modelSelect
+    ) : (
+      <ListRow label={t('settings.ai.modelName')} wide>
+        {modelField}
+      </ListRow>
+    )
+
   return (
     <Sheet
       title={title}
@@ -230,13 +290,13 @@ export function AIModelSheet({
         )}
 
         {env ? (
-          <GroupedSection footer={t('settings.ai.envNote')}>
-            <ListRow label={t('settings.ai.provider')}>{t('settings.ai.server')}</ListRow>
+          <GroupedSection footer={t('settings.ai.envNote', { model: saved?.modelDefault ?? '' })}>
+            <ListRow label={t('settings.ai.provider')}>{PROVIDER_NAMES[providerOf(saved?.url ?? '')]}</ListRow>
             <ListRow label={t('settings.ai.url')}>{saved?.url}</ListRow>
-            <ListRow label={t('settings.ai.model')}>{saved?.model}</ListRow>
+            {modelRow}
           </GroupedSection>
         ) : (
-          <GroupedSection>
+          <GroupedSection footer={viaServer ? t('settings.ai.serverKeyNote') : undefined}>
             {!saved && (
               <ListRow label={t('settings.ai.provider')}>
                 <Select
@@ -258,17 +318,8 @@ export function AIModelSheet({
                   value={draft.url}
                   onChange={(e) => field({ url: e.target.value })}
                 />
-                {!names || custom ? (
-                  <TextField
-                    label={t('settings.ai.modelName')}
-                    hint={saved || !tried || !validUrl(draft.url) || !keyReady ? undefined : t('settings.ai.modelNone')}
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={draft.model}
-                    onChange={(e) => field({ model: e.target.value })}
-                  />
-                ) : null}
-                {draft.provider !== 'ollama' && (
+                {!names || custom ? modelField : null}
+                {draft.provider !== 'ollama' && !viaServer && (
                   <TextField
                     label={t('settings.ai.key')}
                     placeholder={keyStored ? t('settings.ai.keySaved') : undefined}
@@ -278,30 +329,20 @@ export function AIModelSheet({
                     enterKeyHint="go"
                     value={draft.key}
                     onChange={(e) => field({ key: e.target.value })}
-                    onBlur={() => setKeyStamp((n) => n + 1)}
+                    onBlur={askAgain}
                     onKeyDown={(e) => {
                       // Enter: save the model with its key and check it at once
                       if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
                       e.preventDefault()
                       e.stopPropagation()
-                      setKeyStamp((n) => n + 1)
+                      askAgain()
                       void saveAndCheck(true)
                     }}
                   />
                 )}
               </div>
             </ListRow>
-            {names && !custom && options && (
-              <ListRow label={t('settings.ai.model')}>
-                <Select
-                  label={t('settings.ai.model')}
-                  placement="bottom-end"
-                  value={draft.model}
-                  options={[...options.map((m) => ({ value: m, label: m })), { value: OTHER, label: t('settings.ai.modelOther') }]}
-                  onChange={(m) => (m === OTHER ? setCustom(true) : field({ model: m }))}
-                />
-              </ListRow>
-            )}
+            {names && !custom && options && modelSelect}
           </GroupedSection>
         )}
 

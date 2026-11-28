@@ -16,6 +16,8 @@ export interface SelectOption<T extends string> {
   label: string
   /** A second line in the menu. */
   detail?: string
+  /** The label's language when it is not the page's; "zxx" for an identifier (a model's id), which is never hyphenated. */
+  lang?: string
 }
 
 interface Common {
@@ -75,6 +77,7 @@ export function Select<T extends string>({
             key={o.value}
             label={o.label}
             detail={o.detail}
+            lang={o.lang}
             checked={o.value === value}
             onSelect={() => {
               close()

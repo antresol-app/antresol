@@ -10,6 +10,9 @@
 // weights only (light: naming IPTV categories; medium: «Опишите канал»;
 // powerful: the hardest) is asked for those only. The key is written, never
 // shown again. Without a model the channel is read from the words alone.
+// The server's own model (VAULT_LLM_*) is a provider like the others («LiteLLM ·
+// с сервера») and its model is chosen in its sheet. «Функции ИИ» lists what the
+// server does with a model, a switch each (AIFeatures.tsx).
 import { useMemo, useState } from 'react'
 import { errorText, testAIModels } from '../../api/client'
 import type { AISettings as AI, AIModel, AIStatus } from '../../api/types'
@@ -19,6 +22,7 @@ import { GroupedSection, ListLinkRow, ListRow, ListSelectRow } from '../../ui/Li
 import { Sheet } from '../../ui/Sheet'
 import { SortableList, SortableRowText } from '../../ui/SortableList'
 import { Toggle } from '../../ui/Toggle'
+import { AIFeaturesSection } from './AIFeatures'
 import { AIModelSheet } from './AIModelSheet'
 import { entryHint, nb, providerOf, statusView, tiersLine } from './aiModels'
 
@@ -170,12 +174,15 @@ export function AISettingsSection({
         </GroupedSection>
       )}
 
+      <AIFeaturesSection ai={current} onChange={onChange} />
+
       {open && (open === 'new' || entry) && (
         <AIModelSheet
           key={open === 'new' ? 'new' : open.id}
           entry={entry}
           status={entry ? statusOf(entry) : undefined}
           defaultUrl={list.find((e) => !e.env && providerOf(e.url) === 'litellm')?.url}
+          serverUrl={list.find((e) => e.env)?.url}
           onSave={saveEntry}
           onCheck={check}
           onDelete={() => entry && setRemoving(entry)}

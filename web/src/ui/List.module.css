@@ -27,6 +27,14 @@
   /* menus open in a portal, so nothing needs to hang out of a group */
   overflow: hidden;
 }
+/* a group whose switch is off: the text of its rows steps back (the controls
+   dim themselves, disabled) */
+.dimmed .label {
+  color: var(--label-2);
+}
+.dimmed .hint {
+  color: var(--label-3);
+}
 .foot {
   margin: var(--s-2) 0 0;
   padding: 0;

@@ -113,3 +113,87 @@ for (const width of [390, 1440]) {
     })
   })
 }
+
+/** The server's own LiteLLM: lists two models, wants the server's key, notes the model it was asked. */
+async function serverModel(key: string): Promise<{ url: string; lastModel: () => string; close: () => Promise<void> }> {
+  let last = ''
+  const s: Server = createServer((req, res) => {
+    let raw = ''
+    req.on('data', (c) => (raw += c))
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json')
+      if (req.headers.authorization !== `Bearer ${key}`) {
+        res.statusCode = 401
+        res.end('{"error":"bad key"}')
+      } else if (req.url?.endsWith('/models')) {
+        res.end(JSON.stringify({ data: [{ id: 'gemini-flash-lite' }, { id: 'groq-gpt-oss' }, { id: 'local-gemma' }] }))
+      } else {
+        last = (JSON.parse(raw || '{}') as { model?: string }).model ?? ''
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }))
+      }
+    })
+  })
+  await new Promise<void>((r) => s.listen(0, '127.0.0.1', r))
+  return { url: `http://127.0.0.1:${(s.address() as AddressInfo).port}/v1`, lastModel: () => last, close: () => new Promise((r) => s.close(() => r())) }
+}
+
+const server = await serverModel('env-key')
+
+test.describe('the server’s own LiteLLM and the AI features', () => {
+  test.use({ env: { VAULT_LLM_URL: server.url, VAULT_LLM_MODEL: 'gemini-flash-lite', VAULT_LLM_KEY: 'env-key' } })
+
+  for (const width of [390, 1440]) {
+    test(`at ${width}px: its model is chosen, a LiteLLM is added from it, features switch`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width < 600 ? 844 : 900 })
+      await setupAdmin(page.request)
+      await page.goto('/manage/settings/ai')
+
+      // the server's own model reads as a provider: LiteLLM, from the server
+      const env = page.getByRole('button', { name: /^gemini-flash-lite/ })
+      await expect(env).toContainText('LiteLLM · с сервера')
+      await env.click()
+      let sheet = page.getByRole('dialog', { name: 'gemini-flash-lite' })
+      await expect(sheet.getByLabel('Ключ API')).toHaveCount(0)
+      await sheet.getByRole('button', { name: /^Модель/ }).click()
+      await expect(page.getByRole('menuitemradio')).toHaveText(['gemini-flash-lite', 'groq-gpt-oss', 'local-gemma', 'Другая…'])
+      await page.getByRole('menuitemradio', { name: 'groq-gpt-oss' }).click()
+      await sheet.getByRole('button', { name: 'Сохранить' }).click()
+      await expect(page.getByRole('button', { name: /^groq-gpt-oss/ })).toBeVisible()
+      await expect.poll(() => order(page.request)).toEqual(['groq-gpt-oss'])
+      // kept over a reload; a check asks that model, with the server's key
+      await page.reload()
+      await expect(page.getByRole('button', { name: /^groq-gpt-oss/ })).toContainText('LiteLLM · с сервера')
+      await page.getByRole('button', { name: /^Проверить все/ }).click()
+      await expect(page.getByRole('button', { name: /^groq-gpt-oss/ })).toContainText(/\d+ мс/)
+      expect(server.lastModel()).toBe('groq-gpt-oss')
+
+      // another model of the same LiteLLM: its address, the server's key, no key field
+      await page.getByRole('button', { name: 'Добавить модель…' }).click()
+      sheet = page.getByRole('dialog', { name: 'Новая модель' })
+      await expect(sheet.getByLabel('Адрес')).toHaveValue(server.url)
+      await expect(sheet.getByLabel('Ключ API')).toHaveCount(0)
+      await expect(sheet.getByText(/у самого сервера/)).toBeVisible()
+      await sheet.getByRole('button', { name: /^Модель/ }).click()
+      await page.getByRole('menuitemradio', { name: 'local-gemma' }).click()
+      await sheet.getByRole('button', { name: 'Сохранить' }).click()
+      await expect.poll(() => order(page.request)).toEqual(['groq-gpt-oss', 'local-gemma'])
+      await expect(page.getByRole('button', { name: /^local-gemma/ })).toContainText(/\d+ мс/) // saved, then checked: the server's key is used
+      expect(JSON.stringify(await (await page.request.get('/api/settings')).json())).not.toContain('env-key')
+      await nothingCut(page)
+
+      // the features: all on, one off survives a reload, the master switch disables them
+      const feature = page.getByRole('switch', { name: 'Главы аудиокниг' })
+      await expect(page.getByRole('heading', { name: 'Функции ИИ' })).toBeVisible()
+      await expect(feature).toBeChecked()
+      await feature.click()
+      await expect.poll(async () => ((await (await page.request.get('/api/settings')).json()) as { ai: { features?: Record<string, boolean> } }).ai.features).toEqual({ chapters: false })
+      await page.reload()
+      await expect(page.getByRole('switch', { name: 'Главы аудиокниг' })).not.toBeChecked()
+      await expect(page.getByRole('switch', { name: 'Описание канала' })).toBeChecked()
+      await page.getByRole('switch', { name: 'ИИ-помощник' }).click()
+      await expect(page.getByRole('switch', { name: 'Описание канала' })).toBeDisabled()
+      await expect(page.getByText(/Пока ИИ-помощник выключен/)).toBeVisible()
+      await nothingCut(page)
+    })
+  }
+})

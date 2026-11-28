@@ -20,7 +20,7 @@ const lite: AIModel = { id: 'a1', url: 'http://litellm:4000/v1', model: 'gemini-
 const groq: AIModel = { id: 'b2', url: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', keySet: true, tiers: [...ALL], status: { state: 'error', kind: 'http', code: 401, error: '401 Unauthorized {"error":"bad key"}', at, source: 'task' } }
 const claude: AIModel = { id: 'c3', url: 'https://api.anthropic.com', model: 'claude-haiku-5-5', keySet: false, tiers: ['medium', 'powerful'], status: { state: 'noKey' } }
 const gemma: AIModel = { id: 'd4', url: 'http://localhost:11434', model: 'local-gemma', keySet: false, tiers: ['light'], status: { state: 'unchecked' } }
-const server: AIModel = { id: 'env', env: true, url: 'http://litellm:4000/v1', model: 'srv-model', keySet: true, tiers: [...ALL], status: { state: 'unchecked' } }
+const server: AIModel = { id: 'env', env: true, url: 'http://litellm:4000/v1', model: 'srv-model', modelDefault: 'srv-model', keySet: true, tiers: [...ALL], status: { state: 'unchecked' } }
 
 const withAI = (ai: AISettings, extra: Partial<Values> = {}): Values => ({ ...base, ai, ...extra })
 
@@ -29,7 +29,7 @@ function stub(start: Values, checks: Record<string, AICheck['status']> = {}) {
   let cur = start
   const puts: Values[] = []
   const tests: { ids?: string[]; entry?: AIModel }[] = []
-  const lists: { url?: string; key?: string; id?: string }[] = []
+  const lists: { url?: string; key?: string; id?: string; serverKey?: boolean }[] = []
   let models: { models: { id: string }[]; error?: string } = { models: [] }
   let n = 0
   vi.stubGlobal(
@@ -83,7 +83,7 @@ describe('«ИИ-помощник»: the list', () => {
     expect(within(row('claude-haiku-5-5')).getByText('Нет ключа')).toHaveAttribute('data-tone', 'warning')
     expect(row('local-gemma')).toHaveTextContent('Ollama · localhost:11434 Задачи: лёгкие')
     expect(within(row('local-gemma')).getByText('Не проверена')).toHaveAttribute('data-tone', 'neutral')
-    expect(row('srv-model')).toHaveTextContent('Сервер · litellm:4000')
+    expect(row('srv-model')).toHaveTextContent('LiteLLM · с сервера')
     expect(screen.getByRole('button', { name: 'Добавить модель…' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Проверить все/ })).toHaveTextContent('Проверено 5 мин назад: 1 работает, 1 с ошибкой, 1 без ключа, 2 не проверено')
   })
@@ -118,17 +118,172 @@ describe('«ИИ-помощник»: the list', () => {
     expect(within(sheet).getByRole('button', { name: 'Готово' })).toBeInTheDocument()
   })
 
-  it('the server’s own model: read-only, can be switched off, cannot be deleted', async () => {
+  it('the server’s own model: address and key read-only, can be switched off, cannot be deleted', async () => {
     const { puts } = stub(withAI({ list: [server] }))
     renderSettings('ai')
     await userEvent.click(await screen.findByRole('button', { name: /^srv-model/ }))
     const sheet = await screen.findByRole('dialog', { name: 'srv-model' })
     expect(within(sheet).queryByLabelText('Адрес')).toBeNull()
+    expect(within(sheet).queryByLabelText('Ключ API')).toBeNull()
+    expect(within(sheet).getByText('LiteLLM или свой сервер'.slice(0, 7))).toBeInTheDocument()
     expect(within(sheet).queryByRole('button', { name: 'Удалить' })).toBeNull()
-    expect(within(sheet).getByText(/VAULT_LLM_\*/)).toBeInTheDocument()
+    expect(within(sheet).getByText(/VAULT_LLM_\*/)).toHaveTextContent('по умолчанию — srv-model')
     await userEvent.click(within(sheet).getByRole('switch', { name: 'Использовать' }))
     await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
-    await waitFor(() => expect(puts.at(-1)?.ai?.list[0]).toMatchObject({ id: 'env', env: true, off: true }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list[0]).toMatchObject({ id: 'env', env: true, off: true, model: 'srv-model' }))
+  })
+
+  it('the server’s own model is a LiteLLM among the others: its model is chosen from the endpoint’s list', async () => {
+    const { puts, lists, setModels } = stub(withAI({ list: [server, lite] }))
+    setModels({ models: [{ id: 'auto' }, { id: 'alt-model' }, { id: 'srv-model' }] })
+    renderSettings('ai')
+    // «LiteLLM · с сервера» under the name, the address is not shown
+    expect(await screen.findByRole('button', { name: /^srv-model/ })).toHaveTextContent('LiteLLM · с сервера')
+    await userEvent.click(screen.getByRole('button', { name: /^srv-model/ }))
+    const sheet = await screen.findByRole('dialog', { name: 'srv-model' })
+    await waitFor(() => expect(lists.at(-1)).toMatchObject({ id: 'env', url: 'http://litellm:4000/v1' }))
+    expect(lists.at(-1)).not.toHaveProperty('key')
+    await userEvent.click(await within(sheet).findByRole('button', { name: /^Модель/ }))
+    expect(screen.getAllByRole('menuitemradio').map((m) => m.textContent)).toEqual(['auto', 'alt-model', 'srv-model', 'Другая…'])
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'alt-model' }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list[0]).toMatchObject({ id: 'env', env: true, model: 'alt-model' }))
+    expect(puts.at(-1)?.ai?.list[0]).not.toHaveProperty('key')
+  })
+
+  it('the server’s own model: «Другая…» is a name typed; an endpoint that lists nothing asks for one', async () => {
+    const { puts } = stub(withAI({ list: [server] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: /^srv-model/ }))
+    const sheet = await screen.findByRole('dialog', { name: 'srv-model' })
+    const name = await within(sheet).findByLabelText('Название модели')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'typed-model')
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list[0]).toMatchObject({ env: true, model: 'typed-model' }))
+  })
+})
+
+describe('«ИИ-помощник»: the server’s LiteLLM when adding', () => {
+  it('a LiteLLM starts from the server’s address and takes its key: no key field, a note, models found with it', async () => {
+    const { puts, lists, setModels } = stub(withAI({ list: [server] }))
+    setModels({ models: [{ id: 'auto' }, { id: 'groq-gpt-oss' }] })
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('http://litellm:4000/v1')
+    expect(within(sheet).queryByLabelText('Ключ API')).toBeNull()
+    expect(within(sheet).getByText(/у самого сервера/)).toBeInTheDocument()
+    await waitFor(() => expect(lists.at(-1)).toMatchObject({ url: 'http://litellm:4000/v1', serverKey: true }))
+    expect(lists.at(-1)).not.toHaveProperty('key')
+    await userEvent.click(await within(sheet).findByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'groq-gpt-oss' }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list.at(-1)).toMatchObject({ url: 'http://litellm:4000/v1', model: 'groq-gpt-oss', keyFromEnv: true }))
+    expect(puts.at(-1)?.ai?.list.at(-1)).not.toHaveProperty('key')
+  })
+
+  it('another address wants a key of its own; another provider too', async () => {
+    const { lists } = stub(withAI({ list: [server] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    const url = within(sheet).getByLabelText('Адрес')
+    await userEvent.clear(url)
+    await userEvent.type(url, 'http://other:4000/v1')
+    expect(await within(sheet).findByLabelText('Ключ API')).toBeInTheDocument()
+    expect(within(sheet).queryByText(/у самого сервера/)).toBeNull()
+    await userEvent.clear(url)
+    await userEvent.type(url, 'http://litellm:4000/v1')
+    expect(within(sheet).queryByLabelText('Ключ API')).toBeNull()
+    await userEvent.click(within(sheet).getByRole('button', { name: /^Провайдер/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Groq' }))
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('https://api.groq.com/openai/v1')
+    expect(within(sheet).getByLabelText('Ключ API')).toBeInTheDocument()
+    expect(lists.every((l) => !l.serverKey || l.url === 'http://litellm:4000/v1')).toBe(true)
+  })
+
+  it('without a LiteLLM of the server’s own, the address is the last one used and the key is typed', async () => {
+    stub(withAI({ list: [lite] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    expect(within(sheet).getByLabelText('Адрес')).toHaveValue('http://litellm:4000/v1')
+    expect(within(sheet).getByLabelText('Ключ API')).toBeInTheDocument()
+  })
+
+  it('a direct provider’s models are listed once its key is typed', async () => {
+    const { lists, setModels, puts } = stub(withAI({ list: [] }))
+    setModels({ models: [{ id: 'claude-opus-5-5' }, { id: 'claude-haiku-5-5' }] })
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить модель…' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Новая модель' })
+    await userEvent.click(within(sheet).getByRole('button', { name: /^Провайдер/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Anthropic' }))
+    // no key, nothing asked
+    expect(lists.filter((l) => l.url === 'https://api.anthropic.com')).toHaveLength(0)
+    await userEvent.type(within(sheet).getByLabelText('Ключ API'), 'sk-ant-1')
+    await userEvent.tab()
+    await waitFor(() => expect(lists.at(-1), JSON.stringify(lists)).toMatchObject({ url: 'https://api.anthropic.com', key: 'sk-ant-1' }), { timeout: 3000 })
+    await userEvent.click(await within(sheet).findByRole('button', { name: /^Модель/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude-haiku-5-5' }))
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.list[0]).toMatchObject({ url: 'https://api.anthropic.com', model: 'claude-haiku-5-5', key: 'sk-ant-1' }))
+  })
+})
+
+describe('«ИИ-помощник»: «Функции ИИ»', () => {
+  const FEATURES = ['Описание канала', 'Порядок франшиз', 'Категории IPTV-каналов', 'Копии IPTV-каналов', 'Названия книг на других языках', 'Главы аудиокниг', 'Расшифровка аудиокниг']
+
+  it('every feature is a row with a switch and a line under it; all on by default', async () => {
+    stub(withAI({ list: [lite] }))
+    renderSettings('ai')
+    const group = (await screen.findByRole('heading', { name: 'Функции ИИ' })).closest('section')!
+    const names = within(group).getAllByRole('switch').map((b) => b.getAttribute('aria-label'))
+    expect(names).toEqual(FEATURES)
+    for (const sw of within(group).getAllByRole('switch')) expect(sw).toBeChecked()
+    expect(within(group).getByText(/советские комедии 70-х/)).toBeInTheDocument()
+    expect(within(group).getByText('Выключенная функция не обращается к модели и работает без ИИ.')).toBeInTheDocument()
+  })
+
+  it('a switch saves at once; only what is off is kept', async () => {
+    const { puts } = stub(withAI({ list: [lite] }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('switch', { name: 'Главы аудиокниг' }))
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ features: { chapters: false }, list: [{ id: 'a1' }] }))
+    expect(screen.getByRole('switch', { name: 'Главы аудиокниг' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('switch', { name: 'Расшифровка аудиокниг' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.features).toEqual({ chapters: false, transcripts: false }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Главы аудиокниг' }))
+    await waitFor(() => expect(puts.at(-1)?.ai?.features).toEqual({ transcripts: false }))
+  })
+
+  it('stored switches show; with the assistant off the list is disabled and says why', async () => {
+    stub(withAI({ off: true, list: [lite], features: { describe: false } }))
+    renderSettings('ai')
+    const group = (await screen.findByRole('heading', { name: 'Функции ИИ' })).closest('section')!
+    expect(within(group).getByRole('switch', { name: 'Описание канала' })).not.toBeChecked()
+    for (const sw of within(group).getAllByRole('switch')) expect(sw).toBeDisabled()
+    expect(within(group).getByText(/Пока ИИ-помощник выключен/)).toBeInTheDocument()
+  })
+
+  it('the master switch keeps the features it did not touch', async () => {
+    const { puts } = stub(withAI({ list: [lite], features: { describe: false } }))
+    renderSettings('ai')
+    await userEvent.click(await screen.findByRole('switch', { name: 'ИИ-помощник' }))
+    await waitFor(() => expect(puts.at(-1)?.ai).toMatchObject({ off: true, features: { describe: false } }))
+  })
+
+  it('the ids are the server’s: every feature the page lists has its words in both languages', async () => {
+    const { AI_FEATURES } = await import('../aiFeatureList')
+    const en = (await import('../../../i18n/en/manageSettings')).default as Record<string, unknown>
+    const ru = (await import('../../../i18n/ru/manageSettings')).default as Record<string, unknown>
+    for (const id of AI_FEATURES) {
+      for (const k of [`settings.ai.feat.${id}`, `settings.ai.feat.${id}.hint`]) {
+        expect(typeof en[k], `en ${k}`).toBe('string')
+        expect(typeof ru[k], `ru ${k}`).toBe('string')
+      }
+    }
   })
 })
 

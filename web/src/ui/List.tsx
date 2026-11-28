@@ -9,6 +9,8 @@
 //            break inside a word
 // On a phone a plain row (none of these) keeps its text at least
 // --row-text-min wide: a control that would squeeze it goes under it.
+// GroupedSection `dimmed`: the labels and hints go to the tertiary label, as a
+// settings group does while the switch it depends on is off.
 // ListLinkRow: a row that opens something (a sheet, a page), as a System
 // Settings row with a chevron: the whole row is the button — or, with `to`,
 // a link to an address of the app (a list's level: Back returns to it).
@@ -20,9 +22,24 @@ import { Icon } from '../components/Icon'
 import { SettingsIcon, type SettingsGlyph, type SettingsTint } from './SettingsIcon'
 import styles from './List.module.css'
 
-export function GroupedSection({ title, footer, children, id, className }: { title?: ReactNode; footer?: ReactNode; children: ReactNode; id?: string; className?: string }) {
+export function GroupedSection({
+  title,
+  footer,
+  children,
+  id,
+  className,
+  dimmed,
+}: {
+  title?: ReactNode
+  footer?: ReactNode
+  children: ReactNode
+  id?: string
+  className?: string
+  /** The rows' text is dimmed: what they set does nothing now (their controls are disabled by the caller). */
+  dimmed?: boolean
+}) {
   return (
-    <section className={[styles.section, className].filter(Boolean).join(' ')} aria-labelledby={title && id ? id : undefined}>
+    <section className={[styles.section, dimmed ? styles.dimmed : '', className].filter(Boolean).join(' ')} aria-labelledby={title && id ? id : undefined}>
       {title && (
         <h3 className={styles.title} id={id}>
           {title}
